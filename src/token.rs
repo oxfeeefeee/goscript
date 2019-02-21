@@ -1,5 +1,4 @@
 use std::fmt;
-use std::collections::HashMap;
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Token {
@@ -10,10 +9,10 @@ pub enum Token {
 
 	// Identifiers and basic type literals
 	IDENT(String),   // main
-	INT(i64),        // 12345
-	FLOAT(f64),      // 123.45
+	INT(String, i64),        // 12345
+	FLOAT(String),      // 123.45
 	IMAG(String),    // 123.45i
-	CHAR(i32),       // 'a'
+	CHAR(String, char),       // 'a'
 	STRING(String),  // "abc"
 	
 	// Operator
@@ -105,10 +104,107 @@ pub enum Token {
 	VAR,
 }
 
+impl Token {
+	pub fn token_text(&self) -> &str {
+		match self {
+			Token::ILLEGAL => "ILLEGAL",
+			Token::EOF => "EOF",
+			Token::COMMENT => "COMMENT",
+			Token::IDENT(indent) => indent,
+			Token::INT(istr, _) => istr,
+			Token::FLOAT(f) => f,
+			Token::IMAG(im) => im,
+			Token::CHAR(chstr, _) => chstr,
+			Token::STRING(s) => s,
+			Token::ADD => "+", 
+			Token::SUB => "-", 
+			Token::MUL => "*", 
+			Token::QUO => "/", 
+			Token::REM => "%", 
+			Token::AND => "&",
+			Token::OR => "|",
+			Token::XOR => "^",
+			Token::SHL => "<<",
+			Token::SHR => ">>",
+			Token::AND_NOT => "&^", 
+			Token::ADD_ASSIGN => "+=",
+			Token::SUB_ASSIGN => "-=",
+			Token::MUL_ASSIGN => "*=", 
+			Token::QUO_ASSIGN => "/=", 
+			Token::REM_ASSIGN => "%=", 
+			Token::AND_ASSIGN => "&=",  
+			Token::OR_ASSIGN => "|=", 
+			Token::XOR_ASSIGN => "^=", 
+			Token::SHL_ASSIGN => "<<=", 
+			Token::SHR_ASSIGN => ">>=", 
+			Token::AND_NOT_ASSIGN => "&^=",
+			Token::LAND => "&&",
+			Token::LOR => "||",
+			Token::ARROW => "<-",
+			Token::INC => "++",
+			Token::DEC => "--",
+			Token::EQL => "==",
+			Token::LSS => "<",
+			Token::GTR => ">",
+			Token::ASSIGN => "=",
+			Token::NOT => "!",
+			Token::NEQ => "!=",
+			Token::LEQ => "<=",
+			Token::GEQ => ">=",
+			Token::DEFINE => ":=",
+			Token::ELLIPSIS => "...",
+			Token::LPAREN => "(",
+			Token::LBRACK => "[",
+			Token::LBRACE => "{{",
+			Token::COMMA => ",",
+			Token::PERIOD => ".",
+			Token::RPAREN => ")",
+			Token::RBRACK => "]",
+			Token::RBRACE => "}}",
+			Token::SEMICOLON => ";",
+			Token::COLON => ":",
+			Token::BREAK => "break",
+			Token::CASE => "case",
+			Token::CHAN => "chan",
+			Token::CONST => "const",
+			Token::CONTINUE => "continue",
+			Token::DEFAULT => "default",
+			Token::DEFER => "defer",
+			Token::ELSE => "else",
+			Token::FALLTHROUGH => "fallthrough",
+			Token::FOR => "for",
+			Token::FUNC => "func",
+			Token::GO => "go",
+			Token::GOTO => "goto",
+			Token::IF => "if",
+			Token::IMPORT => "import",
+			Token::INTERFACE => "interface",
+			Token::MAP => "map",
+			Token::PACKAGE => "package",
+			Token::RANGE => "range",
+			Token::RETURN => "return",
+			Token::SELECT => "select",
+			Token::STRUCT => "struct",
+			Token::SWITCH => "switch",
+			Token::TYPE => "type",
+			Token::VAR => "var",
+		}
+	}
+}
+
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		match self {
-			
-		}
+		let n = self.token_text();
+		write!(f, "{}", n)
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn token_test () {
+		print!("testxxxxx {}. ", Token::ILLEGAL);
 	}
 }
