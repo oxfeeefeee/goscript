@@ -33,6 +33,7 @@ impl fmt::Display for Position {
     }
 }
 
+#[derive(Debug)]
 pub struct File<'a> {
     set: &'a FileSet<'a>,
     name: &'static str,
@@ -96,12 +97,17 @@ impl<'a> File<'a> {
                 return false;
             }
         }
+        self.lines = lines;
         true
+    }
+
+    pub fn set_lines_for_content(content: Vec<u8>) {
+        
     }
 
 }
 
-
+#[derive(Debug)]
 pub struct FileSet<'a> {
     base: isize,
     files: Vec<Box<File<'a>>>,
@@ -125,9 +131,14 @@ mod test {
         print!("this is the position: {} ", p);
 
         let fs = FileSet::new();
-        let mut f = File::new(&fs, "test.gs");
+        let mut f = Box::new(File::new(&fs, "test.gs"));
+        f.size = 12345;
         f.add_line(123);
-
+        f.add_line(133);
+        f.add_line(143);
+        print!("file: {:?}", f);
+        f.merge_line(1);
+        print!("file after merge: {:?}", f);
     }
 }
 
