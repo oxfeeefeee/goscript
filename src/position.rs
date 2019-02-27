@@ -1,6 +1,9 @@
 use std::fmt;
 use std::fmt::Write;
 
+type Pos = usize;
+
+
 pub struct Position {
     filename: &'static str,
     offset: usize,
@@ -72,10 +75,10 @@ impl<'a> File<'a> {
 
     pub fn merge_line(&mut self, line: usize) {
         if line < 1 {
-            panic!("illegal line number (line numbering starts at 1)")
+            panic!("illegal line number (line numbering starts at 1)");
         }
         if line >= self.line_count() {
-            panic!("illegal line number")
+            panic!("illegal line number");
         }
         /*
         let mut shalf = self.lines.split_off(line);
@@ -101,9 +104,53 @@ impl<'a> File<'a> {
         true
     }
 
-    pub fn set_lines_for_content(content: Vec<u8>) {
-        
+    pub fn set_lines_for_content(&mut self, content: &[u8]) {
+        /*
+        let (mut new_line, mut line) = (false, 0);
+        for (offset, b) in content.iter().enumerate() {
+            if new_line {
+                self.lines.push(line);
+            }
+            new_line = false;
+            if *b == '\n' as u8 {
+                new_line = true;
+                line = offset + 1;
+            }
+        }*/
+        self.lines = content.iter().
+            enumerate().
+            filter(|&(_, b)| *b == '\n' as u8).
+            map(|(offset, _)| offset + 1).
+            collect();
     }
+
+    pub fn line_start(&self, line: usize) -> usize {
+        if line < 1 {
+            panic!("illegal line number (line numbering starts at 1)");
+        }
+        if line >= self.line_count() {
+            panic!("illegal line number");
+        }
+        self.base + self.lines[line-1]
+    }
+
+    pub fn position(&self, p: Pos, pos: &mut Position) {
+        pos.filename = self.name;
+        if p == 0 {
+            pos.line = 0;
+            pos.offset = 0;
+            pos.column = 0;
+        } else {
+            if p < self.base || p > self.base + self.size {
+                panic!("illegal Pos value");
+            }
+            pos.offset = p - self.base;
+            let i = *(self.lines.iter().find(|&&x| x > pos.offset).unwrap());
+            pos.line = i+1;
+            pos.column = pos.offset - self.lines[i]+1;
+        }
+    } 
+
 
 }
 
@@ -136,9 +183,11 @@ mod test {
         f.add_line(123);
         f.add_line(133);
         f.add_line(143);
-        print!("file: {:?}", f);
+        print!("\nfile: {:?}", f);
         f.merge_line(1);
-        print!("file after merge: {:?}", f);
+        print!("\nfile after merge: {:?}", f);
+        f.set_lines_for_content(&['a' as u8 ,'\n' as u8, 'c' as u8]);
+        print!("\nfile after set: {:?}", f);
     }
 }
 
