@@ -1,5 +1,8 @@
 use std::fmt;
 use std::fmt::Write;
+use std::rc::Rc;
+use std::rc::Weak;
+use std::cell::RefCell;
 
 type Pos = usize;
 
@@ -37,16 +40,16 @@ impl fmt::Display for Position {
 }
 
 #[derive(Debug)]
-pub struct File<'a> {
-    set: &'a FileSet<'a>,
+pub struct File {
+    set: Weak<RefCell<FileSet>>,
     name: &'static str,
     base: usize,
     size: usize,
     lines: Vec<usize>,
 }
 
-impl<'a> File<'a> {
-    pub fn new(set: &'a FileSet<'a>, name: &'static str) -> File<'a> {
+impl File {
+    pub fn new(set: Weak<RefCell<FileSet>>, name: &'static str) -> File {
         File{set: set, name: name, base:0, size:0, lines: vec![]}
     }
 
@@ -134,39 +137,62 @@ impl<'a> File<'a> {
         self.base + self.lines[line-1]
     }
 
-    pub fn position(&self, p: Pos, pos: &mut Position) {
-        pos.filename = self.name;
-        if p == 0 {
-            pos.line = 0;
-            pos.offset = 0;
-            pos.column = 0;
-        } else {
+    pub fn position(&self, p: Pos) -> Position {
+        let filename = self.name;
+        let (mut line, mut offset, mut column) = (0, 0, 0);
+        if p > 0 {
             if p < self.base || p > self.base + self.size {
                 panic!("illegal Pos value");
             }
-            pos.offset = p - self.base;
-            let i = *(self.lines.iter().find(|&&x| x > pos.offset).unwrap());
-            pos.line = i+1;
-            pos.column = pos.offset - self.lines[i]+1;
+            offset = p - self.base;
+            let i = *(self.lines.iter().find(|&&x| x > offset).unwrap());
+            line = i+1;
+            column = offset - self.lines[i]+1;
+        }
+        Position{
+            filename: filename,
+            line: line,
+            offset: offset,
+            column: column,
         }
     } 
-
-
 }
 
 #[derive(Debug)]
-pub struct FileSet<'a> {
-    base: isize,
-    files: Vec<Box<File<'a>>>,
-    last: Option<&'a File<'a>>,
+pub struct FileSet {
+    base: usize,
+    files: Vec<Box<File>>,
 }
 
-impl<'a> FileSet<'a> {
-    pub fn new() -> FileSet<'a> {
-        FileSet{base: 0, files: vec![], last: None}
+impl FileSet {
+    pub fn new() -> FileSet {
+        FileSet{base: 0, files: vec![]}
+    }
+
+    pub fn base(&self) -> usize {
+        self.base
+    }
+    
+    pub fn add_file(set_ref: Rc<RefCell<FileSet>>, name: &'static str, base: isize, size: usize) {
+        let mut set = set_ref.borrow_mut();
+        let real_base = if base >=0 {base as usize} else {set.base};
+        if real_base < set.base {
+            panic!("illegal base");
+        }
+
+        let mut f = Box::new(File::new(Weak::new(), name));
+        f.base = real_base;
+        f.size = size;
+        f.set = Rc::downgrade(&set_ref);
+        
+        let set_base = set.base + size + 1; // +1 because EOF also has a position
+        if set_base < set.base {
+            panic!("token.Pos offset overflow (> 2G of source code in file set)");
+        }  
+        set.base = set_base;
+        set.files.push(f);
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -176,7 +202,7 @@ mod test {
     fn test_position() {
         let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
-
+        /*
         let fs = FileSet::new();
         let mut f = Box::new(File::new(&fs, "test.gs"));
         f.size = 12345;
@@ -188,6 +214,7 @@ mod test {
         print!("\nfile after merge: {:?}", f);
         f.set_lines_for_content(&['a' as u8 ,'\n' as u8, 'c' as u8]);
         print!("\nfile after set: {:?}", f);
+        */
     }
 }
 
