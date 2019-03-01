@@ -3,6 +3,7 @@ use std::fmt::Write;
 use std::rc::Rc;
 use std::rc::Weak;
 use std::cell::RefCell;
+use std::borrow::Borrow;
 
 type Pos = usize;
 
@@ -172,6 +173,19 @@ impl FileSet {
     pub fn base(&self) -> usize {
         self.base
     }
+
+    pub fn iter(&self) -> FileSetIter {
+        FileSetIter{fs: self, cur: 0}
+    }
+
+    pub fn file(&self, p: Pos) -> Option<&File> {
+        for f in self.files.iter() {
+            if f.base < p && f.base + f.size >= p {
+                return Some(f.borrow())
+            }
+        }
+        None
+    }
     
     pub fn add_file(set_ref: Rc<RefCell<FileSet>>, name: &'static str, base: isize, size: usize) {
         let mut set = set_ref.borrow_mut();
@@ -180,10 +194,9 @@ impl FileSet {
             panic!("illegal base");
         }
 
-        let mut f = Box::new(File::new(Weak::new(), name));
+        let mut f = Box::new(File::new(Rc::downgrade(&set_ref), name));
         f.base = real_base;
         f.size = size;
-        f.set = Rc::downgrade(&set_ref);
         
         let set_base = set.base + size + 1; // +1 because EOF also has a position
         if set_base < set.base {
@@ -191,6 +204,24 @@ impl FileSet {
         }  
         set.base = set_base;
         set.files.push(f);
+    }
+}
+
+pub struct FileSetIter<'a> {
+    fs: &'a FileSet,
+    cur: usize,
+}
+
+impl<'a> Iterator for FileSetIter<'a> {
+    type Item = &'a File;
+
+    fn next(&mut self) -> Option<&'a File> {
+        if self.cur < self.fs.files.len() {
+            self.cur += 1;
+            Some(self.fs.files[self.cur-1].borrow())
+        } else {
+            None
+        }
     }
 }
 
@@ -202,9 +233,10 @@ mod test {
     fn test_position() {
         let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
-        /*
+        
         let fs = FileSet::new();
-        let mut f = Box::new(File::new(&fs, "test.gs"));
+        let rc_set = Rc::new(RefCell::new(fs));
+        let mut f = Box::new(File::new(Rc::downgrade(&rc_set), "test.gs"));
         f.size = 12345;
         f.add_line(123);
         f.add_line(133);
@@ -214,7 +246,17 @@ mod test {
         print!("\nfile after merge: {:?}", f);
         f.set_lines_for_content(&['a' as u8 ,'\n' as u8, 'c' as u8]);
         print!("\nfile after set: {:?}", f);
-        */
+
+        FileSet::add_file(rc_set.clone(), "testfile1.gs", -1, 222);
+        FileSet::add_file(rc_set.clone(), "testfile2.gs", -1, 222);
+        FileSet::add_file(rc_set.clone(), "testfile3.gs", -1, 222);
+        print!("\nset {:?}", rc_set);
+
+        let set = (*rc_set).borrow();
+        for f in set.iter() {
+            print!("\nfiles in set: {:?}", f);
+        }
+        print!("\nfile at 100: {:?}", set.file(100))
     }
 }
 
