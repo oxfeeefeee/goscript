@@ -10,7 +10,7 @@ type Pos = usize;
 
 pub struct Position {
     filename: &'static str,
-    offset: usize,
+    offset: usize,          // offset in utf8 char
     line: usize,
     column: usize,
 }

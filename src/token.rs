@@ -190,6 +190,37 @@ impl Token {
 			Token::VAR => "var",
 		}
 	}
+
+	pub fn ident_token(ident: String) -> Token {
+		match ident.as_str() {
+			"break" => Token::BREAK,
+			"case" => Token::CASE,
+			"chan" => Token::CHAN,
+			"const" => Token::CONST,
+			"continue" => Token::CONTINUE,
+			"default" => Token::DEFAULT,
+			"defer" => Token::DEFER,
+			"else" => Token::ELSE,
+			"fallthrough" => Token::FALLTHROUGH,
+			"for" => Token::FOR,
+			"func" => Token::FUNC,
+			"go" => Token::GO,
+			"goto" => Token::GOTO,
+			"if" => Token::IF,
+			"import" => Token::IMPORT,
+			"interface" => Token::INTERFACE,
+			"map" => Token::MAP,
+			"package" => Token::PACKAGE,
+			"range" => Token::RANGE,
+			"return" => Token::RETURN,
+			"select" => Token::SELECT,
+			"struct" => Token::STRUCT,
+			"switch" => Token::SWITCH,
+			"type" => Token::TYPE,
+			"var" => Token::VAR,
+			_ => Token::IDENT(ident),
+		}
+	}
 }
 
 impl fmt::Display for Token {
