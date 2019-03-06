@@ -43,6 +43,7 @@ impl<'a> Scanner<'a> {
     }
 
     // Read the next Unicode char 
+    #[allow(dead_code)]
     fn scan(&mut self) -> (Token, position::Position) {
         self.skip_whitespace();
 
@@ -50,23 +51,23 @@ impl<'a> Scanner<'a> {
 
         let insert_semi = false;
         match self.read_char() {
-            Some(ch) if is_letter(ch) => {
-                let t = self.scan_identifier(ch);
-                match t {
-                    Token::BREAK | Token::CONTINUE | Token::FALLTHROUGH | Token::RETURN =>
-                        self.insert_semi = true,
-                    Token::IDENT(_) => self.insert_semi = true,
-                    _ => {}
+            Some(ch) => {
+                if is_letter(ch) {
+                    let t = self.scan_identifier(ch);
+                    match t {
+                        Token::BREAK | Token::CONTINUE | Token::FALLTHROUGH | Token::RETURN =>
+                            self.insert_semi = true,
+                        Token::IDENT(_) => self.insert_semi = true,
+                        _ => {}
+                    }
+                    (t, pos)
+                } else if self.number_start_with(ch) {
+                    self.insert_semi = true;
+                    let t = self.scan_number(ch);
+                    (t, pos)
+                } else {
+                    (Token::ILLEGAL, pos)
                 }
-                (t, pos)
-            },
-            Some(ch) if is_digit(ch) => {
-                self.insert_semi = true;
-                let t = self.scan_number(ch);
-                (t, pos)
-            },
-            Some(_) => {
-                (Token::ILLEGAL, pos)
             },
             None => {
                 if self.insert_semi {
@@ -83,7 +84,7 @@ impl<'a> Scanner<'a> {
         let mut s = ch.to_string(); 
         loop {
             match self.peek_char() {
-                Some(&ch) if is_letter(ch) || is_digit(ch) => {
+                Some(&ch) if is_letter(ch) || is_decimal(ch) => {
                     self.read_char().unwrap(); //advance
                     s.push(ch);
                 },
@@ -94,9 +95,90 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_number(&mut self, ch: char) -> Token {
+        let mut tok = Token::ILLEGAL;
+        let mut literal = ch.to_string(); 
+        if ch != '.' {
+            if ch == '0' {
+                match self.read_char() {
+                    // hexadecimal int
+                    Some('x') | Some('X') => {
+                        literal.push('x');
+                        self.scan_digits(&mut literal, is_hex);
+                        if literal.len() == 2 {
+                            self.error(self.offset, "illegal hexadecimal number")
+                        } else {
+                            tok = Token::INT(literal);
+                        }
+                    },
+                    _ => {
+                        // octal int or float
+                        self.scan_digits(&mut literal, is_octal);
+                        match self.peek_char() {
+                            Some('8') | Some('9') => self.error(self.offset, "illegal octal number"),
+                            Some('e') | Some('E') => {
+                                self.read_char().unwrap();
+                                self.scan_exponent(&mut literal);
+                                tok = Token::FLOAT(literal);
+                            },
+                            Some('.') => {
+                                self.read_char().unwrap();
+                                self.scan_fraction(&mut literal);
+                                tok = Token::FLOAT(literal);
+                            },
+                            Some('i') => {
 
+                            },
+                            _ => {
+                                tok = Token::INT(literal);
+                            },
+                        }
+                    }
+                }
+            } else {
+                // decimal int or float
+                self.scan_digits(&mut literal, is_decimal);
+                match self.peek_char() {
+                    Some('.') => {
 
-        Token::INT(String::new(), 0)
+                    },
+                    _ => {
+                        tok = Token::INT(literal);
+                    }
+                }
+            }
+        } else {
+            self.scan_fraction(&mut literal);
+            tok = Token::FLOAT(literal);
+        }
+        tok
+    }
+
+    fn scan_fraction(&mut self, lit: &mut String) {
+
+    }
+
+    fn scan_exponent(&mut self, lit: &mut String) {
+
+    }
+
+    fn scan_digits(&mut self, digits: &mut String, ch_valid: fn(char) -> bool) {
+        loop {
+            match self.peek_char() {
+                Some(&ch) if ch_valid(ch) => {
+                  digits.push(ch);
+                  self.read_char().unwrap();
+                }
+                _ => break,
+            }
+        }
+    }
+
+    fn number_start_with(&mut self, ch: char) -> bool {
+        ch.is_digit(10) || (ch == '.' && 
+            match self.peek_char() {
+                Some(c) => c.is_digit(10),
+                None => false,
+            })
     }
 
     fn skip_whitespace(&mut self) {
@@ -134,8 +216,17 @@ fn is_letter(ch: char) -> bool {
     ch.is_alphabetic() || ch == '_'
 }
 
-fn is_digit(ch: char) -> bool {
-    ch.is_digit(10)
+fn is_decimal(ch: char) -> bool {
+    ch >= '0' && ch <= '9'
+}
+
+fn is_octal(ch: char) -> bool {
+    ch >= '0' && ch <= '7'
+}
+
+fn is_hex(ch: char) -> bool {
+    (ch >= '0' && ch <= '9') ||
+        (ch.to_ascii_lowercase() >= 'a'&& ch.to_ascii_lowercase() <= 'f')
 }
 
 #[cfg(test)]

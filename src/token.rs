@@ -9,10 +9,10 @@ pub enum Token {
 
 	// Identifiers and basic type literals
 	IDENT(String),   // main
-	INT(String, i64),        // 12345
+	INT(String),        // 12345
 	FLOAT(String),      // 123.45
 	IMAG(String),    // 123.45i
-	CHAR(String, char),       // 'a'
+	CHAR(String),       // 'a'
 	STRING(String),  // "abc"
 	
 	// Operator
@@ -111,10 +111,10 @@ impl Token {
 			Token::EOF => "EOF",
 			Token::COMMENT => "COMMENT",
 			Token::IDENT(indent) => indent,
-			Token::INT(istr, _) => istr,
+			Token::INT(istr) => istr,
 			Token::FLOAT(f) => f,
 			Token::IMAG(im) => im,
-			Token::CHAR(chstr, _) => chstr,
+			Token::CHAR(chstr) => chstr,
 			Token::STRING(s) => s,
 			Token::ADD => "+", 
 			Token::SUB => "-", 
