@@ -51,7 +51,7 @@ pub struct File {
 
 impl File {
     pub fn new(set: Weak<RefCell<FileSet>>, name: &'static str) -> File {
-        File{set: set, name: name, base:0, size:0, lines: vec![]}
+        File{set: set, name: name, base:0, size:0, lines: vec![0]}
     }
 
     pub fn name(&self) -> &'static str {
@@ -141,15 +141,17 @@ impl File {
     pub fn position(&self, p: Pos) -> Position {
         let filename = self.name;
         let (mut line, mut offset, mut column) = (0, 0, 0);
-        if p > 0 {
-            if p < self.base || p > self.base + self.size {
-                panic!("illegal Pos value");
-            }
-            offset = p - self.base;
-            let i = *(self.lines.iter().find(|&&x| x > offset).unwrap());
-            line = i+1;
-            column = offset - self.lines[i]+1;
+
+        if p < self.base || p > self.base + self.size {
+            panic!("illegal Pos value");
         }
+        offset = p - self.base;
+        match self.lines.iter().enumerate().find(|&(_, &line)| line > offset) {
+            Some((i, _)) => line = i,
+            None => line = 1,
+        }
+        column = offset - self.lines[line-1]+1;
+    
         Position{
             filename: filename,
             line: line,
@@ -166,8 +168,9 @@ pub struct FileSet {
 }
 
 impl FileSet {
-    pub fn new() -> FileSet {
-        FileSet{base: 0, files: vec![]}
+    pub fn new_rrc() -> Rc<RefCell<FileSet>> {
+        let fs = FileSet{base: 0, files: vec![]};
+        Rc::new(RefCell::new(fs))
     }
 
     pub fn base(&self) -> usize {
@@ -185,6 +188,23 @@ impl FileSet {
             }
         }
         None
+    }
+
+    pub fn index_file(&mut self, i: usize) -> Option<&mut File> {
+        if i >= self.files.len() {
+            None
+        } else {
+           Some(&mut*self.files[i])
+        }
+    }
+
+    pub fn recent_file(&mut self) -> Option<&mut File> {
+        let c = self.files.len();
+        if c == 0 {
+            None
+        } else {
+            self.index_file(c-1)
+        }
     }
     
     pub fn add_file(set_ref: Rc<RefCell<FileSet>>, name: &'static str, base: isize, size: usize) {
@@ -234,8 +254,7 @@ mod test {
         let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
         
-        let fs = FileSet::new();
-        let rc_set = Rc::new(RefCell::new(fs));
+        let rc_set = FileSet::new_rrc();
         let mut f = Box::new(File::new(Rc::downgrade(&rc_set), "test.gs"));
         f.size = 12345;
         f.add_line(123);
