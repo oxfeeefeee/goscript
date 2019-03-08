@@ -3,9 +3,9 @@ use std::fmt;
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Token {
 	// Special tokens
-	ILLEGAL,
+	ILLEGAL(String),
 	EOF,
-	COMMENT,
+	COMMENT(String),
 
 	// Identifiers and basic type literals
 	IDENT(String),   // main
@@ -107,9 +107,9 @@ pub enum Token {
 impl Token {
 	pub fn token_text(&self) -> &str {
 		match self {
-			Token::ILLEGAL => "ILLEGAL",
+			Token::ILLEGAL(s) => s,
 			Token::EOF => "EOF",
-			Token::COMMENT => "COMMENT",
+			Token::COMMENT(s) => s,
 			Token::IDENT(indent) => indent,
 			Token::INT(istr) => istr,
 			Token::FLOAT(f) => f,
@@ -236,6 +236,6 @@ mod test {
 
 	#[test]
 	fn token_test () {
-		print!("testxxxxx {}. ", Token::ILLEGAL);
+		print!("testxxxxx {}. ", Token::ILLEGAL(String::new()));
 	}
 }

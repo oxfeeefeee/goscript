@@ -69,15 +69,12 @@ impl<'a> Scanner<'a> {
             // we only reach here if s.insertSemi was
             // set in the first place and exited early
             // from skip_whitespace()
-            Some(&'\n') => { self.semi1 = false; Token::SEMICOLON },
-            Some(&'"') => { self.semi2 = true; self.scan_string() },
-            Some(&'\'') => { self.semi2 = true; self.scan_char() },
-            Some(&'`') => { self.semi2 = true; self.scan_raw_string() },
-            Some(&':') => {
-                self.read_char();
-                self.switch2(&Token::COLON, &Token::DEFINE).clone()
-            }
-            Some(&'.') => {
+            Some('\n') => { self.semi1 = false; Token::SEMICOLON },
+            Some('"') => { self.semi2 = true; self.scan_string() },
+            Some('\'') => { self.semi2 = true; self.scan_char() },
+            Some('`') => { self.semi2 = true; self.scan_raw_string() },
+            Some(':') => self.scan_switch2(&Token::COLON, &Token::DEFINE).clone(),
+            Some('.') => {
                 match self.get_char2nd() {
                     Some(ch) if is_decimal(ch) => {
                         self.semi2 = true;
@@ -87,22 +84,75 @@ impl<'a> Scanner<'a> {
                         self.read_char();
                         self.read_char();
                         match self.peek_char() {
-                            Some(&'.') => { self.read_char(); Token::ELLIPSIS },
-                            _ => { 
+                            Some('.') => { self.read_char(); Token::ELLIPSIS },
+                            _ => {
                                 self.semi2 = self.semi1; // preserve insert semi info
-                                self.read_char();
-                                Token::ILLEGAL 
-                            }, 
+                                Token::ILLEGAL("..".to_string())
+                            }
                         }
                     }
                     _ => { self.read_char(); Token::PERIOD },
                 }
             }
-            Some(_) => { 
+            Some(',') => self.scan_token(Token::COMMA, false),
+            Some(';') => self.scan_token(Token::SEMICOLON, false),
+            Some('(') => self.scan_token(Token::LPAREN, false),
+            Some(')') => self.scan_token(Token::RPAREN, true),
+            Some('[') => self.scan_token(Token::LBRACK, false),
+            Some(']') => self.scan_token(Token::RBRACK, true),
+            Some('{') => self.scan_token(Token::LBRACE, false),
+            Some('}') => self.scan_token(Token::RBRACE, true),
+            Some('+') => {
+                let t = self.scan_switch3(&Token::ADD, &Token::ADD_ASSIGN, '+', &Token::INC);
+                self.semi2 = *t == Token::INC;
+                t.clone()
+            }
+            Some('-') => {
+                let t = self.scan_switch3(&Token::SUB, &Token::SUB_ASSIGN, '+', &Token::DEC);
+                self.semi2 = *t == Token::DEC;
+                t.clone()
+            }
+            Some('*') => self.scan_switch2(&Token::MUL, &Token::MUL_ASSIGN).clone(),
+            Some('/') => {
+                let ch = self.get_char2nd();
+                match ch  {
+                    Some('/') | Some('*') => self.scan_comment(ch.unwrap()),
+                    _ => self.scan_switch2(&Token::QUO, &Token::QUO_ASSIGN).clone(),
+                }
+            }
+            Some('%') => self.scan_switch2(&Token::REM, &Token::REM_ASSIGN).clone(),
+            Some('^') => self.scan_switch2(&Token::XOR, &Token::XOR_ASSIGN).clone(),
+            Some('<') => {
+                match self.get_char2nd(){
+                    Some('-') => { 
+                        self.read_char();
+                        self.scan_token(Token::ARROW, false)
+                    },
+                    _ => self.scan_switch4(&Token::LSS, &Token::LEQ, '<',
+                        &Token::SHL, &Token::SHL_ASSIGN).clone(),
+                }
+            }
+            Some('>') => self.scan_switch4(&Token::GTR, &Token::GEQ, '<',
+                        &Token::SHR, &Token::SHR_ASSIGN).clone(),
+            Some('=') => self.scan_switch2(&Token::ASSIGN, &Token::EQL).clone(),
+            Some('!') => self.scan_switch2(&Token::NOT, &Token::NEQ).clone(),
+            Some('&') => {
+                 match self.get_char2nd(){
+                    Some('^') => { 
+                        self.read_char();
+                        self.scan_switch2(&Token::AND_NOT, &Token::AND_NOT_ASSIGN).clone()
+                    },
+                    _ => self.scan_switch3(&Token::AND, &Token::AND_ASSIGN,
+                        '&', &Token::LAND).clone(),
+                 }
+            }
+            Some('|') => self.scan_switch3(&Token::OR, &Token::OR_ASSIGN,
+                        '|', &Token::LOR).clone(),
+            Some(&c) => {
                 self.semi2 = self.semi1; // preserve insert semi info
                 self.read_char();
-                Token::ILLEGAL 
-            }, 
+                Token::ILLEGAL(c.to_string())
+            }
             None => {
                 if self.semi1 {
                     self.semi1 = false;
@@ -128,56 +178,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_number(&mut self, ch: char) -> Token {
-        let mut tok = Token::ILLEGAL;
-        let mut literal = String::new(); 
-        if ch == '.' { //.34
-            self.append_fraction(&mut literal);
-            tok = Token::FLOAT(literal);
-        } else if ch == '0' {
-            self.advance_and_push(&mut literal, '0');
-            match self.peek_char() {
-                // hexadecimal int
-                Some('x') | Some('X') => {
-                    self.advance_and_push(&mut literal, 'x');
-                    let count = self.scan_digits(&mut literal, is_hex);
-                    if count == 0 {
-                        self.error(self.offset, "illegal hexadecimal number")
-                    } else {
-                        tok = Token::INT(literal);
-                    }
-                },
-                _ => {
-                    // octal int or float
-                    self.scan_digits(&mut literal, is_octal);
-                    match self.peek_char() {
-                        Some('8') | Some('9') => self.error(self.offset, "illegal octal number"),
-                        Some('e') | Some('E') => {
-                            self.append_exponent(&mut literal);
-                            tok = Token::FLOAT(literal);
-                        },
-                        Some('.') => {
-                            self.append_fraction(&mut literal); 
-                            tok = Token::FLOAT(literal);
-                        },
-                        _ => {
-                            tok = Token::INT(literal);
-                        },
-                    }
-                }
-            }
-        } else {
-            // decimal int or float 3 / 3.14
-            self.scan_digits(&mut literal, is_decimal);
-            match self.peek_char() {
-                Some('.') => {
-                    self.append_fraction(&mut literal);
-                    tok = Token::FLOAT(literal);
-                },
-                _ => {
-                    tok = Token::INT(literal);
-                }
-            }
-        }
+        let mut tok = self.scan_number_without_i(ch);
         // Handles the 'i' at the end
         match self.peek_char() {
             Some('i') => {
@@ -194,27 +195,213 @@ impl<'a> Scanner<'a> {
         tok
     }
 
-    fn scan_string(&mut self) -> Token {
-        Token::STRING(String::new())
+    fn scan_number_without_i(&mut self, ch: char) -> Token {
+        let mut literal = String::new(); 
+        if ch == '.' { //.34
+            self.append_fraction(&mut literal);
+            Token::FLOAT(literal)
+        } else if ch == '0' {
+            self.advance_and_push(&mut literal, '0');
+            match self.peek_char() {
+                // hexadecimal int
+                Some('x') | Some('X') => {
+                    self.advance_and_push(&mut literal, 'x');
+                    let count = self.scan_digits(&mut literal, is_hex);
+                    if count == 0 {
+                        self.error(self.offset, "illegal hexadecimal number");
+                        Token::ILLEGAL(literal)
+                    } else {
+                        Token::INT(literal)
+                    }
+                },
+                _ => {
+                    // octal int or float
+                    self.scan_digits(&mut literal, is_octal);
+                    match self.peek_char() {
+                        Some(&c) if (c == '8'|| c == '9') => {
+                            self.error(self.offset, "illegal octal number");
+                            self.advance_and_push(&mut literal, c);
+                            Token::ILLEGAL(literal)
+                        },
+                        Some('e') | Some('E') => {
+                            self.append_exponent(&mut literal);
+                            Token::FLOAT(literal)
+                        },
+                        Some('.') => {
+                            self.append_fraction(&mut literal); 
+                            Token::FLOAT(literal)
+                        },
+                        _ => Token::INT(literal),
+                    }
+                }
+            }
+        } else {
+            // decimal int or float 3 / 3.14
+            self.scan_digits(&mut literal, is_decimal);
+            match self.peek_char() {
+                Some('.') => {
+                    self.append_fraction(&mut literal);
+                    Token::FLOAT(literal)
+                },
+                _ => Token::INT(literal)
+            }
+        }
     }
 
-    fn scan_raw_string(&mut self) -> Token {
-        Token::STRING(String::new())
+    fn scan_token(&mut self, t: Token, semi: bool) -> Token {
+        self.read_char();
+        self.semi2 = semi;
+        t
     }
 
     fn scan_char(&mut self) -> Token {
-        Token::CHAR(String::new())
+        let mut lit = String::new();
+        let (ok, count) = self.scan_string_char_lit(&mut lit, '\'');
+        if ok && count == 1 {
+            Token::CHAR(lit)
+        } else {
+            Token::ILLEGAL(lit)
+        }
     }
 
-    fn switch2<'b>(&mut self, t1: &'b Token, t2: &'b Token) -> &'b Token {
+    fn scan_string(&mut self) -> Token {
+        let mut lit = String::new();
+        let (ok, _) = self.scan_string_char_lit(&mut lit, '"');
+        if ok {
+            Token::STRING(lit)
+        } else {
+            Token::ILLEGAL(lit)
+        }
+    }
+
+    fn scan_raw_string(&mut self) -> Token {
+        let mut lit = self.read_char().unwrap().to_string();
+        loop {
+            match self.peek_char(){
+                Some('`') => {
+                    self.advance_and_push(&mut lit, '`');
+                    break;
+                },
+                Some('\r') => {self.read_char();}, // advance without push
+                Some(&ch) => {self.advance_and_push(&mut lit, ch);},
+                None => {
+                    self.error(self.offset, "raw string literal not terminated");
+                }
+            };
+        };
+        Token::STRING(lit)
+    }
+
+    fn scan_comment(&mut self, ch: char) -> Token {
+        Token::COMMENT(String::new())
+    }
+
+    fn scan_string_char_lit(&mut self, lit: &mut String, quote: char) -> (bool, usize) {
+        lit.push(self.read_char().unwrap());
+        let mut n = 0;
+        loop {
+            match self.peek_char(){
+                Some(&ch) if ch == quote => {
+                    self.advance_and_push(lit, quote);
+                    break;
+                }
+                Some('\n') | None => {
+                    self.error(self.offset, "string/char literal not terminated");
+                    return (false, 0);
+                },
+                Some('\\') => {
+                    if !self.scan_escape(lit, quote) {
+                        return (false, 0);
+                    }
+                    n += 1;
+                }
+                Some(&ch) => {
+                    self.advance_and_push(lit, ch);
+                    n += 1;
+                }
+            }
+        }
+        (true, n)
+    }
+
+    fn scan_escape(&mut self, lit: &mut String, quote: char) -> bool {
+        lit.push(self.read_char().unwrap());
+
+        let mut n:isize = 0;
+        let (mut base, mut max):(u32, u32) = (0, 0);
+        match self.peek_char() {
+            Some(&ch) => match ch {
+                'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\\'  => {
+                    self.advance_and_push(lit, ch);
+                    return true;
+                },
+                c if c == quote => {
+                    self.advance_and_push(lit, c);
+                    return true;
+                }
+                '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
+                    n = 3; base = 8; max = 255;
+                }
+                'x' => {
+                    self.advance_and_push(lit, 'x');
+                    n = 2; base = 16; max = 255;
+                },
+                'u' => {
+                    self.advance_and_push(lit, 'u');
+                    n = 4; base = 16; max = std::char::MAX as u32;
+                },
+                'U' => {
+                    self.advance_and_push(lit, 'U');
+                    n = 8; base = 16; max = std::char::MAX  as u32;
+                },
+                _ => {
+                    self.error(self.offset, "unknown escape sequence");
+                    return false;
+                },
+            }
+            None => { 
+                self.error(self.offset, "escape sequence not terminated");
+                return false;
+            }
+        }
+
+        let mut x:u32 = 0;
+        while n > 0 {
+            match self.peek_char() {
+                Some(&ch) => {
+                    let d = digit_val(ch);
+                    if d >= base {
+                        self.error(self.offset, "illegal character in escape sequence");
+                        return false;
+                    }
+                    self.advance_and_push(lit, ch);
+                    x = x*base + d;
+                },
+                None => {
+                    self.error(self.offset, "escape sequence not terminated");
+                    return false;
+                }
+            }
+            n -= 1;
+        }
+        if x > max || 0xD800 <= x && x < 0xE000 {
+            self.error(self.offset, "escape sequence is invalid Unicode code point");
+            return false;
+        }
+        true
+    }
+
+    fn scan_switch2<'b>(&mut self, t1: &'b Token, t2: &'b Token) -> &'b Token {
+        self.read_char();
         match self.peek_char() {
             Some(&'=') => { self.read_char(); t2 },
             _ => t1,
         }
     }
 
-    fn switch3<'b>(&mut self, t1: &'b Token, t2: &'b Token, 
+    fn scan_switch3<'b>(&mut self, t1: &'b Token, t2: &'b Token, 
         ch: char, t3: &'b Token) -> &'b Token {
+        self.read_char();
         match self.peek_char() {
             Some(&'=') => { self.read_char(); t2 },
             Some(&c) if c == ch => { self.read_char(); t3 },
@@ -222,8 +409,9 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn switch4<'b>(&mut self, t1: &'b Token, t2: &'b Token, 
+    fn scan_switch4<'b>(&mut self, t1: &'b Token, t2: &'b Token, 
         ch: char, t3: &'b Token, t4: &'b Token) -> &'b Token {
+        self.read_char();
         match self.peek_char() {
             Some(&'=') => { self.read_char(); t2 },
             Some(&c) if c == ch => 
@@ -274,14 +462,6 @@ impl<'a> Scanner<'a> {
         count
     }
 
-    fn number_start_with(&mut self, ch: char) -> bool {
-        ch.is_digit(10) || (ch == '.' && 
-            match self.peek_char() {
-                Some(c) => c.is_digit(10),
-                None => false,
-            })
-    }
-
     fn skip_whitespace(&mut self) {
         while let Some(&ch) = self.peek_char() {
             // skip \n as whitespace only when we don't need to insert semicolum
@@ -324,6 +504,15 @@ impl<'a> Scanner<'a> {
     }
 }
 
+fn digit_val(ch: char) -> u32 {
+    match ch {
+        c if c >= '0' && c <= '9' => ch as u32 - '0' as u32,
+        c if c >= 'a' && c <= 'f' => ch as u32 - 'a' as u32,
+        c if c >= 'A' && c <= 'F' => ch as u32 - 'A' as u32,
+        _ => 16
+    }
+}
+
 fn is_letter(ch: char) -> bool {
     ch.is_alphabetic() || ch == '_'
 }
@@ -345,12 +534,9 @@ fn is_hex(ch: char) -> bool {
 mod test {
     use super::*;
     use super::position::{File, FileSet};
-    use std::rc::Rc;
-    use std::rc::Weak;
-    use std::cell::RefCell;
 
     fn error_handler(pos: position::Position, msg: &str) {
-        print!("scan error at {}: {}", pos, msg);
+        print!("scan error at {}: {}\n", pos, msg);
     }
 
     #[test]
@@ -360,13 +546,14 @@ mod test {
         let mut fsm = fs.borrow_mut();
         let f = fsm.recent_file().unwrap();
 
-        let src = "3.14e6 2.33e-10 025 0xaa break\n 333 abc 0 ... . .. .23";
+        let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
         //let src = ". 123";
+        print!("src {}\n", src);
         let mut scanner = Scanner::new(f, src, error_handler);
         loop {
             let tok = scanner.scan();
             let pos = scanner.position();
-            print!("Token:{} Pos:{}\n", tok, pos);
+            print!("Token:{:?} --{}-- Pos:{}\n", tok, tok, pos);
             if tok == Token::EOF {
                 break
             }
