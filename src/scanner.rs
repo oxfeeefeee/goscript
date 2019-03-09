@@ -116,7 +116,14 @@ impl<'a> Scanner<'a> {
             Some('/') => {
                 let ch = self.get_char2nd();
                 match ch  {
-                    Some('/') | Some('*') => self.scan_comment(ch.unwrap()),
+                    Some('/') | Some('*') => {
+                        if self.semi1 && self.comment_to_end() {
+                             self.semi1 = false;
+                            Token::SEMICOLON
+                        } else {
+                            self.scan_comment(ch.unwrap())
+                        }
+                    },
                     _ => self.scan_switch2(&Token::QUO, &Token::QUO_ASSIGN).clone(),
                 }
             }
@@ -293,7 +300,47 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan_comment(&mut self, ch: char) -> Token {
-        Token::COMMENT(String::new())
+        let mut lit = String::new();
+        lit.push(self.read_char().unwrap());
+        lit.push(self.read_char().unwrap());
+        if ch == '/' {  // //
+            loop {
+                match self.read_char() {
+                    Some('\n') | None => break,
+                    Some(c) => {
+                        if c != '\r' {
+                            lit.push(c);
+                        }
+                    },
+                }
+            }
+            lit.push('\n');
+            Token::COMMENT(lit)
+        } else {        // /*
+            loop {
+                match self.read_char() {
+                    Some('*') => {
+                        match self.peek_char() {
+                            Some('/') => {
+                                lit.push_str("*/");
+                                self.read_char();
+                                break;
+                            },
+                            _ => {lit.push('*')},
+                        }
+                    },
+                    Some(c) => {
+                        if c != '\r' {
+                            lit.push(c);
+                        }
+                    },
+                    None => {
+                        break;
+                    },
+                }
+            }
+            Token::COMMENT(lit)
+        }
     }
 
     fn scan_string_char_lit(&mut self, lit: &mut String, quote: char) -> (bool, usize) {
@@ -498,6 +545,46 @@ impl<'a> Scanner<'a> {
         iter.next()
     }
 
+    // returns true if line ends with comment:
+    fn comment_to_end(&self) -> bool {
+        let mut iter = self.src.clone(); // don't touch the main iter
+        iter.next(); // eat the first '/'
+        match iter.next() {
+            // //-style comment always ends a line
+            Some('/') => return true,
+            Some('*') => {
+                loop {
+                    match iter.next() {
+                        Some('\n') => return true,
+                        Some('*') => {
+                            match iter.peek() {
+                                Some(&'/') => {
+                                    iter.next();
+                                    break;
+                                } ,
+                                _ => {},
+                            };
+                        },
+                        Some(_) => {},
+                        None => return true, 
+                    }
+                }
+                loop { //skip whitespaces
+                    match iter.peek() {
+                        Some(' ') | Some('\t') | Some('r') => {iter.next();},
+                        _ => break,
+                    }
+                }
+                match iter.peek() {
+                    Some('\n') | None => return true,
+                    _ => {},
+                }
+            }
+            _ => panic!("should not call into this function")
+        }
+        return false;
+    }
+
     fn advance_and_push(&mut self, literal: &mut String, ch: char) {
         self.read_char();
         literal.push(ch);
@@ -546,7 +633,20 @@ mod test {
         let mut fsm = fs.borrow_mut();
         let f = fsm.recent_file().unwrap();
 
-        let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
+        //let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
+        let src = r#"
+
+        break // ass
+        break /*lala
+        \la */
+        abc
+        123
+        "slkfdskflsd"
+        `d\\n\r\r\r\naaa`
+        'a' 'aa' '\t'
+        .25
+        break
+        /*dff"#;
         //let src = ". 123";
         print!("src {}\n", src);
         let mut scanner = Scanner::new(f, src, error_handler);
