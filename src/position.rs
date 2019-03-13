@@ -5,7 +5,7 @@ use std::rc::Weak;
 use std::cell::RefCell;
 use std::borrow::Borrow;
 
-type Pos = usize;
+pub type Pos = usize;
 
 
 pub struct Position {
