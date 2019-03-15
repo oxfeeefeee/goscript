@@ -1,5 +1,6 @@
 use std::fmt;
 use std::borrow::Borrow;
+use std::collections::HashMap;
 use super::position;
 use super::token;
 use super::scope;
@@ -68,6 +69,22 @@ pub enum Decl {
     Bad(Box<BadDecl>),
     Gen(Box<GenDecl>),
     Func(Box<FuncDecl>),
+}
+
+pub struct File {
+    package: position::Pos,
+    name: Box<Ident>,
+    decls: Vec<Decl>,
+    scope: Box<scope::Scope>,
+    imports: Vec<Box<ImportSpec>>,
+    unresolved: Vec<Box<Ident>>,
+}
+
+pub struct Package {
+    name: String,
+    scope: Box<scope::Scope>,
+    imports: HashMap<String, Box<scope::Object>>,
+    files: HashMap<String, Box<File>>,
 }
 
 impl Node for Expr {
@@ -271,6 +288,29 @@ impl Node for Decl {
                 None => d.typ.end(),
             }
         }
+    }
+}
+
+impl Node for File {
+     fn pos(&self) -> position::Pos {
+       self.package
+    }
+    fn end(&self) -> position::Pos {
+        let n = self.decls.len();
+        if n > 0 {
+            self.decls[n-1].end()
+        } else {
+            self.name.end()
+        }
+    }
+}
+
+impl Node for Package {
+     fn pos(&self) -> position::Pos {
+        0
+    }
+    fn end(&self) -> position::Pos {
+        0
     }
 }
 
@@ -594,7 +634,7 @@ pub struct BlockStmt {
 
 impl BlockStmt {
     fn end(&self) -> position::Pos {
-        0 as position::Pos
+        self.l_brace
     }
 }
 
