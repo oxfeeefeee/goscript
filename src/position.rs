@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Write;
 use std::rc::Rc;
 use std::rc::Weak;
-use std::cell::RefCell;
+use std::cell::{Ref, RefMut, RefCell};
 use std::borrow::Borrow;
 
 pub type Pos = usize;
@@ -168,9 +168,8 @@ pub struct FileSet {
 }
 
 impl FileSet {
-    pub fn new_rrc() -> Rc<RefCell<FileSet>> {
-        let fs = FileSet{base: 0, files: vec![]};
-        Rc::new(RefCell::new(fs))
+    pub fn new() -> FileSet {
+        FileSet{base: 0, files: vec![]}
     }
 
     pub fn base(&self) -> usize {
@@ -206,24 +205,25 @@ impl FileSet {
             self.index_file(c-1)
         }
     }
-    
-    pub fn add_file(set_ref: Rc<RefCell<FileSet>>, name: &'static str, base: isize, size: usize) {
-        let mut set = set_ref.borrow_mut();
-        let real_base = if base >=0 {base as usize} else {set.base};
-        if real_base < set.base {
+
+    pub fn add_file(&mut self, weak_fs: Weak<RefCell<FileSet>>,
+        name: &'static str, base: isize, size: usize) -> &mut File {
+        let real_base = if base >=0 {base as usize} else {self.base};
+        if real_base < self.base {
             panic!("illegal base");
         }
 
-        let mut f = Box::new(File::new(Rc::downgrade(&set_ref), name));
+        let mut f = Box::new(File::new(weak_fs, name));
         f.base = real_base;
         f.size = size;
         
-        let set_base = set.base + size + 1; // +1 because EOF also has a position
-        if set_base < set.base {
+        let set_base = self.base + size + 1; // +1 because EOF also has a position
+        if set_base < self.base {
             panic!("token.Pos offset overflow (> 2G of source code in file set)");
         }  
-        set.base = set_base;
-        set.files.push(f);
+        self.base = set_base;
+        self.files.push(f);
+        self.recent_file().unwrap()
     }
 }
 
@@ -245,6 +245,30 @@ impl<'a> Iterator for FileSetIter<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SharedFileSet{
+    fs: Rc<RefCell<FileSet>>
+}
+
+impl SharedFileSet {
+    pub fn new() -> SharedFileSet {
+        let fs = FileSet::new();
+        SharedFileSet{fs: Rc::new(RefCell::new(fs))}
+    }
+
+    pub fn weak(&self) -> Weak<RefCell<FileSet>> {
+        Rc::downgrade(&self.fs)
+    }
+
+    pub fn borrow(&self) -> Ref<FileSet> {
+        (*self.fs).borrow()
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<FileSet> {
+        (*self.fs).borrow_mut()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -254,8 +278,8 @@ mod test {
         let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
         
-        let rc_set = FileSet::new_rrc();
-        let mut f = Box::new(File::new(Rc::downgrade(&rc_set), "test.gs"));
+        let sfs = SharedFileSet::new();
+        let mut f = Box::new(File::new(sfs.weak(), "test.gs"));
         f.size = 12345;
         f.add_line(123);
         f.add_line(133);
@@ -266,16 +290,21 @@ mod test {
         f.set_lines_for_content(&['a' as u8 ,'\n' as u8, 'c' as u8]);
         print!("\nfile after set: {:?}", f);
 
-        FileSet::add_file(rc_set.clone(), "testfile1.gs", -1, 222);
-        FileSet::add_file(rc_set.clone(), "testfile2.gs", -1, 222);
-        FileSet::add_file(rc_set.clone(), "testfile3.gs", -1, 222);
-        print!("\nset {:?}", rc_set);
+        {
+            let mut fsm = sfs.borrow_mut();
+            fsm.add_file(sfs.weak(), "testfile1.gs", -1, 222);
+            fsm.add_file(sfs.weak(),"testfile2.gs", -1, 222);
+            fsm.add_file(sfs.weak(),"testfile3.gs", -1, 222);
+            print!("\nset {:?}", sfs);
+        }
 
-        let set = (*rc_set).borrow();
+
+        let set = sfs.borrow();
         for f in set.iter() {
             print!("\nfiles in set: {:?}", f);
         }
         print!("\nfile at 100: {:?}", set.file(100))
+        
     }
 }
 

@@ -22,7 +22,7 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    fn new<'b>(file: &'b mut position::File, src: &'b str, err: ErrorHandler) -> Scanner<'b> {
+    pub fn new<'b>(file: &'b mut position::File, src: &'b str, err: ErrorHandler) -> Scanner<'b> {
         let dir = Path::new(file.name()).parent().unwrap().
             to_string_lossy().into_owned();
         Scanner{
@@ -620,7 +620,7 @@ fn is_hex(ch: char) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use super::position::{File, FileSet};
+    use super::position::{File, FileSet, SharedFileSet};
 
     fn error_handler(pos: position::Position, msg: &str) {
         print!("scan error at {}: {}\n", pos, msg);
@@ -628,10 +628,9 @@ mod test {
 
     #[test]
     fn test_scanner(){
-        let fs = FileSet::new_rrc();
-        FileSet::add_file(fs.clone(), "testfile1.gs", 0, 1000);
+        let fs = SharedFileSet::new();
         let mut fsm = fs.borrow_mut();
-        let f = fsm.recent_file().unwrap();
+        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 1000);
 
         //let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
         let src = r#"
