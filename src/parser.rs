@@ -1,7 +1,9 @@
 use std::fmt;
+use std::rc::Rc;
 use std::cell::{Ref, RefMut, RefCell};
 use super::position;
 use super::scanner;
+use super::errors;
 use super::helpers::{Defer};
 
 macro_rules! trace {
@@ -20,30 +22,35 @@ macro_rules! trace {
 
 pub struct Parser<'a> {
     scanner: scanner::Scanner<'a>,
+    errors: Rc<RefCell<errors::ErrorList>>,
 
     trace: bool,
     indent: isize,
 }
 
-impl<'a, 'b> Parser<'a> {
-    fn new(file: &'b mut position::File, src: &'b str, trace: bool) -> Parser<'b> {
-        let mut s = scanner::Scanner::new(file, src, |pos: position::Position, msg: &str| {
-            print!("scan error at {}: {}\n", pos, msg);
-        });
+impl<'a> Parser<'a> {
+    fn new(file: &'a mut position::File, src: &'a str, trace: bool) -> Parser<'a> {
+        let err = Rc::new(RefCell::new(errors::ErrorList::new()));
+        let s = scanner::Scanner::new(file, src, err.clone());
         Parser{
             scanner: s,
+            errors: err,
             trace: trace,
             indent: 0,
         }
     }
 
+    fn error(&mut self, pos: position::Position, msg: &str) {
+        self.errors.borrow_mut().add(pos, msg.to_string())
+    }
+
     fn print_trace(&self, msg: &str) {
-        println!("{}", msg);
+        print!("{}", msg);
     }
     
     fn parse(&mut self) {
         trace!(self, "aa");
-        println!("222");
+        print!("222");
     }
 }
 

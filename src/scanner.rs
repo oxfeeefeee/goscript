@@ -1,7 +1,10 @@
 use std::fmt;
+use std::rc::Rc;
+use std::cell::{Ref, RefMut, RefCell};
 use std::iter::Peekable;
 use std::str::Chars;
 use std::path::Path;
+use super::errors;
 use super::position;
 use super::token::Token;
 
@@ -11,7 +14,7 @@ pub struct Scanner<'a> {
     file: &'a mut position::File,  // source file handle
     dir: String,                // directory portion of file.Name()
     src: Peekable<Chars<'a>>,   // source
-    err: ErrorHandler,          // error reporting
+    errors: Rc<RefCell<errors::ErrorList>>,
 
     offset: usize,      // character offset
 	line_offset: usize, // current line offset
@@ -22,14 +25,15 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new<'b>(file: &'b mut position::File, src: &'b str, err: ErrorHandler) -> Scanner<'b> {
+    pub fn new<'b>(file: &'b mut position::File, src: &'b str,
+        err: Rc<RefCell<errors::ErrorList>>) -> Scanner<'b> {
         let dir = Path::new(file.name()).parent().unwrap().
             to_string_lossy().into_owned();
         Scanner{
             file: file,
             dir: dir,
             src: src.chars().peekable(),
-            err: err,
+            errors: err,
             offset: 0,
             line_offset: 0,
             semi1: false,
@@ -41,7 +45,7 @@ impl<'a> Scanner<'a> {
     fn error(&mut self, pos: usize, msg: &str) {
         self.error_count += 1;
         let p = self.file.position(pos);
-        (self.err)(p, msg);
+        self.errors.borrow_mut().add(p, msg.to_string())
     }
 
     fn position(&self) -> position::Position {
@@ -648,7 +652,9 @@ mod test {
         /*dff"#;
         //let src = ". 123";
         print!("src {}\n", src);
-        let mut scanner = Scanner::new(f, src, error_handler);
+
+        let err = Rc::new(RefCell::new(errors::ErrorList::new()));
+        let mut scanner = Scanner::new(f, src, err);
         loop {
             let tok = scanner.scan();
             let pos = scanner.position();
