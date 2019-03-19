@@ -4,15 +4,16 @@ use std::collections::HashMap;
 use super::position;
 use super::token;
 use super::scope;
+use super::ast_objects::*;
 
 pub trait Node {
-    fn pos(&self) -> position::Pos;
-    fn end(&self) -> position::Pos;
+    fn pos(&self, arena: &Objects) -> position::Pos;
+    fn end(&self, arena: &Objects) -> position::Pos;
 }
 
 pub enum Expr {
     Bad(Box<BadExpr>),
-    Ident(Box<Ident>),
+    Ident(Box<IdentIndex>),
     Ellipsis(Box<Ellipsis>),
     BasicLit(Box<BasicLit>),
     FuncLit(Box<FuncLit>),
@@ -37,10 +38,10 @@ pub enum Expr {
 
 pub enum Stmt {
     Bad(Box<BadStmt>),
-    Decl(Decl),
+    Decl(Box<DeclIndex>),
     Empty(Box<EmptyStmt>),
     Labeled(Box<LabeledStmt>),
-    Expr(Expr),
+    Expr(Box<Expr>),
     Send(Box<SendStmt>),
     IncDec(Box<IncDecStmt>),
     Assign(Box<AssignStmt>),
@@ -73,96 +74,96 @@ pub enum Decl {
 
 pub struct File {
     package: position::Pos,
-    name: Box<Ident>,
-    decls: Vec<Decl>,
-    scope: Box<scope::Scope>,
-    imports: Vec<Box<ImportSpec>>,
-    unresolved: Vec<Box<Ident>>,
+    name: IdentIndex,
+    decls: Vec<DeclIndex>,
+    scope: ScopeIndex,
+    imports: Vec<SpecIndex>, //ImportSpec
+    unresolved: Vec<IdentIndex>,
 }
 
 pub struct Package {
     name: String,
-    scope: Box<scope::Scope>,
-    imports: HashMap<String, Box<scope::Object>>,
+    scope: ScopeIndex,
+    imports: HashMap<String, EntityIndex>,
     files: HashMap<String, Box<File>>,
 }
 
 impl Node for Expr {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.from,
-            Expr::Ident(e) => e.pos,
+            Expr::Ident(e) => arena.idents[*e.as_ref()].pos,
             Expr::Ellipsis(e) => e.pos,
             Expr::BasicLit(e) => e.pos,
             Expr::FuncLit(e) => match e.typ.func {
                 Some(p) => p,
-                None => e.typ.params.pos(),
+                None => arena.field_lists[e.typ.params].pos(arena),
             }, 
             Expr::CompositeLit(e) => match &e.typ {
-                Some(expr) => expr.pos(),
+                Some(expr) => expr.pos(arena),
                 None => e.l_brace,
             }, 
             Expr::Paren(e) => e.l_paren, 
-            Expr::Selector(e) => e.expr.pos(), 
-            Expr::Index(e) => e.expr.pos(), 
-            Expr::Slice(e) => e.expr.pos(), 
-            Expr::TypeAssert(e) => e.expr.pos(), 
-            Expr::Call(e) => e.func.pos(), 
-            Expr::Star(e) => e.star.pos(), 
+            Expr::Selector(e) => e.expr.pos(arena), 
+            Expr::Index(e) => e.expr.pos(arena), 
+            Expr::Slice(e) => e.expr.pos(arena), 
+            Expr::TypeAssert(e) => e.expr.pos(arena), 
+            Expr::Call(e) => e.func.pos(arena), 
+            Expr::Star(e) => e.star.pos(arena), 
             Expr::Unary(e) => e.op_pos, 
-            Expr::Binary(e) => e.expr_a.pos(),
-            Expr::KeyValue(e) => e.key.pos(), 
+            Expr::Binary(e) => e.expr_a.pos(arena),
+            Expr::KeyValue(e) => e.key.pos(arena), 
             Expr::Array(e) => e.l_brack, 
             Expr::Struct(e) => e.struct_pos, 
-            Expr::Func(e) => e.pos(),
+            Expr::Func(e) => e.pos(arena),
             Expr::Interface(e) => e.interface, 
             Expr::Map(e) => e.map, 
             Expr::Chan(e) => e.begin, 
         }
     }
 
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.to,
-            Expr::Ident(e) => e.end(),
+            Expr::Ident(e) => arena.idents[*e.as_ref()].end(),
             Expr::Ellipsis(e) => match &e.elt {
-                Some(expr) => expr.end(),
+                Some(expr) => expr.end(arena),
                 None => e.pos + 3,
             },
             Expr::BasicLit(e) => e.pos + e.value.len(),
             Expr::FuncLit(e) => e.body.end(),
             Expr::CompositeLit(e) => e.r_brace + 1,
             Expr::Paren(e) => e.r_paren + 1, 
-            Expr::Selector(e) => e.sel.end(), 
+            Expr::Selector(e) => arena.idents[e.sel].end(), 
             Expr::Index(e) => e.r_brack + 1, 
             Expr::Slice(e) => e.r_brack + 1, 
             Expr::TypeAssert(e) => e.r_paren + 1, 
             Expr::Call(e) => e.r_paren + 1, 
-            Expr::Star(e) => e.expr.end(), 
-            Expr::Unary(e) => e.expr.end(), 
-            Expr::Binary(e) => e.expr_b.end(),
-            Expr::KeyValue(e) => e.val.end(), 
-            Expr::Array(e) => e.elt.end(), 
-            Expr::Struct(e) => e.fields.end(), 
-            Expr::Func(e) => e.end(),
-            Expr::Interface(e) => e.methods.end(), 
-            Expr::Map(e) => e.val.end(), 
-            Expr::Chan(e) => e.val.end(), 
+            Expr::Star(e) => e.expr.end(arena), 
+            Expr::Unary(e) => e.expr.end(arena), 
+            Expr::Binary(e) => e.expr_b.end(arena),
+            Expr::KeyValue(e) => e.val.end(arena), 
+            Expr::Array(e) => e.elt.end(arena), 
+            Expr::Struct(e) => arena.field_lists[e.fields].end(arena), 
+            Expr::Func(e) => e.end(arena),
+            Expr::Interface(e) => arena.field_lists[e.methods].end(arena), 
+            Expr::Map(e) => e.val.end(arena), 
+            Expr::Chan(e) => e.val.end(arena), 
         }
     } 
 }
 
 impl Node for Stmt {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.from,
-            Stmt::Decl(d) => d.pos(),
+            Stmt::Decl(d) => arena.decls[*d.as_ref()].pos(arena),
             Stmt::Empty(s) => s.semi,
-            Stmt::Labeled(s) => s.label.pos,
-            Stmt::Expr(e) => e.pos(),
-            Stmt::Send(s) => s.chan.pos(),
-            Stmt::IncDec(s) => s.expr.pos(),
-            Stmt::Assign(s) => s.lhs[0].pos(),
+            Stmt::Labeled(s) => arena.idents[s.label].pos,
+            Stmt::Expr(e) => e.pos(arena),
+            Stmt::Send(s) => s.chan.pos(arena),
+            Stmt::IncDec(s) => s.expr.pos(arena),
+            Stmt::Assign(s) => s.lhs[0].pos(arena),
             Stmt::Go(s) => s.go,
             Stmt::Defer(s) => s.defer,
             Stmt::Return(s) => s.ret,
@@ -178,40 +179,40 @@ impl Node for Stmt {
             Stmt::Range(s) => s.for_pos,
         }
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.to,
-            Stmt::Decl(d) => d.end(),
+            Stmt::Decl(d) =>  arena.decls[*d.as_ref()].end(arena),
             Stmt::Empty(s) => if s.implicit { s.semi }
                 else {s.semi + 1}, 
-            Stmt::Labeled(s) => s.stmt.end(),
-            Stmt::Expr(e) => e.end(),
-            Stmt::Send(s) => s.val.end(),
+            Stmt::Labeled(s) => arena.stmts[s.stmt].end(arena),
+            Stmt::Expr(e) => e.end(arena),
+            Stmt::Send(s) => s.val.end(arena),
             Stmt::IncDec(s) => s.token_pos + 2,
-            Stmt::Assign(s) => s.rhs[s.rhs.len()-1].end(),
-            Stmt::Go(s) => s.call.end(),
-            Stmt::Defer(s) => s.call.end(),
+            Stmt::Assign(s) => s.rhs[s.rhs.len()-1].end(arena),
+            Stmt::Go(s) => s.call.end(arena),
+            Stmt::Defer(s) => s.call.end(arena),
             Stmt::Return(s) => {
                 let n = s.results.len();
                 if n > 0 {
-                    s.results[n-1].end()
+                    s.results[n-1].end(arena)
                 } else {
                     s.ret + 6
                 }
             },
             Stmt::Branch(s) => match &s.label {
-                Some(l) => l.end(),
+                Some(l) => arena.idents[*l].end(),
                 None => s.token_pos + s.token.token_text().len()
             },
             Stmt::Block(s) => s.r_brace + 1,
             Stmt::If(s) => match &s.els {
-                Some(e) => e.end(),
+                Some(e) => arena.stmts[*e].end(arena),
                 None => s.body.end(),
             },
             Stmt::Case(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n-1].end()
+                    arena.stmts[s.body[n-1]].end(arena)
                 } else {
                     s.colon + 1
                 }
@@ -221,7 +222,7 @@ impl Node for Stmt {
             Stmt::Comm(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n-1].end()
+                    arena.stmts[s.body[n-1]].end(arena)
                 } else {
                     s.colon + 1
                 }
@@ -234,17 +235,17 @@ impl Node for Stmt {
 }
 
 impl Node for Spec {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
             Spec::Import(s) => match &s.name {
-                Some(i) => i.pos,
+                Some(i) => arena.idents[*i].pos,
                 None => s.path.pos,
             }
-            Spec::Value(s) => s.names[0].pos,
-            Spec::Type(s) => s.name.pos,
+            Spec::Value(s) => arena.idents[s.names[0]].pos,
+            Spec::Type(s) => arena.idents[s.name].pos,
         }
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Spec::Import(s) => match s.end_pos {
                 Some(p) => p,
@@ -253,63 +254,63 @@ impl Node for Spec {
             Spec::Value(s) => {
                 let n = s.values.len();
                 if n > 0 {
-                    s.values[n-1].end()
+                    s.values[n-1].end(arena)
                 } else {
                     match &s.typ {
-                        Some(t) => t.end(),
+                        Some(t) => t.end(arena),
                         None => {
-                            s.names[s.names.len()-1].end()
+                            arena.idents[s.names[s.names.len()-1]].end()
                         },
                     }
                 }
             },
-            Spec::Type(t) => t.typ.end()
+            Spec::Type(t) => t.typ.end(arena)
         }
     }
 }
 
 impl Node for Decl {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.from,
             Decl::Gen(d) => d.token_pos,
-            Decl::Func(d) => d.typ.pos(),
+            Decl::Func(d) => d.typ.pos(arena),
         }
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.to,
             Decl::Gen(d) => match &d.r_paren {
                 Some(p) => p + 1,
-                None => d.specs[0].end()
+                None => arena.specs[d.specs[0]].end(arena)
             },
             Decl::Func(d) => match &d.body {
                 Some(b) => b.end(),
-                None => d.typ.end(),
+                None => d.typ.end(arena),
             }
         }
     }
 }
 
 impl Node for File {
-     fn pos(&self) -> position::Pos {
+     fn pos(&self, _arena: &Objects) -> position::Pos {
        self.package
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         let n = self.decls.len();
         if n > 0 {
-            self.decls[n-1].end()
+            arena.decls[self.decls[n-1]].end(arena)
         } else {
-            self.name.end()
+            arena.idents[self.name].end()
         }
     }
 }
 
 impl Node for Package {
-     fn pos(&self) -> position::Pos {
+     fn pos(&self, arena: &Objects) -> position::Pos {
         0
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         0
     }
 }
@@ -324,13 +325,13 @@ pub struct BadExpr {
 
 // An Ident node represents an identifier.
 pub struct Ident {
-    pos: position::Pos,
-    name: String,
-    obj: Box<scope::Object>,
+    pub pos: position::Pos,
+    pub name: String,
+    pub entity: EntityIndex,
 }
 
 impl Ident {
-    fn end(&self) -> position::Pos {
+    pub fn end(&self) -> position::Pos {
         self.pos + self.name.len()
     }
 }
@@ -374,7 +375,7 @@ pub struct ParenExpr {
 // A SelectorExpr node represents an expression followed by a selector.
 pub struct SelectorExpr {
     expr: Expr,
-    sel: Box<Ident>,
+    sel: IdentIndex,
 }
 
 // An IndexExpr node represents an expression followed by an index.
@@ -455,7 +456,7 @@ pub struct ArrayType {
 // A StructType node represents a struct type.
 pub struct StructType {
     struct_pos: position::Pos,
-    fields: Box<FieldList>,
+    fields: FieldListIndex,
     incomplete: bool,
 }
 
@@ -464,21 +465,21 @@ pub struct StructType {
 // A FuncType node represents a function type.
 pub struct FuncType {
     func: Option<position::Pos>,
-    params: Box<FieldList>,
-    results: Option<Box<FieldList>>,
+    params: FieldListIndex,
+    results: Option<FieldListIndex>,
 }
 
 impl FuncType {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match self.func {
             Some(p) => p,
-            None => self.params.pos(),
+            None => arena.field_lists[self.params].pos(arena),
         } 
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self.results {
-            Some(r) => r.end(),
-            None => self.params.end(),
+            Some(r) => arena.field_lists[*r].end(arena),
+            None => arena.field_lists[self.params].end(arena),
         }
     }
 }
@@ -486,7 +487,7 @@ impl FuncType {
 // An InterfaceType node represents an interface type.
 pub struct InterfaceType {
     interface: position::Pos,
-    methods: Box<FieldList>,
+    methods: FieldListIndex,
     incomplete: bool, 
 }
 
@@ -512,7 +513,7 @@ pub struct ChanType {
 
 // An ImportSpec node represents a single package import.
 pub struct ImportSpec {
-    name: Option<Box<Ident>>,
+    name: Option<IdentIndex>,
     path: Box<BasicLit>,
     end_pos: Option<position::Pos>,
 }
@@ -520,14 +521,14 @@ pub struct ImportSpec {
 // A ValueSpec node represents a constant or variable declaration
 // (ConstSpec or VarSpec production).
 pub struct ValueSpec {
-    names: Vec<Box<Ident>>,
+    names: Vec<IdentIndex>,
     typ: Option<Expr>,
     values: Vec<Expr>, 
 }
 
 // A TypeSpec node represents a type declaration (TypeSpec production).
 pub struct TypeSpec {
-    name: Box<Ident>,
+    name: IdentIndex,
     assign: position::Pos,
     typ: Expr,
 }
@@ -551,14 +552,14 @@ pub struct GenDecl {
     token_pos: position::Pos,
     token: token::Token,
     l_paran: Option<position::Pos>,
-    specs: Vec<Spec>,
+    specs: Vec<SpecIndex>,
     r_paren: Option<position::Pos>,
 }
 
 // A FuncDecl node represents a function declaration.
 pub struct FuncDecl {
-    recv: Option<Box<FieldList>>,
-    name: Box<Ident>,
+    recv: Option<FieldListIndex>,
+    name: IndexExpr,
     typ: Box<FuncType>,
     body: Option<Box<BlockStmt>>,
 }
@@ -575,9 +576,9 @@ pub struct EmptyStmt {
 
 // A LabeledStmt node represents a labeled statement.
 pub struct LabeledStmt {
-    label: Box<Ident>,
+    label: IdentIndex,
     colon: position::Pos,
-    stmt: Stmt,
+    stmt: StmtIndex,
 }
 
 // A SendStmt node represents a send statement.
@@ -623,12 +624,12 @@ pub struct ReturnStmt {
 pub struct BranchStmt {
     token_pos: position::Pos,
     token: token::Token,
-    label: Option<Box<Ident>>,
+    label: Option<IdentIndex>,
 }
 
 pub struct BlockStmt {
     l_brace: position::Pos,
-    list: Vec<Stmt>,
+    list: Vec<StmtIndex>,
     r_brace: position::Pos,
 }
 
@@ -640,10 +641,10 @@ impl BlockStmt {
 
 pub struct IfStmt {
     if_pos: position::Pos,
-    init: Option<Stmt>,
+    init: Option<StmtIndex>,
     cond: Expr,
     body: Box<BlockStmt>,
-    els: Option<Stmt>,
+    els: Option<StmtIndex>,
 }
 
 // A CaseClause represents a case of an expression or type switch statement.
@@ -651,29 +652,29 @@ pub struct CaseClause {
     case: position::Pos,
     list: Vec<Expr>,
     colon: position::Pos, 
-    body: Vec<Stmt>,
+    body: Vec<StmtIndex>,
 }
 
 pub struct SwitchStmt {
     switch: position::Pos,
-    init: Option<Stmt>,
+    init: Option<StmtIndex>,
     tag: Option<Expr>,
     body: Box<BlockStmt>,
 }
 
 pub struct TypeSwitchStmt {
     switch: position::Pos,
-    init: Option<Stmt>,
-    assign: Stmt,
+    init: Option<StmtIndex>,
+    assign: StmtIndex,
     body: Box<BlockStmt>,
 }
 
 // A CommClause node represents a case of a select statement.
 pub struct CommClause { //communication
     case: position::Pos,
-    comm: Option<Stmt>,
+    comm: Option<StmtIndex>,
     colon: position::Pos,
-    body: Vec<Stmt>,
+    body: Vec<StmtIndex>,
 }
 
 pub struct SelectStmt {
@@ -683,9 +684,9 @@ pub struct SelectStmt {
 
 pub struct ForStmt {
     for_pos: position::Pos,
-    init: Stmt,
+    init: StmtIndex,
     cond: Expr,
-    post: Stmt,
+    post: StmtIndex,
     body: Box<BlockStmt>,
 }
 
@@ -701,43 +702,43 @@ pub struct RangeStmt {
 
 pub struct Field {
     names: Vec<Expr>,
-    typ: Box<Expr>,
+    typ: Expr,
     tag: Option<Expr>,
 }
 
 impl Node for Field {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         if self.names.len() > 0 {
-            self.names[0].pos()
+            self.names[0].pos(arena)
         } else {
-            self.typ.pos()
+            self.typ.pos(arena)
         }
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match &self.tag {
-            Some(t) => t.end(),
-            None => self.typ.end(),
+            Some(t) => t.end(arena),
+            None => self.typ.end(arena),
         }
     }
 }
 
 pub struct FieldList {
     openning: Option<position::Pos>,
-    list: Vec<Box<Field>>,
+    list: Vec<FieldIndex>,
     closing: Option<position::Pos>,
 }
 
 impl Node for FieldList {
-    fn pos(&self) -> position::Pos {
+    fn pos(&self, arena: &Objects) -> position::Pos {
         match self.openning {
             Some(o) => o,
-            None => self.list[0].pos(),
+            None => arena.fields[self.list[0]].pos(arena),
         }
     }
-    fn end(&self) -> position::Pos {
+    fn end(&self, arena: &Objects) -> position::Pos {
         match self.closing {
             Some(c) => c,
-            None => self.list[self.list.len()-1].pos(),
+            None => arena.fields[self.list[self.list.len()-1]].pos(arena),
         }
     }
 }
@@ -746,10 +747,6 @@ impl Node for FieldList {
 #[cfg(test)]
 mod test {
 	use super::*;
-
-    enum ttt {
-        A(Box<String>),
-    }
 
 	#[test]
     fn ast_test () {

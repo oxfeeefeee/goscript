@@ -1,3 +1,4 @@
+#![allow(non_camel_case_types)]
 use std::fmt;
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
@@ -69,7 +70,7 @@ pub enum Token {
 	RPAREN,    // )
 	RBRACK,    // ]
 	RBRACE,    // }
-	SEMICOLON, // ;
+	SEMICOLON(bool), // ; true if SEMICOLON is NOT inserted by scanner
 	COLON,     // :
 
 	// Keywords
@@ -104,90 +105,97 @@ pub enum Token {
 	VAR,
 }
 
+pub enum TokenType {
+	Literal,
+	Operator,
+	Keyword,
+	Other,
+}
+
 impl Token {
-	pub fn token_text(&self) -> &str {
+	pub fn token_property(&self) -> (TokenType, &str) {
 		match self {
-			Token::ILLEGAL(s) => s,
-			Token::EOF => "EOF",
-			Token::COMMENT(s) => s,
-			Token::IDENT(indent) => indent,
-			Token::INT(istr) => istr,
-			Token::FLOAT(f) => f,
-			Token::IMAG(im) => im,
-			Token::CHAR(chstr) => chstr,
-			Token::STRING(s) => s,
-			Token::ADD => "+", 
-			Token::SUB => "-", 
-			Token::MUL => "*", 
-			Token::QUO => "/", 
-			Token::REM => "%", 
-			Token::AND => "&",
-			Token::OR => "|",
-			Token::XOR => "^",
-			Token::SHL => "<<",
-			Token::SHR => ">>",
-			Token::AND_NOT => "&^", 
-			Token::ADD_ASSIGN => "+=",
-			Token::SUB_ASSIGN => "-=",
-			Token::MUL_ASSIGN => "*=", 
-			Token::QUO_ASSIGN => "/=", 
-			Token::REM_ASSIGN => "%=", 
-			Token::AND_ASSIGN => "&=",  
-			Token::OR_ASSIGN => "|=", 
-			Token::XOR_ASSIGN => "^=", 
-			Token::SHL_ASSIGN => "<<=", 
-			Token::SHR_ASSIGN => ">>=", 
-			Token::AND_NOT_ASSIGN => "&^=",
-			Token::LAND => "&&",
-			Token::LOR => "||",
-			Token::ARROW => "<-",
-			Token::INC => "++",
-			Token::DEC => "--",
-			Token::EQL => "==",
-			Token::LSS => "<",
-			Token::GTR => ">",
-			Token::ASSIGN => "=",
-			Token::NOT => "!",
-			Token::NEQ => "!=",
-			Token::LEQ => "<=",
-			Token::GEQ => ">=",
-			Token::DEFINE => ":=",
-			Token::ELLIPSIS => "...",
-			Token::LPAREN => "(",
-			Token::LBRACK => "[",
-			Token::LBRACE => "{{",
-			Token::COMMA => ",",
-			Token::PERIOD => ".",
-			Token::RPAREN => ")",
-			Token::RBRACK => "]",
-			Token::RBRACE => "}}",
-			Token::SEMICOLON => ";",
-			Token::COLON => ":",
-			Token::BREAK => "break",
-			Token::CASE => "case",
-			Token::CHAN => "chan",
-			Token::CONST => "const",
-			Token::CONTINUE => "continue",
-			Token::DEFAULT => "default",
-			Token::DEFER => "defer",
-			Token::ELSE => "else",
-			Token::FALLTHROUGH => "fallthrough",
-			Token::FOR => "for",
-			Token::FUNC => "func",
-			Token::GO => "go",
-			Token::GOTO => "goto",
-			Token::IF => "if",
-			Token::IMPORT => "import",
-			Token::INTERFACE => "interface",
-			Token::MAP => "map",
-			Token::PACKAGE => "package",
-			Token::RANGE => "range",
-			Token::RETURN => "return",
-			Token::SELECT => "select",
-			Token::STRUCT => "struct",
-			Token::SWITCH => "switch",
-			Token::TYPE => "type",
-			Token::VAR => "var",
+			Token::ILLEGAL(s) => (TokenType::Other, s),
+			Token::EOF => (TokenType::Other, "EOF"),
+			Token::COMMENT(s) => (TokenType::Other, s),
+			Token::IDENT(indent) => (TokenType::Literal, indent),
+			Token::INT(istr) => (TokenType::Literal, istr),
+			Token::FLOAT(f) => (TokenType::Literal, f),
+			Token::IMAG(im) => (TokenType::Literal, im),
+			Token::CHAR(chstr) => (TokenType::Literal, chstr),
+			Token::STRING(s) => (TokenType::Literal, s),
+			Token::ADD => (TokenType::Operator, "+"), 
+			Token::SUB => (TokenType::Literal, "-"), 
+			Token::MUL => (TokenType::Literal, "*"), 
+			Token::QUO => (TokenType::Literal, "/"), 
+			Token::REM => (TokenType::Literal, "%"), 
+			Token::AND => (TokenType::Literal, "&"),
+			Token::OR => (TokenType::Literal, "|"),
+			Token::XOR => (TokenType::Literal, "^"),
+			Token::SHL => (TokenType::Literal, "<<"),
+			Token::SHR => (TokenType::Literal, ">>"),
+			Token::AND_NOT => (TokenType::Literal, "&^"), 
+			Token::ADD_ASSIGN => (TokenType::Literal, "+="),
+			Token::SUB_ASSIGN => (TokenType::Literal, "-="),
+			Token::MUL_ASSIGN => (TokenType::Literal, "*="), 
+			Token::QUO_ASSIGN => (TokenType::Literal, "/="), 
+			Token::REM_ASSIGN => (TokenType::Literal, "%="), 
+			Token::AND_ASSIGN => (TokenType::Literal, "&="),  
+			Token::OR_ASSIGN => (TokenType::Literal, "|="), 
+			Token::XOR_ASSIGN => (TokenType::Literal, "^="), 
+			Token::SHL_ASSIGN => (TokenType::Literal, "<<="), 
+			Token::SHR_ASSIGN => (TokenType::Literal, ">>="), 
+			Token::AND_NOT_ASSIGN => (TokenType::Literal, "&^="),
+			Token::LAND => (TokenType::Literal, "&&"),
+			Token::LOR => (TokenType::Literal, "||"),
+			Token::ARROW => (TokenType::Literal, "<-"),
+			Token::INC => (TokenType::Literal, "++"),
+			Token::DEC => (TokenType::Literal, "--"),
+			Token::EQL => (TokenType::Literal, "=="),
+			Token::LSS => (TokenType::Literal, "<"),
+			Token::GTR => (TokenType::Literal, ">"),
+			Token::ASSIGN => (TokenType::Literal, "="),
+			Token::NOT => (TokenType::Literal, "!"),
+			Token::NEQ => (TokenType::Literal, "!="),
+			Token::LEQ => (TokenType::Literal, "<="),
+			Token::GEQ => (TokenType::Literal, ">="),
+			Token::DEFINE => (TokenType::Literal, ":="),
+			Token::ELLIPSIS => (TokenType::Literal, "..."),
+			Token::LPAREN => (TokenType::Literal, "("),
+			Token::LBRACK => (TokenType::Literal, "["),
+			Token::LBRACE => (TokenType::Literal, "{{"),
+			Token::COMMA => (TokenType::Literal, ","),
+			Token::PERIOD => (TokenType::Literal, "."),
+			Token::RPAREN => (TokenType::Literal, ")"),
+			Token::RBRACK => (TokenType::Literal, "]"),
+			Token::RBRACE => (TokenType::Literal, "}}"),
+			Token::SEMICOLON(_) => (TokenType::Literal, ";"),
+			Token::COLON => (TokenType::Literal, ":"),
+			Token::BREAK => (TokenType::Keyword, "break"),
+			Token::CASE => (TokenType::Keyword,"case"),
+			Token::CHAN => (TokenType::Keyword,"chan"),
+			Token::CONST => (TokenType::Keyword,"const"),
+			Token::CONTINUE => (TokenType::Keyword,"continue"),
+			Token::DEFAULT => (TokenType::Keyword,"default"),
+			Token::DEFER => (TokenType::Keyword,"defer"),
+			Token::ELSE => (TokenType::Keyword,"else"),
+			Token::FALLTHROUGH => (TokenType::Keyword,"fallthrough"),
+			Token::FOR => (TokenType::Keyword,"for"),
+			Token::FUNC => (TokenType::Keyword,"func"),
+			Token::GO => (TokenType::Keyword,"go"),
+			Token::GOTO => (TokenType::Keyword,"goto"),
+			Token::IF => (TokenType::Keyword,"if"),
+			Token::IMPORT => (TokenType::Keyword,"import"),
+			Token::INTERFACE => (TokenType::Keyword,"interface"),
+			Token::MAP => (TokenType::Keyword,"map"),
+			Token::PACKAGE => (TokenType::Keyword,"package"),
+			Token::RANGE => (TokenType::Keyword,"range"),
+			Token::RETURN => (TokenType::Keyword,"return"),
+			Token::SELECT => (TokenType::Keyword,"select"),
+			Token::STRUCT => (TokenType::Keyword,"struct"),
+			Token::SWITCH => (TokenType::Keyword,"switch"),
+			Token::TYPE => (TokenType::Keyword,"type"),
+			Token::VAR => (TokenType::Keyword,"var"),
 		}
 	}
 
@@ -221,12 +229,37 @@ impl Token {
 			_ => Token::IDENT(ident),
 		}
 	}
+
+	pub fn token_text(&self) -> &str {
+		let (_, t) = self.token_property();
+		t
+	}
+
+	pub fn is_literal(&self) -> bool {
+		match self.token_property().0 {
+			TokenType::Literal => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_operator(&self) -> bool {
+		match self.token_property().0 {
+			TokenType::Operator => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_keyword(&self) -> bool {
+		match self.token_property().0 {
+			TokenType::Keyword => true,
+			_ => false,
+		}
+	}
 }
 
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		let n = self.token_text();
-		write!(f, "{}", n)
+		write!(f, "{}", self.token_text())
 	}
 }
 

@@ -5,3 +5,4 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+generational-arena = "0.1"

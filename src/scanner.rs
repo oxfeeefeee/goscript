@@ -73,7 +73,7 @@ impl<'a> Scanner<'a> {
             // we only reach here if s.insertSemi was
             // set in the first place and exited early
             // from skip_whitespace()
-            Some('\n') => { self.semi1 = false; Token::SEMICOLON },
+            Some('\n') => { self.semi1 = false; Token::SEMICOLON(false) },
             Some('"') => { self.semi2 = true; self.scan_string() },
             Some('\'') => { self.semi2 = true; self.scan_char() },
             Some('`') => { self.semi2 = true; self.scan_raw_string() },
@@ -99,7 +99,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             Some(',') => self.scan_token(Token::COMMA, false),
-            Some(';') => self.scan_token(Token::SEMICOLON, false),
+            Some(';') => self.scan_token(Token::SEMICOLON(true), false),
             Some('(') => self.scan_token(Token::LPAREN, false),
             Some(')') => self.scan_token(Token::RPAREN, true),
             Some('[') => self.scan_token(Token::LBRACK, false),
@@ -123,7 +123,7 @@ impl<'a> Scanner<'a> {
                     Some('/') | Some('*') => {
                         if self.semi1 && self.comment_to_end() {
                              self.semi1 = false;
-                            Token::SEMICOLON
+                            Token::SEMICOLON(false)
                         } else {
                             self.scan_comment(ch.unwrap())
                         }
@@ -167,7 +167,7 @@ impl<'a> Scanner<'a> {
             None => {
                 if self.semi1 {
                     self.semi1 = false;
-                    Token::SEMICOLON
+                    Token::SEMICOLON(false)
                 } else {
                     Token::EOF
                 }
@@ -592,6 +592,14 @@ impl<'a> Scanner<'a> {
     fn advance_and_push(&mut self, literal: &mut String, ch: char) {
         self.read_char();
         literal.push(ch);
+    }
+
+    pub fn file_mut(&mut self) -> &mut position::File {
+        self.file
+    }
+
+    pub fn file(&self) -> &position::File {
+        self.file
     }
 }
 
