@@ -417,6 +417,99 @@ impl<'a> Parser<'a> {
         self.trace_end();
         list
     }
+
+    // ----------------------------------------------------------------------------
+    // Common productions
+    fn parse_expr_list(&mut self, lhs: bool) -> Vec<Expr> {
+        self.trace_begin("ExpressionList");
+
+        let expr = self.parse_expr(lhs);
+        let mut list = vec![self.check_expr(expr)];
+        while self.token == Token::COMMA {
+            self.next();
+            let expr = self.parse_expr(lhs);
+            list.push(self.check_expr(expr));
+        }
+
+        self.trace_end();
+        list
+    }
+
+    fn parse_lhs_list(&mut self) -> Vec<Expr> {
+        let bak = self.in_rhs;
+        self.in_rhs = false;
+        let list = self.parse_expr_list(true);
+        match self.token {
+            // lhs of a short variable declaration
+            // but doesn't enter scope until later:
+            // caller must call self.short_var_decl(self.make_ident_list(list))
+            // at appropriate time.
+            Token::DEFINE => {},
+            // lhs of a label declaration or a communication clause of a select
+            // statement (parse_lhs_list is not called when parsing the case clause
+            // of a switch statement):
+            // - labels are declared by the caller of parse_lhs_list
+            // - for communication clauses, if there is a stand-alone identifier
+            //   followed by a colon, we have a syntax error; there is no need
+            //   to resolve the identifier in that case
+            Token::COLON => {},
+            _ => {
+                // identifiers must be declared elsewhere
+                for x in list.iter() {
+                    self.resolve(x);
+                }
+            }
+        }
+        self.in_rhs = bak;
+        list
+    }
+
+    fn parse_rhs_list(&mut self) -> Vec<Expr> {
+        let bak = self.in_rhs;
+        self.in_rhs = true;
+        let list = self.parse_expr_list(false);
+        self.in_rhs = bak;
+        list
+    }
+
+
+    // ----------------------------------------------------------------------------
+    // Expressions
+
+    // checkExpr checks that x is an expression (and not a type).
+    fn check_expr(&self, x: Expr) -> Expr {
+        match x {
+            Expr::Bad(_) => x,
+            Expr::Ident(_) => x,
+            Expr::BasicLit(_) => x,
+            Expr::FuncLit(_) => x,
+            Expr::CompositeLit(_) => x,
+            Expr::Paren(_) => { panic!("unreachable"); x },
+            Expr::Selector(_) => x,
+            Expr::Index(_) => x,
+            Expr::Slice(_) => x,
+            // If t.Type == nil we have a type assertion of the form
+            // y.(type), which is only allowed in type switch expressions.
+            // It's hard to exclude those but for the case where we are in
+            // a type switch. Instead be lenient and test this in the type
+            // checker.
+            Expr::TypeAssert(_) => x,
+            Expr::Call(_) => x,
+            Expr::Star(_) => x,
+            Expr::Unary(_) => x,
+            Expr::Binary(_) => x,
+            _ => {
+                self.error_expected(self.pos, "expression");
+                Expr::Bad(Box::new(BadExpr{
+                    from: x.pos(&self.objects), 
+                    to: self.safe_pos(x.end(&self.objects))}))
+            }
+        }
+    }
+
+    fn parse_expr(&mut self, _lhs: bool) -> Expr {
+        Expr::Bad(Box::new(BadExpr{from:0, to:0}))
+    }
     
     fn parse(&mut self) {
         self.trace_begin("begin");

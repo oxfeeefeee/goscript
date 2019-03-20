@@ -316,8 +316,8 @@ impl Node for Package {
 // syntax errors for which no correct expression nodes can be
 // created.
 pub struct BadExpr {
-    from: position::Pos,
-    to: position::Pos,
+    pub from: position::Pos,
+    pub to: position::Pos,
 }
 
 pub enum IdentEntity {
