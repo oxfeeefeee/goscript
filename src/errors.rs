@@ -1,4 +1,3 @@
-use std::fmt;
 use super::position;
 
 struct Error{

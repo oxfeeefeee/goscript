@@ -1,6 +1,5 @@
-use std::fmt;
 use std::rc::Rc;
-use std::cell::{Ref, RefMut, RefCell};
+use std::cell::{RefCell};
 use std::iter::Peekable;
 use std::str::Chars;
 use std::path::Path;
@@ -49,18 +48,22 @@ impl<'a> Scanner<'a> {
     }
 
     fn position(&self) -> position::Position {
-        self.file.position(self.offset)
+        self.file.position(self.pos())
+    }
+
+    pub fn pos(&self) -> position::Pos {
+        self.file().pos(self.offset)
     }
 
     // Read the next Unicode char 
     #[allow(dead_code)]
-    fn scan(&mut self) -> Token {
+    pub fn scan(&mut self) -> Token {
         self.semi1 = self.semi2;
         self.semi2 = false;
         self.skip_whitespace();
         match self.peek_char() {
             Some(&ch) if is_letter(ch) => {
-                let t = self.scan_identifier(ch);
+                let t = self.scan_identifier();
                 match t {
                     Token::BREAK | Token::CONTINUE | Token::FALLTHROUGH | Token::RETURN =>
                         self.semi2 = true,
@@ -175,8 +178,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn scan_identifier(&mut self, ch: char) -> Token {
-        let mut s = String::new(); 
+    fn scan_identifier(&mut self) -> Token {
+        let mut s = String::new();
         loop {
             match self.peek_char() {
                 Some(&ch) if is_letter(ch) || is_decimal(ch) => {
@@ -378,8 +381,9 @@ impl<'a> Scanner<'a> {
     fn scan_escape(&mut self, lit: &mut String, quote: char) -> bool {
         lit.push(self.read_char().unwrap());
 
-        let mut n:isize = 0;
-        let (mut base, mut max):(u32, u32) = (0, 0);
+        let mut n:isize;
+        let base:u32;
+        let max:u32;
         match self.peek_char() {
             Some(&ch) => match ch {
                 'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\\'  => {
@@ -632,13 +636,13 @@ fn is_hex(ch: char) -> bool {
 #[cfg(test)]
 mod test {
     use super::*;
-    use super::position::{File, FileSet, SharedFileSet};
+    use super::position::{/*File, FileSet, */SharedFileSet};
 
     fn error_handler(pos: position::Position, msg: &str) {
         print!("scan error at {}: {}\n", pos, msg);
     }
 
-    #[test]
+    #[test] 
     fn test_scanner(){
         let fs = SharedFileSet::new();
         let mut fsm = fs.borrow_mut();

@@ -1,9 +1,6 @@
-use std::fmt;
-use std::borrow::Borrow;
 use std::collections::HashMap;
 use super::position;
 use super::token;
-use super::scope;
 use super::ast_objects::*;
 
 pub trait Node {
@@ -307,10 +304,10 @@ impl Node for File {
 }
 
 impl Node for Package {
-     fn pos(&self, arena: &Objects) -> position::Pos {
+     fn pos(&self, _arena: &Objects) -> position::Pos {
         0
     }
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, _arena: &Objects) -> position::Pos {
         0
     }
 }
@@ -323,11 +320,26 @@ pub struct BadExpr {
     to: position::Pos,
 }
 
+pub enum IdentEntity {
+    NoEntity,
+    Sentinel,
+    Entity(EntityIndex),
+}
+
+impl IdentEntity {
+    pub fn is_none(&self) -> bool {
+        match self{
+            IdentEntity::NoEntity => true,
+            _ => false,
+        }
+    }
+}
+
 // An Ident node represents an identifier.
 pub struct Ident {
     pub pos: position::Pos,
     pub name: String,
-    pub entity: EntityIndex,
+    pub entity: IdentEntity,
 }
 
 impl Ident {
@@ -746,10 +758,10 @@ impl Node for FieldList {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+	//use super::*;
 
 	#[test]
     fn ast_test () {
 		print!("testxxxxx . ");
 	}
-}
+} 

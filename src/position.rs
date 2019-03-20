@@ -7,7 +7,6 @@ use std::borrow::Borrow;
 
 pub type Pos = usize;
 
-
 pub struct Position {
     pub filename: &'static str,
     pub offset: usize,          // offset in utf8 char
@@ -138,9 +137,16 @@ impl File {
         self.base + self.lines[line-1]
     }
 
+    pub fn pos(&self, offset:usize) -> Pos {
+        if offset > self.size() {
+            panic!("illegal file offset")
+        }
+        self.base() + offset
+    }
+
     pub fn position(&self, p: Pos) -> Position {
         let filename = self.name;
-        let (mut line, mut offset, mut column) = (0, 0, 0);
+        let (line, offset, column);
 
         if p < self.base || p > self.base + self.size {
             panic!("illegal Pos value");

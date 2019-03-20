@@ -77,7 +77,7 @@ impl Entity{
             DeclObj::Decl(i) => arena.decls[*i].pos(arena),
             DeclObj::Stmt(i) => arena.stmts[*i].pos(arena),
             DeclObj::Scope(_) => 0,
-            NoDecl => 0,
+            DeclObj::NoDecl => 0,
         }
     }
 }
@@ -175,7 +175,7 @@ mod test {
 	#[test]
 	fn test_scope () {
         let mut arena_s = ar::Arena::new();
-        let mut s = Scope::arena_new(None, &mut arena_s);
+        let s = Scope::arena_new(None, &mut arena_s);
         let e = Entity::with_no_data(EntityKind::Fun, "test_entity".to_string(), DeclObj::NoDecl);
         let mut arena = ar::Arena::new();
         arena_s[s].insert_new(e, &mut arena);
