@@ -1,6 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use std::cell::{RefCell};
+use std::collections::HashMap;
 use super::position;
 use super::token::Token;
 use super::scanner;
@@ -64,17 +65,16 @@ impl<'a> Parser<'a> {
     // Scoping support
 
     fn open_scope(&mut self) {
-        self.top_scope = 
-            Some(Scope::arena_new(self.top_scope.take(), scopes_mut!(self)));
+        self.top_scope = Some(new_scope!(self, self.top_scope.take()));
     }
 
     fn close_scope(&mut self) {
         self.top_scope = scope!(self, self.top_scope.take().unwrap()).outer;
     }
 
-    fn open_label_scope(&mut self) {
+    fn open_label_scope(&mut self) { 
         self.label_scope = 
-            Some(Scope::arena_new(self.label_scope.take(), scopes_mut!(self)));
+            Some(new_scope!(self, self.label_scope.take()));
         self.target_stack.push(vec![]);
     }
 
@@ -84,7 +84,7 @@ impl<'a> Parser<'a> {
             Some(v) => {
                 for i in v {
                     let ident = ident!(self, i);
-                    if scope.look_up(&ident.name, entities_mut!(self)).is_none() {
+                    if scope.look_up(&ident.name).is_none() {
                         let s = format!("label {} undefined", ident.name);
                         self.error(self.pos, s);
                     }
@@ -96,11 +96,11 @@ impl<'a> Parser<'a> {
     }
 
     fn declare(&mut self, decl: DeclObj, data: EntityData, kind: EntityKind,
-        scope_ind: &ScopeIndex, idents: Vec<IdentIndex>) {
+        scope_ind: &ScopeIndex, idents: &Vec<IdentIndex>) {
         for id in idents.iter() {
             let mut_ident = ident_mut!(self, *id);
-            let entity = Entity::arena_new(kind.clone(), mut_ident.name.clone(),
-                decl.clone(), data.clone(), entities_mut!(self));
+            let entity = new_entity!(self, kind.clone(), 
+                mut_ident.name.clone(), decl.clone(), data.clone());
             mut_ident.entity = IdentEntity::Entity(entity);
             let ident = ident!(self, *id);
             if ident.name != "_" {
@@ -130,9 +130,9 @@ impl<'a> Parser<'a> {
             match expr {
                 Expr::Ident(id) => {
                     let ident = ident_mut!(self, *id.as_ref());
-                    let entity = Entity::arena_new(EntityKind::Var, 
+                    let entity = new_entity!(self, EntityKind::Var, 
                         ident.name.clone(), DeclObj::Stmt(assign_stmt),
-                        EntityData::NoData, entities_mut!(self));
+                        EntityData::NoData);
                     ident.entity = IdentEntity::Entity(entity);
                     if ident.name != "_" {
                         let top_scope = scope_mut!(self, self.top_scope.unwrap());
@@ -163,6 +163,24 @@ impl<'a> Parser<'a> {
             let ident = ident_mut!(self, *i.as_ref());
             assert!(ident.entity.is_none(), 
                 "identifier already declared or resolved");
+            if ident.name == "_" {
+                return;
+            }
+            // try to resolve the identifier
+            let mut s = self.top_scope;
+            loop {
+                match s {
+                    Some(sidx) => {
+                        let scope = scope!(self, sidx);
+                        if let Some(entity) = scope.look_up(&ident.name) {
+                            ident.entity = IdentEntity::Entity(*entity);
+                            return;
+                        }
+                        s = scope.outer;
+                    },
+                    None => {break;},
+                }
+            }
             // all local scopes are known, so any unresolved identifier
             // must be found either in the file scope, package scope
             // (perhaps in another file), or universe scope --- collect
@@ -442,7 +460,7 @@ impl<'a> Parser<'a> {
         match self.token {
             // lhs of a short variable declaration
             // but doesn't enter scope until later:
-            // caller must call self.short_var_decl(self.make_ident_list(list))
+            // caller must call self.short_var_decl(list)
             // at appropriate time.
             Token::DEFINE => {},
             // lhs of a label declaration or a communication clause of a select
@@ -472,6 +490,228 @@ impl<'a> Parser<'a> {
         list
     }
 
+    // ----------------------------------------------------------------------------
+    // Types
+    fn parse_type(&mut self) -> Expr {
+        self.trace_begin("Type");
+
+        let typ = self.try_type();
+        let ret = if typ.is_none() {
+            let pos = self.pos;
+            self.error_expected(pos, "type");
+            self.next();
+            Expr::new_bad(pos, self.pos)
+        } else {
+            typ.unwrap()
+        };
+       
+        self.trace_end();
+        ret
+    }
+    
+    // If the result is an identifier, it is not resolved.
+    fn parse_type_name(&mut self) -> Expr {
+        self.trace_begin("TypeName");
+
+        let ident = self.parse_ident();
+        let x_ident = Expr::Ident(Box::new(ident));
+        // don't resolve ident yet - it may be a parameter or field name
+        let ret = if let Token::PERIOD = self.token {
+            // ident is a package name
+            self.next();
+            self.resolve(&x_ident);
+            let sel = self.parse_ident();
+            Expr::new_selector(x_ident, sel)
+        } else {
+            x_ident
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn parse_array_type(&mut self) -> Expr {
+        self.trace_begin("ArrayType");
+
+        let lpos = self.expect(&Token::LBRACK);
+        self.expr_level += 1;
+        let len = match self.token {
+            // always permit ellipsis for more fault-tolerant parsing
+            Token::ELLIPSIS => {
+                Some(Expr::new_ellipsis(self.pos, None))
+            },
+            _ if self.token != Token::RBRACK => {
+                Some(self.parse_rhs())
+            },
+            _ => None,
+        };
+        self.expr_level -= 1;
+        self.expect(&Token::RBRACK);
+        let elt = self.parse_type();
+
+        self.trace_end();
+        Expr::Array(Box::new(ArrayType{
+            l_brack: lpos, len: len, elt: elt}))
+    }
+
+    fn make_ident_list(&mut self, exprs: &mut Vec<Expr>) -> Vec<IdentIndex> {
+        exprs.iter().map(|x| {
+            match x {
+                Expr::Ident(ident) => *ident.as_ref(),
+                _ => {
+                    let pos = x.pos(&self.objects);
+                    if let Expr::Bad(_) = x {
+                        // only report error if it's a new one
+                        self.error_expected(pos, "identifier")
+                    }
+                    new_ident!(self, pos, "_".to_string(), IdentEntity::NoEntity)
+                }
+            }
+        }).collect()
+    }
+
+    
+    fn parse_field_decl(&mut self, scope: ScopeIndex) -> FieldIndex {
+        self.trace_begin("FieldDecl");
+
+        // 1st FieldDecl
+	    // A type name used as an anonymous field looks like a field identifier.
+        let mut list = vec![];
+        loop {
+            list.push(self.parse_var_type(false));
+            if let Token::COMMA = self.token {
+                break;
+            }
+            self.next();
+        }
+
+        let mut idents = vec![];
+        let typ = match self.try_var_type(false) {
+            Some(t) => {
+                idents = self.make_ident_list(&mut list);
+                t
+            }
+            // ["*"] TypeName (AnonymousField)
+            None => { 
+                let first = &list[0]; // we always have at least one element
+                if list.len() > 1 {
+                    self.error_expected(self.pos, "type");
+                    Expr::new_bad(self.pos, self.pos)
+                } else if !Parser::is_type_name(Parser::deref(first)) {
+                    self.error_expected(self.pos, "anonymous field");
+                    Expr::new_bad(
+                        first.pos(&self.objects),
+                        self.safe_pos(first.end(&self.objects)))
+                } else {
+                    list.into_iter().nth(0).unwrap()
+                }
+            }
+        };
+
+        // Tag
+        let token = self.token.clone();
+        let tag = if let Token::STRING(s) = token {
+            self.next();
+            Some(Expr::new_basic_lit(self.pos, self.token.clone(), s.clone()))
+        } else {
+            None
+        };
+
+        self.expect_semi();
+
+        // have to clone to fix ownership issue.
+        let field = new_field!(self, idents.clone(), Expr::clone_ident(&typ), tag);
+        self.declare(DeclObj::Field(field), EntityData::NoData,
+            EntityKind::Var, &scope, &idents);
+        self.resolve(&typ);
+
+        self.trace_end();
+        field
+    }
+
+    fn parse_struct_type(&mut self) -> Expr {
+        self.trace_begin("FieldDecl");
+
+        let stru = self.expect(&Token::STRUCT);
+        let lbrace = self.expect(&Token::LBRACE);
+        let scope = new_scope!(self, None);
+        let mut list = vec![];
+        loop {
+            match &self.token {
+                Token::IDENT(_) | Token::MUL | Token::LPAREN => {
+                    list.push(self.parse_field_decl(scope));
+                }
+                _ => {break;}
+            } 
+        }
+        let rbrace = self.expect(&Token::RBRACE);
+
+        self.trace_end();
+        Expr::Struct(Box::new(StructType{
+            struct_pos: stru,
+            fields: FieldList{
+                openning: Some(lbrace),
+                list: list,
+                closing: Some(rbrace),
+            },
+            incomplete: false,
+        }))
+    }
+
+    fn parse_pointer_type(&mut self) -> Expr {
+        self.trace_begin("PointerType");
+
+        let star = self.expect(&Token::MUL);
+        let base = self.parse_type();
+
+        self.trace_end();
+        Expr::Star(Box::new(StarExpr{star: star, expr: base}))
+    }
+
+    fn try_var_type(&mut self, is_param: bool) -> Option<Expr> {
+        if is_param {
+            if let Token::ELLIPSIS = self.token {
+                let pos = self.pos;
+                self.next();
+                let typ = if let Some(t) = self.try_ident_or_type() {
+                    self.resolve(&t);
+                    t
+                    
+                } else {
+                    self.error(pos, "'...' parameter is missing type".to_string());
+                    Expr::new_bad(pos, self.pos)
+                };
+                return Some(Expr::new_ellipsis(pos, Some(typ)));
+            }
+        }
+        self.try_ident_or_type()
+    }
+
+    fn parse_var_type(&mut self, is_param: bool) -> Expr {
+        match self.try_var_type(is_param) {
+            Some(typ) => typ,
+            None => {
+                let pos = self.pos;
+                self.error_expected(pos, "type");
+                self.next();
+                Expr::new_bad(pos, self.pos)
+            },
+        }
+    }
+
+    //todo
+    fn try_ident_or_type(&mut self) -> Option<Expr> {
+        None
+    }
+
+    fn try_type(&mut self) -> Option<Expr> {
+        if let Some(typ) = self.try_ident_or_type() {
+            self.resolve(&typ);
+            Some(typ)
+        } else {
+            None
+        }
+    }
 
     // ----------------------------------------------------------------------------
     // Expressions
@@ -484,7 +724,7 @@ impl<'a> Parser<'a> {
             Expr::BasicLit(_) => x,
             Expr::FuncLit(_) => x,
             Expr::CompositeLit(_) => x,
-            Expr::Paren(_) => { panic!("unreachable"); x },
+            Expr::Paren(_) => { panic!("unreachable"); },
             Expr::Selector(_) => x,
             Expr::Index(_) => x,
             Expr::Slice(_) => x,
@@ -500,16 +740,54 @@ impl<'a> Parser<'a> {
             Expr::Binary(_) => x,
             _ => {
                 self.error_expected(self.pos, "expression");
-                Expr::Bad(Box::new(BadExpr{
-                    from: x.pos(&self.objects), 
-                    to: self.safe_pos(x.end(&self.objects))}))
+                Expr::new_bad(
+                    x.pos(&self.objects), 
+                    self.safe_pos(x.end(&self.objects)))
             }
         }
     }
 
-    fn parse_expr(&mut self, _lhs: bool) -> Expr {
-        Expr::Bad(Box::new(BadExpr{from:0, to:0}))
+    // isTypeName reports whether x is a (qualified) TypeName.
+    fn is_type_name(x: &Expr) -> bool {
+        match x {
+            Expr::Bad(_) | Expr::Ident(_) => true,
+            Expr::Selector(s) => {
+                if let Expr::Ident(_) = s.expr {true} else {false}
+            },
+            _ => false
+        }
     }
+
+    // isLiteralType reports whether x is a legal composite literal type.
+    fn is_literal_type(x: &Expr) -> bool {
+        match x {
+            Expr::Bad(_) | Expr::Ident(_)  | Expr::Array(_) |
+            Expr::Struct(_) | Expr::Map(_) => true,
+            Expr::Selector(s) => {
+                if let Expr::Ident(_) = s.expr {true} else {false}
+            },
+            _ => false
+        }
+    }
+
+    fn deref(x: &Expr) -> &Expr {
+        if let Expr::Star(s) = x {&s.expr} else {x}
+    }
+
+    // todo
+    fn parse_expr(&mut self, _lhs: bool) -> Expr {
+        Expr::new_bad(0, 0)
+    }
+
+    fn parse_rhs(&mut self) -> Expr {
+        let bak = self.in_rhs;
+        self.in_rhs = true;
+        let x0 = self.parse_expr(false);
+        let x1 = self.check_expr(x0);
+        self.in_rhs = bak;
+        x1
+    }
+
     
     fn parse(&mut self) {
         self.trace_begin("begin");

@@ -65,11 +65,6 @@ impl Entity{
         Entity::new(kind, name, decl, EntityData::NoData)
     }
 
-    pub fn arena_new(kind: EntityKind, name: String, decl: DeclObj, data: EntityData,
-        arena: &mut Arena<Entity>) -> EntityIndex {
-            arena.insert(Entity::new(kind, name, decl, data))
-    }
-
     pub fn pos(&self, arena: &Objects) -> position::Pos {
         match &self.decl {
             DeclObj::Field(i) => arena.fields[*i].pos(arena),
@@ -88,16 +83,12 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn arena_new(outer: Option<ScopeIndex>, arena: &mut Arena<Scope>) -> ScopeIndex {
-        arena.insert(Scope{outer: outer, entities: HashMap::new()})
+    pub fn new(outer: Option<ScopeIndex>) -> Scope {
+        Scope{outer: outer, entities: HashMap::new()}
     }
 
-    pub fn look_up<'a>(&self, name: &String, arena: &'a mut Arena<Entity>) ->
-        Option<&'a mut Entity> {
-        match self.entities.get(name) {
-            Some(&i) => arena.get_mut(i),
-            None => None,
-        }
+    pub fn look_up(&self, name: &String) -> Option<&EntityIndex> {
+        self.entities.get(name)
     }
 
     pub fn insert(&mut self, name: String, entity: EntityIndex) -> Option<EntityIndex> {
@@ -107,19 +98,6 @@ impl Scope {
                 self.entities.insert(name, entity);
                 None
             },
-        }
-    }
-
-    pub fn insert_new<'a>(&mut self, e: Entity, arena: &'a mut Arena<Entity>) -> 
-        Option<&'a mut Entity> {
-        match self.entities.get(&e.name) {
-            Some(&i) => arena.get_mut(i),
-            None => {
-                let name = e.name.to_string();
-                let index = arena.insert(e);
-                self.entities.insert(name, index);
-                None
-            }
         }
     }
 
@@ -172,13 +150,27 @@ mod test {
 	use super::*;
     use generational_arena as ar;
 
+    pub fn insert_new<'a>(sel: &mut Scope, e: Entity, arena: &'a mut Arena<Entity>) -> 
+        Option<&'a mut Entity> {
+        match sel.entities.get(&e.name) {
+            Some(&i) => arena.get_mut(i),
+            None => {
+                let name = e.name.to_string();
+                let index = arena.insert(e);
+                sel.entities.insert(name, index);
+                None
+            }
+        }
+    }
+
 	#[test]
 	fn test_scope () {
         let mut arena_s = ar::Arena::new();
-        let s = Scope::arena_new(None, &mut arena_s);
+        let scope = Scope::new(None);
+        let s = arena_s.insert(scope);
         let e = Entity::with_no_data(EntityKind::Fun, "test_entity".to_string(), DeclObj::NoDecl);
         let mut arena = ar::Arena::new();
-        arena_s[s].insert_new(e, &mut arena);
+        insert_new(&mut arena_s[s], e, &mut arena);
 
         println!("scope: {:?}", ScopeDebug::new(&arena_s[s], &arena));
 

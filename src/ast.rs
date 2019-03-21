@@ -85,6 +85,34 @@ pub struct Package {
     files: HashMap<String, Box<File>>,
 }
 
+impl Expr {
+    pub fn new_bad(from: position::Pos, to: position::Pos) -> Expr {
+        Expr::Bad(Box::new(BadExpr{from:from, to:to}))
+    }
+
+    pub fn new_selector(x: Expr, sel: IdentIndex) -> Expr {
+        Expr::Selector(Box::new(SelectorExpr{
+            expr: x, sel: sel}))
+    }
+
+    pub fn new_ellipsis(pos: position::Pos, x :Option<Expr>) -> Expr {
+        Expr::Ellipsis(Box::new(Ellipsis{
+            pos: pos, elt: x}))
+    }
+
+    pub fn new_basic_lit(pos: position::Pos, kind: token::Token, 
+        value: String) -> Expr {
+        Expr::BasicLit(Box::new(BasicLit{
+            pos: pos, kind: kind, value: value
+        }))
+    }
+
+    pub fn clone_ident(ident: &Expr) -> Expr {
+        if let Expr::Ident(i) = ident 
+            {Expr::Ident(i.clone())} else {panic!("unreachable")}
+    }
+}
+
 impl Node for Expr {
     fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
@@ -94,7 +122,7 @@ impl Node for Expr {
             Expr::BasicLit(e) => e.pos,
             Expr::FuncLit(e) => match e.typ.func {
                 Some(p) => p,
-                None => arena.field_lists[e.typ.params].pos(arena),
+                None => e.typ.params.pos(arena),
             }, 
             Expr::CompositeLit(e) => match &e.typ {
                 Some(expr) => expr.pos(arena),
@@ -106,7 +134,7 @@ impl Node for Expr {
             Expr::Slice(e) => e.expr.pos(arena), 
             Expr::TypeAssert(e) => e.expr.pos(arena), 
             Expr::Call(e) => e.func.pos(arena), 
-            Expr::Star(e) => e.star.pos(arena), 
+            Expr::Star(e) => e.star, 
             Expr::Unary(e) => e.op_pos, 
             Expr::Binary(e) => e.expr_a.pos(arena),
             Expr::KeyValue(e) => e.key.pos(arena), 
@@ -141,9 +169,9 @@ impl Node for Expr {
             Expr::Binary(e) => e.expr_b.end(arena),
             Expr::KeyValue(e) => e.val.end(arena), 
             Expr::Array(e) => e.elt.end(arena), 
-            Expr::Struct(e) => arena.field_lists[e.fields].end(arena), 
+            Expr::Struct(e) => e.fields.end(arena), 
             Expr::Func(e) => e.end(arena),
-            Expr::Interface(e) => arena.field_lists[e.methods].end(arena), 
+            Expr::Interface(e) => e.methods.end(arena), 
             Expr::Map(e) => e.val.end(arena), 
             Expr::Chan(e) => e.val.end(arena), 
         }
@@ -386,8 +414,8 @@ pub struct ParenExpr {
 	
 // A SelectorExpr node represents an expression followed by a selector.
 pub struct SelectorExpr {
-    expr: Expr,
-    sel: IdentIndex,
+    pub expr: Expr,
+    pub sel: IdentIndex,
 }
 
 // An IndexExpr node represents an expression followed by an index.
@@ -430,8 +458,8 @@ pub struct CallExpr {
 // A StarExpr node represents an expression of the form "*" Expression.
 // Semantically it could be a unary "*" expression, or a pointer type.
 pub struct StarExpr {
-    star: Expr,
-    expr: Expr,
+    pub star: position::Pos,
+    pub expr: Expr,
 }
 
 // A UnaryExpr node represents a unary expression.
@@ -460,16 +488,16 @@ pub struct KeyValueExpr {
 
 // An ArrayType node represents an array or slice type.
 pub struct ArrayType {
-    l_brack: position::Pos,
-    len: Expr, // Ellipsis node for [...]T array types, nil for slice types
-    elt: Expr,
+    pub l_brack: position::Pos,
+    pub len: Option<Expr>, // Ellipsis node for [...]T array types, None for slice types
+    pub elt: Expr,
 }
 
 // A StructType node represents a struct type.
 pub struct StructType {
-    struct_pos: position::Pos,
-    fields: FieldListIndex,
-    incomplete: bool,
+    pub struct_pos: position::Pos,
+    pub fields: FieldList,
+    pub incomplete: bool,
 }
 
 // Pointer types are represented via StarExpr nodes.
@@ -477,21 +505,21 @@ pub struct StructType {
 // A FuncType node represents a function type.
 pub struct FuncType {
     func: Option<position::Pos>,
-    params: FieldListIndex,
-    results: Option<FieldListIndex>,
+    params: FieldList,
+    results: Option<FieldList>,
 }
 
 impl FuncType {
     fn pos(&self, arena: &Objects) -> position::Pos {
         match self.func {
             Some(p) => p,
-            None => arena.field_lists[self.params].pos(arena),
+            None => self.params.pos(arena),
         } 
     }
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self.results {
-            Some(r) => arena.field_lists[*r].end(arena),
-            None => arena.field_lists[self.params].end(arena),
+            Some(r) => (*r).end(arena),
+            None => self.params.end(arena),
         }
     }
 }
@@ -499,7 +527,7 @@ impl FuncType {
 // An InterfaceType node represents an interface type.
 pub struct InterfaceType {
     interface: position::Pos,
-    methods: FieldListIndex,
+    methods: FieldList,
     incomplete: bool, 
 }
 
@@ -570,7 +598,7 @@ pub struct GenDecl {
 
 // A FuncDecl node represents a function declaration.
 pub struct FuncDecl {
-    recv: Option<FieldListIndex>,
+    recv: Option<FieldList>,
     name: IndexExpr,
     typ: Box<FuncType>,
     body: Option<Box<BlockStmt>>,
@@ -713,15 +741,15 @@ pub struct RangeStmt {
 }
 
 pub struct Field {
-    names: Vec<Expr>,
-    typ: Expr,
-    tag: Option<Expr>,
+    pub names: Vec<IdentIndex>,
+    pub typ: Expr,
+    pub tag: Option<Expr>,
 }
 
 impl Node for Field {
     fn pos(&self, arena: &Objects) -> position::Pos {
         if self.names.len() > 0 {
-            self.names[0].pos(arena)
+            arena.idents[self.names[0]].pos
         } else {
             self.typ.pos(arena)
         }
@@ -735,9 +763,9 @@ impl Node for Field {
 }
 
 pub struct FieldList {
-    openning: Option<position::Pos>,
-    list: Vec<FieldIndex>,
-    closing: Option<position::Pos>,
+    pub openning: Option<position::Pos>,
+    pub list: Vec<FieldIndex>,
+    pub closing: Option<position::Pos>,
 }
 
 impl Node for FieldList {
