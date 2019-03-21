@@ -620,7 +620,7 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         // have to clone to fix ownership issue.
-        let field = new_field!(self, idents.clone(), Expr::clone_ident(&typ), tag);
+        let field = new_field!(self, idents.clone(), typ.clone_ident(), tag);
         self.declare(DeclObj::Field(field), EntityData::NoData,
             EntityKind::Var, &scope, &idents);
         self.resolve(&typ);
@@ -649,11 +649,7 @@ impl<'a> Parser<'a> {
         self.trace_end();
         Expr::Struct(Box::new(StructType{
             struct_pos: stru,
-            fields: FieldList{
-                openning: Some(lbrace),
-                list: list,
-                closing: Some(rbrace),
-            },
+            fields: FieldList::new(Some(lbrace), list, Some(rbrace)),
             incomplete: false,
         }))
     }
@@ -668,6 +664,7 @@ impl<'a> Parser<'a> {
         Expr::Star(Box::new(StarExpr{star: star, expr: base}))
     }
 
+    // If the result is an identifier, it is not resolved.
     fn try_var_type(&mut self, is_param: bool) -> Option<Expr> {
         if is_param {
             if let Token::ELLIPSIS = self.token {
@@ -699,6 +696,124 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_parameter_list(&mut self, scope: ScopeIndex,
+        ellipsis_ok: bool) -> Vec<FieldIndex> {
+        self.trace_begin("ParameterList");
+
+        // 1st ParameterDecl
+	    // A list of identifiers looks like a list of type names.
+        let mut list = vec![];
+        loop {
+            list.push(self.parse_var_type(ellipsis_ok));
+            if let Token::COMMA = &self.token {
+                break;
+            }
+            self.next();
+            if let Token::RPAREN = &self.token {
+                break;
+            }
+        }
+
+        let mut params = vec![];
+        let typ = self.try_var_type(ellipsis_ok);
+        if let Some(t) = typ {
+            // IdentifierList Type
+            let idents = self.make_ident_list(&mut list);
+            let field = new_field!(
+                self, idents.clone(), t.clone_ident(), None);
+            params.push(field);
+            // Go spec: The scope of an identifier denoting a function
+			// parameter or result variable is the function body.
+			self.declare(DeclObj::Field(field), EntityData::NoData,
+                EntityKind::Var, &scope, &idents);
+            self.resolve(&t);
+            if !self.at_comma("parameter list", &Token::RPAREN) {
+                self.trace_end();
+                return params;
+            }
+            self.next();
+            loop {
+                let idents = self.parse_ident_list();
+                let t = self.parse_var_type(ellipsis_ok);
+                let field = new_field!(
+                    self, idents.clone(), t.clone_ident(), None);
+                // warning: copy paste
+                params.push(field);
+                // Go spec: The scope of an identifier denoting a function
+                // parameter or result variable is the function body.
+                self.declare(DeclObj::Field(field), EntityData::NoData,
+                    EntityKind::Var, &scope, &idents);
+                self.resolve(&t);
+                if !self.at_comma("parameter list", &Token::RPAREN) {
+                    break;
+                }
+                self.next();
+            }
+        } else {
+            // Type { "," Type } (anonymous parameters)
+            for typ in list {
+                self.resolve(&typ);
+                params.push(new_field!(self, vec![], typ, None));
+            }
+        }
+        self.trace_end();
+        params
+    }
+
+    fn parse_parameters(&mut self, scope: ScopeIndex,
+        ellipsis_ok: bool) -> FieldList {
+        self.trace_begin("Parameters");
+
+        let mut params = vec![];
+        let lparen = Some(self.expect(&Token::LPAREN));
+        if self.token != Token::RPAREN {
+            params = self.parse_parameter_list(scope, ellipsis_ok);
+        }
+        let rparen = Some(self.expect(&Token::RPAREN));
+
+        self.trace_end();
+        FieldList::new(lparen, params, rparen)
+    }
+
+    fn parse_result(&mut self, scope: ScopeIndex) -> FieldList {
+        self.trace_begin("Result");
+
+        let ret = if self.token == Token::LPAREN {
+            self.parse_parameters(scope, false)
+        } else {
+            if let Some(t) = self.try_type() {
+                let field = new_field!(self, vec![], t, None);
+                FieldList::new(None, vec![field], None)
+            } else {
+                FieldList::new(None, vec![], None)
+            }
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn parse_signature(&mut self, scope: ScopeIndex) -> (FieldList, FieldList) {
+        self.trace_begin("Result");
+
+        let params = self.parse_parameters(scope, true);
+        let results = self.parse_result(scope);
+
+        self.trace_end();   
+        (params, results)
+    }
+
+    fn parse_func_type(&mut self) -> (Expr, ScopeIndex) {
+        self.trace_begin("FuncType");
+
+        let pos = self.expect(&Token::FUNC);
+        let scope = new_scope!(self, self.top_scope);
+        let (params, results) = self.parse_signature(scope);
+
+        self.trace_end();
+        (Expr::new_func_type(Some(pos), params, Some(results)), scope)
+    }
+    
     //todo
     fn try_ident_or_type(&mut self) -> Option<Expr> {
         None

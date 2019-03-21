@@ -107,8 +107,13 @@ impl Expr {
         }))
     }
 
-    pub fn clone_ident(ident: &Expr) -> Expr {
-        if let Expr::Ident(i) = ident 
+    pub fn new_func_type(func: Option<position::Pos>, params: FieldList,
+        results: Option<FieldList>) -> Expr {
+        Expr::Func(Box::new(FuncType{func: func, params: params, results: results}))
+    }
+
+    pub fn clone_ident(&self) -> Expr {
+        if let Expr::Ident(i) = self 
             {Expr::Ident(i.clone())} else {panic!("unreachable")}
     }
 }
@@ -766,6 +771,13 @@ pub struct FieldList {
     pub openning: Option<position::Pos>,
     pub list: Vec<FieldIndex>,
     pub closing: Option<position::Pos>,
+}
+
+impl FieldList {
+    pub fn new(openning: Option<position::Pos>, list: Vec<FieldIndex>,
+        closing: Option<position::Pos>) -> FieldList {
+            FieldList{openning: openning, list: list, closing: closing}
+        }
 }
 
 impl Node for FieldList {
