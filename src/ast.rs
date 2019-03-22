@@ -116,6 +116,14 @@ impl Expr {
         if let Expr::Ident(i) = self 
             {Expr::Ident(i.clone())} else {panic!("unreachable")}
     }
+
+    pub fn unwrap_ident(&self) -> &IdentIndex {
+        if let Expr::Ident(ident) = self {
+            ident 
+        } else {
+            panic!("unwrap_ident called on a non-ident Expr");
+        }
+    }
 }
 
 impl Node for Expr {
@@ -566,14 +574,14 @@ pub struct ImportSpec {
 // A ValueSpec node represents a constant or variable declaration
 // (ConstSpec or VarSpec production).
 pub struct ValueSpec {
-    names: Vec<IdentIndex>,
+    pub names: Vec<IdentIndex>,
     typ: Option<Expr>,
     values: Vec<Expr>, 
 }
 
 // A TypeSpec node represents a type declaration (TypeSpec production).
 pub struct TypeSpec {
-    name: IdentIndex,
+    pub name: IdentIndex,
     assign: position::Pos,
     typ: Expr,
 }
@@ -604,7 +612,7 @@ pub struct GenDecl {
 // A FuncDecl node represents a function declaration.
 pub struct FuncDecl {
     recv: Option<FieldList>,
-    name: IndexExpr,
+    pub name: IdentIndex,
     typ: Box<FuncType>,
     body: Option<Box<BlockStmt>>,
 }
@@ -621,7 +629,7 @@ pub struct EmptyStmt {
 
 // A LabeledStmt node represents a labeled statement.
 pub struct LabeledStmt {
-    label: IdentIndex,
+    pub label: IdentIndex,
     colon: position::Pos,
     stmt: StmtIndex,
 }

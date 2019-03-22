@@ -96,7 +96,29 @@ impl<'a> Parser<'a> {
     }
 
     fn declare(&mut self, decl: DeclObj, data: EntityData, kind: EntityKind,
-        scope_ind: &ScopeIndex, idents: &Vec<IdentIndex>) {
+        scope_ind: &ScopeIndex) {
+        let mut names: Vec<IdentIndex> = vec![];
+        let idents = match decl {
+            DeclObj::Field(id) => &(field!(self, id).names),
+            DeclObj::Spec(id) => { 
+                match spec!(self, id) {
+                    Spec::Value(vs) => &vs.names,
+                    Spec::Type(ts) => {names.push(ts.name); &names},
+                    Spec::Import(_) => &names,
+                }},
+            DeclObj::Decl(id) => { 
+                match decl!(self, id) {
+                    Decl::Func(f) => {names.push(f.name); &names},
+                    _ => &names,
+                }}, 
+            DeclObj::Stmt(id) => {
+                let stmt = stmt!(self, id);
+                match stmt {
+                    Stmt::Labeled(l) => {names.push(l.label); &names},
+                    _ => &names,
+                }},
+            DeclObj::NoDecl => &names,
+        };
         for id in idents.iter() {
             let mut_ident = ident_mut!(self, *id);
             let entity = new_entity!(self, kind.clone(), 
@@ -620,9 +642,9 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         // have to clone to fix ownership issue.
-        let field = new_field!(self, idents.clone(), typ.clone_ident(), tag);
+        let field = new_field!(self, idents, typ.clone_ident(), tag);
         self.declare(DeclObj::Field(field), EntityData::NoData,
-            EntityKind::Var, &scope, &idents);
+            EntityKind::Var, &scope);
         self.resolve(&typ);
 
         self.trace_end();
@@ -719,13 +741,12 @@ impl<'a> Parser<'a> {
         if let Some(t) = typ {
             // IdentifierList Type
             let idents = self.make_ident_list(&mut list);
-            let field = new_field!(
-                self, idents.clone(), t.clone_ident(), None);
+            let field = new_field!(self, idents, t.clone_ident(), None);
             params.push(field);
             // Go spec: The scope of an identifier denoting a function
 			// parameter or result variable is the function body.
 			self.declare(DeclObj::Field(field), EntityData::NoData,
-                EntityKind::Var, &scope, &idents);
+                EntityKind::Var, &scope);
             self.resolve(&t);
             if !self.at_comma("parameter list", &Token::RPAREN) {
                 self.trace_end();
@@ -735,14 +756,13 @@ impl<'a> Parser<'a> {
             loop {
                 let idents = self.parse_ident_list();
                 let t = self.parse_var_type(ellipsis_ok);
-                let field = new_field!(
-                    self, idents.clone(), t.clone_ident(), None);
+                let field = new_field!(self, idents, t.clone_ident(), None);
                 // warning: copy paste
                 params.push(field);
                 // Go spec: The scope of an identifier denoting a function
                 // parameter or result variable is the function body.
                 self.declare(DeclObj::Field(field), EntityData::NoData,
-                    EntityKind::Var, &scope, &idents);
+                    EntityKind::Var, &scope);
                 self.resolve(&t);
                 if !self.at_comma("parameter list", &Token::RPAREN) {
                     break;
@@ -813,7 +833,31 @@ impl<'a> Parser<'a> {
         self.trace_end();
         (Expr::new_func_type(Some(pos), params, Some(results)), scope)
     }
-    
+
+    // method spec in interface
+    fn parse_method_spec(&mut self, scope: ScopeIndex) -> FieldIndex {
+        self.trace_begin("MethodSpec");
+
+        let mut idents = vec![];
+        let mut typ = self.parse_type_name();
+        let ident = typ.unwrap_ident().clone();
+        if let Token::LPAREN = self.token {
+            idents = vec![ident];
+            let scope = new_scope!(self, self.top_scope);
+            let (params, results) = self.parse_signature(scope);
+            typ = Expr::new_func_type(None, params, Some(results))
+        } else {
+            // embedded interface
+            self.resolve(&typ);
+        }
+        self.expect_semi();
+        let field = new_field!(self, idents, typ, None);
+        self.declare(DeclObj::Field(field), EntityData::NoData, EntityKind::Fun, &scope);
+
+        self.trace_end();
+        field
+    }
+
     //todo
     fn try_ident_or_type(&mut self) -> Option<Expr> {
         None

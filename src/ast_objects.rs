@@ -56,6 +56,11 @@ macro_rules! specs_mut {($self:ident) => {&mut $self.objects.specs};}
 macro_rules! spec {($self:ident, $idx:expr) => {&$self.objects.specs[$idx]};}
 macro_rules! spec_mut {($self:ident, $idx:expr) => {&mut $self.objects.specs[$idx]};}
 
+macro_rules! decls {($self:ident) => {&$self.objects.decls};}
+macro_rules! decls_mut {($self:ident) => {&mut $self.objects.decls};}
+macro_rules! decl {($self:ident, $idx:expr) => {&$self.objects.decls[$idx]};}
+macro_rules! decl_mut {($self:ident, $idx:expr) => {&mut $self.objects.decls[$idx]};}
+
 macro_rules! entities {($self:ident) => {&$self.objects.entities};}
 macro_rules! entities_mut {($self:ident) => {&mut $self.objects.entities};}
 macro_rules! entity {($self:ident, $idx:expr) => {&$self.objects.entities[$idx]};}

@@ -36,7 +36,6 @@ pub enum DeclObj {
     Spec(SpecIndex),
     Decl(DeclIndex),
     Stmt(StmtIndex),
-    Scope(ScopeIndex),
     NoDecl,
 }
 
@@ -71,7 +70,6 @@ impl Entity{
             DeclObj::Spec(i) => arena.specs[*i].pos(arena),
             DeclObj::Decl(i) => arena.decls[*i].pos(arena),
             DeclObj::Stmt(i) => arena.stmts[*i].pos(arena),
-            DeclObj::Scope(_) => 0,
             DeclObj::NoDecl => 0,
         }
     }
