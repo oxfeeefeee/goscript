@@ -106,17 +106,19 @@ impl<'a> Parser<'a> {
                     Spec::Type(ts) => {names.push(ts.name); &names},
                     Spec::Import(_) => &names,
                 }},
-            DeclObj::Decl(id) => { 
-                match decl!(self, id) {
-                    Decl::Func(f) => {names.push(f.name); &names},
-                    _ => &names,
-                }}, 
-            DeclObj::Stmt(id) => {
-                let stmt = stmt!(self, id);
-                match stmt {
-                    Stmt::Labeled(l) => {names.push(l.label); &names},
-                    _ => &names,
-                }},
+            DeclObj::FuncDecl(i) => {
+                let func_decl = fn_decl!(self, i);
+                names.push(func_decl.name);
+                &names
+            }
+            DeclObj::LabeledStmt(i) => {
+                let lab_stmt = lab_stmt!(self, i);
+                names.push(lab_stmt.label);
+                &names
+            }
+            DeclObj::AssignStmt(_) => {
+              panic!("unreachable");
+            }
             DeclObj::NoDecl => &names,
         };
         for id in idents.iter() {
@@ -143,7 +145,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn short_var_decl(&mut self, assign_stmt: StmtIndex, list: Vec<Expr>) {
+    fn short_var_decl(&mut self, stmt: AssignStmtIndex, list: Vec<Expr>) {
         // Go spec: A short variable declaration may redeclare variables
         // provided they were originally declared in the same block with
         // the same type, and at least one of the non-blank variables is new.
@@ -153,7 +155,7 @@ impl<'a> Parser<'a> {
                 Expr::Ident(id) => {
                     let ident = ident_mut!(self, *id.as_ref());
                     let entity = new_entity!(self, EntityKind::Var, 
-                        ident.name.clone(), DeclObj::Stmt(assign_stmt),
+                        ident.name.clone(), DeclObj::AssignStmt(stmt),
                         EntityData::NoData);
                     ident.entity = IdentEntity::Entity(entity);
                     if ident.name != "_" {
@@ -332,7 +334,7 @@ impl<'a> Parser<'a> {
                     self.next();
                 }
                 self.error_expected(self.pos, "';'");
-                self.sync_stmt();
+                self.advance(Token::is_stmt_start);
             }
         }
     }
@@ -353,65 +355,36 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // syncStmt advances to the next statement.
-    // Used for synchronization after an error.
-    fn sync_stmt(&mut self) {
+    // advance consumes tokens until the current token p.tok
+    // is in the 'to' set, or token.EOF. For error recovery.
+    fn advance(&mut self, to: fn(&Token) -> bool) {
         loop {
-            match self.token {
-                Token::BREAK | Token::CONST | Token::CONTINUE | Token::DEFER |
-			    Token::FALLTHROUGH | Token::FOR | Token::GO | Token::GOTO | 
-			    Token::IF | Token::RETURN | Token::SELECT | Token::SWITCH |
-			    Token::TYPE | Token::VAR => {
-                    // Return only if parser made some progress since last
-                    // sync or if it has not reached 10 sync calls without
-                    // progress. Otherwise consume at least one token to
-                    // avoid an endless parser loop (it is possible that
-                    // both parseOperand and parseStmt call syncStmt and
-                    // correctly do not advance, thus the need for the
-                    // invocation limit p.syncCnt).
-                    if self.pos == self.sync_pos && self.sync_count < 10 {
-                        self.sync_count += 1;
-                        return;
-                    }
-                    if self.pos > self.sync_pos {
-                        self.sync_pos = self.pos;
-                        self.sync_count = 0;
-                        return;
-                    }
-                },
+            if self.token == Token::EOF {
+                break;
+            }
+            if to(&self.token) {
+                // Return only if parser made some progress since last
+                // sync or if it has not reached 10 advance calls without
+                // progress. Otherwise consume at least one token to
+                // avoid an endless parser loop (it is possible that
+                // both parseOperand and parseStmt call advance and
+                // correctly do not advance, thus the need for the
+                // invocation limit p.syncCnt).
+                if self.pos == self.sync_pos && self.sync_count < 10 {
+                    self.sync_count += 1;
+                    break;
+                }
+                if self.pos > self.sync_pos {
+                    self.sync_pos = self.pos;
+                    self.sync_count = 0;
+                    break;
+                }
                 // Reaching here indicates a parser bug, likely an
                 // incorrect token list in this function, but it only
                 // leads to skipping of possibly correct code if a
                 // previous error is present, and thus is preferred
                 // over a non-terminating parse.
-                Token::EOF => { return; },
-                _ => {},
             }
-            self.next();
-        }
-    }
-
-    // syncDecl advances to the next declaration.
-    // Used for synchronization after an error.
-    fn sync_decl(&mut self) {
-        loop {
-            match self.token {
-                Token::CONST | Token::TYPE | Token::VAR => {
-                    // same as sync_stmt
-                    if self.pos == self.sync_pos && self.sync_count < 10 {
-                        self.sync_count += 1;
-                        return;
-                    }
-                    if self.pos > self.sync_pos {
-                        self.sync_pos = self.pos;
-                        self.sync_count = 0;
-                        return;
-                    }
-                }
-                Token::EOF => { return; },
-                _ => {},
-            }
-            self.next();
         }
     }
 
@@ -632,9 +605,9 @@ impl<'a> Parser<'a> {
 
         // Tag
         let token = self.token.clone();
-        let tag = if let Token::STRING(s) = token {
+        let tag = if let Token::STRING(_) = token {
             self.next();
-            Some(Expr::new_basic_lit(self.pos, self.token.clone(), s.clone()))
+            Some(Expr::new_basic_lit(self.pos, self.token.clone()))
         } else {
             None
         };
@@ -823,7 +796,7 @@ impl<'a> Parser<'a> {
         (params, results)
     }
 
-    fn parse_func_type(&mut self) -> (Expr, ScopeIndex) {
+    fn parse_func_type(&mut self) -> (FuncType, ScopeIndex) {
         self.trace_begin("FuncType");
 
         let pos = self.expect(&Token::FUNC);
@@ -831,7 +804,7 @@ impl<'a> Parser<'a> {
         let (params, results) = self.parse_signature(scope);
 
         self.trace_end();
-        (Expr::new_func_type(Some(pos), params, Some(results)), scope)
+        (FuncType::new(Some(pos), params, Some(results)), scope)
     }
 
     // method spec in interface
@@ -845,7 +818,7 @@ impl<'a> Parser<'a> {
             idents = vec![ident];
             let scope = new_scope!(self, self.top_scope);
             let (params, results) = self.parse_signature(scope);
-            typ = Expr::new_func_type(None, params, Some(results))
+            typ = Expr::box_func_type(FuncType::new(None, params, Some(results)));
         } else {
             // embedded interface
             self.resolve(&typ);
@@ -858,9 +831,99 @@ impl<'a> Parser<'a> {
         field
     }
 
-    //todo
+    fn parse_interface_type(&mut self) -> InterfaceType {
+        self.trace_begin("InterfaceType");
+
+        let pos = self.expect(&Token::INTERFACE);
+        let lbrace = self.expect(&Token::LBRACE);
+        let scope = new_scope!(self, None);
+        let mut list = vec![];
+        loop {
+            if let Token::IDENT(_) = self.token {} else {break;}
+            list.push(self.parse_method_spec(scope));
+        }
+        let rbrace = self.expect(&Token::RBRACE);
+
+        self.trace_end();
+        InterfaceType{
+            interface: pos,
+            methods: FieldList{
+                openning: Some(lbrace),
+                list: list,
+                closing: Some(rbrace),
+            },
+            incomplete: false,
+        }
+    }
+
+    fn parse_map_type(&mut self) -> MapType {
+        self.trace_begin("MapType");
+
+        let pos = self.expect(&Token::MAP);
+        self.expect(&Token::LBRACK);
+        let key = self.parse_type();
+        self.expect(&Token::RBRACK);
+        let val = self.parse_type();
+
+        self.trace_end();
+        MapType{map: pos, key: key, val: val}
+    }
+
+    fn parse_chan_type(&mut self) -> ChanType {
+        self.trace_begin("ChanType");
+
+        let pos = self.pos;
+        let arrow_pos: position::Pos;
+        let dir: ChanDir;
+        if let Token::CHAN = self.token {
+            self.next();
+            if let Token::ARROW = self.token {
+                arrow_pos = self.pos;
+                self.next();
+                dir = ChanDir::SendTo;
+            } else {
+                arrow_pos = 0;
+                dir = ChanDir::SendRecv;
+            }
+        } else {
+            arrow_pos = self.expect(&Token::ARROW);
+            self.expect(&Token::CHAN);
+            dir = ChanDir::RecvFrom;
+        }
+        let val = self.parse_type();
+
+        self.trace_end();
+        ChanType{begin: pos, arrow: arrow_pos, dir: dir, val: val}
+    }
+
+    // Returns a ident or a type
+    // If the result is an identifier, it is not resolved.
     fn try_ident_or_type(&mut self) -> Option<Expr> {
-        None
+        match self.token {
+            Token::IDENT(_) => Some(self.parse_type_name()),
+            Token::LBRACK => Some(self.parse_array_type()),
+            Token::STRUCT => Some(self.parse_struct_type()),
+            Token::MUL => Some(self.parse_pointer_type()),
+            Token::FUNC => {
+                let (typ, _) = self.parse_func_type();
+                Some(Expr::box_func_type(typ))
+            },
+            Token::INTERFACE => Some(Expr::Interface(Box::new(
+                self.parse_interface_type()))),
+            Token::MAP => Some(Expr::Map(Box::new(
+                self.parse_map_type()))),
+            Token::CHAN | Token::ARROW => Some(Expr::Chan(Box::new(
+                self.parse_chan_type()))),
+            Token::LPAREN => {
+                let lparen = self.pos;
+                self.next();
+                let typ = self.parse_type();
+                let rparen = self.expect(&Token::RPAREN);
+                Some(Expr::Paren(Box::new(ParenExpr{
+                    l_paren: lparen, expr: typ, r_paren: rparen})))
+            }
+            _ => None
+        }
     }
 
     fn try_type(&mut self) -> Option<Expr> {
@@ -873,7 +936,124 @@ impl<'a> Parser<'a> {
     }
 
     // ----------------------------------------------------------------------------
+    // Blocks
+
+    fn parse_stmt_list(&mut self) -> Vec<Stmt> {
+        self.trace_begin("Body");
+
+        let mut list = vec![];
+        loop {
+            match self.token {
+                Token::CASE | Token::DEFAULT | Token::RBRACE |
+                Token::EOF => {break;},
+                _ => {},
+            };
+            list.push(self.parse_stmt());
+        }
+
+        self.trace_end();  
+        list    
+    }
+    
+    fn parse_body(&mut self, scope: ScopeIndex) -> BlockStmt {
+        self.trace_begin("Body");
+
+        let lbrace = self.expect(&Token::LBRACE);
+        self.top_scope = Some(scope); // open function scope
+        self.open_label_scope();
+        let list = self.parse_stmt_list();
+        self.close_label_scope();
+        self.close_scope();
+        let rbrace = self.expect(&Token::RBRACE);
+
+        self.trace_end();
+        BlockStmt::new(lbrace, list, rbrace)
+    }
+
+    fn parse_block_stmt(&mut self) -> Stmt {
+        self.trace_begin("BlockStmt");
+
+        let lbrace = self.expect(&Token::LBRACE);
+        self.open_scope();
+        let list = self.parse_stmt_list();
+        self.close_scope();
+        let rbrace = self.expect(&Token::RBRACE);
+
+        self.trace_end();
+        Stmt::box_block(BlockStmt::new(lbrace, list, rbrace))
+    }
+    
+    // ----------------------------------------------------------------------------
     // Expressions
+
+    fn parse_func_type_or_lit(&mut self) -> Expr {
+        self.trace_begin("BlockStmt");
+
+        let (typ, scope) = self.parse_func_type();
+        let ret = if self.token != Token::LBRACE {
+            Expr::box_func_type(typ)
+        } else {
+            self.expr_level += 1;
+            let body = self.parse_body(scope);
+            self.expr_level -= 1;
+            Expr::FuncLit(Box::new(FuncLit{typ: typ, body: body}))
+        }; 
+ 
+        self.trace_end(); 
+        ret
+    }
+
+    // parseOperand may return an expression or a raw type (incl. array
+    // types of the form [...]T. Callers must verify the result.
+    // If lhs is set and the result is an identifier, it is not resolved.
+    fn parse_operand(&mut self, lhs: bool) -> Expr {
+        self.trace_begin("Operand");
+
+        let ret = match self.token {
+            Token::IDENT(_) => {
+                let x = Expr::Ident(Box::new(self.parse_ident()));
+                if !lhs {self.resolve(&x);}
+                x
+            },
+            Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
+            Token::CHAR(_) | Token::STRING(_) => {
+                let x = Expr::new_basic_lit(self.pos, self.token.clone());
+                self.next();
+                x
+            },
+            Token::LPAREN => {
+                let lparen = self.pos;
+                self.next();
+                self.expr_level += 1;
+                // types may be parenthesized: (some type)
+                let x = self.parse_rhs_or_type(); 
+                self.expr_level -= 1;
+                let rparen = self.expect(&Token::RPAREN);
+                Expr::Paren(Box::new(ParenExpr{
+                    l_paren: lparen, expr: x, r_paren: rparen}))
+            },
+            Token::FUNC => self.parse_func_type_or_lit(),
+            _ => {
+                if let Some(typ) = self.try_ident_or_type() {
+                    if let Expr::Ident(_) = typ {
+                        // unreachable but would work, so don't panic
+                        assert!(false, "should only get idents here");
+                    }
+                    typ
+                } else {
+                    let pos = self.pos;
+                    self.error_expected(pos, "operand");
+                    self.advance(Token::is_stmt_start);
+                    Expr::new_bad(pos, self.pos)
+                }
+            }
+        };
+
+        self.trace_end();
+        ret
+    }
+
+
 
     // checkExpr checks that x is an expression (and not a type).
     fn check_expr(&self, x: Expr) -> Expr {
@@ -933,6 +1113,29 @@ impl<'a> Parser<'a> {
         if let Expr::Star(s) = x {&s.expr} else {x}
     }
 
+    fn unparen(x: &Expr) -> &Expr {
+        if let Expr::Paren(p) = x {Parser::unparen(&p.expr)} else {x}
+    }
+
+    // checkExprOrType checks that x is an expression or a type
+    // (and not a raw type such as [...]T).
+    fn check_expr_or_type(&self, x: Expr) -> Expr {
+        let unparenx = Parser::unparen(&x);
+        match unparenx {
+            Expr::Paren(_) => {panic!("unreachable")},
+            Expr::Array(array) => {
+                if let Some(ellipsis) = &array.len {
+                    self.error(ellipsis.pos(&self.objects), 
+                        "expected array length, found '...'".to_string());
+			        return Expr::new_bad(unparenx.pos(&self.objects),
+                        self.safe_pos(unparenx.end(&self.objects))); 
+                }
+            },
+            _ => {},
+        }
+        return x;
+    }
+
     // todo
     fn parse_expr(&mut self, _lhs: bool) -> Expr {
         Expr::new_bad(0, 0)
@@ -947,6 +1150,22 @@ impl<'a> Parser<'a> {
         x1
     }
 
+    fn parse_rhs_or_type(&mut self) -> Expr {
+        let bak = self.in_rhs;
+        self.in_rhs = true;
+        let mut x = self.parse_expr(false);
+        x = self.check_expr_or_type(x);
+        self.in_rhs = bak;
+        x
+    }
+
+    // ----------------------------------------------------------------------------
+    // Statements
+    
+    // todo
+    fn parse_stmt(&mut self) -> Stmt {
+        Stmt::new_bad(0, 0)
+    }
     
     fn parse(&mut self) {
         self.trace_begin("begin");

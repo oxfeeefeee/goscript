@@ -2,7 +2,7 @@ use std::fmt;
 use std::collections::HashMap;
 use generational_arena::Arena;
 use super::ast_objects::*;
-use super::ast::Node;
+use super::ast::{Node};
 use super::position;
 
 #[derive(Debug, Clone)]
@@ -34,8 +34,9 @@ impl EntityKind {
 pub enum DeclObj {
     Field(FieldIndex),
     Spec(SpecIndex),
-    Decl(DeclIndex),
-    Stmt(StmtIndex),
+    FuncDecl(FuncDeclIndex),
+    LabeledStmt(LabeledStmtIndex),
+    AssignStmt(AssignStmtIndex),
     NoDecl,
 }
 
@@ -68,8 +69,9 @@ impl Entity{
         match &self.decl {
             DeclObj::Field(i) => arena.fields[*i].pos(arena),
             DeclObj::Spec(i) => arena.specs[*i].pos(arena),
-            DeclObj::Decl(i) => arena.decls[*i].pos(arena),
-            DeclObj::Stmt(i) => arena.stmts[*i].pos(arena),
+            DeclObj::FuncDecl(i) => arena.specs[*i].pos(arena),
+            DeclObj::LabeledStmt(i) => arena.specs[*i].pos(arena),
+            DeclObj::AssignStmt(i) => arena.specs[*i].pos(arena),
             DeclObj::NoDecl => 0,
         }
     }

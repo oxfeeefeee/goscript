@@ -255,6 +255,59 @@ impl Token {
 			_ => false,
 		}
 	}
+
+	pub fn get_literal(&self) -> &str {
+		match self {
+			Token::INT(l) => l,
+			Token::FLOAT(l) => l,
+			Token::IMAG(l) => l,
+			Token::CHAR(l) => l,
+			Token::STRING(l) => l,
+			_ => "",
+		}
+	}
+
+	pub fn is_stmt_start(&self) -> bool {
+		match self {
+			Token::BREAK => true,
+			Token::CONST => true,
+			Token::CONTINUE => true,
+			Token::DEFER => true,
+			Token::FALLTHROUGH => true,
+			Token::FOR => true,
+			Token::GO => true,
+			Token::GOTO => true,
+			Token::IF => true,
+			Token::RETURN => true,
+			Token::SELECT => true,
+			Token::SWITCH => true,
+			Token::TYPE => true,
+			Token::VAR => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_decl_start(&self) -> bool {
+		match self {
+			Token::CONST => true,
+			Token::TYPE => true,
+			Token::VAR => true,
+			_ => false,
+		}
+	}
+
+	pub fn is_expr_end(&self) -> bool {
+		match self {
+			Token::COMMA => true,
+			Token::COLON => true,
+			Token::SEMICOLON(_) => true,
+			Token::RPAREN => true,
+			Token::RBRACK => true,
+			Token::RBRACE => true,
+			_ => false,
+		}
+	}
+
 }
 
 impl fmt::Display for Token {
