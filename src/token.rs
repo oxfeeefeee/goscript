@@ -1,6 +1,10 @@
 #![allow(non_camel_case_types)]
 use std::fmt;
 
+pub const LOWEST_PREC: usize = 0; // non-operators
+pub const UNARY_PREC: usize = 6;
+pub const HIGHEST_PREC: usize = 7;
+
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Token {
 	// Special tokens
@@ -230,7 +234,20 @@ impl Token {
 		}
 	}
 
-	pub fn token_text(&self) -> &str {
+	pub fn precedence(&self) -> usize {
+		match self {
+			Token::LOR => 1,
+			Token::LAND => 2,
+			Token::EQL | Token::NEQ | Token::LSS |
+			Token::LEQ | Token::GTR | Token::GEQ => 3,
+			Token::ADD | Token::SUB | Token::OR | Token::XOR => 4,
+			Token::MUL | Token::QUO | Token::REM | Token::SHL |
+			Token::SHR | Token::AND | Token::AND_NOT => 5,
+			_ => LOWEST_PREC,
+		}
+	}
+
+	pub fn text(&self) -> &str {
 		let (_, t) = self.token_property();
 		t
 	}
@@ -312,7 +329,7 @@ impl Token {
 
 impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		let text = self.token_text();
+		let text = self.text();
 		match self {
 			Token::IDENT(l) => write!(f, "{} {}", text, l),
 			Token::INT(l) => write!(f, "{} {}", text, l),

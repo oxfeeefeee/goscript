@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::cell::{RefCell};
 use std::collections::HashMap;
 use super::position;
-use super::token::Token;
+use super::token::{Token, LOWEST_PREC};
 use super::scanner;
 use super::errors;
 use super::scope::*;
@@ -86,7 +86,7 @@ impl<'a> Parser<'a> {
                     let ident = ident!(self, i);
                     if scope.look_up(&ident.name).is_none() {
                         let s = format!("label {} undefined", ident.name);
-                        self.error(self.pos, s);
+                        self.error_string(self.pos, s);
                     }
                 }
             }
@@ -137,7 +137,7 @@ impl<'a> Parser<'a> {
                             "{} redeclared in this block\n\tprevious declaration at {}",
                             ident.name, 
                             self.file().position(p))).unwrap();
-                        self.error(ident.pos, buf);
+                        self.error_string(ident.pos, buf);
                     },
                     _ => {},
                 }
@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
         }
         if n == 0 {
             self.error(list[0].pos(&self.objects), 
-                "no new variables on left side of :=".to_string())
+                "no new variables on left side of :=")
         }
     }
 
@@ -278,9 +278,13 @@ impl<'a> Parser<'a> {
         self.pos = self.scanner.pos();
     }
 
-    fn error(&self, pos: position::Pos, msg: String) {
+    fn error(&self, pos: position::Pos, s: &str) {
+        self.error_string(pos, s.to_string());
+    }
+
+    fn error_string(&self, pos: position::Pos, msg: String) {
         let p = self.file().position(pos);
-        self.errors.borrow_mut().add(p, msg)
+        self.errors.borrow_mut().add(p, msg);
     }
 
     fn error_expected(&self, pos: position::Pos, msg: &str) {
@@ -293,11 +297,11 @@ impl<'a> Parser<'a> {
                 },
                 _ => {
                     mstr.push_str(", found ");
-                    mstr.push_str(self.token.token_text());
+                    mstr.push_str(self.token.text());
                 }
             }
         }
-        self.error(pos, mstr);
+        self.error_string(pos, mstr);
     }
 
     fn expect(&mut self, token: &Token) -> position::Pos {
@@ -315,7 +319,7 @@ impl<'a> Parser<'a> {
         if let Token::SEMICOLON(real) = token {
             if !real {
                 let msg = format!("missing ',' before newline in {}", context);
-                self.error(self.pos, msg);
+                self.error_string(self.pos, msg);
                 self.next();
             }
         }
@@ -348,7 +352,7 @@ impl<'a> Parser<'a> {
                 if !real {msg.push_str(" before newline");}
             }
             msg = format!("{} in {}", msg, context);
-            self.error(self.pos, msg);
+            self.error_string(self.pos, msg);
             true
         } else {
             false
@@ -358,10 +362,7 @@ impl<'a> Parser<'a> {
     // advance consumes tokens until the current token p.tok
     // is in the 'to' set, or token.EOF. For error recovery.
     fn advance(&mut self, to: fn(&Token) -> bool) {
-        loop {
-            if self.token == Token::EOF {
-                break;
-            }
+        while self.token != Token::EOF {
             if to(&self.token) {
                 // Return only if parser made some progress since last
                 // sync or if it has not reached 10 advance calls without
@@ -670,7 +671,7 @@ impl<'a> Parser<'a> {
                     t
                     
                 } else {
-                    self.error(pos, "'...' parameter is missing type".to_string());
+                    self.error(pos, "'...' parameter is missing type");
                     Expr::new_bad(pos, self.pos)
                 };
                 return Some(Expr::new_ellipsis(pos, Some(typ)));
@@ -880,7 +881,7 @@ impl<'a> Parser<'a> {
             if let Token::ARROW = self.token {
                 arrow_pos = self.pos;
                 self.next();
-                dir = ChanDir::SendTo;
+                dir = ChanDir::Send;
             } else {
                 arrow_pos = 0;
                 dir = ChanDir::SendRecv;
@@ -888,7 +889,7 @@ impl<'a> Parser<'a> {
         } else {
             arrow_pos = self.expect(&Token::ARROW);
             self.expect(&Token::CHAN);
-            dir = ChanDir::RecvFrom;
+            dir = ChanDir::Recv;
         }
         let val = self.parse_type();
 
@@ -1053,7 +1054,211 @@ impl<'a> Parser<'a> {
         ret
     }
 
+    fn parse_selector(&mut self, x: Expr) -> Expr {
+        self.trace_begin("Selector");
+        let sel = self.parse_ident();
+        self.trace_end();
+        Expr::Selector(Box::new(SelectorExpr{
+            expr: x, sel: sel}))
+    }
 
+    fn parse_type_assertion(&mut self, x: Expr) -> Expr {
+        self.trace_begin("TypeAssertion");
+
+        let lparen = self.expect(&Token::LPAREN);
+        let typ = if self.token == Token::TYPE {
+            // type switch: typ == nil, i.e.: x.(type)
+            self.next();
+            None
+        } else {
+            Some(self.parse_type())
+        };
+        let rparen = self.expect(&Token::RPAREN);
+        
+        self.trace_end();
+        Expr::TypeAssert(Box::new(TypeAssertExpr{
+            expr: x, l_paren: lparen, typ: typ, r_paren: rparen}))
+    }
+
+    fn parse_index_or_slice(&mut self, x: Expr) -> Expr {
+        self.trace_begin("IndexOrSlice");
+
+        const N: usize = 3; // change the 3 to 2 to disable 3-index slices
+        let lbrack = self.expect(&Token::LBRACK);
+        self.expr_level += 1;
+        let mut indices = vec![None, None, None];
+        let mut colons = vec![0, 0, 0];
+        let mut ncolons = 0;
+        if self.token != Token::COLON {
+            indices[0] = Some(self.parse_rhs());
+        }
+        while self.token == Token::COLON && ncolons < N  {
+            colons[ncolons] = self.pos;
+            ncolons += 1;
+            self.next();
+            match self.token {
+                Token::COLON | Token::RBRACE | Token::EOF => {},
+                _ => {indices[ncolons] = Some(self.parse_rhs())},
+            }
+        }
+        self.expr_level -= 1;
+        let rbrack = self.expect(&Token::RBRACK);
+        let ret = if ncolons > 0 {
+            let slice3 = ncolons == 2;
+            if slice3 { // 3-index slices
+                if indices[1].is_none() {
+                    self.error(colons[0], "2nd index required in 3-index slice");
+                    indices[1] = Some(Expr::new_bad(colons[0] + 1, colons[1]))
+                }
+                if indices[2].is_none() {
+                    self.error(colons[1], "3rd index required in 3-index slice");
+                    indices[2] = Some(Expr::new_bad(colons[1] + 1, colons[2]))
+                }
+            }
+            let mut iter = indices.into_iter();
+            Expr::Slice(Box::new(SliceExpr{
+                expr: x,
+                l_brack: lbrack,
+                low: iter.next().unwrap(), // unwrap the first of two Option
+                high: iter.next().unwrap(),
+                max: iter.next().unwrap(),
+                slice3: slice3,
+                r_brack: rbrack,
+            }))
+        } else {
+            // the logic here differs from the original go code
+            if indices[0].is_none() {
+                self.error(lbrack, "expression for index value required");
+                indices[0] = Some(Expr::new_bad(lbrack + 1, rbrack));
+            }
+            let index = indices.into_iter().nth(0).unwrap().unwrap();
+            Expr::Index(Box::new(IndexExpr{
+                expr: x, l_brack: lbrack, index: index, r_brack: rbrack}))
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn parse_call_or_conversion(&mut self, func: Expr) -> Expr {
+        self.trace_begin("CallOrConversion");
+
+        let lparen = self.expect(&Token::LPAREN);
+        self.expr_level += 1;
+        let mut list = vec![];
+        let mut ellipsis: Option<position::Pos> = None;
+        while self.token != Token::RPAREN && self.token != Token::EOF && 
+            ellipsis.is_some() {
+            //// builtins may expect a type: make(some_type)
+            list.push(self.parse_rhs_or_type());
+            if self.token == Token::ELLIPSIS {
+                ellipsis = Some(self.pos);
+                self.next();
+            }
+            if !self.at_comma("argument list", &Token::RPAREN) {
+                break;
+            }
+            self.next();
+        }
+        self.expr_level -= 1;
+        let rparen = self.expect_closing(&Token::RPAREN, "argument list");
+
+        self.trace_end();
+        Expr::Call(Box::new(CallExpr{
+            func: func, l_paren: lparen, args: list, ellipsis: ellipsis, r_paren: rparen}))
+    }
+
+    fn parse_value(&mut self, key_ok: bool) -> Expr {
+        self.trace_begin("Value");
+
+        let ret = if self.token == Token::LBRACE {
+            self.parse_literal_value(None)
+        } else {
+            // Because the parser doesn't know the composite literal type, it cannot
+            // know if a key that's an identifier is a struct field name or a name
+            // denoting a value. The former is not resolved by the parser or the
+            // resolver.
+            //
+            // Instead, _try_ to resolve such a key if possible. If it resolves,
+            // it a) has correctly resolved, or b) incorrectly resolved because
+            // the key is a struct field with a name matching another identifier.
+            // In the former case we are done, and in the latter case we don't
+            // care because the type checker will do a separate field lookup.
+            //
+            // If the key does not resolve, it a) must be defined at the top
+            // level in another file of the same package, the universe scope, or be
+            // undeclared; or b) it is a struct field. In the former case, the type
+            // checker can do a top-level lookup, and in the latter case it will do
+            // a separate field lookup.
+            let x0 = self.parse_expr(key_ok);
+            let x = self.check_expr(x0);
+            if key_ok {
+                if self.token == Token::COLON {
+                    // Try to resolve the key but don't collect it
+                    // as unresolved identifier if it fails so that
+                    // we don't get (possibly false) errors about
+                    // undeclared names.
+                    self.try_resolve(&x, false)
+                } else {
+                    // not a key
+                    self.resolve(&x)
+                }
+            }
+            x
+        };
+
+        self.trace_end();  
+        ret
+    }
+
+    fn parse_element(&mut self) -> Expr {
+        self.trace_begin("Element");
+
+        let x = self.parse_value(true);
+        let ret = if self.token == Token::COLON {
+            let colon = self.pos;
+            self.next();
+            Expr::KeyValue(Box::new(KeyValueExpr{
+                key: x, colon: colon, val: self.parse_value(false) }))
+        } else {
+            x
+        };
+
+        self.trace_end(); 
+        ret
+    }
+
+    fn parse_element_list(&mut self) -> Vec<Expr> {
+        self.trace_begin("ElementList");
+
+        let mut list = vec![];
+        while self.token != Token::RBRACE && self.token != Token::EOF {
+            list.push(self.parse_element());
+            if !self.at_comma("composite literal", &Token::RBRACE) {
+                break;
+            }
+            self.next();
+        }
+
+        self.trace_end();
+        list
+    }
+
+    fn parse_literal_value(&mut self, typ: Option<Expr>) -> Expr {
+        self.trace_begin("LiteralValue");
+
+        let lbrace = self.expect(&Token::LBRACE);
+        self.expr_level += 1;
+        let elts = if self.token != Token::RBRACE {
+            self.parse_element_list()
+        } else {vec![]};
+        self.expr_level -= 1;
+        let rbrace = self.expect_closing(&Token::RBRACE, "composite literal");
+
+        self.trace_end();
+        Expr::CompositeLit(Box::new(CompositeLit{
+            typ: typ, l_brace: lbrace, elts: elts, r_brace: rbrace, incomplete: false}))
+    }
 
     // checkExpr checks that x is an expression (and not a type).
     fn check_expr(&self, x: Expr) -> Expr {
@@ -1126,7 +1331,7 @@ impl<'a> Parser<'a> {
             Expr::Array(array) => {
                 if let Some(ellipsis) = &array.len {
                     self.error(ellipsis.pos(&self.objects), 
-                        "expected array length, found '...'".to_string());
+                        "expected array length, found '...'");
 			        return Expr::new_bad(unparenx.pos(&self.objects),
                         self.safe_pos(unparenx.end(&self.objects))); 
                 }
@@ -1136,9 +1341,186 @@ impl<'a> Parser<'a> {
         return x;
     }
 
-    // todo
-    fn parse_expr(&mut self, _lhs: bool) -> Expr {
-        Expr::new_bad(0, 0)
+    fn parse_primary_expr(&mut self, mut lhs: bool) -> Expr {
+        self.trace_begin("PrimaryExpr");
+
+        let mut x = self.parse_operand(lhs);
+        loop {
+            match self.token {
+                Token::PERIOD => {
+                    self.next();
+                    if lhs {
+                        self.resolve(&x);
+                    }
+                    match self.token {
+                        Token::IDENT(_) => {
+                            x = self.parse_selector(self.check_expr_or_type(x));
+                        }
+                        Token::LPAREN => {
+                            x = self.parse_type_assertion(self.check_expr(x));
+                        }
+                        _ => {
+                            let pos = self.pos;
+                            self.error_expected(pos, "selector or type assertion");
+                            self.next();
+                            let sel = new_ident!(
+                                self, pos, "_".to_string(), IdentEntity::NoEntity);
+                            x = Expr::new_selector(x, sel);
+                        }
+                    }
+                }
+                Token::LBRACK => {
+                    if lhs {
+                        self.resolve(&x);
+                    }
+                    x = self.parse_index_or_slice(self.check_expr(x));
+                }
+                Token::LPAREN => {
+                    if lhs {
+                        self.resolve(&x);
+                    }
+                    x = self.parse_call_or_conversion(self.check_expr_or_type(x));
+                }
+                Token::LBRACE => {
+                    if Parser::is_literal_type(&x) && 
+                        (self.expr_level >= 0 || !Parser::is_type_name(&x)) {
+                        if lhs {
+                            self.resolve(&x);
+                        }
+                        x = self.parse_literal_value(Some(x));
+                    } else {
+                        break;
+                    }
+                }
+                _ => {break;}
+            }
+            lhs = false; // no need to try to resolve again
+        }
+        
+        self.trace_end();
+        x
+    }
+
+    fn parse_unary_expr(&mut self, lhs: bool) -> Expr {
+        self.trace_begin("UnaryExpr");
+
+        let ret = match self.token {
+            Token::ADD | Token::SUB | Token::NOT | Token::XOR | Token::AND => {
+                let pos = self.pos;
+                let op = self.token.clone();
+                self.next();
+                let x = self.parse_unary_expr(false);
+                Expr::Unary(Box::new(UnaryExpr{
+                    op_pos: pos, op: op, expr: self.check_expr(x)}))
+            },
+            Token::ARROW => {
+                // channel type or receive expression
+                let mut arrow = self.pos;
+                self.next();
+
+                // If the next token is token.CHAN we still don't know if it
+                // is a channel type or a receive operation - we only know
+                // once we have found the end of the unary expression. There
+                // are two cases:
+                //
+                //   <- type  => (<-type) must be channel type
+                //   <- expr  => <-(expr) is a receive from an expression
+                //
+                //   oxfeeefeee: a: [<- chan val_type_of_<-_chan]
+                //               b: [<- chan val_type_of_chan]
+                //
+                // In the first case, the arrow must be re-associated with
+                // the channel type parsed already:
+                //
+                //   <- (chan type)    =>  (<-chan type)
+                //   <- (chan<- type)  =>  (<-chan (<-type))
+
+                let mut x = self.parse_unary_expr(false);
+                // determine which case we have
+                if let Expr::Chan(c) = &mut x { // (<-type)
+                    // re-associate position info and <-
+                    let mut ctype = c.as_mut();
+                    let mut dir = ChanDir::Send;
+                    while dir == ChanDir::Send {
+                        if ctype.dir == ChanDir::Recv {
+                            // error: (<-type) is (<-(<-chan T))
+                            self.error_expected(ctype.arrow, "'chan'")
+                        }
+                        let new_arrow = ctype.arrow;
+                        ctype.begin = arrow;
+                        ctype.arrow = arrow;
+                        arrow = new_arrow;
+                        dir = ctype.dir.clone();
+                        ctype.dir = ChanDir::Recv;
+                        if let Expr::Chan(c) = &mut ctype.val {
+                            ctype = c.as_mut();
+                        } else {
+                            break;
+                        }
+                    }
+                    if dir == ChanDir::Send {
+                        self.error_expected(arrow, "channel type");
+                    }
+                    x
+                } else {
+                    Expr::Unary(Box::new(UnaryExpr{
+                        op_pos: arrow, op: Token::ARROW, expr: self.check_expr(x)}))
+                }
+            },
+            Token::MUL => {
+                // pointer type or unary "*" expression
+                let pos = self.pos;
+                self.next();
+                let x = self.parse_unary_expr(false);
+                Expr::Star(Box::new(StarExpr{
+                    star: pos, expr: self.check_expr_or_type(x)}))
+            }
+            _ => {
+                self.parse_primary_expr(lhs)
+            }
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn token_prec(&self) -> (Token, usize) {
+        let token = if self.in_rhs && self.token == Token::ASSIGN {
+            Token::EQL
+        } else {
+            self.token.clone()
+        };
+        let pre = token.precedence();
+        (token, pre)
+    }
+
+    fn parse_binary_expr(&mut self, lhs: bool, prec1: usize) -> Expr {
+        self.trace_begin("BinaryExpr");
+
+        let mut x = self.parse_unary_expr(lhs);
+        loop {
+            let (op, prec) = self.token_prec();
+            if prec < prec1 {
+                break;
+            }
+            let pos = self.expect(&op);
+            if lhs {
+                self.resolve(&x);
+            }
+            let y = self.parse_binary_expr(false, prec+1);
+            x = Expr::Binary(Box::new(BinaryExpr{
+                expr_a: x, op_pos: pos, op: op, expr_b: y}))
+        }
+
+        self.trace_end();
+        x
+    }
+
+    fn parse_expr(&mut self, lhs: bool) -> Expr {
+        self.trace_begin("Expression");
+        let x = self.parse_binary_expr(lhs, LOWEST_PREC);
+        self.trace_end();
+        x
     }
 
     fn parse_rhs(&mut self) -> Expr {

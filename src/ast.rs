@@ -242,7 +242,7 @@ impl Node for Stmt {
             },
             Stmt::Branch(s) => match &s.label {
                 Some(l) => arena.idents[*l].end(),
-                None => s.token_pos + s.token.token_text().len()
+                None => s.token_pos + s.token.text().len()
             },
             Stmt::Block(s) => s.r_brace + 1,
             Stmt::If(s) => match &s.els {
@@ -432,11 +432,11 @@ pub struct FuncLit {
 
 // A CompositeLit node represents a composite literal.
 pub struct CompositeLit {
-    typ: Option<Expr>,
-    l_brace: position::Pos,
-    elts: Vec<Expr>,
-    r_brace: position::Pos,
-    incomplete: bool,
+    pub typ: Option<Expr>,
+    pub l_brace: position::Pos,
+    pub elts: Vec<Expr>,
+    pub r_brace: position::Pos,
+    pub incomplete: bool,
 }
 
 // A ParenExpr node represents a parenthesized expression.
@@ -454,39 +454,39 @@ pub struct SelectorExpr {
 
 // An IndexExpr node represents an expression followed by an index.
 pub struct IndexExpr {
-    expr: Expr,
-    l_brack: position::Pos,
-    index: Expr,
-    r_brack: position::Pos,
+    pub expr: Expr,
+    pub l_brack: position::Pos,
+    pub index: Expr,
+    pub r_brack: position::Pos,
 }
 
 // An SliceExpr node represents an expression followed by slice indices.
 pub struct SliceExpr {
-    expr: Expr,
-    l_brack: position::Pos,
-    low: Option<Expr>,
-    high: Option<Expr>,
-    max: Option<Expr>,
-    slice3: bool,
-    r_brack: position::Pos,
+    pub expr: Expr,
+    pub l_brack: position::Pos,
+    pub low: Option<Expr>,
+    pub high: Option<Expr>,
+    pub max: Option<Expr>,
+    pub slice3: bool,
+    pub r_brack: position::Pos,
 }
 
 // A TypeAssertExpr node represents an expression followed by a
 // type assertion.
 pub struct TypeAssertExpr {
-    expr: Expr,
-    l_paren: position::Pos,
-    typ: Expr,
-    r_paren: position::Pos,
+    pub expr: Expr,
+    pub l_paren: position::Pos,
+    pub typ: Option<Expr>,
+    pub r_paren: position::Pos,
 }
 
 // A CallExpr node represents an expression followed by an argument list.
 pub struct CallExpr {
-    func: Expr,
-    l_paren: position::Pos,
-    args: Vec<Expr>,
-    ellipsis: position::Pos,
-    r_paren: position::Pos, 
+    pub func: Expr,
+    pub l_paren: position::Pos,
+    pub args: Vec<Expr>,
+    pub ellipsis: Option<position::Pos>,
+    pub r_paren: position::Pos, 
 }
 
 // A StarExpr node represents an expression of the form "*" Expression.
@@ -499,25 +499,25 @@ pub struct StarExpr {
 // A UnaryExpr node represents a unary expression.
 // Unary "*" expressions are represented via StarExpr nodes.
 pub struct UnaryExpr {
-    op_pos: position::Pos,
-    op: token::Token,
-    expr: Expr,
+    pub op_pos: position::Pos,
+    pub op: token::Token,
+    pub expr: Expr,
 }
 
 // A BinaryExpr node represents a binary expression.
 pub struct BinaryExpr {
-    expr_a: Expr,
-    op_pos: position::Pos,
-    op: token::Token,
-    expr_b: Expr,
+    pub expr_a: Expr,
+    pub op_pos: position::Pos,
+    pub op: token::Token,
+    pub expr_b: Expr,
 }
 
 // A KeyValueExpr node represents (key : value) pairs
 // in composite literals.
 pub struct KeyValueExpr {
-    key: Expr,
-    colon: position::Pos,
-    val: Expr,
+    pub key: Expr,
+    pub colon: position::Pos,
+    pub val: Expr,
 }
 
 // An ArrayType node represents an array or slice type.
@@ -578,10 +578,11 @@ pub struct MapType {
 }
 
 // A ChanType node represents a channel type.
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum ChanDir {
-    SendRecv = 0,
-    SendTo = 1,
-    RecvFrom = 2,
+    Send = 1,
+    Recv = 2,
+    SendRecv = 3,
 }
 
 pub struct ChanType {
@@ -624,10 +625,10 @@ pub struct BadDecl {
 //
 // Relationship between Tok value and Specs element type:
 //
-//	token.IMPORT  *ImportSpec
-//	token.CONST   *ValueSpec
-//	token.TYPE    *TypeSpec
-//	token.VAR     *ValueSpec
+//	Token::IMPORT  ImportSpec
+//	Token::CONST   ValueSpec
+//	Token::TYPE    TypeSpec
+//	Token::VAR     ValueSpec
 pub struct GenDecl {
     token_pos: position::Pos,
     token: token::Token,
