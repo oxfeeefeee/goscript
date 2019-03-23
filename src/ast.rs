@@ -88,6 +88,11 @@ impl Expr {
         Expr::BasicLit(Box::new(BasicLit{pos: pos, token: token}))
     }
 
+    pub fn new_unary_expr(pos: position::Pos, op: token::Token,
+        expr: Expr) -> Expr {
+        Expr::Unary(Box::new(UnaryExpr{op_pos: pos, op: op, expr: expr}))
+    }
+
     pub fn box_func_type(ft: FuncType) -> Expr {
         Expr::Func(Box::new(ft))
     }
@@ -176,6 +181,12 @@ impl Stmt {
         Stmt::Bad(Box::new(BadStmt{from:from, to:to}))
     }
 
+    pub fn new_assign(arena: &mut Objects, lhs: Vec<Expr>, tpos: position::Pos,
+        tok: token::Token, rhs: Vec<Expr>) -> Stmt {
+        Stmt::Assign(Box::new(
+            AssignStmt::arena_new(arena, lhs, tpos, tok, rhs)))
+    }
+    
     pub fn box_block(block: BlockStmt) -> Stmt {
         Stmt::Block(Box::new(block))
     }
@@ -669,6 +680,12 @@ pub struct LabeledStmt {
 }
 
 impl LabeledStmt {
+    pub fn arena_new(arena: &mut Objects, label: IdentIndex, 
+        colon: position::Pos, stmt: Stmt) -> LabeledStmtIndex {
+        let l = LabeledStmt{label: label, colon: colon, stmt: stmt};
+        arena.l_stmts.insert(l)
+    }
+
     pub fn pos(&self, arena: &Objects) -> position::Pos {
         arena.idents[self.label].pos
     }
@@ -676,28 +693,34 @@ impl LabeledStmt {
 
 // A SendStmt node represents a send statement.
 pub struct SendStmt {
-    chan: Expr,
-    arrow: position::Pos,
-    val: Expr,
+    pub chan: Expr,
+    pub arrow: position::Pos,
+    pub val: Expr,
 }
 
 // An IncDecStmt node represents an increment or decrement statement.
 pub struct IncDecStmt {
-    expr: Expr,
-    token_pos: position::Pos,
-    token: token::Token,
+    pub expr: Expr,
+    pub token_pos: position::Pos,
+    pub token: token::Token,
 }
 
 // An AssignStmt node represents an assignment or
 // a short variable declaration.
 pub struct AssignStmt {
-    lhs: Vec<Expr>,
-    token_pos: position::Pos,
-    token: token::Token,
-    rhs: Vec<Expr>,
+    pub lhs: Vec<Expr>,
+    pub token_pos: position::Pos,
+    pub token: token::Token,
+    pub rhs: Vec<Expr>,
 }
 
 impl AssignStmt {
+    pub fn arena_new(arena: &mut Objects, lhs: Vec<Expr>, tpos: position::Pos,
+        tok: token::Token, rhs: Vec<Expr>) -> AssignStmtIndex {
+        let ass = AssignStmt{lhs: lhs, token_pos: tpos, token: tok, rhs: rhs};
+        arena.a_stmts.insert(ass)
+    }
+
     pub fn pos(&self, arena: &Objects) -> position::Pos {
         self.lhs[0].pos(arena)
     }

@@ -145,17 +145,23 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn short_var_decl(&mut self, stmt: AssignStmtIndex, list: Vec<Expr>) {
+    fn short_var_decl(&mut self, stmt: &Stmt) {
         // Go spec: A short variable declaration may redeclare variables
         // provided they were originally declared in the same block with
         // the same type, and at least one of the non-blank variables is new.
+        let assign = if let Stmt::Assign(idx) = stmt {
+            *idx.as_ref()
+        } else {
+            panic!("unreachable");
+        };
+        let list = &ass_stmt!(self, assign).lhs;
 	    let mut n = 0; // number of new variables
-        for expr in &list {
-            match expr {
+        for expr in list {
+            match expr { 
                 Expr::Ident(id) => {
                     let ident = ident_mut!(self, *id.as_ref());
                     let entity = new_entity!(self, EntityKind::Var, 
-                        ident.name.clone(), DeclObj::AssignStmt(stmt),
+                        ident.name.clone(), DeclObj::AssignStmt(assign), 
                         EntityData::NoData);
                     ident.entity = IdentEntity::Entity(entity);
                     if ident.name != "_" {
@@ -1010,7 +1016,7 @@ impl<'a> Parser<'a> {
     // If lhs is set and the result is an identifier, it is not resolved.
     fn parse_operand(&mut self, lhs: bool) -> Expr {
         self.trace_begin("Operand");
-        
+
         let ret = match self.token {
             Token::IDENT(_) => {
                 let x = Expr::Ident(Box::new(self.parse_ident()));
@@ -1411,8 +1417,7 @@ impl<'a> Parser<'a> {
                 let op = self.token.clone();
                 self.next();
                 let x = self.parse_unary_expr(false);
-                Expr::Unary(Box::new(UnaryExpr{
-                    op_pos: pos, op: op, expr: self.check_expr(x)}))
+                Expr::new_unary_expr(pos, op, self.check_expr(x))
             },
             Token::ARROW => {
                 // channel type or receive expression
@@ -1464,8 +1469,7 @@ impl<'a> Parser<'a> {
                     }
                     x
                 } else {
-                    Expr::Unary(Box::new(UnaryExpr{
-                        op_pos: arrow, op: Token::ARROW, expr: self.check_expr(x)}))
+                    Expr::new_unary_expr(arrow, Token::ARROW, self.check_expr(x))
                 }
             },
             Token::MUL => {
@@ -1545,6 +1549,100 @@ impl<'a> Parser<'a> {
     // ----------------------------------------------------------------------------
     // Statements
     
+    // Parsing modes for parseSimpleStmt.
+    const PSSTMT_BASIC: usize = 1;
+    const PSSTMT_LABEL_OK: usize = 2;
+    const PSSTMT_RANGE_OK: usize = 3;
+
+    // parseSimpleStmt returns true as 2nd result if it parsed the assignment
+    // of a range clause (with mode == rangeOk). The returned statement is an
+    // assignment with a right-hand side that is a single unary expression of
+    // the form "range x". No guarantees are given for the left-hand side.
+    fn parse_simple_stmt(&mut self, mode: usize) -> (Stmt, bool) {
+        self.trace_begin("SimpleStmt");
+        let ret: Stmt;
+        let mut is_range = false;
+
+        let x = self.parse_lhs_list();
+        match self.token {
+            Token::DEFINE | Token::ASSIGN | Token::ADD_ASSIGN | Token::SUB_ASSIGN |
+            Token::MUL_ASSIGN | Token::QUO_ASSIGN | Token::REM_ASSIGN |
+            Token::AND_ASSIGN | Token::OR_ASSIGN | Token::XOR_ASSIGN | 
+            Token::SHL_ASSIGN | Token::SHR_ASSIGN | Token::AND_NOT_ASSIGN => {
+                // assignment statement, possibly part of a range clause
+                let (mut pos, token) = (self.pos, self.token.clone());
+                self.next();
+                let y: Vec<Expr>;
+                if mode == Parser::PSSTMT_RANGE_OK && self.token == Token::RANGE &&
+                    (token == Token::DEFINE || token == Token::ASSIGN) {
+                    pos = self.pos;
+                    self.next();
+                    y = vec![Expr::new_unary_expr(pos, Token::RANGE, self.parse_rhs())];
+                    is_range = true;
+                } else {
+                    y = self.parse_rhs_list();
+                }
+                ret = Stmt::new_assign(&mut self.objects, x, pos, token.clone(), y);
+                if token == Token::DEFINE {
+                    self.short_var_decl(&ret);
+                }
+            }
+            _ => {
+                if x.len() > 1 {
+                    self.error_expected(x[0].pos(&self.objects), "1 expression");
+                    // continue with first expression
+                }
+                let x0 = x.into_iter().nth(0).unwrap();
+                ret = match self.token {
+                    Token::COLON => {
+                        // labeled statement
+                        let colon = self.pos;
+                        self.next();
+                        if mode == Parser::PSSTMT_LABEL_OK {
+                            if let Expr::Ident(ident) = x0 {
+                                // Go spec: The scope of a label is the body of the function
+			                    // in which it is declared and excludes the body of any nested
+			                    // function.
+                                let s = self.parse_stmt();
+                                let ls = LabeledStmt::arena_new(
+                                    &mut self.objects, *ident.as_ref(), colon, s);
+                                self.declare(
+                                    DeclObj::LabeledStmt(ls), EntityData::NoData,
+                                    EntityKind::Lbl, &self.label_scope.unwrap());
+                                Stmt::Labeled(Box::new(ls.clone()))
+                            } else {
+                                self.error(colon, "illegal label declaration");
+                                Stmt::new_bad(x0.pos(&self.objects), colon + 1)
+                            }
+                        } else {
+                            self.error(colon, "illegal label declaration");
+                            Stmt::new_bad(x0.pos(&self.objects), colon + 1)
+                        }
+                    },
+                    Token::ARROW => {
+                        let arrow = self.pos;
+                        self.next();
+                        let y = self.parse_rhs();
+                        Stmt::Send(Box::new(SendStmt{chan: x0, arrow: arrow, val: y}))
+                    },
+                    Token::INC | Token::DEC => {
+                        let s = Stmt::IncDec(Box::new(IncDecStmt{
+                            expr: x0, token_pos: self.pos, token: self.token.clone()}));
+                        self.next();
+                        s
+                    },
+                    _ => {
+                        Stmt::Expr(Box::new(x0))
+                    }
+                }
+            }
+        } 
+
+        self.trace_end();
+        (ret, is_range)
+    }
+
+    
     // todo
     fn parse_stmt(&mut self) -> Stmt {
         Stmt::new_bad(0, 0)
@@ -1567,7 +1665,7 @@ mod test {
         let mut fsm = fs.borrow_mut();
         let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 100);
 
-        let mut p = Parser::new(f, "1 + 2 + (3 + 4 + 5) * 6", true);
+        let mut p = Parser::new(f, "1 + 3 /  (3 + 4 + 5) * 6 + a.b", true);
         p.next();
         p.parse_rhs();
     }
