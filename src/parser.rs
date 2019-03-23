@@ -261,7 +261,7 @@ impl<'a> Parser<'a> {
     fn next(&mut self) {
         // Print previous token
         if self.pos > 0 {
-            self.print_trace(&format!("{}", self.token));
+            self.print_trace(&format!("next: {}", self.token));
         }
         // Get next token and skip comments
         let mut token: Token;
@@ -363,6 +363,7 @@ impl<'a> Parser<'a> {
     // is in the 'to' set, or token.EOF. For error recovery.
     fn advance(&mut self, to: fn(&Token) -> bool) {
         while self.token != Token::EOF {
+            self.next();
             if to(&self.token) {
                 // Return only if parser made some progress since last
                 // sync or if it has not reached 10 advance calls without
@@ -1009,7 +1010,7 @@ impl<'a> Parser<'a> {
     // If lhs is set and the result is an identifier, it is not resolved.
     fn parse_operand(&mut self, lhs: bool) -> Expr {
         self.trace_begin("Operand");
-
+        
         let ret = match self.token {
             Token::IDENT(_) => {
                 let x = Expr::Ident(Box::new(self.parse_ident()));
@@ -1518,7 +1519,7 @@ impl<'a> Parser<'a> {
 
     fn parse_expr(&mut self, lhs: bool) -> Expr {
         self.trace_begin("Expression");
-        let x = self.parse_binary_expr(lhs, LOWEST_PREC);
+        let x = self.parse_binary_expr(lhs, LOWEST_PREC+1);
         self.trace_end();
         x
     }
@@ -1564,9 +1565,10 @@ mod test {
 	fn test_parser () {
         let fs = position::SharedFileSet::new();
         let mut fsm = fs.borrow_mut();
-        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 1000);
+        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 100);
 
-        let mut p = Parser::new(f, "", true);
-        p.parse();
+        let mut p = Parser::new(f, "1 + 2 + (3 + 4 + 5) * 6", true);
+        p.next();
+        p.parse_rhs();
     }
 } 
