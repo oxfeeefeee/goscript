@@ -8,6 +8,7 @@ pub const HIGHEST_PREC: usize = 7;
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub enum Token {
 	// Special tokens
+	NONE,
 	ILLEGAL(String),
 	EOF,
 	COMMENT(String),
@@ -119,6 +120,7 @@ pub enum TokenType {
 impl Token {
 	pub fn token_property(&self) -> (TokenType, &str) {
 		match self {
+			Token::NONE => (TokenType::Other, "NONE"),
 			Token::ILLEGAL(_) => (TokenType::Other, "ILLEGAL"),
 			Token::EOF => (TokenType::Other, "EOF"),
 			Token::COMMENT(_) => (TokenType::Other, "COMMENT"),

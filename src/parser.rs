@@ -47,7 +47,7 @@ impl<'a> Parser<'a> {
             trace: trace,
             indent: 0,
             pos: 0,
-            token: Token::ILLEGAL("".to_string()),
+            token: Token::NONE,
             sync_pos: 0,
             sync_count: 0,
             expr_level: 0,
@@ -978,7 +978,7 @@ impl<'a> Parser<'a> {
         BlockStmt::new(lbrace, list, rbrace)
     }
 
-    fn parse_block_stmt(&mut self) -> Stmt {
+    fn parse_block_stmt(&mut self) -> BlockStmt {
         self.trace_begin("BlockStmt");
 
         let lbrace = self.expect(&Token::LBRACE);
@@ -988,7 +988,7 @@ impl<'a> Parser<'a> {
         let rbrace = self.expect(&Token::RBRACE);
 
         self.trace_end();
-        Stmt::box_block(BlockStmt::new(lbrace, list, rbrace))
+        BlockStmt::new(lbrace, list, rbrace)
     }
     
     // ----------------------------------------------------------------------------
@@ -1550,9 +1550,9 @@ impl<'a> Parser<'a> {
     // Statements
     
     // Parsing modes for parseSimpleStmt.
-    const PSSTMT_BASIC: usize = 1;
-    const PSSTMT_LABEL_OK: usize = 2;
-    const PSSTMT_RANGE_OK: usize = 3;
+    const PSS_BASIC: usize = 1;
+    const PSS_LABEL_OK: usize = 2;
+    const PSS_RANGE_OK: usize = 3;
 
     // parseSimpleStmt returns true as 2nd result if it parsed the assignment
     // of a range clause (with mode == rangeOk). The returned statement is an
@@ -1573,7 +1573,7 @@ impl<'a> Parser<'a> {
                 let (mut pos, token) = (self.pos, self.token.clone());
                 self.next();
                 let y: Vec<Expr>;
-                if mode == Parser::PSSTMT_RANGE_OK && self.token == Token::RANGE &&
+                if mode == Parser::PSS_RANGE_OK && self.token == Token::RANGE &&
                     (token == Token::DEFINE || token == Token::ASSIGN) {
                     pos = self.pos;
                     self.next();
@@ -1598,11 +1598,11 @@ impl<'a> Parser<'a> {
                         // labeled statement
                         let colon = self.pos;
                         self.next();
-                        if mode == Parser::PSSTMT_LABEL_OK {
+                        if mode == Parser::PSS_LABEL_OK {
                             if let Expr::Ident(ident) = x0 {
-                                // Go spec: The scope of a label is the body of the function
-			                    // in which it is declared and excludes the body of any nested
-			                    // function.
+                                // Go spec: The scope of a label is the body of the 
+                                // function in which it is declared and excludes the
+                                // body of any nested function.
                                 let s = self.parse_stmt();
                                 let ls = LabeledStmt::arena_new(
                                     &mut self.objects, *ident.as_ref(), colon, s);
@@ -1642,16 +1642,568 @@ impl<'a> Parser<'a> {
         (ret, is_range)
     }
 
-    
-    // todo
-    fn parse_stmt(&mut self) -> Stmt {
-        Stmt::new_bad(0, 0)
+    fn parse_call_expr(&mut self, call_type: &str) -> Option<Expr> {
+        let x = self.parse_rhs_or_type(); // could be a conversion: (some type)(x)
+        if let Expr::Call(_) = x {
+            Some(x)
+        } else {
+            if !x.is_bad() {
+                // only report error if it's a new one
+                self.error_string(self.safe_pos(x.end(&self.objects)), 
+                    format!("function must be invoked in {} statement", call_type))
+            }
+            None
+        }
+    }
+
+    fn parse_go_stmt(&mut self) -> Stmt {
+        self.trace_begin("GoStmt");
+
+        let pos = self.expect(&Token::GO);
+        let call = self.parse_call_expr("go");
+        self.expect_semi();
+        let ret = match call {
+            Some(c) => Stmt::Go(Box::new(GoStmt{go: pos, call: c})),
+            None => {
+                Stmt::new_bad(pos, pos + 2) // "go".len() == 2
+            }
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn parse_defer_stmt(&mut self) -> Stmt {
+        self.trace_begin("DeferStmt");
+
+        let pos = self.expect(&Token::DEFER);
+        let call = self.parse_call_expr("defer");
+        self.expect_semi();
+        let ret = match call {
+            Some(c) => Stmt::Defer(Box::new(DeferStmt{defer: pos, call: c})),
+            None => {
+                Stmt::new_bad(pos, pos + 5) // "defer".len() == 5
+            }
+        };
+
+        self.trace_end();
+        ret
+    }
+
+    fn parse_return_stmt(&mut self) -> Stmt {
+        self.trace_begin("ReturnStmt");
+
+        let pos = self.pos;
+        self.expect(&Token::RETURN);
+        let x = match self.token {
+            Token::SEMICOLON(_) | Token::RBRACE => vec![],
+            _ => self.parse_rhs_list(),
+        };
+
+        self.trace_end();
+        Stmt::Return(Box::new(ReturnStmt{ret: pos, results: x}))
+    }
+
+    fn parse_branch_stmt(&mut self, token: Token) -> Stmt {
+        self.trace_begin("BranchStmt");
+        
+        let pos = self.expect(&token);
+        let mut label = None;
+        if let Token::IDENT(_) = self.token {
+            if token != Token::FALLTHROUGH {
+                let ident = self.parse_ident();
+                label = Some(ident.clone());
+                self.target_stack.last_mut().unwrap().push(ident);
+            }
+        }
+        self.expect_semi();
+
+        self.trace_end();
+        Stmt::Branch(Box::new(BranchStmt{
+            token_pos: pos, token: token, label: label}))
+    }
+
+    fn make_expr(&self, s: Option<Stmt>, want: &str) -> Option<Expr> {
+        match s {
+            Some(stmt) => {
+                match stmt {
+                    Stmt::Expr(x) => {
+                        Some(self.check_expr(*x))
+                    }
+                    _ => {
+                        let found = if let Stmt::Assign(_) = stmt {
+                            "assignment"
+                        } else {
+                            "simple statement"
+                        };
+                        let extra = "(missing parentheses around composite literal?)";
+                        let stri = format!(
+                            "expected {}, found {} {}", want, found, extra);
+                        let pos = stmt.pos(&self.objects);
+                        self.error_string(pos, stri);
+                        Some(Expr::new_bad(
+                            pos, self.safe_pos(stmt.end(&self.objects))))
+                    }
+                }
+            }
+            None => None,
+        }  
+    }
+
+    fn parse_if_header(&mut self) -> (Option<Stmt>, Expr) {
+        if self.token == Token::LBRACE {
+            self.error(self.pos, "missing condition in if statement");
+            return (None, Expr::new_bad(self.pos, self.pos))
+        }
+
+        let outer = self.expr_level;
+        self.expr_level = -1;
+        
+        let mut init = match self.token {
+            Token::SEMICOLON(_) => None,
+            _ => {
+                // accept potential variable declaration but complain
+                if self.token == Token::VAR {
+                    self.next();
+                    self.error(self.pos,
+                        "var declaration not allowed in 'IF' initializer");
+                }
+                Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
+            }
+        };
+
+        let mut semi_real = false;
+        let mut semi_pos = 0;
+        let cond_stmt = if self.token != Token::LBRACE {
+            if let Token::SEMICOLON(real) = self.token {
+                semi_real = real;
+                semi_pos = self.pos;
+                self.next();
+            } else {
+                self.expect(&Token::SEMICOLON(true));
+            }
+            if self.token == Token::LBRACE {
+                Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
+            } else {
+                None
+            }
+        } else {
+            init.take()
+        };
+
+        let cond = if let Some(_) = &cond_stmt {
+            self.make_expr(cond_stmt, "boolean expression").unwrap()
+        } else {
+            if semi_pos > 0 {
+                let msg = if semi_real {
+                    "missing condition in if statement"
+                } else {
+                    "unexpected newline, expecting { after if clause"
+                };
+                self.error(semi_pos, msg);
+            }
+            Expr::new_bad(self.pos, self.pos)
+        };
+
+        self.expr_level = outer;
+        return (init, cond)
+    }
+
+    fn parse_if_stmt(&mut self) -> Stmt {
+        self.trace_begin("IfStmt");
+
+        let pos = self.expect(&Token::IF);
+        self.open_scope();
+        let (init, cond) = self.parse_if_header();
+        let body = self.parse_block_stmt();
+        let els = if self.token == Token::ELSE {
+            self.next();
+            match self.token {
+                Token::IF => Some(self.parse_if_stmt()),
+                Token::ELSE => {
+                    let block = self.parse_block_stmt();
+                    self.expect_semi();
+                    Some(Stmt::box_block(block))
+                }
+                _ => {
+                    self.error_expected(self.pos, "if statement or block");
+                    Some(Stmt::new_bad(self.pos, self.pos))
+                }
+            }
+        } else {
+            self.expect_semi();
+            None
+        };
+
+        self.close_scope();
+        self.trace_end();
+        Stmt::If(Box::new(IfStmt{
+            if_pos: pos, init: init, cond: cond, body: body, els: els}))
+    }
+
+    fn parse_type_list(&mut self) -> Vec<Expr> {
+        self.trace_begin("TypeList");
+
+        let mut list = vec![self.parse_type()];
+        while self.token == Token::COMMA {
+            self.next();
+            list.push(self.parse_type());
+        }
+
+        self.trace_end();
+        list
+    }
+
+    fn parse_case_clause(&mut self, type_switch: bool) -> CaseClause {
+        self.trace_begin("CaseClause");
+
+        let pos = self.pos;
+        let list = match self.token {
+            Token::CASE => {
+                self.next();
+                if type_switch {
+                    self.parse_type_list()
+                } else {
+                    self.parse_rhs_list()
+                }
+            }
+            _ => {
+                self.expect(&Token::DEFAULT);
+                vec![]
+            }
+        };
+
+        let colon = self.expect(&Token::COLON);
+        self.open_scope();
+        let body = self.parse_stmt_list();
+        self.close_scope();
+
+        self.trace_end();
+        CaseClause{case: pos, list: list, colon: colon, body: body}
+    }
+
+    fn is_type_switch_guard(&self, s: &Option<Stmt>) -> bool {
+        match s {
+            Some(stmt) => match stmt {
+                Stmt::Expr(x) => x.is_type_switch_assert(),
+                Stmt::Assign(idx) => {
+                    let ass = &ass_stmt!(self, *idx.as_ref());
+                    if ass.lhs.len() == 1 && ass.rhs.len() == 1 &&
+                        ass.rhs[0].is_type_switch_assert() {
+                        match ass.token {
+                            Token::ASSIGN => {
+                                // permit v = x.(type) but complain
+                                let s = "expected ':=', found '='";
+                                self.error(ass.token_pos, s);
+                                true
+                            },
+                            Token::DEFINE => true,
+                            _ => false,
+                        }
+                    } else {
+                        false
+                    }
+                } 
+                _ => false
+            }
+            None => false
+        }
+    }
+
+    fn parse_switch_stmt(&mut self) -> Stmt {
+        self.trace_begin("SwitchStmt");
+
+        let pos = self.expect(&Token::SWITCH);
+        self.open_scope();
+
+        let (mut s1, mut s2) = (None, None);
+        if self.token != Token::LBRACE {
+            let bak_lev = self.expr_level;
+            self.expr_level = -1;
+            if let Token::SEMICOLON(_) = self.token {} else {
+                s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+            }
+            if let Token::SEMICOLON(_) = self.token {
+                self.next();
+                s1 = s2.take();
+                if self.token != Token::LBRACE {
+                    // A TypeSwitchGuard may declare a variable in addition
+                    // to the variable declared in the initial SimpleStmt.
+                    // Introduce extra scope to avoid redeclaration errors:
+                    //
+                    //	switch t := 0; t := x.(T) { ... }
+                    //
+                    // (this code is not valid Go because the first t
+                    // cannot be accessed and thus is never used, the extra
+                    // scope is needed for the correct error message).
+                    //
+                    // If we don't have a type switch, s2 must be an expression.
+                    // Having the extra nested but empty scope won't affect it.
+                    self.open_scope();
+                    s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                    self.close_scope();
+                }
+            }
+            self.expr_level = bak_lev;
+        }
+
+        let type_switch = self.is_type_switch_guard(&s2);
+        let lbrace = self.expect(&Token::LBRACE);
+        let mut list = vec![];
+        while self.token == Token::CASE || self.token == Token::DEFAULT {
+            let clause = self.parse_case_clause(type_switch);
+            list.push(Stmt::Case(Box::new(clause)));
+        }
+        let rbrace = self.expect(&Token::RBRACE);
+        self.expect_semi();
+        let body = BlockStmt{l_brace: lbrace, list: list, r_brace: rbrace};
+        let ret = if type_switch {
+            Stmt::TypeSwitch(Box::new(TypeSwitchStmt{
+                switch: pos, init: s1, assign: s2.unwrap(), body: body}))
+        } else {
+            Stmt::Switch(Box::new(SwitchStmt{
+                switch: pos, init: s1,
+                tag: self.make_expr(s2, "switch expression"),
+                body: body}))
+        };
+ 
+        self.close_scope();
+        self.trace_end();
+        ret
+    }
+
+    fn parse_comm_clause(&mut self) -> CommClause {
+        self.trace_begin("CommClause");
+        self.open_scope();
+        
+        let pos = self.pos;
+        let comm = if self.token == Token::CASE {
+            self.next();
+            let mut lhs = self.parse_lhs_list();
+            if self.token == Token::ARROW {
+                // SendStmt
+                if lhs.len() > 1 {
+                    self.error_expected(lhs[0].pos(&self.objects), "1 expression");
+				    // continue with first expression
+                }
+                let arrow = self.pos;
+                self.next();
+                let rhs = self.parse_rhs();
+                Some(Stmt::Send(Box::new(SendStmt{
+                    chan: lhs.into_iter().nth(0).unwrap(), arrow: arrow, val: rhs})))
+            } else {
+                // RecvStmt
+                if self.token == Token::ASSIGN || self.token == Token::DEFINE {
+                    // RecvStmt with assignment
+                    if lhs.len() > 2 {
+                        self.error_expected(lhs[0].pos(&self.objects),
+                            "1 or 2 expressions");
+                        lhs.truncate(2);
+                    }
+                    let pos = self.pos;
+                    self.next();
+                    let rhs = self.parse_rhs();
+                    let ass = Stmt::new_assign(
+                        &mut self.objects, lhs, pos, self.token.clone(), vec![rhs]);
+                    if self.token == Token::DEFINE {
+                        self.short_var_decl(&ass);
+                    }
+                    Some(ass)
+                } else {
+                    if lhs.len() > 1 {
+                        self.error_expected(lhs[0].pos(&self.objects), "1 expression");
+                        // continue with first expression
+                    }
+                    Some(Stmt::Expr(Box::new(lhs.into_iter().nth(0).unwrap())))
+                }
+            }
+        } else {
+            self.expect(&Token::DEFAULT);
+            None
+        }; 
+        let colon = self.expect(&Token::COLON);
+        let body = self.parse_stmt_list();
+
+        self.close_scope();
+        self.trace_end();
+        CommClause{case: pos, comm: comm, colon: colon, body: body}
+    }
+
+    fn parse_select_stmt(&mut self) -> Stmt {
+        self.trace_begin("SelectStmt");
+
+        let pos = self.expect(&Token::SELECT);
+        let lbrace = self.expect(&Token::LBRACE);
+        let mut list = vec![];
+        while self.token == Token::CASE || self.token == Token::DEFAULT {
+            list.push(Stmt::Comm(Box::new(self.parse_comm_clause())));
+        }
+        let rbrace = self.expect(&Token::RBRACE);
+        self.expect_semi();
+        let body = BlockStmt{l_brace: lbrace, list: list, r_brace: rbrace};
+
+        self.trace_end();
+        Stmt::Select(Box::new(SelectStmt{select: pos, body: body}))
+    }
+
+    fn parse_for_stmt(&mut self) -> Stmt {
+        self.trace_begin("ForStmt");
+        let pos = self.expect(&Token::FOR);
+        self.open_scope();
+
+        let (mut s1, mut s2, mut s3) = (None, None, None);
+        let mut is_range = false;
+        if self.token != Token::LBRACE {
+            let bak_lev = self.expr_level;
+            self.expr_level = -1;
+            match self.token {
+                Token::RANGE => {
+                    // "for range x" (nil lhs in assignment)
+                    let pos = self.pos;
+                    self.next();
+                    let unary = Expr::new_unary_expr(
+                        pos, Token::RANGE, self.parse_rhs());
+                    s2 = Some(Stmt::new_assign(
+                        &mut self.objects, vec![], 0, Token::NONE, vec![unary]));
+                    is_range = true;
+                },
+                Token::SEMICOLON(_) => {},
+                _ => {
+                    let ss = self.parse_simple_stmt(Parser::PSS_RANGE_OK);
+                    s2 = Some(ss.0);
+                    is_range = ss.1;
+                }
+            }
+            if !is_range {
+                if let Token::SEMICOLON(_) = self.token {
+                    self.next();
+                    s1 = s2.take();
+                    if let Token::SEMICOLON(_) = self.token {} else {
+                        s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                    }
+                    self.expect_semi();
+                    if self.token != Token::LBRACE {
+                        s3 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                    }
+                }
+            }
+            self.expr_level = bak_lev;
+        }
+
+        let body = self.parse_block_stmt();
+        self.expect_semi();
+
+        let ret = if is_range {
+            if let Stmt::Assign(idx) = s2.unwrap() {
+                // move AssignStmt out of arena
+                // and tear it apart for the components
+                let mut ass = self.objects.a_stmts.remove(*idx.as_ref()).unwrap();
+                let (key, val) = match ass.lhs.len() {
+                    0 => (None, None),
+                    1 => (Some(ass.lhs.remove(0)), None),
+                    2 => {
+                        let lhs1 = ass.lhs.remove(1);
+                        let lhs0 = ass.lhs.remove(0);
+                        (Some(lhs0), Some(lhs1))
+                        },
+                    _ => {
+                        let pos = ass.lhs.remove(0).pos(&self.objects);
+                        self.error_expected(pos, "at most 2 expressions");
+                        (None, None)
+                    }
+                };
+                // parseSimpleStmt returned a right-hand side that
+		        // is a single unary expression of the form "range x"
+                if let Expr::Unary(unary) = ass.rhs.remove(0) {
+                    Stmt::Range(Box::new(RangeStmt{
+                        for_pos: pos,
+                        key: key,
+                        val: val,
+                        token_pos: ass.token_pos,
+                        token: ass.token,
+                        expr: unary.expr,
+                        body: body,
+                    }))
+                } else {
+                    panic!("unreachable");    
+                }
+            } else {
+                panic!("unreachable");
+            }
+        } else {
+            Stmt::For(Box::new(ForStmt{
+                for_pos: pos,
+                init: s1,
+                cond: self.make_expr(s2, "boolean or range expression"),
+                post: s3,
+                body: body,
+            }))
+        };
+        
+        self.close_scope();
+        self.trace_end();
+        ret
     }
     
-    fn parse(&mut self) {
-        self.trace_begin("begin");
-        print!("222xxxxxxx \n");
+    fn parse_stmt(&mut self) -> Stmt {
+        self.trace_begin("Statement");
+
+        let ret = match self.token {
+            Token::CONST | Token::TYPE | Token::VAR => 
+                Stmt::Decl(Box::new(self.parse_decl(Token::is_stmt_start))),
+            Token::IDENT(_) | Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
+            Token::CHAR(_) | Token::STRING(_) | Token::FUNC | Token::LPAREN | // operands
+		    Token::LBRACK | Token::STRUCT | 
+            Token::MAP | Token::CHAN | Token::INTERFACE | // composite types
+		    Token::ADD | Token::SUB | Token::MUL | Token::AND |
+            Token::XOR | Token::ARROW | Token::NOT => { // unary operators
+                let s = self.parse_simple_stmt(Parser::PSS_LABEL_OK).0;
+                if let Stmt::Labeled(_) = s {} else {self.expect_semi();}
+                s
+            },
+            Token::GO => self.parse_go_stmt(),
+            Token::DEFER => self.parse_defer_stmt(),
+            Token::RETURN => self.parse_return_stmt(),
+            Token::BREAK | Token::CONTINUE | Token::GOTO | Token::FALLTHROUGH =>
+                self.parse_branch_stmt(self.token.clone()),
+            Token::LBRACE => {
+                let s = self.parse_block_stmt();
+                self.expect_semi();
+                Stmt::Block(Box::new(s))
+            },
+            Token::IF => self.parse_if_stmt(),
+            Token::SWITCH => self.parse_switch_stmt(),
+            Token::SELECT => self.parse_select_stmt(),
+            Token::FOR => self.parse_for_stmt(),
+            Token::SEMICOLON(real) => {
+                // Is it ever possible to have an implicit semicolon
+                // producing an empty statement in a valid program?
+                // (handle correctly anyway)
+                let s = Stmt::Empty(Box::new(
+                    EmptyStmt{semi: self.pos, implicit: !real}));
+                self.next();
+                s
+            }
+            Token::RBRACE => {
+                // a semicolon may be omitted before a closing "}"
+                Stmt::Empty(Box::new(EmptyStmt{
+                    semi: self.pos, implicit: false}))
+            }
+            _ => {
+                let pos = self.pos;
+                self.error_expected(pos, "statement");
+                self.advance(Token::is_stmt_start);
+                Stmt::new_bad(pos, self.pos)
+            }
+        };
+
         self.trace_end();
+        ret
+    }
+    
+    // todo
+    fn parse_decl(&mut self, _sync: fn(&Token) -> bool) -> Decl {
+        Decl::Bad(Box::new(BadDecl{from:0, to:0}))
     }
 }
 

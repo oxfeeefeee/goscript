@@ -109,6 +109,18 @@ impl Expr {
             panic!("unwrap_ident called on a non-ident Expr");
         }
     }
+
+    pub fn is_bad(&self) -> bool {
+        if let Expr::Bad(_) = self {true} else {false}
+    }
+
+    pub fn is_type_switch_assert(&self) -> bool {
+        if let Expr::TypeAssert(t) = self {
+            t.typ.is_some()
+        } else {
+            false
+        }
+    }
 }
 
 impl Node for Expr {
@@ -186,7 +198,7 @@ impl Stmt {
         Stmt::Assign(Box::new(
             AssignStmt::arena_new(arena, lhs, tpos, tok, rhs)))
     }
-    
+
     pub fn box_block(block: BlockStmt) -> Stmt {
         Stmt::Block(Box::new(block))
     }
@@ -614,20 +626,20 @@ pub struct ImportSpec {
 // (ConstSpec or VarSpec production).
 pub struct ValueSpec {
     pub names: Vec<IdentIndex>,
-    typ: Option<Expr>,
-    values: Vec<Expr>, 
+    pub typ: Option<Expr>,
+    pub values: Vec<Expr>, 
 }
 
 // A TypeSpec node represents a type declaration (TypeSpec production).
 pub struct TypeSpec {
     pub name: IdentIndex,
-    assign: position::Pos,
-    typ: Expr,
+    pub assign: position::Pos,
+    pub typ: Expr,
 }
 
 pub struct BadDecl {
-    from: position::Pos,
-    to: position::Pos,
+    pub from: position::Pos,
+    pub to: position::Pos,
 }
 
 // A GenDecl node (generic declaration node) represents an import,
@@ -641,19 +653,19 @@ pub struct BadDecl {
 //	Token::TYPE    TypeSpec
 //	Token::VAR     ValueSpec
 pub struct GenDecl {
-    token_pos: position::Pos,
-    token: token::Token,
-    l_paran: Option<position::Pos>,
-    specs: Vec<SpecIndex>,
-    r_paren: Option<position::Pos>,
+    pub token_pos: position::Pos,
+    pub token: token::Token,
+    pub l_paran: Option<position::Pos>,
+    pub specs: Vec<SpecIndex>,
+    pub r_paren: Option<position::Pos>,
 }
 
 // A FuncDecl node represents a function declaration.
 pub struct FuncDecl {
-    recv: Option<FieldList>,
+    pub recv: Option<FieldList>,
     pub name: IdentIndex,
-    typ: Box<FuncType>,
-    body: Option<Box<BlockStmt>>,
+    pub typ: Box<FuncType>,
+    pub body: Option<Box<BlockStmt>>,
 }
 
 impl FuncDecl {
@@ -663,20 +675,20 @@ impl FuncDecl {
 }
 
 pub struct BadStmt {
-    from: position::Pos,
-    to: position::Pos,
+    pub from: position::Pos,
+    pub to: position::Pos,
 }
 
 pub struct EmptyStmt {
-    semi: position::Pos,
-    implicit: bool,
+    pub semi: position::Pos,
+    pub implicit: bool,
 }
 
 // A LabeledStmt node represents a labeled statement.
 pub struct LabeledStmt {
     pub label: IdentIndex,
-    colon: position::Pos,
-    stmt: Stmt,
+    pub colon: position::Pos,
+    pub stmt: Stmt,
 }
 
 impl LabeledStmt {
@@ -727,32 +739,32 @@ impl AssignStmt {
 }
 
 pub struct GoStmt {
-    go: position::Pos,
-    call: Expr,
+    pub go: position::Pos,
+    pub call: Expr,
 }
 	
 pub struct DeferStmt {
-    defer: position::Pos,
-    call: Expr,
+    pub defer: position::Pos,
+    pub call: Expr,
 }
 
 pub struct ReturnStmt {
-    ret: position::Pos,
-    results: Vec<Expr>,
+    pub ret: position::Pos,
+    pub results: Vec<Expr>,
 }
 
 // A BranchStmt node represents a break, continue, goto,
 // or fallthrough statement.
 pub struct BranchStmt {
-    token_pos: position::Pos,
-    token: token::Token,
-    label: Option<IdentIndex>,
+    pub token_pos: position::Pos,
+    pub token: token::Token,
+    pub label: Option<IdentIndex>,
 }
 
 pub struct BlockStmt {
-    l_brace: position::Pos,
-    list: Vec<Stmt>,
-    r_brace: position::Pos,
+    pub l_brace: position::Pos,
+    pub list: Vec<Stmt>,
+    pub r_brace: position::Pos,
 }
 
 impl BlockStmt {
@@ -767,64 +779,64 @@ impl BlockStmt {
 }
 
 pub struct IfStmt {
-    if_pos: position::Pos,
-    init: Option<Stmt>,
-    cond: Expr,
-    body: Box<BlockStmt>,
-    els: Option<Stmt>,
+    pub if_pos: position::Pos,
+    pub init: Option<Stmt>,
+    pub cond: Expr,
+    pub body: BlockStmt,
+    pub els: Option<Stmt>,
 }
 
 // A CaseClause represents a case of an expression or type switch statement.
 pub struct CaseClause {
-    case: position::Pos,
-    list: Vec<Expr>,
-    colon: position::Pos, 
-    body: Vec<Stmt>,
+    pub case: position::Pos,
+    pub list: Vec<Expr>,
+    pub colon: position::Pos, 
+    pub body: Vec<Stmt>,
 }
 
 pub struct SwitchStmt {
-    switch: position::Pos,
-    init: Option<Stmt>,
-    tag: Option<Expr>,
-    body: Box<BlockStmt>,
+    pub switch: position::Pos,
+    pub init: Option<Stmt>,
+    pub tag: Option<Expr>,
+    pub body: BlockStmt,
 }
-
+ 
 pub struct TypeSwitchStmt {
-    switch: position::Pos,
-    init: Option<Stmt>,
-    assign: Stmt,
-    body: Box<BlockStmt>,
+    pub switch: position::Pos,
+    pub init: Option<Stmt>,
+    pub assign: Stmt,
+    pub body: BlockStmt,
 }
 
 // A CommClause node represents a case of a select statement.
 pub struct CommClause { //communication
-    case: position::Pos,
-    comm: Option<Stmt>,
-    colon: position::Pos,
-    body: Vec<Stmt>,
+    pub case: position::Pos,
+    pub comm: Option<Stmt>,
+    pub colon: position::Pos,
+    pub body: Vec<Stmt>,
 }
 
 pub struct SelectStmt {
-    select: position::Pos,
-    body: Box<BlockStmt>,
+    pub select: position::Pos,
+    pub body: BlockStmt,
 }
 
 pub struct ForStmt {
-    for_pos: position::Pos,
-    init: Stmt,
-    cond: Expr,
-    post: Stmt,
-    body: Box<BlockStmt>,
+    pub for_pos: position::Pos,
+    pub init: Option<Stmt>,
+    pub cond: Option<Expr>,
+    pub post: Option<Stmt>,
+    pub body: BlockStmt,
 }
 
 pub struct RangeStmt {
-    for_pos: position::Pos,
-    key: Option<Expr>,
-    val: Option<Expr>,
-    token_pos: position::Pos,
-    token: token::Token,
-    expr: Expr,
-    body: Box<BlockStmt>,   
+    pub for_pos: position::Pos,
+    pub key: Option<Expr>,
+    pub val: Option<Expr>,
+    pub token_pos: position::Pos,
+    pub token: token::Token,
+    pub expr: Expr,
+    pub body: BlockStmt,   
 }
 
 pub struct Field {
