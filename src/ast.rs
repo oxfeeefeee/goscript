@@ -8,6 +8,7 @@ pub trait Node {
     fn end(&self, arena: &Objects) -> position::Pos;
 }
 
+#[derive(Debug)]
 pub enum Expr {
     Bad(Box<BadExpr>),
     Ident(Box<IdentIndex>),
@@ -33,6 +34,7 @@ pub enum Expr {
     Chan(Box<ChanType>), 
 }
 
+#[derive(Debug)]
 pub enum Stmt {
     Bad(Box<BadStmt>),
     Decl(Box<Decl>),
@@ -57,12 +59,14 @@ pub enum Stmt {
     Range(Box<RangeStmt>),
 }
 
+#[derive(Debug)]
 pub enum Spec {
     Import(Box<ImportSpec>),
     Value(Box<ValueSpec>),
     Type(Box<TypeSpec>),
 }
 
+#[derive(Debug)]
 pub enum Decl {
     Bad(Box<BadDecl>),
     Gen(Box<GenDecl>),
@@ -360,12 +364,12 @@ impl Node for Decl {
 }
 
 pub struct File {
-    package: position::Pos,
-    name: IdentIndex,
-    decls: Vec<Decl>,
-    scope: ScopeIndex,
-    imports: Vec<SpecIndex>, //ImportSpec
-    unresolved: Vec<IdentIndex>,
+    pub package: position::Pos,
+    pub name: IdentIndex,
+    pub decls: Vec<Decl>,
+    pub scope: ScopeIndex,
+    pub imports: Vec<SpecIndex>, //ImportSpec
+    pub unresolved: Vec<IdentIndex>,
 }
 
 impl Node for File {
@@ -401,11 +405,13 @@ impl Node for Package {
 // A BadExpr node is a placeholder for expressions containing
 // syntax errors for which no correct expression nodes can be
 // created.
+#[derive(Debug)]
 pub struct BadExpr {
     pub from: position::Pos,
     pub to: position::Pos,
 }
 
+#[derive(Debug)]
 pub enum IdentEntity {
     NoEntity,
     Sentinel,
@@ -422,6 +428,7 @@ impl IdentEntity {
 }
 
 // An Ident node represents an identifier.
+#[derive(Debug)]
 pub struct Ident {
     pub pos: position::Pos,
     pub name: String,
@@ -436,24 +443,28 @@ impl Ident {
 
 // An Ellipsis node stands for the "..." type in a
 // parameter list or the "..." length in an array type.
+#[derive(Debug)]
 pub struct Ellipsis {
     pos: position::Pos,
     elt: Option<Expr>,
 }
 
 // A BasicLit node represents a literal of basic type.
+#[derive(Debug)]
 pub struct BasicLit {
-    pos: position::Pos,
-    token: token::Token,
+    pub pos: position::Pos,
+    pub token: token::Token,
 }
 
 // A FuncLit node represents a function literal.
+#[derive(Debug)]
 pub struct FuncLit {
     pub typ: FuncType,
     pub body: BlockStmt,
 }	
 
 // A CompositeLit node represents a composite literal.
+#[derive(Debug)]
 pub struct CompositeLit {
     pub typ: Option<Expr>,
     pub l_brace: position::Pos,
@@ -463,6 +474,7 @@ pub struct CompositeLit {
 }
 
 // A ParenExpr node represents a parenthesized expression.
+#[derive(Debug)]
 pub struct ParenExpr {
     pub l_paren: position::Pos,
     pub expr: Expr,
@@ -470,12 +482,14 @@ pub struct ParenExpr {
 }
 	
 // A SelectorExpr node represents an expression followed by a selector.
+#[derive(Debug)]
 pub struct SelectorExpr {
     pub expr: Expr,
     pub sel: IdentIndex,
 }
 
 // An IndexExpr node represents an expression followed by an index.
+#[derive(Debug)]
 pub struct IndexExpr {
     pub expr: Expr,
     pub l_brack: position::Pos,
@@ -484,6 +498,7 @@ pub struct IndexExpr {
 }
 
 // An SliceExpr node represents an expression followed by slice indices.
+#[derive(Debug)]
 pub struct SliceExpr {
     pub expr: Expr,
     pub l_brack: position::Pos,
@@ -496,6 +511,7 @@ pub struct SliceExpr {
 
 // A TypeAssertExpr node represents an expression followed by a
 // type assertion.
+#[derive(Debug)]
 pub struct TypeAssertExpr {
     pub expr: Expr,
     pub l_paren: position::Pos,
@@ -504,6 +520,7 @@ pub struct TypeAssertExpr {
 }
 
 // A CallExpr node represents an expression followed by an argument list.
+#[derive(Debug)]
 pub struct CallExpr {
     pub func: Expr,
     pub l_paren: position::Pos,
@@ -514,6 +531,7 @@ pub struct CallExpr {
 
 // A StarExpr node represents an expression of the form "*" Expression.
 // Semantically it could be a unary "*" expression, or a pointer type.
+#[derive(Debug)]
 pub struct StarExpr {
     pub star: position::Pos,
     pub expr: Expr,
@@ -521,6 +539,7 @@ pub struct StarExpr {
 
 // A UnaryExpr node represents a unary expression.
 // Unary "*" expressions are represented via StarExpr nodes.
+#[derive(Debug)]
 pub struct UnaryExpr {
     pub op_pos: position::Pos,
     pub op: token::Token,
@@ -528,6 +547,7 @@ pub struct UnaryExpr {
 }
 
 // A BinaryExpr node represents a binary expression.
+#[derive(Debug)]
 pub struct BinaryExpr {
     pub expr_a: Expr,
     pub op_pos: position::Pos,
@@ -537,6 +557,7 @@ pub struct BinaryExpr {
 
 // A KeyValueExpr node represents (key : value) pairs
 // in composite literals.
+#[derive(Debug)]
 pub struct KeyValueExpr {
     pub key: Expr,
     pub colon: position::Pos,
@@ -544,6 +565,7 @@ pub struct KeyValueExpr {
 }
 
 // An ArrayType node represents an array or slice type.
+#[derive(Debug)]
 pub struct ArrayType {
     pub l_brack: position::Pos,
     pub len: Option<Expr>, // Ellipsis node for [...]T array types, None for slice types
@@ -551,6 +573,7 @@ pub struct ArrayType {
 }
 
 // A StructType node represents a struct type.
+#[derive(Debug)]
 pub struct StructType {
     pub struct_pos: position::Pos,
     pub fields: FieldList,
@@ -560,10 +583,11 @@ pub struct StructType {
 // Pointer types are represented via StarExpr nodes.
 
 // A FuncType node represents a function type.
+#[derive(Debug)]
 pub struct FuncType {
-    func: Option<position::Pos>,
-    params: FieldList,
-    results: Option<FieldList>,
+    pub func: Option<position::Pos>,
+    pub params: FieldList,
+    pub results: Option<FieldList>,
 }
 
 impl FuncType {
@@ -587,6 +611,7 @@ impl FuncType {
 }
 
 // An InterfaceType node represents an interface type.
+#[derive(Debug)]
 pub struct InterfaceType {
     pub interface: position::Pos,
     pub methods: FieldList,
@@ -594,6 +619,7 @@ pub struct InterfaceType {
 }
 
 // A MapType node represents a map type.
+#[derive(Debug)]
 pub struct MapType {
     pub map: position::Pos,
     pub key: Expr,
@@ -608,6 +634,7 @@ pub enum ChanDir {
     SendRecv = 3,
 }
 
+#[derive(Debug)]
 pub struct ChanType {
     pub begin: position::Pos,
     pub arrow: position::Pos,
@@ -616,14 +643,16 @@ pub struct ChanType {
 }
 
 // An ImportSpec node represents a single package import.
+#[derive(Debug)]
 pub struct ImportSpec {
-    name: Option<IdentIndex>,
-    path: Box<BasicLit>,
-    end_pos: Option<position::Pos>,
+    pub name: Option<IdentIndex>,
+    pub path: BasicLit,
+    pub end_pos: Option<position::Pos>,
 }
 
 // A ValueSpec node represents a constant or variable declaration
 // (ConstSpec or VarSpec production).
+#[derive(Debug)]
 pub struct ValueSpec {
     pub names: Vec<IdentIndex>,
     pub typ: Option<Expr>,
@@ -631,12 +660,14 @@ pub struct ValueSpec {
 }
 
 // A TypeSpec node represents a type declaration (TypeSpec production).
+#[derive(Debug)]
 pub struct TypeSpec {
     pub name: IdentIndex,
     pub assign: position::Pos,
     pub typ: Expr,
 }
 
+#[derive(Debug)]
 pub struct BadDecl {
     pub from: position::Pos,
     pub to: position::Pos,
@@ -652,6 +683,7 @@ pub struct BadDecl {
 //	Token::CONST   ValueSpec
 //	Token::TYPE    TypeSpec
 //	Token::VAR     ValueSpec
+#[derive(Debug)]
 pub struct GenDecl {
     pub token_pos: position::Pos,
     pub token: token::Token,
@@ -661,11 +693,12 @@ pub struct GenDecl {
 }
 
 // A FuncDecl node represents a function declaration.
+#[derive(Debug)]
 pub struct FuncDecl {
     pub recv: Option<FieldList>,
     pub name: IdentIndex,
-    pub typ: Box<FuncType>,
-    pub body: Option<Box<BlockStmt>>,
+    pub typ: FuncType,
+    pub body: Option<BlockStmt>,
 }
 
 impl FuncDecl {
@@ -674,17 +707,20 @@ impl FuncDecl {
     }
 }
 
+#[derive(Debug)]
 pub struct BadStmt {
     pub from: position::Pos,
     pub to: position::Pos,
 }
 
+#[derive(Debug)]
 pub struct EmptyStmt {
     pub semi: position::Pos,
     pub implicit: bool,
 }
 
 // A LabeledStmt node represents a labeled statement.
+#[derive(Debug)]
 pub struct LabeledStmt {
     pub label: IdentIndex,
     pub colon: position::Pos,
@@ -704,6 +740,7 @@ impl LabeledStmt {
 }
 
 // A SendStmt node represents a send statement.
+#[derive(Debug)]
 pub struct SendStmt {
     pub chan: Expr,
     pub arrow: position::Pos,
@@ -711,6 +748,7 @@ pub struct SendStmt {
 }
 
 // An IncDecStmt node represents an increment or decrement statement.
+#[derive(Debug)]
 pub struct IncDecStmt {
     pub expr: Expr,
     pub token_pos: position::Pos,
@@ -719,6 +757,7 @@ pub struct IncDecStmt {
 
 // An AssignStmt node represents an assignment or
 // a short variable declaration.
+#[derive(Debug)]
 pub struct AssignStmt {
     pub lhs: Vec<Expr>,
     pub token_pos: position::Pos,
@@ -738,16 +777,19 @@ impl AssignStmt {
     }
 }
 
+#[derive(Debug)]
 pub struct GoStmt {
     pub go: position::Pos,
     pub call: Expr,
 }
 	
+#[derive(Debug)]
 pub struct DeferStmt {
     pub defer: position::Pos,
     pub call: Expr,
 }
 
+#[derive(Debug)]
 pub struct ReturnStmt {
     pub ret: position::Pos,
     pub results: Vec<Expr>,
@@ -755,12 +797,14 @@ pub struct ReturnStmt {
 
 // A BranchStmt node represents a break, continue, goto,
 // or fallthrough statement.
+#[derive(Debug)]
 pub struct BranchStmt {
     pub token_pos: position::Pos,
     pub token: token::Token,
     pub label: Option<IdentIndex>,
 }
 
+#[derive(Debug)]
 pub struct BlockStmt {
     pub l_brace: position::Pos,
     pub list: Vec<Stmt>,
@@ -778,6 +822,7 @@ impl BlockStmt {
     }
 }
 
+#[derive(Debug)]
 pub struct IfStmt {
     pub if_pos: position::Pos,
     pub init: Option<Stmt>,
@@ -787,6 +832,7 @@ pub struct IfStmt {
 }
 
 // A CaseClause represents a case of an expression or type switch statement.
+#[derive(Debug)]
 pub struct CaseClause {
     pub case: position::Pos,
     pub list: Vec<Expr>,
@@ -794,13 +840,15 @@ pub struct CaseClause {
     pub body: Vec<Stmt>,
 }
 
+#[derive(Debug)]
 pub struct SwitchStmt {
     pub switch: position::Pos,
     pub init: Option<Stmt>,
     pub tag: Option<Expr>,
     pub body: BlockStmt,
 }
- 
+
+#[derive(Debug)] 
 pub struct TypeSwitchStmt {
     pub switch: position::Pos,
     pub init: Option<Stmt>,
@@ -809,6 +857,7 @@ pub struct TypeSwitchStmt {
 }
 
 // A CommClause node represents a case of a select statement.
+#[derive(Debug)]
 pub struct CommClause { //communication
     pub case: position::Pos,
     pub comm: Option<Stmt>,
@@ -816,11 +865,13 @@ pub struct CommClause { //communication
     pub body: Vec<Stmt>,
 }
 
+#[derive(Debug)]
 pub struct SelectStmt {
     pub select: position::Pos,
     pub body: BlockStmt,
 }
 
+#[derive(Debug)]
 pub struct ForStmt {
     pub for_pos: position::Pos,
     pub init: Option<Stmt>,
@@ -829,6 +880,7 @@ pub struct ForStmt {
     pub body: BlockStmt,
 }
 
+#[derive(Debug)]
 pub struct RangeStmt {
     pub for_pos: position::Pos,
     pub key: Option<Expr>,
@@ -839,6 +891,7 @@ pub struct RangeStmt {
     pub body: BlockStmt,   
 }
 
+#[derive(Debug)]
 pub struct Field {
     pub names: Vec<IdentIndex>,
     pub typ: Expr,
@@ -861,6 +914,7 @@ impl Node for Field {
     }
 }
 
+#[derive(Debug)]
 pub struct FieldList {
     pub openning: Option<position::Pos>,
     pub list: Vec<FieldIndex>,

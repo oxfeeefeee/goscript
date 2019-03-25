@@ -65,16 +65,16 @@ impl<'a> Parser<'a> {
     // Scoping support
 
     fn open_scope(&mut self) {
-        self.top_scope = Some(new_scope!(self, self.top_scope.take()));
+        self.top_scope = Some(new_scope!(self, self.top_scope));
     }
 
     fn close_scope(&mut self) {
-        self.top_scope = scope!(self, self.top_scope.take().unwrap()).outer;
+        self.top_scope = scope!(self, self.top_scope.unwrap()).outer;
     }
 
     fn open_label_scope(&mut self) { 
         self.label_scope = 
-            Some(new_scope!(self, self.label_scope.take()));
+            Some(new_scope!(self, self.label_scope));
         self.target_stack.push(vec![]);
     }
 
@@ -92,7 +92,7 @@ impl<'a> Parser<'a> {
             }
             _ => panic!("invalid target stack.")
         }
-        self.label_scope = scope!(self, self.label_scope.take().unwrap()).outer;
+        self.label_scope = scope!(self, self.label_scope.unwrap()).outer;
     }
 
     fn declare(&mut self, decl: DeclObj, data: EntityData, kind: EntityKind,
@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
                 &names
             }
             DeclObj::AssignStmt(_) => {
-              panic!("unreachable");
+              unreachable!();
             }
             DeclObj::NoDecl => &names,
         };
@@ -152,7 +152,7 @@ impl<'a> Parser<'a> {
         let assign = if let Stmt::Assign(idx) = stmt {
             *idx.as_ref()
         } else {
-            panic!("unreachable");
+            unreachable!();
         };
         let list = &ass_stmt!(self, assign).lhs;
 	    let mut n = 0; // number of new variables
@@ -350,9 +350,9 @@ impl<'a> Parser<'a> {
     }
 
     fn at_comma(&self, context: &str, follow: &Token) -> bool {
-        if let Token::COMMA = self.token {
+        if self.token == Token::COMMA {
             true
-        } else if self.token == *follow {
+        } else if self.token != *follow {
             let mut msg =  "missing ','".to_string();
             if let Token::SEMICOLON(real) = self.token {
                 if !real {msg.push_str(" before newline");}
@@ -708,15 +708,14 @@ impl<'a> Parser<'a> {
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(ellipsis_ok));
-            if let Token::COMMA = &self.token {
+            if self.token != Token::COMMA {
                 break;
             }
             self.next();
-            if let Token::RPAREN = &self.token {
+            if self.token == Token::RPAREN {
                 break;
             }
         }
-
         let mut params = vec![];
         let typ = self.try_var_type(ellipsis_ok);
         if let Some(t) = typ {
@@ -795,7 +794,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_signature(&mut self, scope: ScopeIndex) -> (FieldList, FieldList) {
-        self.trace_begin("Result");
+        self.trace_begin("Signature");
 
         let params = self.parse_parameters(scope, true);
         let results = self.parse_result(scope);
@@ -1275,7 +1274,7 @@ impl<'a> Parser<'a> {
             Expr::BasicLit(_) => x,
             Expr::FuncLit(_) => x,
             Expr::CompositeLit(_) => x,
-            Expr::Paren(_) => { panic!("unreachable"); },
+            Expr::Paren(_) => { unreachable!(); },
             Expr::Selector(_) => x,
             Expr::Index(_) => x,
             Expr::Slice(_) => x,
@@ -1334,7 +1333,7 @@ impl<'a> Parser<'a> {
     fn check_expr_or_type(&self, x: Expr) -> Expr {
         let unparenx = Parser::unparen(&x);
         match unparenx {
-            Expr::Paren(_) => {panic!("unreachable")},
+            Expr::Paren(_) => {unreachable!()},
             Expr::Array(array) => {
                 if let Some(ellipsis) = &array.len {
                     self.error(ellipsis.pos(&self.objects), 
@@ -2125,10 +2124,10 @@ impl<'a> Parser<'a> {
                         body: body,
                     }))
                 } else {
-                    panic!("unreachable");    
+                    unreachable!();    
                 }
             } else {
-                panic!("unreachable");
+                unreachable!();
             }
         } else {
             Stmt::For(Box::new(ForStmt{
@@ -2201,11 +2200,309 @@ impl<'a> Parser<'a> {
         ret
     }
     
+    // ----------------------------------------------------------------------------
+    // Declarations
+
     // todo
-    fn parse_decl(&mut self, _sync: fn(&Token) -> bool) -> Decl {
-        Decl::Bad(Box::new(BadDecl{from:0, to:0}))
+    fn is_valid_import(_lit: &str) -> bool {
+        const _ILLEGAL_CHARS: &str = 
+            concat!(r##"!"#$%&'()*,:;<=>?[\]^{|}`"##, "\u{FFFD}");
+        
+        true
+    }
+
+    fn parse_import_spec(&mut self, _: &Token, _: isize) -> SpecIndex {
+        self.trace_begin("ImportSpec");
+
+        let ident = match self.token {
+            Token::PERIOD => {
+                let i = new_ident!(self, self.pos, ".".to_string(), 
+                    IdentEntity::NoEntity);
+                self.next();
+                Some(i)
+            },
+            Token::IDENT(_) => Some(self.parse_ident()),
+            _ => None,
+        };
+        let pos = self.pos;
+        let path_token = match &self.token {
+            Token::STRING(lit) => {
+                if !Parser::is_valid_import(&lit) {
+                    let msg = format!("{}{}", "invalid import path: ", lit); 
+                    self.error_string(pos, msg);
+                }
+                let token = self.token.clone();
+                self.next();
+                token
+            }
+            _ => {
+                // use expect() error handling
+                let token = Token::STRING("_".to_string());
+                self.expect(&token); 
+                token
+            }
+        };
+        self.expect_semi();
+        let index = specs_mut!(self).insert(Spec::Import(Box::new(ImportSpec{
+            name: ident, 
+            path: BasicLit{pos: pos, token: path_token},
+            end_pos: None})));
+        self.imports.push(index);
+
+        self.trace_end();
+        index
+    }
+
+    fn parse_value_spec<'s, 'k>(self_: &'s mut Parser<'a>, keyword: &'k Token, iota: isize) -> SpecIndex {
+        self_.trace_begin(&format!("{}{}", keyword.text(), "Spec"));
+
+        let pos = self_.pos;
+        let idents = self_.parse_ident_list();
+        let typ = self_.try_type();
+        let values = match self_.token {
+            Token::ASSIGN => {
+                self_.next();
+                self_.parse_rhs_list()
+            }
+            _ => vec![],
+        };
+        self_.expect_semi();
+
+        match keyword {
+            Token::VAR => {
+                if typ.is_none() && values.len() == 0 {
+                    self_.error(pos, "missing variable type or initialization");
+                }
+            },
+            Token::CONST => {
+                if values.len() == 0 && (iota == 0 || typ.is_none()) {
+                    self_.error(pos, "missing constant value");
+                }
+            }
+            _ => {}
+        }
+
+        // Go spec: The scope of a constant or variable identifier declared inside
+	    // a function begins at the end of the ConstSpec or VarSpec and ends at
+	    // the end of the innermost containing block.
+	    // (Global identifiers are resolved in a separate phase after parsing.)
+        let spec =  specs_mut!(self_).insert(Spec::Value(Box::new(ValueSpec{
+            names: idents, typ: typ, values: values})));
+        let kind = if let Token::VAR = keyword {
+                EntityKind::Var
+            } else {EntityKind::Con};
+        self_.declare(
+            DeclObj::Spec(spec), 
+            EntityData::ConIota(iota),
+            kind,
+            &self_.top_scope.unwrap());
+
+        self_.trace_end();
+        spec
+    }
+
+    fn parse_type_spec(&mut self, _: &Token, _: isize) -> SpecIndex {
+        self.trace_begin("TypeSpec");
+
+        let ident = self.parse_ident();
+        // Go spec: The scope of a type identifier declared inside a function begins
+	    // at the identifier in the TypeSpec and ends at the end of the innermost
+	    // containing block.
+	    // (Global identifiers are resolved in a separate phase after parsing.)
+        let placeholder = Expr::new_bad(0, 0);
+        let index = specs_mut!(self).insert(Spec::Type(Box::new(TypeSpec{
+            name: ident, assign: 0, typ: placeholder})));
+        let assign = if self.token == Token::ASSIGN {
+            self.next();
+            self.pos
+            } else {0};
+        let typ = self.parse_type();
+        let spec = if let Spec::Type(boxts) = spec_mut!(self, index) {
+            boxts.as_mut()} else {unreachable!()};
+        spec.assign = assign;
+        spec.typ = typ;
+        self.expect_semi();
+
+        self.trace_end();
+        index
+    }
+
+    fn parse_gen_decl(&mut self, keyword: &Token, 
+        f: fn (&mut Parser<'a>, &Token, isize) -> SpecIndex) -> Decl {
+        self.trace_begin(&format!("GenDecl({})", keyword.text()));
+
+        let pos = self.expect(keyword);
+        let (lparen, rparen, list) = if self.token == Token::LPAREN {
+            let lp = self.pos;
+            self.next();
+            let mut list = vec![];
+            let mut iota = 0;
+            while self.token != Token::RPAREN && self.token != Token::EOF {
+                list.push(f(self, keyword, iota));
+                iota += 1;
+            }
+            let rp = self.expect(&Token::RPAREN);
+            self.expect_semi();
+            (Some(lp), Some(rp), list)
+        } else {
+            (None, None, vec![f(self, keyword, 0)])
+        };
+
+        self.trace_end();
+        Decl::Gen(Box::new(GenDecl{
+            token_pos: pos,
+            token: keyword.clone(),
+            l_paran: lparen,
+            specs: list,
+            r_paren: rparen
+        }))
+    }
+
+    fn parse_func_decl(&mut self) -> Decl {
+        self.trace_begin("FunctionDecl");
+
+        let pos = self.expect(&Token::FUNC);
+        let scope = new_scope!(self, self.top_scope);
+        let recv = if self.token == Token::LPAREN {
+            Some(self.parse_parameters(scope, false))
+        } else {
+            None
+        };
+        let ident = self.parse_ident();
+        let (params, results) = self.parse_signature(scope);
+        let body = if self.token == Token::LBRACE {
+            Some(self.parse_body(scope))
+        } else {
+            None
+        };
+        self.expect_semi();
+
+        let recv_is_none = recv.is_none();
+        let decl = self.objects.decls.insert(FuncDecl{
+            recv: recv,
+            name: ident,
+            typ: FuncType{
+                func: Some(pos),
+                params: params,
+                results: Some(results),
+            },
+            body: body,
+        });
+        if recv_is_none {
+            // Go spec: The scope of an identifier denoting a constant, type,
+            // variable, or function (but not method) declared at top level
+            // (outside any function) is the package block.
+            //
+            // init() functions cannot be referred to and there may
+            // be more than one - don't put them in the pkgScope
+            if ident!(self, ident).name != "init" {
+                self.declare(
+                    DeclObj::FuncDecl(decl),
+                    EntityData::NoData, 
+                    EntityKind::Fun, 
+                    &self.pkg_scope.unwrap(),
+                    );
+            }
+        }
+
+        self.trace_end();
+        Decl::Func(Box::new(decl))
+    }
+
+    fn parse_decl(&mut self, sync: fn(&Token) -> bool) -> Decl {
+        self.trace_begin("Declaration");
+
+        let decl = match self.token {
+            Token::CONST | Token::VAR | Token::TYPE => {
+                let token = self.token.clone();
+                match token {
+                    Token::CONST | Token::VAR => {
+                        self.parse_gen_decl(&token, Parser::parse_value_spec)
+                    }
+                    Token::TYPE => {
+                        self.parse_gen_decl(&token, Parser::parse_type_spec)
+                    }
+                    _ => {unreachable!();}
+                }  
+            } 
+            Token::FUNC => {
+                self.parse_func_decl()
+            }
+            _ => {
+                let pos = self.pos;
+                self.error_expected(pos, "declaration");
+                self.advance(sync);
+                Decl::Bad(Box::new(BadDecl{from: pos, to: self.pos}))
+            }
+        };
+
+        self.trace_end();
+        decl
+    }
+
+    // ----------------------------------------------------------------------------
+    // Source files
+
+    fn parse_file(&mut self) -> Option<File> {
+        self.trace_begin("File");
+
+        let pos = self.expect(&Token::PACKAGE);
+        // Go spec: The package clause is not a declaration;
+	    // the package name does not appear in any scope.
+        let ident = self.parse_ident();
+        if ident!(self, ident).name == "_" {
+            self.error(self.pos, "invalid package name _");
+        }
+        self.expect_semi();
+
+        // Don't bother parsing the rest if we had errors parsing the package clause.
+	    // Likely not a Go source file at all.
+	    if self.errors.borrow().len() > 0 {
+            self.trace_end();
+            return None
+        }
+
+        self.open_scope();
+        self.pkg_scope = self.top_scope;
+        let mut decls = vec![];
+        // import decls
+        while self.token == Token::IMPORT {
+            decls.push(self.parse_gen_decl(
+                &Token::IMPORT, Parser::parse_import_spec));
+        }
+        // rest of package body
+        while self.token != Token::EOF {
+            decls.push(self.parse_decl(Token::is_decl_start))
+        }
+        self.close_scope();
+        assert!(self.top_scope.is_none(), "unbalanced scopes");
+        assert!(self.label_scope.is_none(), "unbalanced label scopes");
+
+        // resolve global identifiers within the same file
+        self.unresolved = self.unresolved.to_owned().into_iter().
+            filter_map(|x| {
+                let ident = ident_mut!(self, x) ;
+                let scope = scope!(self, self.pkg_scope.unwrap());
+                let entity = scope.look_up(&ident.name);
+                if let Some(en) = entity {
+                    ident.entity = IdentEntity::Entity(*en);
+                    Some(x)
+                } else {
+                    None
+            }}).collect();
+
+        self.trace_end();
+        Some(File{
+            package: pos,
+            name: ident,
+            decls: decls,
+            scope: self.pkg_scope.unwrap(),
+            imports: self.imports.clone(),
+            unresolved: self.unresolved.clone(),
+        })
     }
 }
+
 
 #[cfg(test)]
 mod test {
@@ -2215,10 +2512,43 @@ mod test {
 	fn test_parser () {
         let fs = position::SharedFileSet::new();
         let mut fsm = fs.borrow_mut();
-        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 100);
+        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 1000);
 
-        let mut p = Parser::new(f, "1 + 3 /  (3 + 4 + 5) * 6 + a.b", true);
+        //let mut p = Parser::new(f, "1 + 3 /  (3 + 4 + 5) * 6 + a.b", true);
+        //p.next();
+        //p.parse_rhs();
+        let _s = r####"func (p *printer) linebreak(line, int, newSection bool) (nbreaks int) {
+	n := nlimit(line - p.pos.Line)
+	if n < min {
+		n = min
+	}
+	if n > 0 {
+		if newSection {
+			p.print(formfeed)
+			n--
+			nbreaks = 2
+		}
+		nbreaks += n
+		for ; n > 0; n-- {
+			p.print(newline)
+		}
+	}
+	return
+}"####;
+
+let s1 = r###"
+        func testFunc(a, b int) (i int) {
+            if a > b {
+                b = a
+            } 
+        }
+        "###;
+
+        let mut p = Parser::new(f, s1, true);
+        p.open_scope();
+        p.pkg_scope = p.top_scope;
         p.next();
-        p.parse_rhs();
+        p.parse_decl(Token::is_decl_start);
+        
     }
 } 

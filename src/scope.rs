@@ -43,7 +43,7 @@ pub enum DeclObj {
 #[derive(Clone)]
 pub enum EntityData {
     PkgScope(ScopeIndex),
-    ConIota(usize),
+    ConIota(isize),
     NoData,
 }
 

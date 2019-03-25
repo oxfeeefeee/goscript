@@ -6,7 +6,7 @@ struct Error{
 }
 
 pub struct ErrorList {
-    errs: Vec<Box<Error>>,
+    errs: Vec<Error>,
 }
 
 impl ErrorList {
@@ -15,6 +15,10 @@ impl ErrorList {
     }
 
     pub fn add(&mut self, p: position::Position, msg: String) {
-        self.errs.push(Box::new(Error{pos:p, msg:msg}));
+        self.errs.push(Error{pos:p, msg:msg});
     }
+
+    pub fn len(&self) -> usize {
+        self.errs.len()
+    } 
 }
