@@ -1,8 +1,5 @@
 use std::fmt;
 use std::fmt::Write;
-use std::rc::Rc;
-use std::rc::Weak;
-use std::cell::{Ref, RefMut, RefCell};
 use std::borrow::Borrow;
 
 pub type Pos = usize;
@@ -41,7 +38,6 @@ impl fmt::Display for Position {
 
 #[derive(Debug)]
 pub struct File {
-    set: Weak<RefCell<FileSet>>,
     name: &'static str,
     base: usize,
     size: usize,
@@ -49,8 +45,8 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(set: Weak<RefCell<FileSet>>, name: &'static str) -> File {
-        File{set: set, name: name, base:0, size:0, lines: vec![0]}
+    pub fn new(name: &'static str) -> File {
+        File{name: name, base:0, size:0, lines: vec![0]}
     }
 
     pub fn name(&self) -> &'static str {
@@ -107,23 +103,10 @@ impl File {
         true
     }
 
-    pub fn set_lines_for_content(&mut self, content: &[u8]) {
-        /*
-        let (mut new_line, mut line) = (false, 0);
-        for (offset, b) in content.iter().enumerate() {
-            if new_line {
-                self.lines.push(line);
-            }
-            new_line = false;
-            if *b == '\n' as u8 {
-                new_line = true;
-                line = offset + 1;
-            }
-        }*/
+    pub fn set_lines_for_content(&mut self, content: &[char]) {
         self.lines = content.iter().
             enumerate().
-            filter(|&(_, b)| *b == '\n' as u8).
-            map(|(offset, _)| offset + 1).
+            filter_map(|(offset, b)| if *b == '\n' {Some(offset + 1)} else {None}).
             collect();
     }
 
@@ -170,7 +153,7 @@ impl File {
 #[derive(Debug)]
 pub struct FileSet {
     base: usize,
-    files: Vec<Box<File>>,
+    files: Vec<File>,
 }
 
 impl FileSet {
@@ -199,7 +182,7 @@ impl FileSet {
         if i >= self.files.len() {
             None
         } else {
-           Some(&mut*self.files[i])
+           Some(&mut self.files[i])
         }
     }
 
@@ -212,14 +195,14 @@ impl FileSet {
         }
     }
 
-    pub fn add_file(&mut self, weak_fs: Weak<RefCell<FileSet>>,
-        name: &'static str, base: isize, size: usize) -> &mut File {
-        let real_base = if base >=0 {base as usize} else {self.base};
+    pub fn add_file(&mut self, name: &'static str, base: Option<usize>,
+        size: usize) -> &mut File {
+        let real_base = if let Some(b) = base {b} else {self.base};
         if real_base < self.base {
             panic!("illegal base");
         }
 
-        let mut f = Box::new(File::new(weak_fs, name));
+        let mut f = File::new(name);
         f.base = real_base;
         f.size = size;
         
@@ -251,41 +234,18 @@ impl<'a> Iterator for FileSetIter<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SharedFileSet{
-    fs: Rc<RefCell<FileSet>>
-}
-
-impl SharedFileSet {
-    pub fn new() -> SharedFileSet {
-        let fs = FileSet::new();
-        SharedFileSet{fs: Rc::new(RefCell::new(fs))}
-    }
-
-    pub fn weak(&self) -> Weak<RefCell<FileSet>> {
-        Rc::downgrade(&self.fs)
-    }
-
-    pub fn borrow(&self) -> Ref<FileSet> {
-        (*self.fs).borrow()
-    }
-
-    pub fn borrow_mut(&self) -> RefMut<FileSet> {
-        (*self.fs).borrow_mut()
-    }
-}
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    #[test]
+    #[test] 
     fn test_position() {
         let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
         
-        let sfs = SharedFileSet::new();
-        let mut f = Box::new(File::new(sfs.weak(), "test.gs"));
+        let mut fs = FileSet::new();
+        let mut f = File::new("test.gs");
         f.size = 12345;
         f.add_line(123);
         f.add_line(133);
@@ -293,23 +253,20 @@ mod test {
         print!("\nfile: {:?}", f);
         f.merge_line(1);
         print!("\nfile after merge: {:?}", f);
-        f.set_lines_for_content(&['a' as u8 ,'\n' as u8, 'c' as u8]);
+        f.set_lines_for_content(&['a' ,'\n', 'c']);
         print!("\nfile after set: {:?}", f);
 
         {
-            let mut fsm = sfs.borrow_mut();
-            fsm.add_file(sfs.weak(), "testfile1.gs", -1, 222);
-            fsm.add_file(sfs.weak(),"testfile2.gs", -1, 222);
-            fsm.add_file(sfs.weak(),"testfile3.gs", -1, 222);
-            print!("\nset {:?}", sfs);
+            fs.add_file("testfile1.gs", None, 222);
+            fs.add_file("testfile2.gs", None, 222);
+            fs.add_file("testfile3.gs", None, 222);
+            print!("\nset {:?}", fs);
         }
 
-
-        let set = sfs.borrow();
-        for f in set.iter() {
+        for f in fs.iter() {
             print!("\nfiles in set: {:?}", f);
         }
-        print!("\nfile at 100: {:?}", set.file(100))
+        print!("\nfile at 100: {:?}", fs.file(100))
         
     }
 }

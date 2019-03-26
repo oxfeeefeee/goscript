@@ -37,7 +37,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    fn new(file: &'a mut position::File, src: &'a str, trace: bool) -> Parser<'a> {
+    pub fn new(file: &'a mut position::File, src: &'a str, trace: bool) -> Parser<'a> {
         let err = Rc::new(RefCell::new(errors::ErrorList::new()));
         let s = scanner::Scanner::new(file, src, err.clone());
         Parser{
@@ -622,11 +622,13 @@ impl<'a> Parser<'a> {
 
         self.expect_semi();
 
-        // have to clone to fix ownership issue.
-        let field = new_field!(self, idents, typ.clone_ident(), tag);
+        let to_resolve = typ.clone_ident();
+        let field = new_field!(self, idents, typ, tag);
         self.declare(DeclObj::Field(field), EntityData::NoData,
             EntityKind::Var, &scope);
-        self.resolve(&typ);
+        if let Some(ident) = to_resolve {
+            self.resolve(&ident);
+        }
 
         self.trace_end();
         field
@@ -721,13 +723,16 @@ impl<'a> Parser<'a> {
         if let Some(t) = typ {
             // IdentifierList Type
             let idents = self.make_ident_list(&mut list);
-            let field = new_field!(self, idents, t.clone_ident(), None);
+            let to_resolve = t.clone_ident();
+            let field = new_field!(self, idents, t, None);
             params.push(field);
             // Go spec: The scope of an identifier denoting a function
 			// parameter or result variable is the function body.
 			self.declare(DeclObj::Field(field), EntityData::NoData,
                 EntityKind::Var, &scope);
-            self.resolve(&t);
+            if let Some(ident) = to_resolve {
+                self.resolve(&ident);
+            }
             if !self.at_comma("parameter list", &Token::RPAREN) {
                 self.trace_end();
                 return params;
@@ -736,14 +741,17 @@ impl<'a> Parser<'a> {
             loop {
                 let idents = self.parse_ident_list();
                 let t = self.parse_var_type(ellipsis_ok);
-                let field = new_field!(self, idents, t.clone_ident(), None);
+                let to_resolve = t.clone_ident();
+                let field = new_field!(self, idents, t, None);
                 // warning: copy paste
                 params.push(field);
                 // Go spec: The scope of an identifier denoting a function
                 // parameter or result variable is the function body.
                 self.declare(DeclObj::Field(field), EntityData::NoData,
                     EntityKind::Var, &scope);
-                self.resolve(&t);
+                if let Some(ident) = to_resolve {
+                    self.resolve(&ident);
+                }
                 if !self.at_comma("parameter list", &Token::RPAREN) {
                     break;
                 }
@@ -1772,11 +1780,11 @@ impl<'a> Parser<'a> {
         };
 
         let mut semi_real = false;
-        let mut semi_pos = 0;
+        let mut semi_pos = None;
         let cond_stmt = if self.token != Token::LBRACE {
             if let Token::SEMICOLON(real) = self.token {
                 semi_real = real;
-                semi_pos = self.pos;
+                semi_pos = Some(self.pos);
                 self.next();
             } else {
                 self.expect(&Token::SEMICOLON(true));
@@ -1793,13 +1801,13 @@ impl<'a> Parser<'a> {
         let cond = if let Some(_) = &cond_stmt {
             self.make_expr(cond_stmt, "boolean expression").unwrap()
         } else {
-            if semi_pos > 0 {
+            if let Some(pos) = semi_pos {
                 let msg = if semi_real {
                     "missing condition in if statement"
                 } else {
                     "unexpected newline, expecting { after if clause"
                 };
-                self.error(semi_pos, msg);
+                self.error(pos, msg);
             }
             Expr::new_bad(self.pos, self.pos)
         };
@@ -2510,45 +2518,21 @@ mod test {
 
 	#[test]
 	fn test_parser () {
-        let fs = position::SharedFileSet::new();
-        let mut fsm = fs.borrow_mut();
-        let f = fsm.add_file(fs.weak(), "testfile1.gs", 0, 1000);
+        let mut fs = position::FileSet::new();
+        let f = fs.add_file("testfile1.gs", None, 1000);
 
-        //let mut p = Parser::new(f, "1 + 3 /  (3 + 4 + 5) * 6 + a.b", true);
-        //p.next();
-        //p.parse_rhs();
-        let _s = r####"func (p *printer) linebreak(line, int, newSection bool) (nbreaks int) {
-	n := nlimit(line - p.pos.Line)
-	if n < min {
-		n = min
-	}
-	if n > 0 {
-		if newSection {
-			p.print(formfeed)
-			n--
-			nbreaks = 2
-		}
-		nbreaks += n
-		for ; n > 0; n-- {
-			p.print(newline)
-		}
-	}
-	return
-}"####;
-
-let s1 = r###"
-        func testFunc(a, b int) (i int) {
-            if a > b {
-                b = a
-            } 
+        let s1 = r###"
+        func (p *someobj) testFunc(a, b *int) (i int) {
+            for 我 := range iii {
+                a = 1;
+            }
         }
-        "###;
+        "###; 
 
         let mut p = Parser::new(f, s1, true);
         p.open_scope();
         p.pkg_scope = p.top_scope;
         p.next();
         p.parse_decl(Token::is_decl_start);
-        
     }
 } 

@@ -101,9 +101,9 @@ impl Expr {
         Expr::Func(Box::new(ft))
     }
 
-    pub fn clone_ident(&self) -> Expr {
+    pub fn clone_ident(&self) -> Option<Expr> {
         if let Expr::Ident(i) = self 
-            {Expr::Ident(i.clone())} else {panic!("unreachable")}
+            {Some(Expr::Ident(i.clone()))} else {None}
     }
 
     pub fn unwrap_ident(&self) -> &IdentIndex {
