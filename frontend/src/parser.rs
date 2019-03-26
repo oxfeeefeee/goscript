@@ -1,6 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use std::cell::{RefCell};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use super::position;
 use super::token::{Token, LOWEST_PREC};
@@ -40,7 +40,7 @@ impl<'a> Parser<'a> {
     pub fn new(file: &'a mut position::File, src: &'a str, trace: bool) -> Parser<'a> {
         let err = Rc::new(RefCell::new(errors::ErrorList::new()));
         let s = scanner::Scanner::new(file, src, err.clone());
-        Parser{
+        let mut p = Parser{
             objects: Objects::new(),
             scanner: s,
             errors: err,
@@ -58,7 +58,16 @@ impl<'a> Parser<'a> {
             imports: vec![],
             label_scope:None,
             target_stack: vec![],
-        }
+        };
+        p.next(); // get the first token ready
+        p
+    }
+
+    // ----------------------------------------------------------------------------
+    // Getters
+
+    pub fn get_errors(&self) -> Ref<errors::ErrorList> {
+        (*self.errors).borrow()
     }
 
     // ----------------------------------------------------------------------------
@@ -237,11 +246,11 @@ impl<'a> Parser<'a> {
         self.scanner.file()
     }
 
-    fn print_trace(&self, msg: &str) {
+    fn print_trace(&self, pos: position::Pos, msg: &str) {
         let f = self.file();
-        let p = f.position(self.pos);
+        let p = f.position(pos);
         let mut buf = String::new();
-        fmt::write(&mut buf, format_args!("{:5o}:{:3o}:", p.line, p.column)).unwrap();
+        fmt::write(&mut buf, format_args!("{:5}:{:3}:", p.line, p.column)).unwrap();
         for _ in 0..self.indent {
             buf.push_str("..");
         }
@@ -252,7 +261,7 @@ impl<'a> Parser<'a> {
         if self.trace {
             let mut trace_str = msg.to_string();
             trace_str.push('(');
-            self.print_trace(&trace_str);
+            self.print_trace(self.pos, &trace_str);
             self.indent += 1;
         }
     }
@@ -260,28 +269,26 @@ impl<'a> Parser<'a> {
     fn trace_end(&mut self) {
         if self.trace {
             self.indent -= 1;
-            self.print_trace(")");
+            self.print_trace(self.pos, ")");
         }
     }
 
     fn next(&mut self) {
-        // Print previous token
-        if self.pos > 0 {
-            self.print_trace(&format!("next: {}", self.token));
-        }
         // Get next token and skip comments
-        let mut token: Token;
         loop {
-            token = self.scanner.scan();
+            let (token, pos) = self.scanner.scan();
             match token {
                 Token::COMMENT(_) => { // Skip comment
-                    self.print_trace(&format!("{}", self.token));
+                    self.print_trace(pos, &format!("{}", token));
                 },
-                _ => { break; },
+                _ => {
+                    self.print_trace(pos, &format!("next: {}", token));
+                    self.token = token;
+                    self.pos = pos;
+                    break; 
+                },
             }
         }
-        self.token = token;
-        self.pos = self.scanner.pos();
     }
 
     fn error(&self, pos: position::Pos, s: &str) {
@@ -2451,7 +2458,7 @@ impl<'a> Parser<'a> {
     // ----------------------------------------------------------------------------
     // Source files
 
-    fn parse_file(&mut self) -> Option<File> {
+    pub fn parse_file(&mut self) -> Option<File> {
         self.trace_begin("File");
 
         let pos = self.expect(&Token::PACKAGE);
@@ -2532,7 +2539,6 @@ mod test {
         let mut p = Parser::new(f, s1, true);
         p.open_scope();
         p.pkg_scope = p.top_scope;
-        p.next();
         p.parse_decl(Token::is_decl_start);
     }
 } 

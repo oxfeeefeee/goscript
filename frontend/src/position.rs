@@ -103,11 +103,18 @@ impl File {
         true
     }
 
-    pub fn set_lines_for_content(&mut self, content: &[char]) {
-        self.lines = content.iter().
-            enumerate().
-            filter_map(|(offset, b)| if *b == '\n' {Some(offset + 1)} else {None}).
-            collect();
+    pub fn set_lines_for_content(&mut self, content: &mut std::str::Chars) {
+        let (mut new_line, mut line) = (true, 0);
+        for (offset, b) in content.enumerate() {
+            if new_line {
+                self.lines.push(line);
+            }
+            new_line = false;
+            if b == '\n' {
+                new_line = true;
+                line = offset + 1;
+            }
+        }
     }
 
     pub fn line_start(&self, line: usize) -> usize {
@@ -128,21 +135,20 @@ impl File {
     }
 
     pub fn position(&self, p: Pos) -> Position {
-        let filename = self.name;
-        let (line, offset, column);
-
         if p < self.base || p > self.base + self.size {
             panic!("illegal Pos value");
         }
-        offset = p - self.base;
-        match self.lines.iter().enumerate().find(|&(_, &line)| line > offset) {
-            Some((i, _)) => line = i,
-            None => line = 1,
-        }
-        column = offset - self.lines[line-1]+1;
+
+        let line_count = self.line_count();
+        let offset = p - self.base;
+        let line = match self.lines.iter().enumerate().find(|&(_, &line)| line > offset) {
+            Some((i, _)) => i,
+            None => line_count,
+        };
+        let column = offset - self.lines[line-1] + 1;
     
         Position{
-            filename: filename,
+            filename: self.name,
             line: line,
             offset: offset,
             column: column,
@@ -253,8 +259,6 @@ mod test {
         print!("\nfile: {:?}", f);
         f.merge_line(1);
         print!("\nfile after merge: {:?}", f);
-        f.set_lines_for_content(&['a' ,'\n', 'c']);
-        print!("\nfile after set: {:?}", f);
 
         {
             fs.add_file("testfile1.gs", None, 222);

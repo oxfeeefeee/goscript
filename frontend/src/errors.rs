@@ -1,3 +1,4 @@
+use std::fmt;
 use super::position;
 
 struct Error{
@@ -7,6 +8,16 @@ struct Error{
 
 pub struct ErrorList {
     errs: Vec<Error>,
+}
+
+impl fmt::Display for ErrorList {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "parse result: {} errors\n", self.errs.len())?;
+        for e in self.errs.iter() {
+            write!(f, "{} {}\n", e.pos, e.msg)?;
+        }
+        Ok(())
+    }
 }
 
 impl ErrorList {

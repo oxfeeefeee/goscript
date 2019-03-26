@@ -1,0 +1,10 @@
+package main
+
+func (p *someobj111) testFunc(a, b *int) (i int) {
+    for i := range iii {
+        a = 1;
+    }
+
+
+
+}

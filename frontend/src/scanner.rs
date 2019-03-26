@@ -57,11 +57,12 @@ impl<'a> Scanner<'a> {
 
     // Read the next Unicode char 
     #[allow(dead_code)]
-    pub fn scan(&mut self) -> Token {
+    pub fn scan(&mut self) -> (Token, position::Pos) {
         self.semi1 = self.semi2;
         self.semi2 = false;
         self.skip_whitespace();
-        match self.peek_char() {
+        let pos = self.offset;
+        let token = match self.peek_char() {
             Some(&ch) if is_letter(ch) => {
                 let t = self.scan_identifier();
                 match t {
@@ -175,7 +176,8 @@ impl<'a> Scanner<'a> {
                     Token::EOF
                 }
             }
-        }
+        }; 
+        (token, pos)
     }
 
     fn scan_identifier(&mut self) -> Token {
@@ -667,8 +669,7 @@ mod test {
         let err = Rc::new(RefCell::new(errors::ErrorList::new()));
         let mut scanner = Scanner::new(f, src, err);
         loop {
-            let tok = scanner.scan();
-            let pos = scanner.position();
+            let (tok, pos) = scanner.scan();
             print!("Token:{:?} --{}-- Pos:{}\n", tok, tok, pos);
             if tok == Token::EOF {
                 break

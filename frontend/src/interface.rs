@@ -1,9 +1,11 @@
 use super::parser;
 use super::position;
 
-pub fn parse_file<'a>(fs: &'a mut position::FileSet, name: &'static str, src: &'a str) -> parser::Parser<'a> {
+pub fn parse_file<'a>(fs: &'a mut position::FileSet,
+    name: &'static str, src: &'a str) -> parser::Parser<'a> {
     let f = fs.add_file(name, None, src.chars().count());
-    let p = parser::Parser::new(f, src, true);
+    let mut p = parser::Parser::new(f, src, true);
+    p.parse_file();
     p
 }
 
