@@ -247,6 +247,9 @@ impl<'a> Parser<'a> {
     }
 
     fn print_trace(&self, pos: position::Pos, msg: &str) {
+        if !self.trace {
+            return;
+        }
         let f = self.file();
         let p = f.position(pos);
         let mut buf = String::new();
@@ -258,19 +261,15 @@ impl<'a> Parser<'a> {
     }
 
     fn trace_begin(&mut self, msg: &str) {
-        if self.trace {
-            let mut trace_str = msg.to_string();
-            trace_str.push('(');
-            self.print_trace(self.pos, &trace_str);
-            self.indent += 1;
-        }
+        let mut trace_str = msg.to_string();
+        trace_str.push('(');
+        self.print_trace(self.pos, &trace_str);
+        self.indent += 1;
     }
 
     fn trace_end(&mut self) {
-        if self.trace {
-            self.indent -= 1;
-            self.print_trace(self.pos, ")");
-        }
+        self.indent -= 1;
+        self.print_trace(self.pos, ")");
     }
 
     fn next(&mut self) {
@@ -548,7 +547,9 @@ impl<'a> Parser<'a> {
         let len = match self.token {
             // always permit ellipsis for more fault-tolerant parsing
             Token::ELLIPSIS => {
-                Some(Expr::new_ellipsis(self.pos, None))
+                let ell = Expr::new_ellipsis(self.pos, None);
+                self.next();
+                Some(ell)
             },
             _ if self.token != Token::RBRACK => {
                 Some(self.parse_rhs())
@@ -589,7 +590,7 @@ impl<'a> Parser<'a> {
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(false));
-            if let Token::COMMA = self.token {
+            if self.token != Token::COMMA {
                 break;
             }
             self.next();
@@ -745,7 +746,7 @@ impl<'a> Parser<'a> {
                 return params;
             }
             self.next();
-            loop {
+            while self.token != Token::RPAREN && self.token != Token::EOF {
                 let idents = self.parse_ident_list();
                 let t = self.parse_var_type(ellipsis_ok);
                 let to_resolve = t.clone_ident();
@@ -835,9 +836,9 @@ impl<'a> Parser<'a> {
 
         let mut idents = vec![];
         let mut typ = self.parse_type_name();
-        let ident = typ.unwrap_ident().clone();
-        if let Token::LPAREN = self.token {
-            idents = vec![ident];
+        let ident = typ.get_ident();
+        if ident.is_some() && self.token == Token::LPAREN {
+            idents = vec![*ident.unwrap()];
             let scope = new_scope!(self, self.top_scope);
             let (params, results) = self.parse_signature(scope);
             typ = Expr::box_func_type(FuncType::new(None, params, Some(results)));
@@ -1113,12 +1114,12 @@ impl<'a> Parser<'a> {
         if self.token != Token::COLON {
             indices[0] = Some(self.parse_rhs());
         }
-        while self.token == Token::COLON && ncolons < N  {
+        while self.token == Token::COLON && ncolons < N - 1  {
             colons[ncolons] = self.pos;
             ncolons += 1;
             self.next();
             match self.token {
-                Token::COLON | Token::RBRACE | Token::EOF => {},
+                Token::COLON | Token::RBRACK | Token::EOF => {},
                 _ => {indices[ncolons] = Some(self.parse_rhs())},
             }
         }
@@ -1169,7 +1170,7 @@ impl<'a> Parser<'a> {
         let mut list = vec![];
         let mut ellipsis: Option<position::Pos> = None;
         while self.token != Token::RPAREN && self.token != Token::EOF && 
-            ellipsis.is_some() {
+            ellipsis.is_none() {
             //// builtins may expect a type: make(some_type)
             list.push(self.parse_rhs_or_type());
             if self.token == Token::ELLIPSIS {
@@ -1283,7 +1284,8 @@ impl<'a> Parser<'a> {
 
     // checkExpr checks that x is an expression (and not a type).
     fn check_expr(&self, x: Expr) -> Expr {
-        match x {
+        let unparenx = Parser::unparen(&x);
+        match unparenx {
             Expr::Bad(_) => x,
             Expr::Ident(_) => x,
             Expr::BasicLit(_) => x,
@@ -1350,11 +1352,13 @@ impl<'a> Parser<'a> {
         match unparenx {
             Expr::Paren(_) => {unreachable!()},
             Expr::Array(array) => {
-                if let Some(ellipsis) = &array.len {
-                    self.error(ellipsis.pos(&self.objects), 
-                        "expected array length, found '...'");
-			        return Expr::new_bad(unparenx.pos(&self.objects),
-                        self.safe_pos(unparenx.end(&self.objects))); 
+                if let Some(expr) = &array.len {
+                    if let Expr::Ellipsis(ell) = expr {
+                        self.error(ell.pos, 
+                            "expected array length, found '...'");
+                        return Expr::new_bad(unparenx.pos(&self.objects),
+                            self.safe_pos(unparenx.end(&self.objects))); 
+                    }
                 }
             },
             _ => {},
@@ -1796,7 +1800,7 @@ impl<'a> Parser<'a> {
             } else {
                 self.expect(&Token::SEMICOLON(true));
             }
-            if self.token == Token::LBRACE {
+            if self.token != Token::LBRACE {
                 Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
             } else {
                 None
@@ -1834,7 +1838,7 @@ impl<'a> Parser<'a> {
             self.next();
             match self.token {
                 Token::IF => Some(self.parse_if_stmt()),
-                Token::ELSE => {
+                Token::LBRACE => {
                     let block = self.parse_block_stmt();
                     self.expect_semi();
                     Some(Stmt::box_block(block))
@@ -2290,7 +2294,7 @@ impl<'a> Parser<'a> {
                 }
             },
             Token::CONST => {
-                if values.len() == 0 && (iota == 0 || typ.is_none()) {
+                if values.len() == 0 && (iota == 0 || typ.is_some()) {
                     self_.error(pos, "missing constant value");
                 }
             }

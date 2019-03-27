@@ -106,11 +106,11 @@ impl Expr {
             {Some(Expr::Ident(i.clone()))} else {None}
     }
 
-    pub fn unwrap_ident(&self) -> &IdentIndex {
+    pub fn get_ident(&self) -> Option<&IdentIndex> {
         if let Expr::Ident(ident) = self {
-            ident 
+            Some(ident)
         } else {
-            panic!("unwrap_ident called on a non-ident Expr");
+            None
         }
     }
 
@@ -120,7 +120,7 @@ impl Expr {
 
     pub fn is_type_switch_assert(&self) -> bool {
         if let Expr::TypeAssert(t) = self {
-            t.typ.is_some()
+            t.typ.is_none()
         } else {
             false
         }
@@ -445,8 +445,8 @@ impl Ident {
 // parameter list or the "..." length in an array type.
 #[derive(Debug)]
 pub struct Ellipsis {
-    pos: position::Pos,
-    elt: Option<Expr>,
+    pub pos: position::Pos,
+    pub elt: Option<Expr>,
 }
 
 // A BasicLit node represents a literal of basic type.

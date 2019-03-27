@@ -2,33 +2,47 @@ extern crate goscript_frontend as fe;
 use std::fs;
 
 
-fn load_parse(path: &'static str) {
+fn load_parse(path: &str, trace: bool) -> usize {
     let mut fs = fe::FileSet::new();
     let src = fs::read_to_string(path).expect("read file err: ");
-    let p = fe::parse_file(&mut fs, path, &src);
-    print!("{}", p.get_errors());
+    let p = fe::parse_file(&mut fs, path, &src, trace);
 
+    print!("{}", p.get_errors());
+    
+    let l = p.get_errors().len();
+    l
 }
 
 #[test] 
-fn test_parser1 () {
-    load_parse("./tests/data/case1.gos");
+fn test_parser_case0 () {
+    load_parse("./../../../../go/src/github.com/golang/go/src/archive/tar/strconv_test.go", true);
+}
 
-    /*let mut fs = fe::FileSet::new();
-    let f = fs.add_file("testfile1.gs", None, 1000);
+#[test] 
+fn test_parser_case1 () {
+    load_parse("./tests/data/case1.gos", true);
+}
 
-    let s1 = r###"
-    func (p *someobj111) testFunc(a, b *int) (i int) {
-        for i := range iii {
-            a = 1;
+fn parse_dir(s: &str, trace: bool) -> usize {
+    let mut total = 0;
+    let paths = fs::read_dir(s).unwrap();
+    for path in paths {     
+        let p0 = path.unwrap().path();
+        if p0.is_dir() {
+            total += parse_dir(p0.to_str().unwrap(), trace);
         }
-    } 
-    "###;
-    
-    let mut p = fe::Parser::new(f, s1, true);
-    p.open_scope();
-    p.pkg_scope = p.top_scope;
-    p.next();
-    p.parse_decl(fe::Token::is_decl_start);
-    */
+        let p = p0.to_str().unwrap();
+        if p.ends_with(".go") {
+             println!("Name: {}", p);
+            total += load_parse(p, trace);
+        }
+    }
+    total
+}
+
+#[test]
+fn test_parser_dir() {
+    let t = parse_dir("./../../../../go/src/github.com/golang/go/src", false);
+    //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
+    println!("hohohoh{}", t);
 }

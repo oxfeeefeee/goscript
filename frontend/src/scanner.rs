@@ -116,7 +116,7 @@ impl<'a> Scanner<'a> {
                 t.clone()
             }
             Some('-') => {
-                let t = self.scan_switch3(&Token::SUB, &Token::SUB_ASSIGN, '+', &Token::DEC);
+                let t = self.scan_switch3(&Token::SUB, &Token::SUB_ASSIGN, '-', &Token::DEC);
                 self.semi2 = *t == Token::DEC;
                 t.clone()
             }
@@ -147,7 +147,7 @@ impl<'a> Scanner<'a> {
                         &Token::SHL, &Token::SHL_ASSIGN).clone(),
                 }
             }
-            Some('>') => self.scan_switch4(&Token::GTR, &Token::GEQ, '<',
+            Some('>') => self.scan_switch4(&Token::GTR, &Token::GEQ, '>',
                         &Token::SHR, &Token::SHR_ASSIGN).clone(),
             Some('=') => self.scan_switch2(&Token::ASSIGN, &Token::EQL).clone(),
             Some('!') => self.scan_switch2(&Token::NOT, &Token::NEQ).clone(),
@@ -255,6 +255,10 @@ impl<'a> Scanner<'a> {
             // decimal int or float 3 / 3.14
             self.scan_digits(&mut literal, is_decimal);
             match self.peek_char() {
+                Some('e') | Some('E') => {
+                    self.append_exponent(&mut literal);
+                    Token::FLOAT(literal)
+                },
                 Some('.') => {
                     self.append_fraction(&mut literal);
                     Token::FLOAT(literal)
@@ -471,11 +475,12 @@ impl<'a> Scanner<'a> {
         self.read_char();
         match self.peek_char() {
             Some(&'=') => { self.read_char(); t2 },
-            Some(&c) if c == ch => 
+            Some(&c) if c == ch => {
+                self.read_char();
                 match self.peek_char() {
                     Some(&'=') => { self.read_char(); t4 },
                     _ => t3,
-                }
+                }},
             _ => t1,
         }
     }
@@ -536,7 +541,7 @@ impl<'a> Scanner<'a> {
             Some(ch) => {
                 if ch == '\n' {
                     self.line_offset = self.offset;
-                    self.file.add_line(self.offset);
+                    self.file.add_line(self.offset+1);
                 }
                 self.offset+=1;
             }
@@ -651,7 +656,9 @@ mod test {
 
         //let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
         let src = r#"
-
+        5e+1
+        0.5e-1
+        07 08 
         break // ass
         break /*lala
         \la */
@@ -663,7 +670,6 @@ mod test {
         .25
         break
         /*dff"#;
-        //let src = ". 123";
         print!("src {}\n", src);
 
         let err = Rc::new(RefCell::new(errors::ErrorList::new()));

@@ -5,7 +5,7 @@ use std::borrow::Borrow;
 pub type Pos = usize;
 
 pub struct Position {
-    pub filename: &'static str,
+    pub filename: String,
     pub offset: usize,          // offset in utf8 char
     pub line: usize,
     pub column: usize,
@@ -19,7 +19,7 @@ impl Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut s = String::from(self.filename);
+        let mut s = self.filename.clone();
         if self.is_valid() {
             if s != "" {
                 s.push(':');
@@ -38,19 +38,19 @@ impl fmt::Display for Position {
 
 #[derive(Debug)]
 pub struct File {
-    name: &'static str,
+    name: String,
     base: usize,
     size: usize,
     lines: Vec<usize>,
 }
 
 impl File {
-    pub fn new(name: &'static str) -> File {
-        File{name: name, base:0, size:0, lines: vec![0]}
+    pub fn new(name: &str) -> File {
+        File{name: name.to_string(), base:0, size:0, lines: vec![0]}
     }
 
-    pub fn name(&self) -> &'static str {
-        self.name
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn base(&self) -> usize {
@@ -148,7 +148,7 @@ impl File {
         let column = offset - self.lines[line-1] + 1;
     
         Position{
-            filename: self.name,
+            filename: self.name.clone(),
             line: line,
             offset: offset,
             column: column,
@@ -201,7 +201,7 @@ impl FileSet {
         }
     }
 
-    pub fn add_file(&mut self, name: &'static str, base: Option<usize>,
+    pub fn add_file(&mut self, name: &str, base: Option<usize>,
         size: usize) -> &mut File {
         let real_base = if let Some(b) = base {b} else {self.base};
         if real_base < self.base {
@@ -247,7 +247,7 @@ mod test {
 
     #[test] 
     fn test_position() {
-        let p = Position{filename: "test.gs", offset: 0, line: 54321, column: 8};
+        let p = Position{filename: "test.gs".to_string(), offset: 0, line: 54321, column: 8};
         print!("this is the position: {} ", p);
         
         let mut fs = FileSet::new();
