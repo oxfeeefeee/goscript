@@ -9,7 +9,7 @@ pub enum GosValue {
     Nil,
     Int(i64),
     Float(f64),
-    Complex(f64, f64), // support compelx, takes 16 bytes anyway
+    Complex(f64, f64), // support complex, takes 16 bytes anyway
     Str(Rc<String>),
     Slice(Box<SliceObj>),
     Map(Rc<RefCell<HashMap<GosValue, GosValue>>>),
