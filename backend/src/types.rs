@@ -1,7 +1,8 @@
+#![allow(dead_code)]
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::cell::{RefCell, Ref};
-use std::rc::Rc;
+use std::rc::{Rc,Weak};
 
 
 #[derive(Clone, Debug)]
@@ -9,35 +10,40 @@ pub enum GosValue {
     Nil,
     Int(i64),
     Float(f64),
-    Complex(f64, f64), // support complex, takes 16 bytes anyway
-    Str(Rc<String>),
-    Slice(Box<SliceObj>),
-    Map(Rc<RefCell<HashMap<GosValue, GosValue>>>),
-    Struct(Rc<RefCell<Vec<GosValue>>>),
     Interface(Box<GosValue>),
-    Func(Box<FuncObj>),
+    Str(Rc<String>),
+    WeakStr(Weak<String>),
+    Closure(Rc<ClosureObj>),
+    WeakClosure(Rc<ClosureObj>),
+    Slice(Rc<RefCell<SliceObj>>),
+    WeakSlice(Weak<RefCell<SliceObj>>),
+    Map(Rc<RefCell<HashMap<GosValue, GosValue>>>),
+    WeakMap(Weak<RefCell<HashMap<GosValue, GosValue>>>),
+    Struct(Rc<RefCell<Vec<GosValue>>>),
+    WeakStruct(Weak<RefCell<Vec<GosValue>>>),
     Channel(Rc<RefCell<ChannelObj>>),
+    WeakChannel(Weak<RefCell<ChannelObj>>),
 }
 
 impl PartialEq for GosValue {
     fn eq(&self, other: &GosValue) -> bool {
-        match (self, other) {
+        let refx = self.try_upgrade();
+        let refy = other.try_upgrade();
+        let x = if self.is_weak() {&refx} else {self};
+        let y = if other.is_weak() {&refy} else {other};
+        match (x, y) {
             (GosValue::Nil, GosValue::Nil) => true,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
-            (GosValue::Float(x), GosValue::Float(y)) => f64_eq(x, y),
-            (GosValue::Complex(x, xi), GosValue::Complex(y, yi)) => {
-                f64_eq(x, y) && f64_eq(xi, yi)
-            },
+            (GosValue::Float(x), GosValue::Float(y)) => f64_eq(&x, &y),
             (GosValue::Str(x), GosValue::Str(y)) => x == y,
             (GosValue::Slice(x), GosValue::Slice(y)) => x == y,
             (GosValue::Map(x), GosValue::Map(y)) => x == y,
             (GosValue::Struct(x), GosValue::Struct(y)) => x == y,
             (GosValue::Interface(x), GosValue::Interface(y)) => x == y,
-            (GosValue::Func(x), GosValue::Func(y)) => x == y,
+            (GosValue::Closure(x), GosValue::Closure(y)) => x == y,
             (GosValue::Channel(x), GosValue::Channel(y)) => x == y,
             _ => false,
         }
-       
     }
 }
 
@@ -45,24 +51,23 @@ impl Eq for GosValue {}
 
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self {
+        let refx = self.try_upgrade();
+        let x = if self.is_weak() {&refx} else {self};
+        match x {
             GosValue::Nil => {0.hash(state);}
             GosValue::Int(i) => {i.hash(state);}
-            GosValue::Float(f) => {f64_hash(f, state)},
-            GosValue::Complex(x, xi) => {
-                f64_hash(x, state);
-                f64_hash(xi, state);
-                },
+            GosValue::Float(f) => {f64_hash(&f, state)}
             GosValue::Str(s) => {s.as_ref().hash(state);}
-            GosValue::Slice(s) => {s.as_ref().hash(state);}
+            GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
             GosValue::Map(_) => {unreachable!()}
             GosValue::Struct(s) => {
                 for item in s.as_ref().borrow().iter() {
                     item.hash(state);
                 }}
             GosValue::Interface(i) => {i.as_ref().hash(state);}
-            GosValue::Func(f) => {f.as_ref().hash(state);}
+            GosValue::Closure(f) => {f.as_ref().hash(state);}
             GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}
+            _ => unreachable!()
         }
     }
 }
@@ -74,15 +79,89 @@ impl GosValue {
 
     pub fn new_slice(s: Vec<GosValue>) -> GosValue {
         let len = s.len();
-        GosValue::Slice(Box::new(SliceObj{
+        GosValue::Slice(Rc::new(RefCell::new(SliceObj{
             data: Rc::new(RefCell::new(s)),
             begin: 0,
             end: len,
-        }))
+        })))
     }
 
     pub fn new_map(m: HashMap<GosValue, GosValue>) -> GosValue {
         GosValue::Map(Rc::new(RefCell::new(m)))
+    }
+
+    pub fn is_ref(&self) -> bool {
+        match self {
+            GosValue::Str(_) => true,
+            GosValue::Closure(_) => true,
+            GosValue::Slice(_) => true,
+            GosValue::Map(_) => true,
+            GosValue::Struct(_) => true,
+            GosValue::Channel(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_weak(&self) -> bool {
+        match self {
+            GosValue::WeakStr(_) => true,
+            GosValue::WeakClosure(_) => true,
+            GosValue::WeakSlice(_) => true,
+            GosValue::WeakMap(_) => true,
+            GosValue::WeakStruct(_) => true,
+            GosValue::WeakChannel(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn try_upgrade(&self) -> GosValue {
+        if self.is_weak() {
+            self.upgrade()
+        } else {
+            GosValue::Nil
+        }
+    }
+
+    pub fn try_downgrade(&self) -> GosValue {
+        if self.is_ref() {
+            self.downgrade()
+        } else {
+            GosValue::Nil
+        }
+    }
+
+    // panic if self is not weak ref
+    pub fn upgrade(&self) -> GosValue {
+        match self {
+            GosValue::WeakSlice(weak) => match weak.upgrade() {
+                Some(rf) => GosValue::Slice(rf),
+                None => GosValue::Nil,
+            },
+            GosValue::WeakMap(weak) => match weak.upgrade() {
+                Some(rf) => GosValue::Map(rf),
+                None => GosValue::Nil,
+            },
+            GosValue::WeakStruct(weak) => match weak.upgrade() {
+                Some(rf) => GosValue::Struct(rf),
+                None => GosValue::Nil,
+            },
+            GosValue::WeakChannel(weak) => match weak.upgrade() {
+                Some(rf) => GosValue::Channel(rf),
+                None => GosValue::Nil,
+            },
+            _ => unreachable!()
+        }
+    }
+
+    // panic if self is not ref
+    pub fn downgrade(&self) -> GosValue {
+         match self {
+            GosValue::Slice(s) => GosValue::WeakSlice(Rc::downgrade(s)),
+            GosValue::Map(m) => GosValue::WeakMap(Rc::downgrade(m)),
+            GosValue::Struct(s) => GosValue::WeakStruct(Rc::downgrade(s)),
+            GosValue::Channel(c) => GosValue::WeakChannel(Rc::downgrade(c)),
+            _ => unreachable!()
+        }
     }
 }
 
@@ -163,7 +242,7 @@ pub struct ChannelObj {
 }
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
-pub struct FuncObj {
+pub struct ClosureObj {
 }
 
 fn f64_eq(x: &f64, y: &f64) -> bool {

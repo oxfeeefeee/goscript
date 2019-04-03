@@ -37,13 +37,22 @@ const POS_B:u32 =		POS_C + SIZE_C;
 const POS_Bx:u32 =		POS_C;
 const POS_Ax:u32 =		POS_A;
 
-const MAXARG_Bx:u32 =       (1 << SIZE_Bx) - 1;
-const MAXARG_sBx:i32 =      MAXARG_Bx as i32 >> 1;        
-const MAXARG_Ax:u32 =   	(1 << SIZE_Ax) - 1;
+const MAX_ARG_Bx:u32 =  (1 << SIZE_Bx) - 1;
+const MAX_ARG_sBx:i32 = MAX_ARG_Bx as i32 >> 1;        
+const MAX_ARG_Ax:u32 =  (1 << SIZE_Ax) - 1;
 
-const MAXARG_A:u32 =        (1 << SIZE_A) - 1;
-const MAXARG_B:u32 =        (1 << SIZE_B) - 1;
-const MAXARG_C:u32 =        (1 << SIZE_C) - 1;
+const MAX_ARG_A:u32 =   (1 << SIZE_A) - 1;
+const MAX_ARG_B:u32 =   (1 << SIZE_B) - 1;
+const MAX_ARG_C:u32 =   (1 << SIZE_C) - 1;
+
+// this bit 1 means constant (0 means register)
+const BIT_R_K:u32 =		1 << (SIZE_B - 1);
+// for debugging only
+const MAX_INDEX_R_K:u32 = BIT_R_K - 1;
+
+// invalid register that fits in 8 bits
+const NO_REG:u32 = MAX_ARG_A;
+
 
 // creates a mask with 'n' 1 bits at position 'p'
 macro_rules! mask1 { ($n:expr, $p:expr) => { (!((!(0 as u32))<< $n)) << $p }; }
@@ -118,17 +127,39 @@ impl Instruction {
     pub fn set_bx(&mut self, v: u32) {set_arg!(self.0, v, POS_Bx, SIZE_Bx)}
 
     #[inline]
-    pub fn get_sbx(&self) -> i32 {self.get_bx() as i32 - MAXARG_sBx}
+    pub fn get_sbx(&self) -> i32 {self.get_bx() as i32 - MAX_ARG_sBx}
 
     #[inline]
     pub fn set_sbx(&mut self, v: i32) {
-        self.set_bx((v + MAXARG_sBx) as u32)
+        self.set_bx((v + MAX_ARG_sBx) as u32)
+    }
+
+    // test whether value is a constant
+    #[inline]
+    pub fn is_k(x: u32) -> bool {
+        (x & BIT_R_K) > 0
+    }
+
+    // gets the index of the constant
+    #[inline]
+    pub fn index_k(r: u32) -> u32 {
+        r & (!BIT_R_K)
+    }
+
+    // code a constant index as a RK value
+    #[inline]
+    pub fn rk_as_k(x: u32) -> u32 {
+        x | BIT_R_K
+    }
+
+    pub fn get_props(&self) -> &'static OpProp {
+        &OP_PROPS[self.get_opcode() as usize]
     }
 }
 
 impl fmt::Display for Instruction {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let prop = &OP_PROPS[self.get_opcode() as usize];
+        let prop = self.get_props();
         let a = self.get_a();
         let b = self.get_b();
         let c = self.get_c();
@@ -137,17 +168,75 @@ impl fmt::Display for Instruction {
         let ax = self.get_ax();
         match prop.op_mode {
             OpMode::ABC => {
-                write!(f, "{} A:{},B:{},C:{}", prop.name, a, b, c)
+                write!(f, "{} A:{},B:{},C:{}; ", prop.name, a, b, c)?
             }
             OpMode::ABx => {
-                write!(f, "{} A:{},Bx:{}", prop.name, a, bx)
+                write!(f, "{} A:{},Bx:{}; ", prop.name, a, bx)?
             }
             OpMode::AsBx => {
-                write!(f, "{} A:{},sBx:{}", prop.name, a, sbx)
+                write!(f, "{} A:{},sBx:{}; ", prop.name, a, sbx)?
             }
             OpMode::Ax => {
-                write!(f, "{} Ax:{}", prop.name, ax)
+                write!(f, "{} Ax:{}; ", prop.name, ax)?
             }
+        }
+        match self.get_opcode() {
+            OP_MOVE => {write!(f, "R({}) := R({})", a, b)}
+            OP_LOADK => {write!(f, "R({}) := Kst({})", a, bx)}
+            OP_LOADKX => {write!(f, "R({}) := Kst(extra arg)", a)}                          
+            OP_LOADBOOL => {write!(f, "R({}) := (Bool){}; if ({}) pc++", a , b, c)}                   
+            OP_LOADNIL => {write!(f, "R({0}), R({0}+1), ..., R({0}+{1}) := nil", a, b)}                
+            OP_GETUPVAL => {write!(f, "R({}) := UpValue[{}]", a, b)}                              
+            OP_GETTABUP => {write!(f, "R({}) := UpValue[{}][RK({})]", a, b, c)}                     
+            OP_GETTABLE => {write!(f, "R({}) := R({})[RK({})]", a, b, c)}                    
+            OP_SETTABUP => {write!(f, "UpValue[{}][RK({})] := RK({})", a, b, c)}                     
+            OP_SETUPVAL => {write!(f, "UpValue[{1}] := R({0})", a, b)}               
+            OP_SETTABLE => {write!(f, "R({})[RK({})] := RK({})", a, b, c)}                            
+            OP_NEWTABLE => {write!(f, "R({}) := NewObj (size = {},{})", a, b, c)}                        
+            OP_SELF => {write!(f, "R({0}+1) := R({1}); R({0}) := R({1})[RK({2})]", a, b, c)}           
+            OP_ADD => {write!(f, "R({}) := RK({}) + RK({})", a, b, c)}                           
+            OP_SUB => {write!(f, "R({}) := RK({}) - RK({})", a, b, c)}                           
+            OP_MUL => {write!(f, "R({}) := RK({}) * RK({})", a, b, c)}                           
+            OP_MOD => {write!(f, "R({}) := RK({}) % RK({})", a, b, c)}                          
+            OP_POW => {write!(f, "R({}) := RK({}) ^ RK({})", a, b, c)}                           
+            OP_DIV => {write!(f, "R({}) := RK({}) / RK({})", a, b, c)}                           
+            OP_IDIV => {write!(f, "R({}) := RK({}) // RK({})", a, b, c)}                          
+            OP_BAND => {write!(f, "R({}) := RK({}) & RK({})", a, b, c)}                           
+            OP_BOR => {write!(f, "R({}) := RK({}) | RK({})", a, b, c)}                           
+            OP_BXOR => {write!(f, "R({}) := RK({}) ~ RK({})", a, b, c)}                           
+            OP_SHL => {write!(f, "R({}) := RK({}) << RK({})", a, b, c)}                          
+            OP_SHR => {write!(f, "R({}) := RK({}) >> RK({})", a, b, c)}                          
+            OP_UNM => {write!(f, "R({}) := -R({})", a, b)}                                   
+            OP_BNOT => {write!(f, "R({}) := ~R({})", a, b)}                                   
+            OP_NOT => {write!(f, "R({}) := not R({})", a, b)}                                
+            OP_LEN => {write!(f, "R({}) := length of R({})", a, b)}                          
+            OP_CONCAT => {write!(f, "R({}) := R({}).. ... ..R({})", a, b, c)}                       
+            OP_JMP => {write!(f, "pc+={1}; if ({0}) close all upvalues >= R({0} - 1)", a, sbx)}  
+            OP_EQ => {write!(f, "if ((RK({1}) == RK({2})) ~= {0}) then pc++", a, b, c)}            
+            OP_LT => {write!(f, "if ((RK({1}) <  RK({2})) ~= {0}) then pc++", a, b, c)}            
+            OP_LE => {write!(f, "if ((RK({1}) <= RK({2})) ~= {0}) then pc++", a, b, c)}            
+            OP_TEST => {write!(f, "if not (R({}) <=> {}) then pc++", a, c)}                   
+            OP_TESTSET => {write!(f, 
+                "if (R({1}) <=> {2}) then R({0}) := R({1}) else pc++", a, b, c)}     
+            OP_CALL => {write!(f, 
+                "R({0}), ... ,R({0}+{2}-2) := R({0})(R({0}+1), ... ,R({0}+{1}-1))", a, b, c)} 
+            OP_TAILCALL => {write!(f, "return R({0})(R({0}+1), ... ,R({0}+{1}-1))", a, b)}              
+            OP_RETURN => {write!(f, "return R({0}), ... ,R({0}+{1}-2)", a, b)}      
+            OP_FORLOOP => {
+                write!(f, "R({0})+=R({0}+2); ", a)?;
+                write!(f, "if R({0}) <?= R({0}+1) then {{ pc+={1}; R({0}+3)=R({0}) }}", a, sbx)
+            }
+            OP_FORPREP => {write!(f, "R({0})-=R({0}+2); pc+={1}", a, sbx)}                           
+            OP_TFORCALL => {write!(f, 
+                "R({0}+3), ... ,R({0}+2+{1}) := R({0})(R({0}+1), R({0}+2));", a, c)}  
+            OP_TFORLOOP => {write!(f, 
+                "if R({0}+1) ~= nil then {{ R({0})=R({0}+1); pc += {1} }}", a, sbx)}
+            OP_SETLIST => {write!(f, 
+                "R({0})[({2}-1)*FPF+i] := R({0}+i), 1 <= i <= {1}", a, b, c)}        
+            OP_CLOSURE => {write!(f, "R({}) := closure(KPROTO[{}])", a, bx)}                     
+            OP_VARARG => {write!(f, "R({0}), R({0}+1), ..., R({0}+{1}-2) = vararg", a, b)}            
+            OP_EXTRAARG => {write!(f, "extra (larger) argument for previous opcode" )}
+            _ => unreachable!()
         }
     }
 }
@@ -161,8 +250,10 @@ mod test {
         let mut i = Instruction(0);
         i.set_opcode(OP_LOADK);
         i.set_a(1);
+        i.set_sbx(-222);
+        assert!(i.get_sbx() == -222);
         i.set_bx(2);
-        //assert!(i.get_opcode() == OP_LOADK);
+        assert!(i.get_opcode() == OP_LOADK);
         println!("instruction {}\n", i); 
     }
 }
