@@ -1,26 +1,41 @@
 #![allow(dead_code)]
+use std::rc::{Rc};
 use super::types::GosValue;
-use super::instruction::Instruction,
+use super::instruction::Instruction;
 
-
+#[derive(Clone, Debug)]
 pub struct UpValueDesc {
     name: String, // debug info
     is_local: bool, // local or in outer functions
     index: usize,
 }
 
+#[derive(Clone, Debug)]
 pub struct LocalVar {
     name: String,
     start_pc: usize,
     end_pc: usize,
 }
 
+#[derive(Clone, Debug)]
 pub struct Proto {
-    regs_needed: usize,
-    is_var_arg: bool,
-    up_values: Vec<UpValueDesc>,
-    constants: Vec<GosValue>,
-    code: Vec<Instruction>,
-    sub_protos: Vec<Proto>,
-    local_vars: Vec<LocalVar>, // debug info
+    pub regs_needed: usize,
+    pub is_var_arg: bool,
+    pub up_values: Vec<UpValueDesc>,
+    pub constants: Vec<GosValue>,
+    pub code: Vec<Instruction>,
+    pub sub_protos: Vec<Proto>,
+    pub local_vars: Vec<LocalVar>, // debug info
+}
+
+#[derive(Clone, Debug)]
+pub enum UpValue {
+    Open(u32),
+    Closed(GosValue),
+}
+
+#[derive(Clone, Debug)]
+pub struct Closure {
+    pub proto: Rc<Proto>,
+    pub up_values: Vec<UpValue>,
 }

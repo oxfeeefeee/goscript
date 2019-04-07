@@ -1,4 +1,5 @@
 mod opcode; 
 mod instruction;
+mod proto;
 mod types;
-mod state;
+mod vm;

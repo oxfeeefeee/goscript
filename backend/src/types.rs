@@ -3,18 +3,19 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::cell::{RefCell, Ref};
 use std::rc::{Rc,Weak};
-
+use super::proto::Closure;
 
 #[derive(Clone, Debug)]
 pub enum GosValue {
     Nil,
+    Bool(bool),
     Int(i64),
     Float(f64),
     Interface(Box<GosValue>),
     Str(Rc<String>),
     WeakStr(Weak<String>),
-    Closure(Rc<ClosureObj>),
-    WeakClosure(Rc<ClosureObj>),
+    Closure(Rc<Closure>),
+    WeakClosure(Rc<Closure>),
     Slice(Rc<RefCell<SliceObj>>),
     WeakSlice(Weak<RefCell<SliceObj>>),
     Map(Rc<RefCell<HashMap<GosValue, GosValue>>>),
@@ -33,6 +34,7 @@ impl PartialEq for GosValue {
         let y = if other.is_weak() {&refy} else {other};
         match (x, y) {
             (GosValue::Nil, GosValue::Nil) => true,
+            (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
             (GosValue::Float(x), GosValue::Float(y)) => f64_eq(&x, &y),
             (GosValue::Str(x), GosValue::Str(y)) => x == y,
@@ -40,7 +42,7 @@ impl PartialEq for GosValue {
             (GosValue::Map(x), GosValue::Map(y)) => x == y,
             (GosValue::Struct(x), GosValue::Struct(y)) => x == y,
             (GosValue::Interface(x), GosValue::Interface(y)) => x == y,
-            (GosValue::Closure(x), GosValue::Closure(y)) => x == y,
+            (GosValue::Closure(x), GosValue::Closure(y)) => Rc::ptr_eq(x, y),
             (GosValue::Channel(x), GosValue::Channel(y)) => x == y,
             _ => false,
         }
@@ -55,6 +57,7 @@ impl Hash for GosValue {
         let x = if self.is_weak() {&refx} else {self};
         match x {
             GosValue::Nil => {0.hash(state);}
+            GosValue::Bool(b) => {b.hash(state);}
             GosValue::Int(i) => {i.hash(state);}
             GosValue::Float(f) => {f64_hash(&f, state)}
             GosValue::Str(s) => {s.as_ref().hash(state);}
@@ -65,7 +68,7 @@ impl Hash for GosValue {
                     item.hash(state);
                 }}
             GosValue::Interface(i) => {i.as_ref().hash(state);}
-            GosValue::Closure(f) => {f.as_ref().hash(state);}
+            GosValue::Closure(_) => {unreachable!()}
             GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}
             _ => unreachable!()
         }
@@ -239,10 +242,6 @@ impl<'a> Iterator for SliceObjIter<'a> {
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]
 pub struct ChannelObj {
-}
-
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
-pub struct ClosureObj {
 }
 
 fn f64_eq(x: &f64, y: &f64) -> bool {

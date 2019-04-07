@@ -70,6 +70,7 @@ macro_rules! set_arg {
     };
 }
 
+#[derive(Clone, Debug)]
 pub struct Instruction(u32);
 
 impl Instruction {
