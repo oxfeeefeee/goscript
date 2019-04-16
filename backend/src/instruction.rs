@@ -188,9 +188,9 @@ impl fmt::Display for Instruction {
             OP_LOADBOOL => {write!(f, "R({}) := (Bool){}; if ({}) pc++", a , b, c)}                   
             OP_LOADNIL => {write!(f, "R({0}), R({0}+1), ..., R({0}+{1}) := nil", a, b)}                
             OP_GETUPVAL => {write!(f, "R({}) := UpValue[{}]", a, b)}                              
-            OP_GETTABUP => {write!(f, "R({}) := UpValue[{}][RK({})]", a, b, c)}                     
+            OP_GETGLOBAL => {write!(f, "R({}) := UpValue[{}][RK({})]", a, b, c)}                     
             OP_GETTABLE => {write!(f, "R({}) := R({})[RK({})]", a, b, c)}                    
-            OP_SETTABUP => {write!(f, "UpValue[{}][RK({})] := RK({})", a, b, c)}                     
+            OP_SETGLOBAL => {write!(f, "UpValue[{}][RK({})] := RK({})", a, b, c)}                     
             OP_SETUPVAL => {write!(f, "UpValue[{1}] := R({0})", a, b)}               
             OP_SETTABLE => {write!(f, "R({})[RK({})] := RK({})", a, b, c)}                            
             OP_NEWTABLE => {write!(f, "R({}) := NewObj (size = {},{})", a, b, c)}                        
@@ -227,13 +227,12 @@ impl fmt::Display for Instruction {
                 write!(f, "R({0})+=R({0}+2); ", a)?;
                 write!(f, "if R({0}) <?= R({0}+1) then {{ pc+={1}; R({0}+3)=R({0}) }}", a, sbx)
             }
-            OP_FORPREP => {write!(f, "R({0})-=R({0}+2); pc+={1}", a, sbx)}                           
-            OP_TFORCALL => {write!(f, 
-                "R({0}+3), ... ,R({0}+2+{1}) := R({0})(R({0}+1), R({0}+2));", a, c)}  
+            OP_FORPREP => {write!(f, "R({0})-=R({0}+2); pc+={1}", a, sbx)}
             OP_TFORLOOP => {write!(f, 
                 "if R({0}+1) ~= nil then {{ R({0})=R({0}+1); pc += {1} }}", a, sbx)}
             OP_SETLIST => {write!(f, 
-                "R({0})[({2}-1)*FPF+i] := R({0}+i), 1 <= i <= {1}", a, b, c)}        
+                "R({0})[({2}-1)*FPF+i] := R({0}+i), 1 <= i <= {1}", a, b, c)}   
+            OP_CLOSE => {write!(f, "close all variables in the stack up to (>=) R({})", a)}                          
             OP_CLOSURE => {write!(f, "R({}) := closure(KPROTO[{}])", a, bx)}                     
             OP_VARARG => {write!(f, "R({0}), R({0}+1), ..., R({0}+{1}-2) = vararg", a, b)}            
             OP_EXTRAARG => {write!(f, "extra (larger) argument for previous opcode" )}

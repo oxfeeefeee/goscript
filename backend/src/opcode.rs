@@ -7,15 +7,14 @@ pub const OP_MOVE: Opcode =  0;//      A B     R(A) := R(B)
 pub const OP_LOADK: Opcode =  1;//     A Bx    R(A) := Kst(Bx)                                 
 pub const OP_LOADKX: Opcode =  2;//    A       R(A) := Kst(extra arg)                          
 pub const OP_LOADBOOL: Opcode =  3;//  A B C   R(A) := (Bool)B; if (C) pc++                    
-pub const OP_LOADNIL: Opcode =  4;//   A B     R(A), R(A+1), ..., R(A+B) := nil                
-pub const OP_GETUPVAL: Opcode =  5;//  A B     R(A) := UpValue[B]                              
+pub const OP_LOADNIL: Opcode =  4;//   A B     R(A), R(A+1), ..., R(A+B) := nil 
 
-pub const OP_GETTABUP: Opcode =  6;//  A B C   R(A) := UpValue[B][RK(C)]                       
-pub const OP_GETTABLE: Opcode =  7;//  A B C   R(A) := R(B)[RK(C)]                             
-
-pub const OP_SETTABUP: Opcode =  8;//  A B C   UpValue[A][RK(B)] := RK(C)                      
+pub const OP_GETUPVAL: Opcode =  5;//  A B     R(A) := UpValue[B]     
+pub const OP_GETGLOBAL: Opcode =  6;// A Bx	   R(A) := Gbl[Kst(Bx)]	
+pub const OP_GETTABLE: Opcode =  7;//  A B C   R(A) := R(B)[RK(C)]
+pub const OP_SETGLOBAL: Opcode =  8;// A Bx    Gbl[Kst(Bx)] := R(A)				
 pub const OP_SETUPVAL: Opcode =  9;//  A B     UpValue[B] := R(A)                              
-pub const OP_SETTABLE: Opcode = 10;//  A B C   R(A)[RK(B)] := RK(C)                            
+pub const OP_SETTABLE: Opcode = 10;//  A B C   R(A)[RK(B)] := RK(C)
 
 pub const OP_NEWTABLE: Opcode = 11;//  A B C   R(A) := {} (size = B,C)                         
 
@@ -56,11 +55,11 @@ pub const OP_FORLOOP: Opcode = 39;//   A sBx   R(A)+=R(A+2);
                           //           if R(A) <?= R(A+1) then { pc+=sBx; R(A+3)=R(A) }
 pub const OP_FORPREP: Opcode = 40;//   A sBx   R(A)-=R(A+2); pc+=sBx                           
 
-pub const OP_TFORCALL: Opcode = 41;//  A C     R(A+3), ... ,R(A+2+C) := R(A)(R(A+1), R(A+2));  
-pub const OP_TFORLOOP: Opcode = 42;//  A sBx   if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
+pub const OP_TFORLOOP: Opcode = 41;//  A sBx   if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
 
-pub const OP_SETLIST: Opcode = 43;//   A B C   R(A)[(C-1)*FPF+i] := R(A+i), 1 <= i <= B        
+pub const OP_SETLIST: Opcode = 42;//   A B C   R(A)[(C-1)*FPF+i] := R(A+i), 1 <= i <= B        
 
+pub const OP_CLOSE: Opcode = 43; //	   A 	   close all variables in the stack up to (>=) R(A)
 pub const OP_CLOSURE: Opcode = 44;//   A Bx    R(A) := closure(KPROTO[Bx])                     
 
 pub const OP_VARARG: Opcode = 45;//    A B     R(A), R(A+1), ..., R(A+B-2) = vararg            

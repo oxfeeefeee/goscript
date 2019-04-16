@@ -11,3 +11,5 @@ Cargo.lock
 
 .DS_Store
 *.code-workspace
+
+backend/.vscode/

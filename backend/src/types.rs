@@ -93,6 +93,10 @@ impl GosValue {
         GosValue::Map(Rc::new(RefCell::new(m)))
     }
 
+    pub fn new_struct(s: Vec<GosValue>) -> GosValue {
+        GosValue::Struct(Rc::new(RefCell::new(s)))
+    }
+
     pub fn is_ref(&self) -> bool {
         match self {
             GosValue::Str(_) => true,
@@ -166,6 +170,11 @@ impl GosValue {
             _ => unreachable!()
         }
     }
+
+    #[inline]
+    pub fn get_int(&self) -> i64 {
+        if let GosValue::Int(i) = self {*i} else {unreachable!();}
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -193,6 +202,10 @@ impl SliceObj {
 
     pub fn get_item(&self, i: usize) -> Ref<GosValue> {
         Ref::map(self.data_ref(), |x| &x[i+self.begin])
+    }
+
+    pub fn set_item(&self, i: usize, val: GosValue) {
+        self.data.as_ref().borrow_mut()[i] = val;
     }
 }
 

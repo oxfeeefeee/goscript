@@ -39,3 +39,19 @@ pub struct Closure {
     pub proto: Rc<Proto>,
     pub up_values: Vec<UpValue>,
 }
+
+impl UpValue {
+    pub fn value<'a>(&'a self, reg: &'a Vec<GosValue>) -> &'a GosValue {
+        match self {
+            UpValue::Open(i) => &reg[*i as usize],
+            UpValue::Closed(v) => v,
+        }
+    }
+
+    pub fn set_value(&mut self, v: GosValue) {
+        match self {
+            UpValue::Open(_) => unreachable!(),
+            UpValue::Closed(oldv) => {*oldv = v;},
+        }
+    }
+}

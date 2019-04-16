@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use std::rc::{Rc};
 use std::collections::HashMap;
+use super::instruction::Instruction;
 use super::types::*;
 use super::proto::*;
 use super::opcode::*;
@@ -45,6 +46,10 @@ pub struct RegStack {
     top: usize,
 }
 
+pub struct Error {
+    msg: Option<String>,
+}
+
 pub struct State<'p, 'c> {
     g_state: &'static GlobalState,
     parent: Option<&'p State<'p, 'c>>,
@@ -53,6 +58,7 @@ pub struct State<'p, 'c> {
     call_frames: CallFrames<'c>,
     reg_stack: RegStack,
     current_frame: usize,
+    error: Error,
 }
 
 impl<'c> CallFrames<'c> {
@@ -191,7 +197,85 @@ impl RegStack {
     }
 }
 
+impl Error {
+    fn set(&mut self, s: String) {
+        self.msg = Some(s)
+    }
+}
+
 impl<'p, 'c> State<'p, 'c> {
+
+    #[inline]
+    fn get_rk<'a>(idx: u32, lbase: u32, func: &'a Closure, reg: &'a RegStack) -> &'a GosValue {
+        if Instruction::is_k(idx) {
+            &func.proto.constants[Instruction::index_k(idx) as usize]
+        } else {
+            reg.get(lbase + idx)
+        }
+    }
+
+    fn get_field(obj: &GosValue, key: &GosValue, err: &mut Error) -> GosValue {
+        let strong = if obj.is_weak() {
+            obj.upgrade()
+        } else {
+            obj.clone()
+        };
+        if let GosValue::Nil = strong {
+            err.set("Accessing released weak reference".to_string());
+        }
+        match strong {
+            GosValue::Slice(s) => {
+                let idx = key.get_int() as usize;
+                s.as_ref().borrow().get_item(idx).clone()
+            }
+            GosValue::Map(m) => {
+                let r = m.as_ref().borrow();
+                let v = r.get(key).cloned();
+                if v.is_some() {v.unwrap()} else {GosValue::Nil}
+            }
+            GosValue::Struct(s) => {
+                let idx = key.get_int() as usize;
+                s.as_ref().borrow()[idx].clone()
+            }
+            _ => {unreachable!()}
+        }
+    }
+
+    fn set_field(obj: &GosValue, key: &GosValue, val: GosValue, err: &mut Error) {
+        let strong = if obj.is_weak() {
+            obj.upgrade()
+        } else {
+            obj.clone()
+        };
+        if let GosValue::Nil = strong {
+            err.set("Accessing released weak reference".to_string());
+        }
+        match strong {
+            GosValue::Slice(s) => {
+                let idx = key.get_int() as usize;
+                s.as_ref().borrow_mut().set_item(idx, val);
+            }
+            GosValue::Map(m) => {
+                let mut r = m.as_ref().borrow_mut();
+                r.insert(key.clone(), val);
+            }
+            GosValue::Struct(s) => {
+                let idx = key.get_int() as usize;
+                s.as_ref().borrow_mut()[idx] = val;
+            }
+            _ => {unreachable!()}
+        }
+    }
+
+    fn new_object(b: u32, c: u32) -> GosValue {
+        match b {
+            1 => GosValue::new_slice(Vec::with_capacity(c as usize)),
+            2 => GosValue::new_map(HashMap::new()),
+            3 => GosValue::new_struct(Vec::with_capacity(c as usize)),
+            _ => unreachable!(),
+        }
+    }
+
     fn exec(&mut self) {
         match self.call_frames.try_last() {
             Some(ci) => { self.current_frame = ci.index; },
@@ -206,32 +290,78 @@ impl<'p, 'c> State<'p, 'c> {
             let base = ci.local_base;
             match inst.get_opcode() {
                 OP_MOVE => {
-                    let a = inst.get_a();
-                    let b = inst.get_b();
-                    reg.set(base + a, reg.get(base + b).clone())
+                    let ra = base + inst.get_a();
+                    let rb = base + inst.get_b();
+                    reg.set(ra, reg.get(rb).clone())
                 }
                 OP_LOADK => {
-                    let a = inst.get_a();
+                    let ra = base + inst.get_a();
                     let bx = inst.get_bx() as usize;
-                    reg.set(base + a, func.proto.constants[bx].clone());
+                    reg.set(ra, func.proto.constants[bx].clone());
+                }
+                OP_LOADKX => {
+                    let ra = base + inst.get_a();
+                    ci.pc += 1;
+                    let inst = &func.proto.code[ci.pc];
+                    assert!(inst.get_opcode() == OP_EXTRAARG);
+                    reg.set(ra, GosValue::Int(inst.get_ax() as i64));
                 }
                 OP_LOADBOOL => {
-                    let a = inst.get_a();
+                    let ra = base + inst.get_a();
                     let b = inst.get_b();
                     let c = inst.get_c();
                     let val = if b == 0 {true} else {false};
-                    reg.set(base + a, GosValue::Bool(val));
+                    reg.set(ra, GosValue::Bool(val));
                     if c != 0 {
                         ci.pc += 1;
                     }
                 }
                 OP_LOADNIL => {
-                    let a = inst.get_a();
-                    let b = inst.get_b();
-                    for i in base + a .. base + b + 1 {
+                    let ra = base + inst.get_a();
+                    let rb = base + inst.get_b();
+                    for i in ra .. rb + 1 {
                         reg.set(i, GosValue::Nil);
                     }
                 }
+                OP_GETUPVAL => {
+                    let ra = base + inst.get_a();
+                    let rb = (base + inst.get_b()) as usize;
+                    reg.set(ra, func.up_values[rb].value(&reg.stack).clone());
+                }
+                OP_GETGLOBAL => {
+                    let ra = base + inst.get_a();
+                    let bx = inst.get_bx();
+                    let key = &func.proto.constants[bx as usize];
+                    reg.set(ra, self.env[key].clone());
+                }
+                OP_GETTABLE => {
+                    let ra = base + inst.get_a();
+                    let rb = base + inst.get_b();
+                    let c = inst.get_c();
+                    let rk = State::get_rk(c, base, func, reg);
+                    reg.set(ra, State::get_field(reg.get(rb), rk, &mut self.error));
+                }
+                OP_SETGLOBAL => {
+                    let ra = base + inst.get_a();
+                    let bx = inst.get_bx();
+                    let key = &func.proto.constants[bx as usize];
+                    self.env.insert(key.clone(), reg.get(ra).clone());
+                }
+                OP_NEWTABLE => {
+                    let ra = base + inst.get_a();
+                    let b = inst.get_b();
+                    let c = inst.get_c();
+                    reg.set(ra, State::new_object(b, c));
+                }
+                OP_SELF => {
+                    let ra = base + inst.get_a();
+                    let rb = base + inst.get_b();
+                    let c = inst.get_c();
+                    reg.set(ra+1, reg.get(rb).clone());
+                    let rk = State::get_rk(c, base, func, reg);
+                    reg.set(ra, State::get_field(reg.get(rb), rk, &mut self.error));
+                }
+
                 _ => {panic!("invalid opcode!")}
             }
         }
