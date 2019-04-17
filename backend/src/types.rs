@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![feature(weak_ptr_eq)]
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::cell::{RefCell, Ref};
@@ -15,7 +16,7 @@ pub enum GosValue {
     Str(Rc<String>),
     WeakStr(Weak<String>),
     Closure(Rc<Closure>),
-    WeakClosure(Rc<Closure>),
+    WeakClosure(Weak<Closure>),
     Slice(Rc<RefCell<SliceObj>>),
     WeakSlice(Weak<RefCell<SliceObj>>),
     Map(Rc<RefCell<HashMap<GosValue, GosValue>>>),
@@ -28,11 +29,7 @@ pub enum GosValue {
 
 impl PartialEq for GosValue {
     fn eq(&self, other: &GosValue) -> bool {
-        let refx = self.try_upgrade();
-        let refy = other.try_upgrade();
-        let x = if self.is_weak() {&refx} else {self};
-        let y = if other.is_weak() {&refy} else {other};
-        match (x, y) {
+        match (self, other) {
             (GosValue::Nil, GosValue::Nil) => true,
             (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
@@ -44,6 +41,14 @@ impl PartialEq for GosValue {
             (GosValue::Interface(x), GosValue::Interface(y)) => x == y,
             (GosValue::Closure(x), GosValue::Closure(y)) => Rc::ptr_eq(x, y),
             (GosValue::Channel(x), GosValue::Channel(y)) => x == y,
+            (GosValue::WeakStr(_), GosValue::WeakStr(_)) |
+            (GosValue::WeakClosure(_), GosValue::WeakClosure(_)) |
+            (GosValue::WeakSlice(_), GosValue::WeakSlice(_)) |
+            (GosValue::WeakMap(_), GosValue::WeakMap(_)) |
+            (GosValue::WeakStruct(_), GosValue::WeakStruct(_)) |
+            (GosValue::WeakChannel(_), GosValue::WeakChannel(_)) => {
+                self.upgrade() == other.upgrade()
+            }
             _ => false,
         }
     }
@@ -53,9 +58,7 @@ impl Eq for GosValue {}
 
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        let refx = self.try_upgrade();
-        let x = if self.is_weak() {&refx} else {self};
-        match x {
+        match self {
             GosValue::Nil => {0.hash(state);}
             GosValue::Bool(b) => {b.hash(state);}
             GosValue::Int(i) => {i.hash(state);}
@@ -70,6 +73,14 @@ impl Hash for GosValue {
             GosValue::Interface(i) => {i.as_ref().hash(state);}
             GosValue::Closure(_) => {unreachable!()}
             GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}
+            GosValue::WeakStr(_) |
+            GosValue::WeakClosure(_) |
+            GosValue::WeakSlice(_) |
+            GosValue::WeakMap(_) |
+            GosValue::WeakStruct(_) |
+            GosValue::WeakChannel(_) => {
+                self.upgrade().hash(state)
+            }
             _ => unreachable!()
         }
     }
@@ -144,6 +155,10 @@ impl GosValue {
                 Some(rf) => GosValue::Slice(rf),
                 None => GosValue::Nil,
             },
+            GosValue::WeakClosure(weak) => match weak.upgrade() {
+                Some(rf) => GosValue::Closure(rf),
+                None => GosValue::Nil,
+            }
             GosValue::WeakMap(weak) => match weak.upgrade() {
                 Some(rf) => GosValue::Map(rf),
                 None => GosValue::Nil,
@@ -164,6 +179,7 @@ impl GosValue {
     pub fn downgrade(&self) -> GosValue {
          match self {
             GosValue::Slice(s) => GosValue::WeakSlice(Rc::downgrade(s)),
+            GosValue::Closure(c) => GosValue::WeakClosure(Rc::downgrade(c)),
             GosValue::Map(m) => GosValue::WeakMap(Rc::downgrade(m)),
             GosValue::Struct(s) => GosValue::WeakStruct(Rc::downgrade(s)),
             GosValue::Channel(c) => GosValue::WeakChannel(Rc::downgrade(c)),
@@ -174,6 +190,16 @@ impl GosValue {
     #[inline]
     pub fn get_int(&self) -> i64 {
         if let GosValue::Int(i) = self {*i} else {unreachable!();}
+    }
+
+    #[inline]
+    pub fn get_bool(&self) -> bool {
+        if let GosValue::Bool(b) = self {*b} else {unreachable!();}
+    }
+
+    #[inline]
+    pub fn get_closure(&self) -> &Closure {
+        if let GosValue::Closure(c) = self {&c} else {unreachable!();}
     }
 }
 

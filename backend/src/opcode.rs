@@ -39,7 +39,7 @@ pub const OP_LEN: Opcode = 28;//       A B     R(A) := length of R(B)
 
 pub const OP_CONCAT: Opcode = 29;//    A B C   R(A) := R(B).. ... ..R(C)                       
 
-pub const OP_JMP: Opcode = 30;//       A sBx   pc+=sBx; if (A) close all upvalues >= R(A - 1)  
+pub const OP_JMP: Opcode = 30;//       A sBx   pc+=sBx
 pub const OP_EQ: Opcode = 31;//        A B C   if ((RK(B) == RK(C)) ~= A) then pc++            
 pub const OP_LT: Opcode = 32;//        A B C   if ((RK(B) <  RK(C)) ~= A) then pc++            
 pub const OP_LE: Opcode = 33;//        A B C   if ((RK(B) <= RK(C)) ~= A) then pc++            

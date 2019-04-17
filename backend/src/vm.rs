@@ -27,7 +27,7 @@ R(A+4)                                         [ local 1     ]
 pub struct CallInfo<'c> {
     index: usize,   // self-index in CallFrames
     closure: Option<&'c Closure>,    
-    pc: usize,
+    pc: isize,
     base: u32,        // CI->func in the table above
     local_base: u32,  // CI->base in the table above
     return_base: usize,
@@ -62,18 +62,8 @@ pub struct State<'p, 'c> {
 }
 
 impl<'c> CallFrames<'c> {
-    pub fn new(size: usize) -> CallFrames<'c> {
-        let frames = vec![CallInfo{
-            index: 0,
-            closure: None,
-            pc: 0,
-            base: 0,
-            local_base: 0,
-            return_base: 0,
-            arg_count: 0,
-            ret_count: 0,
-            tail_call: 0,
-        }; size];
+    pub fn new(capacity: usize) -> CallFrames<'c> {
+        let frames = Vec::with_capacity(capacity);
         CallFrames{frames: frames, pointer: 0}
     }
 
@@ -214,16 +204,60 @@ impl<'p, 'c> State<'p, 'c> {
         }
     }
 
-    fn get_field(obj: &GosValue, key: &GosValue, err: &mut Error) -> GosValue {
-        let strong = if obj.is_weak() {
-            obj.upgrade()
-        } else {
-            obj.clone()
+    #[inline]
+    fn bin_op_abc<'a>(inst: &Instruction, lbase: u32, func: &'a Closure, reg: &'a RegStack
+    ) -> (u32, &'a GosValue, &'a GosValue) {
+        let ra = lbase + inst.get_a();
+        let rkb = State::get_rk(inst.get_b(), lbase, func, reg);
+        let rkc = State::get_rk(inst.get_c(), lbase, func, reg);
+        (ra, rkb, rkc)
+    }
+
+    #[inline]
+    fn int_bin_op(op: Opcode, a: &i64, b: &i64) -> GosValue {
+        let v = match op {
+            OP_ADD => a + b,
+            OP_MUL => a * b,
+            OP_MOD => a % b,
+            OP_POW => a.pow(*b as u32),
+            OP_DIV => a / b,
+            OP_IDIV => b / a,
+            OP_BAND => a & b,
+            OP_BOR => a | b,
+            OP_BXOR => a ^ b,
+            OP_SHL => a << b,
+            OP_SHR => a >> b,
+            _ => unreachable!(),
         };
-        if let GosValue::Nil = strong {
-            err.set("Accessing released weak reference".to_string());
+        GosValue::Int(v)
+    }
+
+    #[inline]
+    fn float_bin_op(op: Opcode, a: &f64, b: &f64) -> GosValue {
+        let v = match op {
+            OP_ADD => a + b,
+            OP_MUL => a * b,
+            OP_POW => a.powf(*b),
+            OP_DIV => a / b,
+            OP_IDIV => b / a,
+            _ => unreachable!(),
+        }; 
+        GosValue::Float(v)
+    }
+
+    #[inline]
+    fn cmp_op<T: PartialEq + PartialOrd>(op: Opcode, a: u32, b: T, c: T) -> bool {
+        let boola = if a > 0 {true} else {false};
+        match op {
+            OP_EQ => boola == (b == c),
+            OP_LT => boola == (b < c),
+            OP_LE => boola == (b <= c),
+            _ => false,
         }
-        match strong {
+    }
+
+    fn get_field(obj: &GosValue, key: &GosValue) -> GosValue {
+        match obj {
             GosValue::Slice(s) => {
                 let idx = key.get_int() as usize;
                 s.as_ref().borrow().get_item(idx).clone()
@@ -241,16 +275,8 @@ impl<'p, 'c> State<'p, 'c> {
         }
     }
 
-    fn set_field(obj: &GosValue, key: &GosValue, val: GosValue, err: &mut Error) {
-        let strong = if obj.is_weak() {
-            obj.upgrade()
-        } else {
-            obj.clone()
-        };
-        if let GosValue::Nil = strong {
-            err.set("Accessing released weak reference".to_string());
-        }
-        match strong {
+    fn set_field(obj: &GosValue, key: &GosValue, val: GosValue) {
+        match obj {
             GosValue::Slice(s) => {
                 let idx = key.get_int() as usize;
                 s.as_ref().borrow_mut().set_item(idx, val);
@@ -285,10 +311,11 @@ impl<'p, 'c> State<'p, 'c> {
         let func = ci.closure.unwrap();
         loop {
             let reg = &mut self.reg_stack;
-            let inst = &func.proto.code[ci.pc];
+            let inst = &func.proto.code[ci.pc as usize];
             ci.pc += 1;
             let base = ci.local_base;
-            match inst.get_opcode() {
+            let op = inst.get_opcode();
+            match op {
                 OP_MOVE => {
                     let ra = base + inst.get_a();
                     let rb = base + inst.get_b();
@@ -302,7 +329,7 @@ impl<'p, 'c> State<'p, 'c> {
                 OP_LOADKX => {
                     let ra = base + inst.get_a();
                     ci.pc += 1;
-                    let inst = &func.proto.code[ci.pc];
+                    let inst = &func.proto.code[ci.pc as usize];
                     assert!(inst.get_opcode() == OP_EXTRAARG);
                     reg.set(ra, GosValue::Int(inst.get_ax() as i64));
                 }
@@ -339,7 +366,7 @@ impl<'p, 'c> State<'p, 'c> {
                     let rb = base + inst.get_b();
                     let c = inst.get_c();
                     let rk = State::get_rk(c, base, func, reg);
-                    reg.set(ra, State::get_field(reg.get(rb), rk, &mut self.error));
+                    reg.set(ra, State::get_field(reg.get(rb), rk));
                 }
                 OP_SETGLOBAL => {
                     let ra = base + inst.get_a();
@@ -359,9 +386,114 @@ impl<'p, 'c> State<'p, 'c> {
                     let c = inst.get_c();
                     reg.set(ra+1, reg.get(rb).clone());
                     let rk = State::get_rk(c, base, func, reg);
-                    reg.set(ra, State::get_field(reg.get(rb), rk, &mut self.error));
+                    reg.set(ra, State::get_field(reg.get(rb), rk));
                 }
-
+                OP_ADD | OP_SUB | OP_MUL | OP_MOD | OP_POW | OP_DIV | OP_IDIV |
+                OP_BAND | OP_BOR | OP_BXOR | OP_SHL | OP_SHR => {
+                    let (ra, rkb, rkc) = State::bin_op_abc(inst, base, func, reg);
+                    match (rkb, rkc) {
+                        (GosValue::Int(b), GosValue::Int(c)) => {
+                            reg.set(ra, State::int_bin_op(op, b, c))
+                        }
+                        (GosValue::Float(b), GosValue::Float(c)) => {
+                            reg.set(ra, State::float_bin_op(op, b, c))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                OP_UNM => {
+                    let ra = base + inst.get_a();
+                    let rbo = reg.get(base + inst.get_b());
+                    let val = match rbo {
+                        GosValue::Int(i) => GosValue::Int(-i),
+                        GosValue::Float(f) => GosValue::Float(-f),
+                        _ => unreachable!(),
+                    };
+                    reg.set(ra, val);
+                }
+                OP_BNOT => {
+                    let ra = base + inst.get_a();
+                    let rbo = reg.get(base + inst.get_b());
+                    let val = match rbo {
+                        GosValue::Int(i) => GosValue::Int(!i),
+                        _ => unreachable!(),
+                    };
+                    reg.set(ra, val);
+                }
+                OP_NOT => {
+                    let ra = base + inst.get_a();
+                    let rbo = reg.get(base + inst.get_b());
+                    let val = match rbo {
+                        GosValue::Bool(b) => GosValue::Bool(!b),
+                        _ => unreachable!(),
+                    };
+                    reg.set(ra, val);
+                }
+                OP_LEN => {
+                    let ra = base + inst.get_a();
+                    let rbo = reg.get(base + inst.get_b());
+                    let val = match rbo {
+                        GosValue::Bool(b) => GosValue::Bool(!b),
+                        _ => unreachable!(),
+                    };
+                    reg.set(ra, val);
+                }
+                OP_CONCAT => {unimplemented!();}
+                OP_JMP => {
+                    let sbx = inst.get_sbx();
+                    ci.pc += sbx as isize;
+                }
+                OP_EQ | OP_LT | OP_LE => {
+                    let a = inst.get_a();
+                    let rkb = State::get_rk(inst.get_b(), base, func, reg);
+                    let rkc = State::get_rk(inst.get_c(), base, func, reg);
+                    match (rkb, rkc) {
+                        (GosValue::Int(b), GosValue::Int(c)) => {
+                            if State::cmp_op(op, a, b, c) {
+                                ci.pc += 1;
+                            } 
+                        }
+                        (GosValue::Float(b), GosValue::Float(c)) => {
+                           if State::cmp_op(op, a, b, c) {
+                               ci.pc += 1;
+                           }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                OP_TEST => {
+                    let boola = reg.get(base + inst.get_a()).get_bool();
+                    if boola == (inst.get_c() == 0 ) {
+                        ci.pc += 1;
+                    }
+                }
+                OP_TESTSET => {
+                    let rbo = reg.get(base + inst.get_b());
+                    let boolb = rbo.get_bool();
+                    if boolb == (inst.get_c() == 0 ) {
+                        ci.pc += 1;
+                    } else {
+                        let ra = base + inst.get_a();
+                        reg.set(ra, rbo.clone());
+                    }
+                }
+                OP_CALL => {
+                    let rao = reg.get(base + inst.get_a());
+                    let closure = rao.get_closure();
+                    let ci = CallInfo{
+                        index: 0,
+                        closure: Some(closure),
+                        pc: 0,
+                        base: 0,        
+                        local_base: 0,  
+                        return_base: 0,
+                        arg_count: 0,
+                        ret_count: 0,
+                        tail_call: 0,
+                    };
+                    self.call_frames.push(ci);
+                }
+                
                 _ => {panic!("invalid opcode!")}
             }
         }
