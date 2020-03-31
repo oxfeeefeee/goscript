@@ -5,3 +5,10 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+#generational-arena = "0.2"
+#lazy_static = "1.4.0"
+slotmap = "0.4"
+
+[dependencies.goscript-frontend]
+path = "../frontend"
+version = "0.1.0"

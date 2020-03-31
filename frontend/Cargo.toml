@@ -5,4 +5,5 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-generational-arena = "0.1"
+#generational-arena = "0.2"
+slotmap = "0.4"

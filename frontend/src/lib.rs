@@ -1,21 +1,27 @@
 #![allow(dead_code)]
-mod token;
-mod position;
-mod scanner;
-mod ast;
-mod scope;
-mod ast_objects;
+pub mod ast;
+pub mod ast_objects;
 mod errors;
 mod parser;
+mod position;
+mod scanner;
+mod scope;
+pub mod token;
+pub mod visitor;
 
+pub use parser::Parser;
 pub use position::FileSet;
 pub use token::Token;
-pub use parser::Parser;
 
-pub fn parse_file<'a>(fs: &'a mut position::FileSet,
-    name: &'a str, src: &'a str, trace: bool) -> parser::Parser<'a> {
+pub fn parse_file<'o, 'f, 's>(
+    o: &'o mut ast_objects::Objects,
+    fs: &'f mut position::FileSet,
+    name: &str,
+    src: &'s str,
+    trace: bool,
+) -> (parser::Parser<'o, 'f, 's>, Option<ast::File>) {
     let f = fs.add_file(name, None, src.chars().count());
-    let mut p = parser::Parser::new(f, src, trace);
-    p.parse_file();
-    p
+    let mut p = parser::Parser::new(o, f, src, trace);
+    let file = p.parse_file();
+    (p, file)
 }

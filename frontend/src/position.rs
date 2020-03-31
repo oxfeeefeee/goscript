@@ -1,12 +1,12 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Write;
-use std::borrow::Borrow;
 
 pub type Pos = usize;
 
 pub struct Position {
     pub filename: String,
-    pub offset: usize,          // offset in utf8 char
+    pub offset: usize, // offset in utf8 char
     pub line: usize,
     pub column: usize,
 }
@@ -46,7 +46,12 @@ pub struct File {
 
 impl File {
     pub fn new(name: &str) -> File {
-        File{name: name.to_string(), base:0, size:0, lines: vec![0]}
+        File {
+            name: name.to_string(),
+            base: 0,
+            size: 0,
+            lines: vec![0],
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -67,7 +72,7 @@ impl File {
 
     pub fn add_line(&mut self, offset: usize) {
         let i = self.line_count();
-        if (i == 0 || self.lines[i-1] < offset) && offset < self.size {
+        if (i == 0 || self.lines[i - 1] < offset) && offset < self.size {
             self.lines.push(offset);
         }
     }
@@ -85,17 +90,18 @@ impl File {
         self.lines.append(&mut shalf);
         */
         let lines = &self.lines;
-        self.lines = lines.into_iter().
-            enumerate().
-            filter(|&(i, _)| i != line).
-            map(|(_, l)| *l).
-            collect();
+        self.lines = lines
+            .into_iter()
+            .enumerate()
+            .filter(|&(i, _)| i != line)
+            .map(|(_, l)| *l)
+            .collect();
     }
 
     pub fn set_lines(&mut self, lines: Vec<usize>) -> bool {
         let size = self.size;
         for (i, &offset) in self.lines.iter().enumerate() {
-            if (i == 0 &&size <= offset) || offset < lines[i-1] {
+            if (i == 0 && size <= offset) || offset < lines[i - 1] {
                 return false;
             }
         }
@@ -124,10 +130,10 @@ impl File {
         if line >= self.line_count() {
             panic!("illegal line number");
         }
-        self.base + self.lines[line-1]
+        self.base + self.lines[line - 1]
     }
 
-    pub fn pos(&self, offset:usize) -> Pos {
+    pub fn pos(&self, offset: usize) -> Pos {
         if offset > self.size() {
             panic!("illegal file offset")
         }
@@ -141,19 +147,24 @@ impl File {
 
         let line_count = self.line_count();
         let offset = p - self.base;
-        let line = match self.lines.iter().enumerate().find(|&(_, &line)| line > offset) {
+        let line = match self
+            .lines
+            .iter()
+            .enumerate()
+            .find(|&(_, &line)| line > offset)
+        {
             Some((i, _)) => i,
             None => line_count,
         };
-        let column = offset - self.lines[line-1] + 1;
-    
-        Position{
+        let column = offset - self.lines[line - 1] + 1;
+
+        Position {
             filename: self.name.clone(),
             line: line,
             offset: offset,
             column: column,
         }
-    } 
+    }
 }
 
 #[derive(Debug)]
@@ -164,7 +175,10 @@ pub struct FileSet {
 
 impl FileSet {
     pub fn new() -> FileSet {
-        FileSet{base: 0, files: vec![]}
+        FileSet {
+            base: 0,
+            files: vec![],
+        }
     }
 
     pub fn base(&self) -> usize {
@@ -172,13 +186,13 @@ impl FileSet {
     }
 
     pub fn iter(&self) -> FileSetIter {
-        FileSetIter{fs: self, cur: 0}
+        FileSetIter { fs: self, cur: 0 }
     }
 
     pub fn file(&self, p: Pos) -> Option<&File> {
         for f in self.files.iter() {
             if f.base < p && f.base + f.size >= p {
-                return Some(f.borrow())
+                return Some(f.borrow());
             }
         }
         None
@@ -188,7 +202,7 @@ impl FileSet {
         if i >= self.files.len() {
             None
         } else {
-           Some(&mut self.files[i])
+            Some(&mut self.files[i])
         }
     }
 
@@ -197,13 +211,12 @@ impl FileSet {
         if c == 0 {
             None
         } else {
-            self.index_file(c-1)
+            self.index_file(c - 1)
         }
     }
 
-    pub fn add_file(&mut self, name: &str, base: Option<usize>,
-        size: usize) -> &mut File {
-        let real_base = if let Some(b) = base {b} else {self.base};
+    pub fn add_file(&mut self, name: &str, base: Option<usize>, size: usize) -> &mut File {
+        let real_base = if let Some(b) = base { b } else { self.base };
         if real_base < self.base {
             panic!("illegal base");
         }
@@ -211,11 +224,10 @@ impl FileSet {
         let mut f = File::new(name);
         f.base = real_base;
         f.size = size;
-        
         let set_base = self.base + size + 1; // +1 because EOF also has a position
         if set_base < self.base {
             panic!("token.Pos offset overflow (> 2G of source code in file set)");
-        }  
+        }
         self.base = set_base;
         self.files.push(f);
         self.recent_file().unwrap()
@@ -233,23 +245,26 @@ impl<'a> Iterator for FileSetIter<'a> {
     fn next(&mut self) -> Option<&'a File> {
         if self.cur < self.fs.files.len() {
             self.cur += 1;
-            Some(self.fs.files[self.cur-1].borrow())
+            Some(self.fs.files[self.cur - 1].borrow())
         } else {
             None
         }
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use super::*;
 
-    #[test] 
+    #[test]
     fn test_position() {
-        let p = Position{filename: "test.gs".to_string(), offset: 0, line: 54321, column: 8};
+        let p = Position {
+            filename: "test.gs".to_string(),
+            offset: 0,
+            line: 54321,
+            column: 8,
+        };
         print!("this is the position: {} ", p);
-        
         let mut fs = FileSet::new();
         let mut f = File::new("test.gs");
         f.size = 12345;
@@ -271,7 +286,5 @@ mod test {
             print!("\nfiles in set: {:?}", f);
         }
         print!("\nfile at 100: {:?}", fs.file(100))
-        
     }
 }
-

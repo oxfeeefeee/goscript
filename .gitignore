@@ -13,3 +13,5 @@ Cargo.lock
 *.code-workspace
 
 backend/.vscode/
+
+backup/

@@ -1,7 +1,7 @@
-use std::fmt;
 use super::position;
+use std::fmt;
 
-struct Error{
+struct Error {
     pos: position::Position,
     msg: String,
 }
@@ -11,7 +11,7 @@ pub struct ErrorList {
 }
 
 impl fmt::Display for ErrorList {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "parse result: {} errors\n", self.errs.len())?;
         for e in self.errs.iter() {
             write!(f, "{} {}\n", e.pos, e.msg)?;
@@ -22,14 +22,14 @@ impl fmt::Display for ErrorList {
 
 impl ErrorList {
     pub fn new() -> ErrorList {
-        ErrorList{errs: vec![]}
+        ErrorList { errs: vec![] }
     }
 
     pub fn add(&mut self, p: position::Position, msg: String) {
-        self.errs.push(Error{pos:p, msg:msg});
+        self.errs.push(Error { pos: p, msg: msg });
     }
 
     pub fn len(&self) -> usize {
         self.errs.len()
-    } 
+    }
 }

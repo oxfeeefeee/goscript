@@ -1,17 +1,9 @@
 package main
 
-var i = a.b[1]
-
-/*
-func a(i int) int {
+func a() int {
     fff := 4
     if fff < 3 {
         fff += 1
     }
     return fff
 }
-
-func init() {
-    a(1)
-}
-*/

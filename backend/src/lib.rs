@@ -1,5 +1,7 @@
-mod opcode; 
-mod instruction;
-mod proto;
+mod opcode;
 mod types;
-mod vm;
+mod value;
+
+pub mod codegen;
+
+pub mod vm;

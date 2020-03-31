@@ -1,168 +1,142 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
+use std::fmt;
 
-pub type Opcode = u32;
-
-pub const OP_MOVE: Opcode =  0;//      A B     R(A) := R(B)                                    
-pub const OP_LOADK: Opcode =  1;//     A Bx    R(A) := Kst(Bx)                                 
-pub const OP_LOADKX: Opcode =  2;//    A       R(A) := Kst(extra arg)                          
-pub const OP_LOADBOOL: Opcode =  3;//  A B C   R(A) := (Bool)B; if (C) pc++                    
-pub const OP_LOADNIL: Opcode =  4;//   A B     R(A), R(A+1), ..., R(A+B) := nil 
-
-pub const OP_GETUPVAL: Opcode =  5;//  A B     R(A) := UpValue[B]     
-pub const OP_GETGLOBAL: Opcode =  6;// A Bx	   R(A) := Gbl[Kst(Bx)]	
-pub const OP_GETTABLE: Opcode =  7;//  A B C   R(A) := R(B)[RK(C)]
-pub const OP_SETGLOBAL: Opcode =  8;// A Bx    Gbl[Kst(Bx)] := R(A)				
-pub const OP_SETUPVAL: Opcode =  9;//  A B     UpValue[B] := R(A)                              
-pub const OP_SETTABLE: Opcode = 10;//  A B C   R(A)[RK(B)] := RK(C)
-
-pub const OP_NEWTABLE: Opcode = 11;//  A B C   R(A) := {} (size = B,C)                         
-
-pub const OP_SELF: Opcode = 12;//      A B C   R(A+1) := R(B); R(A) := R(B)[RK(C)]             
-
-pub const OP_ADD: Opcode = 13;//       A B C   R(A) := RK(B) + RK(C)                           
-pub const OP_SUB: Opcode = 14;//       A B C   R(A) := RK(B) - RK(C)                           
-pub const OP_MUL: Opcode = 15;//       A B C   R(A) := RK(B) * RK(C)                           
-pub const OP_MOD: Opcode = 16;//       A B C   R(A) := RK(B) % RK(C)                           
-pub const OP_POW: Opcode = 17;//       A B C   R(A) := RK(B) ^ RK(C)                           
-pub const OP_DIV: Opcode = 18;//       A B C   R(A) := RK(B) / RK(C)                           
-pub const OP_IDIV: Opcode = 19;//      A B C   R(A) := RK(B) // RK(C)                          
-pub const OP_BAND: Opcode = 20;//      A B C   R(A) := RK(B) & RK(C)                           
-pub const OP_BOR: Opcode = 21;//       A B C   R(A) := RK(B) | RK(C)                           
-pub const OP_BXOR: Opcode = 22;//      A B C   R(A) := RK(B) ~ RK(C)                           
-pub const OP_SHL: Opcode = 23;//       A B C   R(A) := RK(B) << RK(C)                          
-pub const OP_SHR: Opcode = 24;//       A B C   R(A) := RK(B) >> RK(C)                          
-pub const OP_UNM: Opcode = 25;//       A B     R(A) := -R(B)                                   
-pub const OP_BNOT: Opcode = 26;//      A B     R(A) := ~R(B)                                   
-pub const OP_NOT: Opcode = 27;//       A B     R(A) := not R(B)                                
-pub const OP_LEN: Opcode = 28;//       A B     R(A) := length of R(B)                          
-
-pub const OP_CONCAT: Opcode = 29;//    A B C   R(A) := R(B).. ... ..R(C)                       
-
-pub const OP_JMP: Opcode = 30;//       A sBx   pc+=sBx
-pub const OP_EQ: Opcode = 31;//        A B C   if ((RK(B) == RK(C)) ~= A) then pc++            
-pub const OP_LT: Opcode = 32;//        A B C   if ((RK(B) <  RK(C)) ~= A) then pc++            
-pub const OP_LE: Opcode = 33;//        A B C   if ((RK(B) <= RK(C)) ~= A) then pc++            
-
-pub const OP_TEST: Opcode = 34;//      A C     if not (R(A) <=> C) then pc++                   
-pub const OP_TESTSET: Opcode = 35;//   A B C   if (R(B) <=> C) then R(A) := R(B) else pc++     
-
-pub const OP_CALL: Opcode = 36;//      A B C   R(A), ... ,R(A+C-2) := R(A)(R(A+1), ... ,R(A+B-1)) 
-pub const OP_TAILCALL: Opcode = 37;//  A B C   return R(A)(R(A+1), ... ,R(A+B-1))              
-pub const OP_RETURN: Opcode = 38;//    A B     return R(A), ... ,R(A+B-2)      (see note)      
-
-pub const OP_FORLOOP: Opcode = 39;//   A sBx   R(A)+=R(A+2);
-                          //           if R(A) <?= R(A+1) then { pc+=sBx; R(A+3)=R(A) }
-pub const OP_FORPREP: Opcode = 40;//   A sBx   R(A)-=R(A+2); pc+=sBx                           
-
-pub const OP_TFORLOOP: Opcode = 41;//  A sBx   if R(A+1) ~= nil then { R(A)=R(A+1); pc += sBx }
-
-pub const OP_SETLIST: Opcode = 42;//   A B C   R(A)[(C-1)*FPF+i] := R(A+i), 1 <= i <= B        
-
-pub const OP_CLOSE: Opcode = 43; //	   A 	   close all variables in the stack up to (>=) R(A)
-pub const OP_CLOSURE: Opcode = 44;//   A Bx    R(A) := closure(KPROTO[Bx])                     
-
-pub const OP_VARARG: Opcode = 45;//    A B     R(A), R(A+1), ..., R(A+B-2) = vararg            
-
-pub const OP_EXTRAARG: Opcode = 46;//   Ax     extra (larger) argument for previous opcode     
-
-
-pub enum OpMode {
-    ABC = 0,
-    ABx = 1,
-    AsBx = 2,
-    Ax = 3, 
+#[derive(Clone, Copy, Debug)]
+pub enum Opcode {
+    PUSH_CONST = 100,
+    PUSH_NIL = 101,
+    PUSH_FALSE = 102,
+    PUSH_TRUE = 103,
+    POP = 110,
+    LOAD_LOCAL0 = 200,
+    LOAD_LOCAL1 = 201,
+    LOAD_LOCAL2 = 202,
+    LOAD_LOCAL3 = 203,
+    LOAD_LOCAL4 = 204,
+    LOAD_LOCAL5 = 205,
+    LOAD_LOCAL6 = 206,
+    LOAD_LOCAL7 = 207,
+    LOAD_LOCAL = 220,
+    STORE_LOCAL = 221,
+    LOAD_UPVALUE = 230,
+    STORE_UPVALUE = 231,
+    LOAD_FIELD = 240,
+    STORE_FIELD = 241,
+    LOAD_THIS_FIELD = 250,
+    STORE_THIS_FIELD = 251,
+    LOAD_MODULE_VAR = 260,
+    STORE_MODULE_VAR = 261,
+    CALL0 = 300,
+    CALL1 = 301,
+    CALL2 = 302,
+    CALL3 = 303,
+    CALL4 = 304,
+    CALL5 = 305,
+    CALL6 = 306,
+    CALL7 = 307,
+    CALL8 = 308,
+    CALL9 = 309,
+    CALL10 = 310,
+    CALL11 = 311,
+    CALL12 = 312,
+    CALL13 = 313,
+    CALL14 = 314,
+    CALL15 = 315,
+    JUMP = 400,
+    LOOP = 401,
+    JUMP_IF = 402,
+    AND = 403,
+    OR = 404,
+    CLOSE_UPVALUE = 405,
+    RETURN = 406,
+    NEW_CLOSURE = 501,
+    NEW_STRUCT = 502,
+    NEW_SLICE = 503,
+    NEW_MAP = 504,
 }
 
-pub enum OpArgMode {
-    N = 0, // argument is not used
-    U = 1, // argument is used
-    R = 2, // argument is a register or a jump offset
-    K = 3, // argument is a constant or register/constant
+impl Opcode {
+    pub fn property(&self) -> (&str, i8) {
+        match self {
+            Opcode::PUSH_CONST => ("PUSH_CONST", 1),
+            Opcode::PUSH_NIL => ("PUSH_NIL", 1),
+            Opcode::PUSH_FALSE => ("PUSH_FALSE", 1),
+            Opcode::PUSH_TRUE => ("PUSH_TRUE", 1),
+            Opcode::POP => ("POP", -1),
+            Opcode::LOAD_LOCAL0 => ("LOAD_LOCAL0", 1),
+            Opcode::LOAD_LOCAL1 => ("LOAD_LOCAL1", 1),
+            Opcode::LOAD_LOCAL2 => ("LOAD_LOCAL2", 1),
+            Opcode::LOAD_LOCAL3 => ("LOAD_LOCAL3", 1),
+            Opcode::LOAD_LOCAL4 => ("LOAD_LOCAL4", 1),
+            Opcode::LOAD_LOCAL5 => ("LOAD_LOCAL5", 1),
+            Opcode::LOAD_LOCAL6 => ("LOAD_LOCAL6", 1),
+            Opcode::LOAD_LOCAL7 => ("LOAD_LOCAL7", 1),
+            Opcode::LOAD_LOCAL => ("LOAD_LOCAL", 1),
+            Opcode::STORE_LOCAL => ("STORE_LOCAL", 0),
+            Opcode::LOAD_UPVALUE => ("LOAD_LOCAL", 1),
+            Opcode::STORE_UPVALUE => ("STORE_UPVALUE", 0),
+            Opcode::LOAD_FIELD => ("LOAD_FIELD", 1),
+            Opcode::STORE_FIELD => ("STORE_FIELD", 0),
+            Opcode::LOAD_THIS_FIELD => ("LOAD_THIS_FIELD", 1),
+            Opcode::STORE_THIS_FIELD => ("STORE_THIS_FIELD", 0),
+            Opcode::LOAD_MODULE_VAR => ("LOAD_MODULE_VAR", 1),
+            Opcode::STORE_MODULE_VAR => ("STORE_MODULE_VAR", 0),
+            Opcode::CALL0 => ("CALL0", 0),
+            Opcode::CALL1 => ("CALL1", -1),
+            Opcode::CALL2 => ("CALL2", -2),
+            Opcode::CALL3 => ("CALL3", -3),
+            Opcode::CALL4 => ("CALL4", -4),
+            Opcode::CALL5 => ("CALL5", -5),
+            Opcode::CALL6 => ("CALL6", -6),
+            Opcode::CALL7 => ("CALL7", -7),
+            Opcode::CALL8 => ("CALL8", -8),
+            Opcode::CALL9 => ("CALL9", -9),
+            Opcode::CALL10 => ("CALL10", -10),
+            Opcode::CALL11 => ("CALL11", -11),
+            Opcode::CALL12 => ("CALL12", -12),
+            Opcode::CALL13 => ("CALL13", -13),
+            Opcode::CALL14 => ("CALL14", -14),
+            Opcode::CALL15 => ("CALL15", -15),
+            Opcode::JUMP => ("JUMP", 0),
+            Opcode::LOOP => ("LOOP", 0),
+            Opcode::JUMP_IF => ("JUMP_IF", -1),
+            Opcode::AND => ("AND", -1),
+            Opcode::OR => ("OR", -1),
+            Opcode::CLOSE_UPVALUE => ("CLOSE_UPVALUE", -1),
+            Opcode::RETURN => ("RETURN", 0),
+            Opcode::NEW_CLOSURE => ("NEW_CLOSURE", 1),
+            Opcode::NEW_STRUCT => ("NEW_STRUCT", 0),
+            Opcode::NEW_SLICE => ("NEW_SLICE", 0),
+            Opcode::NEW_MAP => ("NEW_MAP", 0),
+        }
+    }
+
+    pub fn text(&self) -> &str {
+        let (t, _) = self.property();
+        t
+    }
 }
 
-pub struct OpProp {
-    pub name: &'static str,
-    pub test: bool,
-    pub set_a: bool,
-    pub b_mode: OpArgMode,
-    pub c_mode: OpArgMode,
-    pub op_mode: OpMode,
+impl fmt::Display for Opcode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (t, _) = self.property();
+        write!(f, "OPCODE: {}", t)
+    }
 }
 
-macro_rules! prop {
-    ($name:expr, $test:expr, $seta:expr, $bmode:expr, $cmode:expr, $opmode:expr) => {
-        OpProp{name: $name, test: $test, set_a: $seta, 
-            b_mode: $bmode, c_mode: $cmode, op_mode: $opmode}
-    };
+#[derive(Clone, Copy, Debug)]
+pub enum CodeData {
+    Code(Opcode),
+    Data(i16),
 }
-
-pub const OP_PROPS: &[OpProp] = &[
-    prop!("MOVE", false, true, OpArgMode::R, OpArgMode::N, OpMode::ABC),		
-    prop!("LOADK", false, true, OpArgMode::K, OpArgMode::N, OpMode::ABx),		
-    prop!("LOADKX", false, true, OpArgMode::N, OpArgMode::N, OpMode::ABx),		
-    prop!("LOADBOOL", false, true, OpArgMode::U, OpArgMode::U, OpMode::ABC),	
-    prop!("LOADNIL", false, true, OpArgMode::U, OpArgMode::N, OpMode::ABC),		
-    prop!("GETUPVAL", false, true, OpArgMode::U, OpArgMode::N, OpMode::ABC),	
-    prop!("GETTABUP", false, true, OpArgMode::U, OpArgMode::K, OpMode::ABC),	
-    prop!("GETTABLE", false, true, OpArgMode::R, OpArgMode::K, OpMode::ABC),	
-    prop!("SETTABUP", false, false, OpArgMode::K, OpArgMode::K, OpMode::ABC),	
-    prop!("SETUPVAL", false, false, OpArgMode::U, OpArgMode::N, OpMode::ABC),	
-    prop!("SETTABLE", false, false, OpArgMode::K, OpArgMode::K, OpMode::ABC),	
-    prop!("NEWTABLE", false, true, OpArgMode::U, OpArgMode::U, OpMode::ABC),	
-    prop!("SELF", false, true, OpArgMode::R, OpArgMode::K, OpMode::ABC),		
-    prop!("ADD", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("SUB", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("MUL", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("MOD", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("POW", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("DIV", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("IDIV", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),	
-    prop!("BAND", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),	
-    prop!("BOR", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("BXOR", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),	
-    prop!("SHL", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("SHR", false, true, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("UNM", false, true, OpArgMode::R, OpArgMode::N, OpMode::ABC),		
-    prop!("BNOT", false, true, OpArgMode::R, OpArgMode::N, OpMode::ABC),	
-    prop!("NOT", false, true, OpArgMode::R, OpArgMode::N, OpMode::ABC),		
-    prop!("LEN", false, true, OpArgMode::R, OpArgMode::N, OpMode::ABC),		
-    prop!("CONCAT", false, true, OpArgMode::R, OpArgMode::R, OpMode::ABC),	
-    prop!("JMP", false, false, OpArgMode::R, OpArgMode::N, OpMode::AsBx),	
-    prop!("EQ", true, false, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("LT", true, false, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("LE", true, false, OpArgMode::K, OpArgMode::K, OpMode::ABC),		
-    prop!("TEST", true, false, OpArgMode::N, OpArgMode::U, OpMode::ABC),	
-    prop!("TESTSET", true, true, OpArgMode::R, OpArgMode::U, OpMode::ABC),	
-    prop!("CALL", false, true, OpArgMode::U, OpArgMode::U, OpMode::ABC),	
-    prop!("TAILCALL", false, true, OpArgMode::U, OpArgMode::U, OpMode::ABC),	
-    prop!("RETURN", false, false, OpArgMode::U, OpArgMode::N, OpMode::ABC),		
-    prop!("FORLOOP", false, true, OpArgMode::R, OpArgMode::N, OpMode::AsBx),	
-    prop!("FORPREP", false, true, OpArgMode::R, OpArgMode::N, OpMode::AsBx),	
-    prop!("TFORCALL", false, false, OpArgMode::N, OpArgMode::U, OpMode::ABC),	
-    prop!("TFORLOOP", false, true, OpArgMode::R, OpArgMode::N, OpMode::AsBx),	
-    prop!("SETLIST", false, false, OpArgMode::U, OpArgMode::U, OpMode::ABC),	
-    prop!("CLOSURE", false, true, OpArgMode::U, OpArgMode::N, OpMode::ABx),		
-    prop!("VARARG", false, true, OpArgMode::U, OpArgMode::N, OpMode::ABC),		
-    prop!("EXTRAARG", false, false, OpArgMode::U, OpArgMode::U, OpMode::Ax),
-    ];
-
 
 #[cfg(test)]
 mod test {
     use super::*;
 
     #[test]
-	fn test_opcode() {
-        println!("opcode\n"); 
-        assert!(OP_PROPS[OP_EXTRAARG as usize].name == "EXTRAARG");
-        assert!(OP_PROPS[OP_UNM as usize].name == "UNM");
-        assert!(OP_PROPS[OP_EXTRAARG as usize].name == "EXTRAARG");
-
-        let i:u32 = 16;
-        match i {
-            OP_MOD => {print!("MOD\n");}
-            _ => {print!("notfound\n");}
-        }
+    fn test_opcode() {
+        println!("opcode {} \n", Opcode::POP);
     }
 }

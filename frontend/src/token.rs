@@ -14,13 +14,12 @@ pub enum Token {
 	COMMENT(String),
 
 	// Identifiers and basic type literals
-	IDENT(String),   // main
-	INT(String),        // 12345
-	FLOAT(String),      // 123.45
-	IMAG(String),    // 123.45i
-	CHAR(String),       // 'a'
-	STRING(String),  // "abc"
-	
+	IDENT(String),  // main
+	INT(String),    // 12345
+	FLOAT(String),  // 123.45
+	IMAG(String),   // 123.45i
+	CHAR(String),   // 'a'
+	STRING(String), // "abc"
 	// Operator
 	ADD, // +
 	SUB, // -
@@ -72,11 +71,11 @@ pub enum Token {
 	COMMA,  // ,
 	PERIOD, // .
 
-	RPAREN,    // )
-	RBRACK,    // ]
-	RBRACE,    // }
+	RPAREN,          // )
+	RBRACK,          // ]
+	RBRACE,          // }
 	SEMICOLON(bool), // ; true if SEMICOLON is NOT inserted by scanner
-	COLON,     // :
+	COLON,           // :
 
 	// Keywords
 	BREAK,
@@ -130,27 +129,27 @@ impl Token {
 			Token::IMAG(_) => (TokenType::Literal, "IMAG"),
 			Token::CHAR(_) => (TokenType::Literal, "CHAR"),
 			Token::STRING(_) => (TokenType::Literal, "STRING"),
-			Token::ADD => (TokenType::Operator, "+"), 
-			Token::SUB => (TokenType::Operator, "-"), 
-			Token::MUL => (TokenType::Operator, "*"), 
-			Token::QUO => (TokenType::Operator, "/"), 
-			Token::REM => (TokenType::Operator, "%"), 
+			Token::ADD => (TokenType::Operator, "+"),
+			Token::SUB => (TokenType::Operator, "-"),
+			Token::MUL => (TokenType::Operator, "*"),
+			Token::QUO => (TokenType::Operator, "/"),
+			Token::REM => (TokenType::Operator, "%"),
 			Token::AND => (TokenType::Operator, "&"),
 			Token::OR => (TokenType::Operator, "|"),
 			Token::XOR => (TokenType::Operator, "^"),
 			Token::SHL => (TokenType::Operator, "<<"),
 			Token::SHR => (TokenType::Operator, ">>"),
-			Token::AND_NOT => (TokenType::Operator, "&^"), 
+			Token::AND_NOT => (TokenType::Operator, "&^"),
 			Token::ADD_ASSIGN => (TokenType::Operator, "+="),
 			Token::SUB_ASSIGN => (TokenType::Operator, "-="),
-			Token::MUL_ASSIGN => (TokenType::Operator, "*="), 
-			Token::QUO_ASSIGN => (TokenType::Operator, "/="), 
-			Token::REM_ASSIGN => (TokenType::Operator, "%="), 
-			Token::AND_ASSIGN => (TokenType::Operator, "&="),  
-			Token::OR_ASSIGN => (TokenType::Operator, "|="), 
-			Token::XOR_ASSIGN => (TokenType::Operator, "^="), 
-			Token::SHL_ASSIGN => (TokenType::Operator, "<<="), 
-			Token::SHR_ASSIGN => (TokenType::Operator, ">>="), 
+			Token::MUL_ASSIGN => (TokenType::Operator, "*="),
+			Token::QUO_ASSIGN => (TokenType::Operator, "/="),
+			Token::REM_ASSIGN => (TokenType::Operator, "%="),
+			Token::AND_ASSIGN => (TokenType::Operator, "&="),
+			Token::OR_ASSIGN => (TokenType::Operator, "|="),
+			Token::XOR_ASSIGN => (TokenType::Operator, "^="),
+			Token::SHL_ASSIGN => (TokenType::Operator, "<<="),
+			Token::SHR_ASSIGN => (TokenType::Operator, ">>="),
 			Token::AND_NOT_ASSIGN => (TokenType::Operator, "&^="),
 			Token::LAND => (TokenType::Operator, "&&"),
 			Token::LOR => (TokenType::Operator, "||"),
@@ -178,30 +177,30 @@ impl Token {
 			Token::SEMICOLON(_) => (TokenType::Operator, ";"),
 			Token::COLON => (TokenType::Operator, ":"),
 			Token::BREAK => (TokenType::Keyword, "break"),
-			Token::CASE => (TokenType::Keyword,"case"),
-			Token::CHAN => (TokenType::Keyword,"chan"),
-			Token::CONST => (TokenType::Keyword,"const"),
-			Token::CONTINUE => (TokenType::Keyword,"continue"),
-			Token::DEFAULT => (TokenType::Keyword,"default"),
-			Token::DEFER => (TokenType::Keyword,"defer"),
-			Token::ELSE => (TokenType::Keyword,"else"),
-			Token::FALLTHROUGH => (TokenType::Keyword,"fallthrough"),
-			Token::FOR => (TokenType::Keyword,"for"),
-			Token::FUNC => (TokenType::Keyword,"func"),
-			Token::GO => (TokenType::Keyword,"go"),
-			Token::GOTO => (TokenType::Keyword,"goto"),
-			Token::IF => (TokenType::Keyword,"if"),
-			Token::IMPORT => (TokenType::Keyword,"import"),
-			Token::INTERFACE => (TokenType::Keyword,"interface"),
-			Token::MAP => (TokenType::Keyword,"map"),
-			Token::PACKAGE => (TokenType::Keyword,"package"),
-			Token::RANGE => (TokenType::Keyword,"range"),
-			Token::RETURN => (TokenType::Keyword,"return"),
-			Token::SELECT => (TokenType::Keyword,"select"),
-			Token::STRUCT => (TokenType::Keyword,"struct"),
-			Token::SWITCH => (TokenType::Keyword,"switch"),
-			Token::TYPE => (TokenType::Keyword,"type"),
-			Token::VAR => (TokenType::Keyword,"var"),
+			Token::CASE => (TokenType::Keyword, "case"),
+			Token::CHAN => (TokenType::Keyword, "chan"),
+			Token::CONST => (TokenType::Keyword, "const"),
+			Token::CONTINUE => (TokenType::Keyword, "continue"),
+			Token::DEFAULT => (TokenType::Keyword, "default"),
+			Token::DEFER => (TokenType::Keyword, "defer"),
+			Token::ELSE => (TokenType::Keyword, "else"),
+			Token::FALLTHROUGH => (TokenType::Keyword, "fallthrough"),
+			Token::FOR => (TokenType::Keyword, "for"),
+			Token::FUNC => (TokenType::Keyword, "func"),
+			Token::GO => (TokenType::Keyword, "go"),
+			Token::GOTO => (TokenType::Keyword, "goto"),
+			Token::IF => (TokenType::Keyword, "if"),
+			Token::IMPORT => (TokenType::Keyword, "import"),
+			Token::INTERFACE => (TokenType::Keyword, "interface"),
+			Token::MAP => (TokenType::Keyword, "map"),
+			Token::PACKAGE => (TokenType::Keyword, "package"),
+			Token::RANGE => (TokenType::Keyword, "range"),
+			Token::RETURN => (TokenType::Keyword, "return"),
+			Token::SELECT => (TokenType::Keyword, "select"),
+			Token::STRUCT => (TokenType::Keyword, "struct"),
+			Token::SWITCH => (TokenType::Keyword, "switch"),
+			Token::TYPE => (TokenType::Keyword, "type"),
+			Token::VAR => (TokenType::Keyword, "var"),
 		}
 	}
 
@@ -240,11 +239,15 @@ impl Token {
 		match self {
 			Token::LOR => 1,
 			Token::LAND => 2,
-			Token::EQL | Token::NEQ | Token::LSS |
-			Token::LEQ | Token::GTR | Token::GEQ => 3,
+			Token::EQL | Token::NEQ | Token::LSS | Token::LEQ | Token::GTR | Token::GEQ => 3,
 			Token::ADD | Token::SUB | Token::OR | Token::XOR => 4,
-			Token::MUL | Token::QUO | Token::REM | Token::SHL |
-			Token::SHR | Token::AND | Token::AND_NOT => 5,
+			Token::MUL
+			| Token::QUO
+			| Token::REM
+			| Token::SHL
+			| Token::SHR
+			| Token::AND
+			| Token::AND_NOT => 5,
 			_ => LOWEST_PREC,
 		}
 	}
@@ -326,7 +329,6 @@ impl Token {
 			_ => false,
 		}
 	}
-
 }
 
 impl fmt::Display for Token {
@@ -339,10 +341,8 @@ impl fmt::Display for Token {
 			Token::IMAG(l) => write!(f, "{} {}", text, l),
 			Token::CHAR(l) => write!(f, "{} {}", text, l),
 			Token::STRING(l) => write!(f, "{} {}", text, l),
-			Token::SEMICOLON(real) if !real => 
-				write!(f, "\"{}(inserted)\"", text),
-			token if token.is_operator() || token.is_keyword() => 
-				write!(f, "\"{}\"", text),
+			Token::SEMICOLON(real) if !real => write!(f, "\"{}(inserted)\"", text),
+			token if token.is_operator() || token.is_keyword() => write!(f, "\"{}\"", text),
 			_ => write!(f, "{}", text),
 		}
 	}
@@ -353,12 +353,13 @@ mod test {
 	use super::*;
 
 	#[test]
-	fn token_test () {
-		print!("testxxxxx \n{}\n{}\n{}\n{}\n. ", 
+	fn token_test() {
+		print!(
+			"testxxxxx \n{}\n{}\n{}\n{}\n. ",
 			Token::ILLEGAL("asd".to_string()),
 			Token::SWITCH,
 			Token::IDENT("some_var".to_string()),
 			Token::FLOAT("3.14".to_string()),
-			);
+		);
 	}
 }

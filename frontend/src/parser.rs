@@ -10,9 +10,9 @@ use super::scope::*;
 use super::ast::*;
 use super::ast_objects::*;
 
-pub struct Parser<'a> {
-    objects: Objects,
-    scanner: scanner::Scanner<'a>,
+pub struct Parser<'o, 'f, 's> {
+    objects: &'o mut Objects,
+    scanner: scanner::Scanner<'f, 's>,
     errors: Rc<RefCell<errors::ErrorList>>,
 
     trace: bool,
@@ -36,12 +36,15 @@ pub struct Parser<'a> {
     target_stack: Vec<Vec<IdentIndex>>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(file: &'a mut position::File, src: &'a str, trace: bool) -> Parser<'a> {
+impl<'o, 'f, 's> Parser<'o, 'f, 's> {
+    pub fn new(
+        objs: &'o mut Objects,
+        file: &'f mut position::File,
+         src: &'s str, trace: bool) -> Parser<'o, 'f, 's> {
         let err = Rc::new(RefCell::new(errors::ErrorList::new()));
         let s = scanner::Scanner::new(file, src, err.clone());
         let mut p = Parser{
-            objects: Objects::new(),
+            objects: objs,
             scanner: s,
             errors: err,
             trace: trace,
@@ -2272,7 +2275,7 @@ impl<'a> Parser<'a> {
         index
     }
 
-    fn parse_value_spec<'s, 'k>(self_: &'s mut Parser<'a>, keyword: &'k Token, iota: isize) -> SpecIndex {
+    fn parse_value_spec<'p, 'k>(self_: &'p mut Parser<'o, 'f, 's>, keyword: &'k Token, iota: isize) -> SpecIndex {
         self_.trace_begin(&format!("{}{}", keyword.text(), "Spec"));
 
         let pos = self_.pos;
@@ -2347,7 +2350,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_gen_decl(&mut self, keyword: &Token, 
-        f: fn (&mut Parser<'a>, &Token, isize) -> SpecIndex) -> Decl {
+        f: fn (&mut Parser<'o, 'f, 's>, &Token, isize) -> SpecIndex) -> Decl {
         self.trace_begin(&format!("GenDecl({})", keyword.text()));
 
         let pos = self.expect(keyword);
@@ -2539,8 +2542,8 @@ mod test {
             }
         }
         "###; 
-
-        let mut p = Parser::new(f, s1, true);
+        let o = &mut Objects::new();
+        let mut p = Parser::new(o, f, s1, true);
         p.open_scope();
         p.pkg_scope = p.top_scope;
         p.parse_decl(Token::is_decl_start);

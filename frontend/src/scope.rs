@@ -1,9 +1,8 @@
-use std::fmt;
-use std::collections::HashMap;
-use generational_arena::Arena;
+use super::ast::Node;
 use super::ast_objects::*;
-use super::ast::{Node};
 use super::position;
+use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum EntityKind {
@@ -17,7 +16,7 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
-	pub fn kind_text(&self) -> &str {
+    pub fn kind_text(&self) -> &str {
         match self {
             EntityKind::Bad => "bad",
             EntityKind::Pkg => "package",
@@ -25,7 +24,7 @@ impl EntityKind {
             EntityKind::Typ => "type",
             EntityKind::Var => "var",
             EntityKind::Fun => "func",
-            EntityKind::Lbl => "label", 
+            EntityKind::Lbl => "label",
         }
     }
 }
@@ -56,9 +55,14 @@ pub struct Entity {
     pub data: EntityData,
 }
 
-impl Entity{
+impl Entity {
     pub fn new(kind: EntityKind, name: String, decl: DeclObj, data: EntityData) -> Entity {
-        Entity{kind: kind, name: name, decl: decl, data: data }
+        Entity {
+            kind: kind,
+            name: name,
+            decl: decl,
+            data: data,
+        }
     }
 
     pub fn with_no_data(kind: EntityKind, name: String, decl: DeclObj) -> Entity {
@@ -69,9 +73,9 @@ impl Entity{
         match &self.decl {
             DeclObj::Field(i) => arena.fields[*i].pos(arena),
             DeclObj::Spec(i) => arena.specs[*i].pos(arena),
-            DeclObj::FuncDecl(i) => arena.specs[*i].pos(arena),
-            DeclObj::LabeledStmt(i) => arena.specs[*i].pos(arena),
-            DeclObj::AssignStmt(i) => arena.specs[*i].pos(arena),
+            DeclObj::FuncDecl(i) => arena.decls[*i].pos(arena),
+            DeclObj::LabeledStmt(i) => arena.l_stmts[*i].pos(arena),
+            DeclObj::AssignStmt(i) => arena.a_stmts[*i].pos(arena),
             DeclObj::NoDecl => 0,
         }
     }
@@ -84,7 +88,10 @@ pub struct Scope {
 
 impl Scope {
     pub fn new(outer: Option<ScopeIndex>) -> Scope {
-        Scope{outer: outer, entities: HashMap::new()}
+        Scope {
+            outer: outer,
+            entities: HashMap::new(),
+        }
     }
 
     pub fn look_up(&self, name: &String) -> Option<&EntityIndex> {
@@ -97,60 +104,64 @@ impl Scope {
             None => {
                 self.entities.insert(name, entity);
                 None
-            },
+            }
         }
     }
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match write!(f, "scope {:p} {{\n", self) {
-            Err(e) => { return Err(e); },
-            Ok(_) => {}, 
+            Err(e) => {
+                return Err(e);
+            }
+            Ok(_) => {}
         };
         for (k, _) in self.entities.iter() {
             match write!(f, "\t{}\n", k) {
-                Err(e) => { return Err(e); },
-                Ok(_) => {}, 
-            } 
-        };
+                Err(e) => {
+                    return Err(e);
+                }
+                Ok(_) => {}
+            }
+        }
         write!(f, "}}\n")
     }
 }
-
-pub struct ScopeDebug<'a> {
-    scope: &'a Scope,
-    arena: &'a Arena<Entity>,
-}
-
-impl<'a> ScopeDebug<'a> {
-    fn new(scope: &'a Scope, arena: &'a Arena<Entity>) -> ScopeDebug<'a> {
-        ScopeDebug{scope: scope, arena: arena}
-    }
-}
-
-impl<'a> fmt::Debug for ScopeDebug<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match write!(f, "scope {:p} {{\n", self.scope) {
-            Err(e) => { return Err(e); },
-            Ok(_) => {}, 
-        };
-        for (k, v) in self.scope.entities.iter() {
-            let entity = &self.arena[*v];
-            match write!(f, "\t{} {}\n", entity.kind.kind_text(), k) {
-                Err(e) => { return Err(e); },
-                Ok(_) => {}, 
-            } 
-        };
-        write!(f, "}}\n")
-    }
-}
-
 
 #[cfg(test)]
 mod test {
-	use super::*;
-    use generational_arena as ar;
+    //use super::*;
+    //use generational_arena as ar;
 
-    pub fn insert_new<'a>(sel: &mut Scope, e: Entity, arena: &'a mut Arena<Entity>) -> 
+    /*
+    pub struct ScopeDebug<'a> {
+        scope: &'a Scope,
+        arena: &'a Arena<Entity>,
+    }
+
+    impl<'a> ScopeDebug<'a> {
+        fn new(scope: &'a Scope, arena: &'a Arena<Entity>) -> ScopeDebug<'a> {
+            ScopeDebug{scope: scope, arena: arena}
+        }
+    }
+
+    impl<'a> fmt::Debug for ScopeDebug<'a> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match write!(f, "scope {:p} {{\n", self.scope) {
+                Err(e) => { return Err(e); },
+                Ok(_) => {},
+            };
+            for (k, v) in self.scope.entities.iter() {
+                let entity = &self.arena[*v];
+                match write!(f, "\t{} {}\n", entity.kind.kind_text(), k) {
+                    Err(e) => { return Err(e); },
+                    Ok(_) => {},
+                }
+            };
+            write!(f, "}}\n")
+        }
+    }
+
+    pub fn insert_new<'a>(sel: &mut Scope, e: Entity, arena: &'a mut Arena<Entity>) ->
         Option<&'a mut Entity> {
         match sel.entities.get(&e.name) {
             Some(&i) => arena.get_mut(i),
@@ -162,9 +173,11 @@ mod test {
             }
         }
     }
+    */
 
-	#[test]
-	fn test_scope () {
+    #[test]
+    fn test_scope() {
+        /*
         let mut arena_s = ar::Arena::new();
         let scope = Scope::new(None);
         let s = arena_s.insert(scope);
@@ -173,6 +186,6 @@ mod test {
         insert_new(&mut arena_s[s], e, &mut arena);
 
         println!("scope: {:?}", ScopeDebug::new(&arena_s[s], &arena));
-
+        */
     }
 }

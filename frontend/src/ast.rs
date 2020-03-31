@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use super::ast_objects::*;
 use super::position;
 use super::token;
-use super::ast_objects::*;
+use std::collections::HashMap;
 
 pub trait Node {
     fn pos(&self, arena: &Objects) -> position::Pos;
@@ -15,23 +15,23 @@ pub enum Expr {
     Ellipsis(Box<Ellipsis>),
     BasicLit(Box<BasicLit>),
     FuncLit(Box<FuncLit>),
-    CompositeLit(Box<CompositeLit>), 
-    Paren(Box<ParenExpr>), 
-    Selector(Box<SelectorExpr>), 
-    Index(Box<IndexExpr>), 
-    Slice(Box<SliceExpr>), 
-    TypeAssert(Box<TypeAssertExpr>), 
-    Call(Box<CallExpr>), 
-    Star(Box<StarExpr>), 
-    Unary(Box<UnaryExpr>), 
-    Binary(Box<BinaryExpr>), 
-    KeyValue(Box<KeyValueExpr>), 
-    Array(Box<ArrayType>), 
-    Struct(Box<StructType>), 
-    Func(Box<FuncType>), 
-    Interface(Box<InterfaceType>), 
-    Map(Box<MapType>), 
-    Chan(Box<ChanType>), 
+    CompositeLit(Box<CompositeLit>),
+    Paren(Box<ParenExpr>),
+    Selector(Box<SelectorExpr>),
+    Index(Box<IndexExpr>),
+    Slice(Box<SliceExpr>),
+    TypeAssert(Box<TypeAssertExpr>),
+    Call(Box<CallExpr>),
+    Star(Box<StarExpr>),
+    Unary(Box<UnaryExpr>),
+    Binary(Box<BinaryExpr>),
+    KeyValue(Box<KeyValueExpr>),
+    Array(Box<ArrayType>),
+    Struct(Box<StructType>),
+    Func(Box<FuncType>),
+    Interface(Box<InterfaceType>),
+    Map(Box<MapType>),
+    Chan(Box<ChanType>),
 }
 
 #[derive(Debug)]
@@ -75,26 +75,30 @@ pub enum Decl {
 
 impl Expr {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Expr {
-        Expr::Bad(Box::new(BadExpr{from:from, to:to}))
+        Expr::Bad(Box::new(BadExpr { from: from, to: to }))
     }
 
     pub fn new_selector(x: Expr, sel: IdentIndex) -> Expr {
-        Expr::Selector(Box::new(SelectorExpr{
-            expr: x, sel: sel}))
+        Expr::Selector(Box::new(SelectorExpr { expr: x, sel: sel }))
     }
 
-    pub fn new_ellipsis(pos: position::Pos, x :Option<Expr>) -> Expr {
-        Expr::Ellipsis(Box::new(Ellipsis{
-            pos: pos, elt: x}))
+    pub fn new_ellipsis(pos: position::Pos, x: Option<Expr>) -> Expr {
+        Expr::Ellipsis(Box::new(Ellipsis { pos: pos, elt: x }))
     }
 
     pub fn new_basic_lit(pos: position::Pos, token: token::Token) -> Expr {
-        Expr::BasicLit(Box::new(BasicLit{pos: pos, token: token}))
+        Expr::BasicLit(Box::new(BasicLit {
+            pos: pos,
+            token: token,
+        }))
     }
 
-    pub fn new_unary_expr(pos: position::Pos, op: token::Token,
-        expr: Expr) -> Expr {
-        Expr::Unary(Box::new(UnaryExpr{op_pos: pos, op: op, expr: expr}))
+    pub fn new_unary_expr(pos: position::Pos, op: token::Token, expr: Expr) -> Expr {
+        Expr::Unary(Box::new(UnaryExpr {
+            op_pos: pos,
+            op: op,
+            expr: expr,
+        }))
     }
 
     pub fn box_func_type(ft: FuncType) -> Expr {
@@ -102,8 +106,11 @@ impl Expr {
     }
 
     pub fn clone_ident(&self) -> Option<Expr> {
-        if let Expr::Ident(i) = self 
-            {Some(Expr::Ident(i.clone()))} else {None}
+        if let Expr::Ident(i) = self {
+            Some(Expr::Ident(i.clone()))
+        } else {
+            None
+        }
     }
 
     pub fn get_ident(&self) -> Option<&IdentIndex> {
@@ -115,7 +122,11 @@ impl Expr {
     }
 
     pub fn is_bad(&self) -> bool {
-        if let Expr::Bad(_) = self {true} else {false}
+        if let Expr::Bad(_) = self {
+            true
+        } else {
+            false
+        }
     }
 
     pub fn is_type_switch_assert(&self) -> bool {
@@ -137,27 +148,27 @@ impl Node for Expr {
             Expr::FuncLit(e) => match e.typ.func {
                 Some(p) => p,
                 None => e.typ.params.pos(arena),
-            }, 
+            },
             Expr::CompositeLit(e) => match &e.typ {
                 Some(expr) => expr.pos(arena),
                 None => e.l_brace,
-            }, 
-            Expr::Paren(e) => e.l_paren, 
-            Expr::Selector(e) => e.expr.pos(arena), 
-            Expr::Index(e) => e.expr.pos(arena), 
-            Expr::Slice(e) => e.expr.pos(arena), 
-            Expr::TypeAssert(e) => e.expr.pos(arena), 
-            Expr::Call(e) => e.func.pos(arena), 
-            Expr::Star(e) => e.star, 
-            Expr::Unary(e) => e.op_pos, 
+            },
+            Expr::Paren(e) => e.l_paren,
+            Expr::Selector(e) => e.expr.pos(arena),
+            Expr::Index(e) => e.expr.pos(arena),
+            Expr::Slice(e) => e.expr.pos(arena),
+            Expr::TypeAssert(e) => e.expr.pos(arena),
+            Expr::Call(e) => e.func.pos(arena),
+            Expr::Star(e) => e.star,
+            Expr::Unary(e) => e.op_pos,
             Expr::Binary(e) => e.expr_a.pos(arena),
-            Expr::KeyValue(e) => e.key.pos(arena), 
-            Expr::Array(e) => e.l_brack, 
-            Expr::Struct(e) => e.struct_pos, 
+            Expr::KeyValue(e) => e.key.pos(arena),
+            Expr::Array(e) => e.l_brack,
+            Expr::Struct(e) => e.struct_pos,
             Expr::Func(e) => e.pos(arena),
-            Expr::Interface(e) => e.interface, 
-            Expr::Map(e) => e.map, 
-            Expr::Chan(e) => e.begin, 
+            Expr::Interface(e) => e.interface,
+            Expr::Map(e) => e.map,
+            Expr::Chan(e) => e.begin,
         }
     }
 
@@ -172,35 +183,39 @@ impl Node for Expr {
             Expr::BasicLit(e) => e.pos + e.token.get_literal().len(),
             Expr::FuncLit(e) => e.body.end(),
             Expr::CompositeLit(e) => e.r_brace + 1,
-            Expr::Paren(e) => e.r_paren + 1, 
-            Expr::Selector(e) => arena.idents[e.sel].end(), 
-            Expr::Index(e) => e.r_brack + 1, 
-            Expr::Slice(e) => e.r_brack + 1, 
-            Expr::TypeAssert(e) => e.r_paren + 1, 
-            Expr::Call(e) => e.r_paren + 1, 
-            Expr::Star(e) => e.expr.end(arena), 
-            Expr::Unary(e) => e.expr.end(arena), 
+            Expr::Paren(e) => e.r_paren + 1,
+            Expr::Selector(e) => arena.idents[e.sel].end(),
+            Expr::Index(e) => e.r_brack + 1,
+            Expr::Slice(e) => e.r_brack + 1,
+            Expr::TypeAssert(e) => e.r_paren + 1,
+            Expr::Call(e) => e.r_paren + 1,
+            Expr::Star(e) => e.expr.end(arena),
+            Expr::Unary(e) => e.expr.end(arena),
             Expr::Binary(e) => e.expr_b.end(arena),
-            Expr::KeyValue(e) => e.val.end(arena), 
-            Expr::Array(e) => e.elt.end(arena), 
-            Expr::Struct(e) => e.fields.end(arena), 
+            Expr::KeyValue(e) => e.val.end(arena),
+            Expr::Array(e) => e.elt.end(arena),
+            Expr::Struct(e) => e.fields.end(arena),
             Expr::Func(e) => e.end(arena),
-            Expr::Interface(e) => e.methods.end(arena), 
-            Expr::Map(e) => e.val.end(arena), 
-            Expr::Chan(e) => e.val.end(arena), 
+            Expr::Interface(e) => e.methods.end(arena),
+            Expr::Map(e) => e.val.end(arena),
+            Expr::Chan(e) => e.val.end(arena),
         }
-    } 
+    }
 }
 
 impl Stmt {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Stmt {
-        Stmt::Bad(Box::new(BadStmt{from:from, to:to}))
+        Stmt::Bad(Box::new(BadStmt { from: from, to: to }))
     }
 
-    pub fn new_assign(arena: &mut Objects, lhs: Vec<Expr>, tpos: position::Pos,
-        tok: token::Token, rhs: Vec<Expr>) -> Stmt {
-        Stmt::Assign(Box::new(
-            AssignStmt::arena_new(arena, lhs, tpos, tok, rhs)))
+    pub fn new_assign(
+        arena: &mut Objects,
+        lhs: Vec<Expr>,
+        tpos: position::Pos,
+        tok: token::Token,
+        rhs: Vec<Expr>,
+    ) -> Stmt {
+        Stmt::Assign(Box::new(AssignStmt::arena_new(arena, lhs, tpos, tok, rhs)))
     }
 
     pub fn box_block(block: BlockStmt) -> Stmt {
@@ -217,14 +232,14 @@ impl Node for Stmt {
             Stmt::Labeled(s) => {
                 let label = arena.l_stmts[*s.as_ref()].label;
                 arena.idents[label].pos
-            },
+            }
             Stmt::Expr(e) => e.pos(arena),
             Stmt::Send(s) => s.chan.pos(arena),
             Stmt::IncDec(s) => s.expr.pos(arena),
             Stmt::Assign(s) => {
                 let assign = &arena.a_stmts[*s.as_ref()];
                 assign.pos(arena)
-            },
+            }
             Stmt::Go(s) => s.go,
             Stmt::Defer(s) => s.defer,
             Stmt::Return(s) => s.ret,
@@ -244,32 +259,37 @@ impl Node for Stmt {
         match &self {
             Stmt::Bad(s) => s.to,
             Stmt::Decl(d) => d.end(arena),
-            Stmt::Empty(s) => if s.implicit { s.semi }
-                else {s.semi + 1}, 
+            Stmt::Empty(s) => {
+                if s.implicit {
+                    s.semi
+                } else {
+                    s.semi + 1
+                }
+            }
             Stmt::Labeled(s) => {
                 let ls = &arena.l_stmts[*s.as_ref()];
                 ls.stmt.end(arena)
-            },
+            }
             Stmt::Expr(e) => e.end(arena),
             Stmt::Send(s) => s.val.end(arena),
             Stmt::IncDec(s) => s.token_pos + 2,
             Stmt::Assign(s) => {
                 let assign = &arena.a_stmts[*s.as_ref()];
-                assign.rhs[assign.rhs.len()-1].end(arena)
-            },
+                assign.rhs[assign.rhs.len() - 1].end(arena)
+            }
             Stmt::Go(s) => s.call.end(arena),
             Stmt::Defer(s) => s.call.end(arena),
             Stmt::Return(s) => {
                 let n = s.results.len();
                 if n > 0 {
-                    s.results[n-1].end(arena)
+                    s.results[n - 1].end(arena)
                 } else {
                     s.ret + 6
                 }
-            },
+            }
             Stmt::Branch(s) => match &s.label {
                 Some(l) => arena.idents[*l].end(),
-                None => s.token_pos + s.token.text().len()
+                None => s.token_pos + s.token.text().len(),
             },
             Stmt::Block(s) => s.r_brace + 1,
             Stmt::If(s) => match &s.els {
@@ -279,21 +299,21 @@ impl Node for Stmt {
             Stmt::Case(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n-1].end(arena)
+                    s.body[n - 1].end(arena)
                 } else {
                     s.colon + 1
                 }
-            },
+            }
             Stmt::Switch(s) => s.body.end(),
             Stmt::TypeSwitch(s) => s.body.end(),
             Stmt::Comm(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n-1].end(arena)
+                    s.body[n - 1].end(arena)
                 } else {
                     s.colon + 1
                 }
-            },
+            }
             Stmt::Select(s) => s.body.end(),
             Stmt::For(s) => s.body.end(),
             Stmt::Range(s) => s.body.end(),
@@ -307,7 +327,7 @@ impl Node for Spec {
             Spec::Import(s) => match &s.name {
                 Some(i) => arena.idents[*i].pos,
                 None => s.path.pos,
-            }
+            },
             Spec::Value(s) => arena.idents[s.names[0]].pos,
             Spec::Type(s) => arena.idents[s.name].pos,
         }
@@ -321,17 +341,15 @@ impl Node for Spec {
             Spec::Value(s) => {
                 let n = s.values.len();
                 if n > 0 {
-                    s.values[n-1].end(arena)
+                    s.values[n - 1].end(arena)
                 } else {
                     match &s.typ {
                         Some(t) => t.end(arena),
-                        None => {
-                            arena.idents[s.names[s.names.len()-1]].end()
-                        },
+                        None => arena.idents[s.names[s.names.len() - 1]].end(),
                     }
                 }
-            },
-            Spec::Type(t) => t.typ.end(arena)
+            }
+            Spec::Type(t) => t.typ.end(arena),
         }
     }
 }
@@ -341,16 +359,15 @@ impl Node for Decl {
         match &self {
             Decl::Bad(d) => d.from,
             Decl::Gen(d) => d.token_pos,
-            Decl::Func(d) => arena.decls[*d.as_ref()].pos(arena)
+            Decl::Func(d) => arena.decls[*d.as_ref()].pos(arena),
         }
-
     }
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.to,
             Decl::Gen(d) => match &d.r_paren {
                 Some(p) => p + 1,
-                None => arena.specs[d.specs[0]].end(arena)
+                None => arena.specs[d.specs[0]].end(arena),
             },
             Decl::Func(d) => {
                 let fd = &arena.decls[*d.as_ref()];
@@ -373,13 +390,13 @@ pub struct File {
 }
 
 impl Node for File {
-     fn pos(&self, _arena: &Objects) -> position::Pos {
-       self.package
+    fn pos(&self, _arena: &Objects) -> position::Pos {
+        self.package
     }
     fn end(&self, arena: &Objects) -> position::Pos {
         let n = self.decls.len();
         if n > 0 {
-            self.decls[n-1].end(arena)
+            self.decls[n - 1].end(arena)
         } else {
             arena.idents[self.name].end()
         }
@@ -394,7 +411,7 @@ pub struct Package {
 }
 
 impl Node for Package {
-     fn pos(&self, _arena: &Objects) -> position::Pos {
+    fn pos(&self, _arena: &Objects) -> position::Pos {
         0
     }
     fn end(&self, _arena: &Objects) -> position::Pos {
@@ -420,7 +437,7 @@ pub enum IdentEntity {
 
 impl IdentEntity {
     pub fn is_none(&self) -> bool {
-        match self{
+        match self {
             IdentEntity::NoEntity => true,
             _ => false,
         }
@@ -461,7 +478,7 @@ pub struct BasicLit {
 pub struct FuncLit {
     pub typ: FuncType,
     pub body: BlockStmt,
-}	
+}
 
 // A CompositeLit node represents a composite literal.
 #[derive(Debug)]
@@ -480,7 +497,6 @@ pub struct ParenExpr {
     pub expr: Expr,
     pub r_paren: position::Pos,
 }
-	
 // A SelectorExpr node represents an expression followed by a selector.
 #[derive(Debug)]
 pub struct SelectorExpr {
@@ -526,7 +542,7 @@ pub struct CallExpr {
     pub l_paren: position::Pos,
     pub args: Vec<Expr>,
     pub ellipsis: Option<position::Pos>,
-    pub r_paren: position::Pos, 
+    pub r_paren: position::Pos,
 }
 
 // A StarExpr node represents an expression of the form "*" Expression.
@@ -591,16 +607,23 @@ pub struct FuncType {
 }
 
 impl FuncType {
-    pub fn new(func: Option<position::Pos>, params: FieldList,
-        results: Option<FieldList>) -> FuncType {
-        FuncType{func: func, params: params, results: results}
+    pub fn new(
+        func: Option<position::Pos>,
+        params: FieldList,
+        results: Option<FieldList>,
+    ) -> FuncType {
+        FuncType {
+            func: func,
+            params: params,
+            results: results,
+        }
     }
 
     fn pos(&self, arena: &Objects) -> position::Pos {
         match self.func {
             Some(p) => p,
             None => self.params.pos(arena),
-        } 
+        }
     }
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self.results {
@@ -615,7 +638,7 @@ impl FuncType {
 pub struct InterfaceType {
     pub interface: position::Pos,
     pub methods: FieldList,
-    pub incomplete: bool, 
+    pub incomplete: bool,
 }
 
 // A MapType node represents a map type.
@@ -656,7 +679,7 @@ pub struct ImportSpec {
 pub struct ValueSpec {
     pub names: Vec<IdentIndex>,
     pub typ: Option<Expr>,
-    pub values: Vec<Expr>, 
+    pub values: Vec<Expr>,
 }
 
 // A TypeSpec node represents a type declaration (TypeSpec production).
@@ -728,9 +751,17 @@ pub struct LabeledStmt {
 }
 
 impl LabeledStmt {
-    pub fn arena_new(arena: &mut Objects, label: IdentIndex, 
-        colon: position::Pos, stmt: Stmt) -> LabeledStmtIndex {
-        let l = LabeledStmt{label: label, colon: colon, stmt: stmt};
+    pub fn arena_new(
+        arena: &mut Objects,
+        label: IdentIndex,
+        colon: position::Pos,
+        stmt: Stmt,
+    ) -> LabeledStmtIndex {
+        let l = LabeledStmt {
+            label: label,
+            colon: colon,
+            stmt: stmt,
+        };
         arena.l_stmts.insert(l)
     }
 
@@ -766,9 +797,19 @@ pub struct AssignStmt {
 }
 
 impl AssignStmt {
-    pub fn arena_new(arena: &mut Objects, lhs: Vec<Expr>, tpos: position::Pos,
-        tok: token::Token, rhs: Vec<Expr>) -> AssignStmtIndex {
-        let ass = AssignStmt{lhs: lhs, token_pos: tpos, token: tok, rhs: rhs};
+    pub fn arena_new(
+        arena: &mut Objects,
+        lhs: Vec<Expr>,
+        tpos: position::Pos,
+        tok: token::Token,
+        rhs: Vec<Expr>,
+    ) -> AssignStmtIndex {
+        let ass = AssignStmt {
+            lhs: lhs,
+            token_pos: tpos,
+            token: tok,
+            rhs: rhs,
+        };
         arena.a_stmts.insert(ass)
     }
 
@@ -782,7 +823,6 @@ pub struct GoStmt {
     pub go: position::Pos,
     pub call: Expr,
 }
-	
 #[derive(Debug)]
 pub struct DeferStmt {
     pub defer: position::Pos,
@@ -812,9 +852,12 @@ pub struct BlockStmt {
 }
 
 impl BlockStmt {
-    pub fn new(l: position::Pos, list: Vec<Stmt>,
-        r: position::Pos) -> BlockStmt {
-        BlockStmt{l_brace: l, list: list, r_brace: r}
+    pub fn new(l: position::Pos, list: Vec<Stmt>, r: position::Pos) -> BlockStmt {
+        BlockStmt {
+            l_brace: l,
+            list: list,
+            r_brace: r,
+        }
     }
 
     fn end(&self) -> position::Pos {
@@ -836,7 +879,7 @@ pub struct IfStmt {
 pub struct CaseClause {
     pub case: position::Pos,
     pub list: Vec<Expr>,
-    pub colon: position::Pos, 
+    pub colon: position::Pos,
     pub body: Vec<Stmt>,
 }
 
@@ -848,7 +891,7 @@ pub struct SwitchStmt {
     pub body: BlockStmt,
 }
 
-#[derive(Debug)] 
+#[derive(Debug)]
 pub struct TypeSwitchStmt {
     pub switch: position::Pos,
     pub init: Option<Stmt>,
@@ -858,7 +901,8 @@ pub struct TypeSwitchStmt {
 
 // A CommClause node represents a case of a select statement.
 #[derive(Debug)]
-pub struct CommClause { //communication
+pub struct CommClause {
+    //communication
     pub case: position::Pos,
     pub comm: Option<Stmt>,
     pub colon: position::Pos,
@@ -888,7 +932,7 @@ pub struct RangeStmt {
     pub token_pos: position::Pos,
     pub token: token::Token,
     pub expr: Expr,
-    pub body: BlockStmt,   
+    pub body: BlockStmt,
 }
 
 #[derive(Debug)]
@@ -922,10 +966,17 @@ pub struct FieldList {
 }
 
 impl FieldList {
-    pub fn new(openning: Option<position::Pos>, list: Vec<FieldIndex>,
-        closing: Option<position::Pos>) -> FieldList {
-            FieldList{openning: openning, list: list, closing: closing}
+    pub fn new(
+        openning: Option<position::Pos>,
+        list: Vec<FieldIndex>,
+        closing: Option<position::Pos>,
+    ) -> FieldList {
+        FieldList {
+            openning: openning,
+            list: list,
+            closing: closing,
         }
+    }
 }
 
 impl Node for FieldList {
@@ -938,18 +989,17 @@ impl Node for FieldList {
     fn end(&self, arena: &Objects) -> position::Pos {
         match self.closing {
             Some(c) => c,
-            None => arena.fields[self.list[self.list.len()-1]].pos(arena),
+            None => arena.fields[self.list[self.list.len() - 1]].pos(arena),
         }
     }
 }
 
-
 #[cfg(test)]
 mod test {
-	//use super::*;
+    //use super::*;
 
-	#[test]
-    fn ast_test () {
-		print!("testxxxxx . ");
-	}
-} 
+    #[test]
+    fn ast_test() {
+        print!("testxxxxx . ");
+    }
+}
