@@ -1,9 +1,13 @@
 package main
 
-func a() int {
-    fff := 4
-    if fff < 3 {
-        fff += 1
+
+func main() int {
+    a := func (i int, iii int) (a int, b int) {
+        fff := 4
+        fff = 5
+        fff = fff + 100
+        return fff, fff
     }
-    return fff
+
+    m, n := a(1, 2)
 }

@@ -2,6 +2,11 @@
 #![allow(non_camel_case_types)]
 use std::fmt;
 
+pub const MAX_INLINE_LOCAL_INDEX: OpIndex = 15;
+pub const MAX_INLINE_ARG_INDEX: OpIndex = 15;
+
+pub type OpIndex = i16;
+
 #[derive(Clone, Copy, Debug)]
 pub enum Opcode {
     PUSH_CONST = 100,
@@ -17,6 +22,14 @@ pub enum Opcode {
     LOAD_LOCAL5 = 205,
     LOAD_LOCAL6 = 206,
     LOAD_LOCAL7 = 207,
+    LOAD_LOCAL8 = 208,
+    LOAD_LOCAL9 = 209,
+    LOAD_LOCAL10 = 210,
+    LOAD_LOCAL11 = 211,
+    LOAD_LOCAL12 = 212,
+    LOAD_LOCAL13 = 213,
+    LOAD_LOCAL14 = 214,
+    LOAD_LOCAL15 = 215,
     LOAD_LOCAL = 220,
     STORE_LOCAL = 221,
     LOAD_UPVALUE = 230,
@@ -57,6 +70,32 @@ pub enum Opcode {
 }
 
 impl Opcode {
+    pub fn get_load_local(i: OpIndex) -> Opcode {
+        match i {
+            0 => Opcode::LOAD_LOCAL0,
+            1 => Opcode::LOAD_LOCAL1,
+            2 => Opcode::LOAD_LOCAL2,
+            3 => Opcode::LOAD_LOCAL3,
+            4 => Opcode::LOAD_LOCAL4,
+            5 => Opcode::LOAD_LOCAL5,
+            6 => Opcode::LOAD_LOCAL6,
+            7 => Opcode::LOAD_LOCAL7,
+            8 => Opcode::LOAD_LOCAL8,
+            9 => Opcode::LOAD_LOCAL9,
+            10 => Opcode::LOAD_LOCAL10,
+            11 => Opcode::LOAD_LOCAL11,
+            12 => Opcode::LOAD_LOCAL12,
+            13 => Opcode::LOAD_LOCAL13,
+            14 => Opcode::LOAD_LOCAL14,
+            15 => Opcode::LOAD_LOCAL15,
+            _ => Opcode::LOAD_LOCAL,
+        }
+    }
+
+    pub fn load_local_index(&self) -> OpIndex {
+        (*self as i16 - Opcode::LOAD_LOCAL0 as i16) as OpIndex
+    }
+
     pub fn property(&self) -> (&str, i8) {
         match self {
             Opcode::PUSH_CONST => ("PUSH_CONST", 1),
@@ -72,6 +111,14 @@ impl Opcode {
             Opcode::LOAD_LOCAL5 => ("LOAD_LOCAL5", 1),
             Opcode::LOAD_LOCAL6 => ("LOAD_LOCAL6", 1),
             Opcode::LOAD_LOCAL7 => ("LOAD_LOCAL7", 1),
+            Opcode::LOAD_LOCAL8 => ("LOAD_LOCAL8", 1),
+            Opcode::LOAD_LOCAL9 => ("LOAD_LOCAL9", 1),
+            Opcode::LOAD_LOCAL10 => ("LOAD_LOCAL10", 1),
+            Opcode::LOAD_LOCAL11 => ("LOAD_LOCAL11", 1),
+            Opcode::LOAD_LOCAL12 => ("LOAD_LOCAL12", 1),
+            Opcode::LOAD_LOCAL13 => ("LOAD_LOCAL13", 1),
+            Opcode::LOAD_LOCAL14 => ("LOAD_LOCAL14", 1),
+            Opcode::LOAD_LOCAL15 => ("LOAD_LOCAL15", 1),
             Opcode::LOAD_LOCAL => ("LOAD_LOCAL", 1),
             Opcode::STORE_LOCAL => ("STORE_LOCAL", 0),
             Opcode::LOAD_UPVALUE => ("LOAD_LOCAL", 1),
@@ -128,7 +175,7 @@ impl fmt::Display for Opcode {
 #[derive(Clone, Copy, Debug)]
 pub enum CodeData {
     Code(Opcode),
-    Data(i16),
+    Data(OpIndex),
 }
 
 #[cfg(test)]

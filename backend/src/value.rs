@@ -3,10 +3,8 @@ use super::types::{
     ChannelKey, ClosureKey, FunctionKey, InterfaceKey, MapKey, Objects, SliceKey, StringKey,
     StructKey,
 };
-use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug)]
 pub enum GosValue {

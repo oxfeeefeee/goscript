@@ -5,9 +5,8 @@ use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::{Arc, LockResult, RwLock};
 
-pub use super::codegen::FunctionVal;
+pub use super::codegen::{FunctionVal, PackageVal};
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -21,6 +20,7 @@ new_key_type! { pub struct ChannelKey; }
 new_key_type! { pub struct VecKey; }
 new_key_type! { pub struct UpValueKey; }
 new_key_type! { pub struct FunctionKey; }
+new_key_type! { pub struct PackageKey; }
 
 #[derive(Clone, Debug)]
 pub struct Objects {
@@ -34,6 +34,7 @@ pub struct Objects {
     pub vecs: DenseSlotMap<VecKey, VecVal>,
     pub upvalues: DenseSlotMap<UpValueKey, UpValueVal>,
     pub functions: DenseSlotMap<FunctionKey, FunctionVal>,
+    pub packages: DenseSlotMap<PackageKey, PackageVal>,
 }
 
 impl Objects {
@@ -49,6 +50,7 @@ impl Objects {
             vecs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             upvalues: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
         }
     }
 

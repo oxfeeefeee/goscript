@@ -5,7 +5,8 @@ fn load_parse(path: &str, trace: bool) -> usize {
     let mut fs = fe::FileSet::new();
     let src = fs::read_to_string(path).expect("read file err: ");
     let o = &mut fe::ast_objects::Objects::new();
-    let (p, _) = fe::parse_file(o, &mut fs, path, &src, trace);
+    let el = &mut fe::errors::ErrorList::new();
+    let (p, _) = fe::parse_file(o, &mut fs, el, path, &src, trace);
 
     print!("{}", p.get_errors());
 

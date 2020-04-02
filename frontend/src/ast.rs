@@ -380,6 +380,7 @@ impl Node for Decl {
     }
 }
 
+#[derive(Debug)]
 pub struct File {
     pub package: position::Pos,
     pub name: IdentIndex,

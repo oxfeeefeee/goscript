@@ -4,6 +4,7 @@ use std::fmt::Write;
 
 pub type Pos = usize;
 
+#[derive(Clone, Debug)]
 pub struct Position {
     pub filename: String,
     pub offset: usize, // offset in utf8 char

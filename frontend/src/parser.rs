@@ -5,15 +5,15 @@ use std::collections::HashMap;
 use super::position;
 use super::token::{Token, LOWEST_PREC};
 use super::scanner;
-use super::errors;
+use super::errors::{ErrorList, FilePosErrors};
 use super::scope::*;
 use super::ast::*;
 use super::ast_objects::*;
 
-pub struct Parser<'o, 'f, 's> {
-    objects: &'o mut Objects,
-    scanner: scanner::Scanner<'f, 's>,
-    errors: Rc<RefCell<errors::ErrorList>>,
+pub struct Parser<'a> {
+    objects: &'a mut Objects,
+    scanner: scanner::Scanner<'a>,
+    errors: &'a ErrorList,
 
     trace: bool,
     indent: isize,
@@ -36,17 +36,17 @@ pub struct Parser<'o, 'f, 's> {
     target_stack: Vec<Vec<IdentIndex>>,
 }
 
-impl<'o, 'f, 's> Parser<'o, 'f, 's> {
+impl<'a> Parser<'a> {
     pub fn new(
-        objs: &'o mut Objects,
-        file: &'f mut position::File,
-         src: &'s str, trace: bool) -> Parser<'o, 'f, 's> {
-        let err = Rc::new(RefCell::new(errors::ErrorList::new()));
-        let s = scanner::Scanner::new(file, src, err.clone());
+        objs: &'a mut Objects,
+        file: &'a mut position::File,
+        el: &'a ErrorList,
+        src: &'a str, trace: bool) -> Parser<'a> {
+        let s = scanner::Scanner::new(file, src, el);
         let mut p = Parser{
             objects: objs,
             scanner: s,
-            errors: err,
+            errors: el,
             trace: trace,
             indent: 0,
             pos: 0,
@@ -69,8 +69,8 @@ impl<'o, 'f, 's> Parser<'o, 'f, 's> {
     // ----------------------------------------------------------------------------
     // Getters
 
-    pub fn get_errors(&self) -> Ref<errors::ErrorList> {
-        (*self.errors).borrow()
+    pub fn get_errors(&self) -> &ErrorList {
+        self.errors
     }
 
     // ----------------------------------------------------------------------------
@@ -298,8 +298,7 @@ impl<'o, 'f, 's> Parser<'o, 'f, 's> {
     }
 
     fn error_string(&self, pos: position::Pos, msg: String) {
-        let p = self.file().position(pos);
-        self.errors.borrow_mut().add(p, msg);
+        FilePosErrors::new(self.file(), self.errors).add(pos, msg);
     }
 
     fn error_expected(&self, pos: position::Pos, msg: &str) {
@@ -2275,7 +2274,7 @@ impl<'o, 'f, 's> Parser<'o, 'f, 's> {
         index
     }
 
-    fn parse_value_spec<'p, 'k>(self_: &'p mut Parser<'o, 'f, 's>, keyword: &'k Token, iota: isize) -> SpecIndex {
+    fn parse_value_spec<'p, 'k>(self_: &'p mut Parser<'a>, keyword: &'k Token, iota: isize) -> SpecIndex {
         self_.trace_begin(&format!("{}{}", keyword.text(), "Spec"));
 
         let pos = self_.pos;
@@ -2350,7 +2349,7 @@ impl<'o, 'f, 's> Parser<'o, 'f, 's> {
     }
 
     fn parse_gen_decl(&mut self, keyword: &Token, 
-        f: fn (&mut Parser<'o, 'f, 's>, &Token, isize) -> SpecIndex) -> Decl {
+        f: fn (&mut Parser<'a>, &Token, isize) -> SpecIndex) -> Decl {
         self.trace_begin(&format!("GenDecl({})", keyword.text()));
 
         let pos = self.expect(keyword);
@@ -2479,7 +2478,7 @@ impl<'o, 'f, 's> Parser<'o, 'f, 's> {
 
         // Don't bother parsing the rest if we had errors parsing the package clause.
 	    // Likely not a Go source file at all.
-	    if self.errors.borrow().len() > 0 {
+	    if self.errors.len() > 0 {
             self.trace_end();
             return None
         }
@@ -2543,7 +2542,8 @@ mod test {
         }
         "###; 
         let o = &mut Objects::new();
-        let mut p = Parser::new(o, f, s1, true);
+        let el = &mut ErrorList::new();
+        let mut p = Parser::new(o, f, el, s1, true);
         p.open_scope();
         p.pkg_scope = p.top_scope;
         p.parse_decl(Token::is_decl_start);
