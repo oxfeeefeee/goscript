@@ -1,6 +1,4 @@
 use std::fmt;
-use std::rc::Rc;
-use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use super::position;
 use super::token::{Token, LOWEST_PREC};
@@ -27,13 +25,13 @@ pub struct Parser<'a> {
     expr_level: isize,
     in_rhs: bool,
 
-    pkg_scope: Option<ScopeIndex>,
-    top_scope: Option<ScopeIndex>,
-    unresolved: Vec<IdentIndex>,
-    imports: Vec<SpecIndex>, //ImportSpec
+    pkg_scope: Option<ScopeKey>,
+    top_scope: Option<ScopeKey>,
+    unresolved: Vec<IdentKey>,
+    imports: Vec<SpecKey>, //ImportSpec
 
-    label_scope: Option<ScopeIndex>,
-    target_stack: Vec<Vec<IdentIndex>>,
+    label_scope: Option<ScopeKey>,
+    target_stack: Vec<Vec<IdentKey>>,
 }
 
 impl<'a> Parser<'a> {
@@ -108,8 +106,8 @@ impl<'a> Parser<'a> {
     }
 
     fn declare(&mut self, decl: DeclObj, data: EntityData, kind: EntityKind,
-        scope_ind: &ScopeIndex) {
-        let mut names: Vec<IdentIndex> = vec![];
+        scope_ind: &ScopeKey) {
+        let mut names: Vec<IdentKey> = vec![];
         let idents = match decl {
             DeclObj::Field(id) => &(field!(self, id).names),
             DeclObj::Spec(id) => { 
@@ -421,7 +419,7 @@ impl<'a> Parser<'a> {
     // ----------------------------------------------------------------------------
     // Identifiers
 
-    fn parse_ident(&mut self) -> IdentIndex {
+    fn parse_ident(&mut self) -> IdentKey {
         let pos = self.pos;
         let mut name = "_".to_string();
         if let Token::IDENT(lit) = self.token.clone() {
@@ -434,7 +432,7 @@ impl<'a> Parser<'a> {
             entity: IdentEntity::NoEntity})
     }
 
-    fn parse_ident_list(&mut self) -> Vec<IdentIndex> {
+    fn parse_ident_list(&mut self) -> Vec<IdentKey> {
         self.trace_begin("IdentList");
         
         let mut list = vec![self.parse_ident()];
@@ -567,7 +565,7 @@ impl<'a> Parser<'a> {
             l_brack: lpos, len: len, elt: elt}))
     }
 
-    fn make_ident_list(&mut self, exprs: &mut Vec<Expr>) -> Vec<IdentIndex> {
+    fn make_ident_list(&mut self, exprs: &mut Vec<Expr>) -> Vec<IdentKey> {
         exprs.iter().map(|x| {
             match x {
                 Expr::Ident(ident) => *ident.as_ref(),
@@ -584,7 +582,7 @@ impl<'a> Parser<'a> {
     }
 
     
-    fn parse_field_decl(&mut self, scope: ScopeIndex) -> FieldIndex {
+    fn parse_field_decl(&mut self, scope: ScopeKey) -> FieldKey {
         self.trace_begin("FieldDecl");
 
         // 1st FieldDecl
@@ -711,8 +709,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_parameter_list(&mut self, scope: ScopeIndex,
-        ellipsis_ok: bool) -> Vec<FieldIndex> {
+    fn parse_parameter_list(&mut self, scope: ScopeKey,
+        ellipsis_ok: bool) -> Vec<FieldKey> {
         self.trace_begin("ParameterList");
 
         // 1st ParameterDecl
@@ -778,7 +776,7 @@ impl<'a> Parser<'a> {
         params
     }
 
-    fn parse_parameters(&mut self, scope: ScopeIndex,
+    fn parse_parameters(&mut self, scope: ScopeKey,
         ellipsis_ok: bool) -> FieldList {
         self.trace_begin("Parameters");
 
@@ -793,7 +791,7 @@ impl<'a> Parser<'a> {
         FieldList::new(lparen, params, rparen)
     }
 
-    fn parse_result(&mut self, scope: ScopeIndex) -> FieldList {
+    fn parse_result(&mut self, scope: ScopeKey) -> FieldList {
         self.trace_begin("Result");
 
         let ret = if self.token == Token::LPAREN {
@@ -811,7 +809,7 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    fn parse_signature(&mut self, scope: ScopeIndex) -> (FieldList, FieldList) {
+    fn parse_signature(&mut self, scope: ScopeKey) -> (FieldList, FieldList) {
         self.trace_begin("Signature");
 
         let params = self.parse_parameters(scope, true);
@@ -821,7 +819,7 @@ impl<'a> Parser<'a> {
         (params, results)
     }
 
-    fn parse_func_type(&mut self) -> (FuncType, ScopeIndex) {
+    fn parse_func_type(&mut self) -> (FuncType, ScopeKey) {
         self.trace_begin("FuncType");
 
         let pos = self.expect(&Token::FUNC);
@@ -833,7 +831,7 @@ impl<'a> Parser<'a> {
     }
 
     // method spec in interface
-    fn parse_method_spec(&mut self, scope: ScopeIndex) -> FieldIndex {
+    fn parse_method_spec(&mut self, scope: ScopeKey) -> FieldKey {
         self.trace_begin("MethodSpec");
 
         let mut idents = vec![];
@@ -980,7 +978,7 @@ impl<'a> Parser<'a> {
         list    
     }
     
-    fn parse_body(&mut self, scope: ScopeIndex) -> BlockStmt {
+    fn parse_body(&mut self, scope: ScopeKey) -> BlockStmt {
         self.trace_begin("Body");
 
         let lbrace = self.expect(&Token::LBRACE);
@@ -2232,7 +2230,7 @@ impl<'a> Parser<'a> {
         true
     }
 
-    fn parse_import_spec(&mut self, _: &Token, _: isize) -> SpecIndex {
+    fn parse_import_spec(&mut self, _: &Token, _: isize) -> SpecKey {
         self.trace_begin("ImportSpec");
 
         let ident = match self.token {
@@ -2274,7 +2272,7 @@ impl<'a> Parser<'a> {
         index
     }
 
-    fn parse_value_spec<'p, 'k>(self_: &'p mut Parser<'a>, keyword: &'k Token, iota: isize) -> SpecIndex {
+    fn parse_value_spec<'p, 'k>(self_: &'p mut Parser<'a>, keyword: &'k Token, iota: isize) -> SpecKey {
         self_.trace_begin(&format!("{}{}", keyword.text(), "Spec"));
 
         let pos = self_.pos;
@@ -2322,7 +2320,7 @@ impl<'a> Parser<'a> {
         spec
     }
 
-    fn parse_type_spec(&mut self, _: &Token, _: isize) -> SpecIndex {
+    fn parse_type_spec(&mut self, _: &Token, _: isize) -> SpecKey {
         self.trace_begin("TypeSpec");
 
         let ident = self.parse_ident();
@@ -2349,7 +2347,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_gen_decl(&mut self, keyword: &Token, 
-        f: fn (&mut Parser<'a>, &Token, isize) -> SpecIndex) -> Decl {
+        f: fn (&mut Parser<'a>, &Token, isize) -> SpecKey) -> Decl {
         self.trace_begin(&format!("GenDecl({})", keyword.text()));
 
         let pos = self.expect(keyword);

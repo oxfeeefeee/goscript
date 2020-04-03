@@ -5,7 +5,7 @@ pub mod errors;
 mod parser;
 pub mod position;
 mod scanner;
-mod scope;
+pub mod scope;
 pub mod token;
 pub mod visitor;
 

@@ -1,6 +1,6 @@
 package main
 
-
+/*
 func main() int {
     a := func (i int, iii int) (a int, b int) {
         fff := 4
@@ -10,4 +10,11 @@ func main() int {
     }
 
     m, n := a(1, 2)
+}*/
+
+func main(i int, iii int) (a int, b int) {
+    fff := 4
+    fff = 5
+    fff = fff + 100
+    return fff, fff
 }

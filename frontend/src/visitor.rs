@@ -9,7 +9,7 @@ pub trait Visitor {
 
     fn visit_decl(&mut self, decl: &Decl);
 
-    fn visit_expr_ident(&mut self, ident: &IdentIndex);
+    fn visit_expr_ident(&mut self, ident: &IdentKey);
 
     fn visit_expr_option(&mut self, op: &Option<Expr>);
 
@@ -23,7 +23,7 @@ pub trait Visitor {
 
     fn visit_expr_paren(&mut self);
 
-    fn visit_expr_selector(&mut self, ident: &IdentIndex); //add: lvalue
+    fn visit_expr_selector(&mut self, ident: &IdentKey); //add: lvalue
 
     fn visit_expr_index(&mut self);
 
@@ -57,15 +57,15 @@ pub trait Visitor {
 
     fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl);
 
-    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclIndex);
+    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey);
 
-    fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtIndex);
+    fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey);
 
     fn visit_stmt_send(&mut self, sstmt: &SendStmt);
 
     fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt);
 
-    fn visit_stmt_assign(&mut self, astmt: &AssignStmtIndex);
+    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey);
 
     fn visit_stmt_go(&mut self, gostmt: &GoStmt);
 

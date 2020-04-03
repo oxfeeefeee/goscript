@@ -1,5 +1,6 @@
 use super::ast_objects::*;
 use super::position;
+use super::scope;
 use super::token;
 use std::collections::HashMap;
 
@@ -11,7 +12,7 @@ pub trait Node {
 #[derive(Debug)]
 pub enum Expr {
     Bad(Box<BadExpr>),
-    Ident(Box<IdentIndex>),
+    Ident(Box<IdentKey>),
     Ellipsis(Box<Ellipsis>),
     BasicLit(Box<BasicLit>),
     FuncLit(Box<FuncLit>),
@@ -39,11 +40,11 @@ pub enum Stmt {
     Bad(Box<BadStmt>),
     Decl(Box<Decl>),
     Empty(Box<EmptyStmt>),
-    Labeled(Box<LabeledStmtIndex>),
+    Labeled(Box<LabeledStmtKey>),
     Expr(Box<Expr>),
     Send(Box<SendStmt>),
     IncDec(Box<IncDecStmt>),
-    Assign(Box<AssignStmtIndex>),
+    Assign(Box<AssignStmtKey>),
     Go(Box<GoStmt>),
     Defer(Box<DeferStmt>),
     Return(Box<ReturnStmt>),
@@ -70,7 +71,7 @@ pub enum Spec {
 pub enum Decl {
     Bad(Box<BadDecl>),
     Gen(Box<GenDecl>),
-    Func(Box<FuncDeclIndex>),
+    Func(Box<FuncDeclKey>),
 }
 
 impl Expr {
@@ -78,7 +79,7 @@ impl Expr {
         Expr::Bad(Box::new(BadExpr { from: from, to: to }))
     }
 
-    pub fn new_selector(x: Expr, sel: IdentIndex) -> Expr {
+    pub fn new_selector(x: Expr, sel: IdentKey) -> Expr {
         Expr::Selector(Box::new(SelectorExpr { expr: x, sel: sel }))
     }
 
@@ -113,7 +114,7 @@ impl Expr {
         }
     }
 
-    pub fn get_ident(&self) -> Option<&IdentIndex> {
+    pub fn get_ident(&self) -> Option<&IdentKey> {
         if let Expr::Ident(ident) = self {
             Some(ident)
         } else {
@@ -383,11 +384,11 @@ impl Node for Decl {
 #[derive(Debug)]
 pub struct File {
     pub package: position::Pos,
-    pub name: IdentIndex,
+    pub name: IdentKey,
     pub decls: Vec<Decl>,
-    pub scope: ScopeIndex,
-    pub imports: Vec<SpecIndex>, //ImportSpec
-    pub unresolved: Vec<IdentIndex>,
+    pub scope: ScopeKey,
+    pub imports: Vec<SpecKey>, //ImportSpec
+    pub unresolved: Vec<IdentKey>,
 }
 
 impl Node for File {
@@ -406,8 +407,8 @@ impl Node for File {
 
 pub struct Package {
     name: String,
-    scope: ScopeIndex,
-    imports: HashMap<String, EntityIndex>,
+    scope: ScopeKey,
+    imports: HashMap<String, EntityKey>,
     files: HashMap<String, Box<File>>,
 }
 
@@ -429,11 +430,11 @@ pub struct BadExpr {
     pub to: position::Pos,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum IdentEntity {
     NoEntity,
     Sentinel,
-    Entity(EntityIndex),
+    Entity(EntityKey),
 }
 
 impl IdentEntity {
@@ -443,10 +444,17 @@ impl IdentEntity {
             _ => false,
         }
     }
+
+    pub fn into_key(self) -> Option<EntityKey> {
+        match self {
+            IdentEntity::Entity(key) => Some(key),
+            _ => None,
+        }
+    }
 }
 
 // An Ident node represents an identifier.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ident {
     pub pos: position::Pos,
     pub name: String,
@@ -456,6 +464,17 @@ pub struct Ident {
 impl Ident {
     pub fn end(&self) -> position::Pos {
         self.pos + self.name.len()
+    }
+
+    pub fn entity_key(&self) -> Option<EntityKey> {
+        self.entity.clone().into_key()
+    }
+
+    pub fn entity_obj<'a>(&self, arena: &'a Objects) -> Option<&'a scope::Entity> {
+        match self.entity {
+            IdentEntity::Entity(i) => Some(&arena.entities[i]),
+            _ => None,
+        }
     }
 }
 
@@ -502,7 +521,7 @@ pub struct ParenExpr {
 #[derive(Debug)]
 pub struct SelectorExpr {
     pub expr: Expr,
-    pub sel: IdentIndex,
+    pub sel: IdentKey,
 }
 
 // An IndexExpr node represents an expression followed by an index.
@@ -669,7 +688,7 @@ pub struct ChanType {
 // An ImportSpec node represents a single package import.
 #[derive(Debug)]
 pub struct ImportSpec {
-    pub name: Option<IdentIndex>,
+    pub name: Option<IdentKey>,
     pub path: BasicLit,
     pub end_pos: Option<position::Pos>,
 }
@@ -678,7 +697,7 @@ pub struct ImportSpec {
 // (ConstSpec or VarSpec production).
 #[derive(Debug)]
 pub struct ValueSpec {
-    pub names: Vec<IdentIndex>,
+    pub names: Vec<IdentKey>,
     pub typ: Option<Expr>,
     pub values: Vec<Expr>,
 }
@@ -686,7 +705,7 @@ pub struct ValueSpec {
 // A TypeSpec node represents a type declaration (TypeSpec production).
 #[derive(Debug)]
 pub struct TypeSpec {
-    pub name: IdentIndex,
+    pub name: IdentKey,
     pub assign: position::Pos,
     pub typ: Expr,
 }
@@ -712,7 +731,7 @@ pub struct GenDecl {
     pub token_pos: position::Pos,
     pub token: token::Token,
     pub l_paran: Option<position::Pos>,
-    pub specs: Vec<SpecIndex>,
+    pub specs: Vec<SpecKey>,
     pub r_paren: Option<position::Pos>,
 }
 
@@ -720,7 +739,7 @@ pub struct GenDecl {
 #[derive(Debug)]
 pub struct FuncDecl {
     pub recv: Option<FieldList>,
-    pub name: IdentIndex,
+    pub name: IdentKey,
     pub typ: FuncType,
     pub body: Option<BlockStmt>,
 }
@@ -746,7 +765,7 @@ pub struct EmptyStmt {
 // A LabeledStmt node represents a labeled statement.
 #[derive(Debug)]
 pub struct LabeledStmt {
-    pub label: IdentIndex,
+    pub label: IdentKey,
     pub colon: position::Pos,
     pub stmt: Stmt,
 }
@@ -754,10 +773,10 @@ pub struct LabeledStmt {
 impl LabeledStmt {
     pub fn arena_new(
         arena: &mut Objects,
-        label: IdentIndex,
+        label: IdentKey,
         colon: position::Pos,
         stmt: Stmt,
-    ) -> LabeledStmtIndex {
+    ) -> LabeledStmtKey {
         let l = LabeledStmt {
             label: label,
             colon: colon,
@@ -804,7 +823,7 @@ impl AssignStmt {
         tpos: position::Pos,
         tok: token::Token,
         rhs: Vec<Expr>,
-    ) -> AssignStmtIndex {
+    ) -> AssignStmtKey {
         let ass = AssignStmt {
             lhs: lhs,
             token_pos: tpos,
@@ -842,7 +861,7 @@ pub struct ReturnStmt {
 pub struct BranchStmt {
     pub token_pos: position::Pos,
     pub token: token::Token,
-    pub label: Option<IdentIndex>,
+    pub label: Option<IdentKey>,
 }
 
 #[derive(Debug)]
@@ -938,7 +957,7 @@ pub struct RangeStmt {
 
 #[derive(Debug)]
 pub struct Field {
-    pub names: Vec<IdentIndex>,
+    pub names: Vec<IdentKey>,
     pub typ: Expr,
     pub tag: Option<Expr>,
 }
@@ -962,14 +981,14 @@ impl Node for Field {
 #[derive(Debug)]
 pub struct FieldList {
     pub openning: Option<position::Pos>,
-    pub list: Vec<FieldIndex>,
+    pub list: Vec<FieldKey>,
     pub closing: Option<position::Pos>,
 }
 
 impl FieldList {
     pub fn new(
         openning: Option<position::Pos>,
-        list: Vec<FieldIndex>,
+        list: Vec<FieldKey>,
         closing: Option<position::Pos>,
     ) -> FieldList {
         FieldList {

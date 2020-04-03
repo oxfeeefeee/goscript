@@ -29,25 +29,26 @@ impl EntityKind {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum DeclObj {
-    Field(FieldIndex),
-    Spec(SpecIndex),
-    FuncDecl(FuncDeclIndex),
-    LabeledStmt(LabeledStmtIndex),
-    AssignStmt(AssignStmtIndex),
+    Field(FieldKey),
+    Spec(SpecKey),
+    FuncDecl(FuncDeclKey),
+    LabeledStmt(LabeledStmtKey),
+    AssignStmt(AssignStmtKey),
     NoDecl,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum EntityData {
-    PkgScope(ScopeIndex),
+    PkgScope(ScopeKey),
     ConIota(isize),
     NoData,
 }
 
 // An Entity describes a named language entity such as a package,
 // constant, type, variable, function (incl. methods), or label.
+#[derive(Debug, Clone)]
 pub struct Entity {
     pub kind: EntityKind,
     pub name: String,
@@ -82,23 +83,23 @@ impl Entity {
 }
 
 pub struct Scope {
-    pub outer: Option<ScopeIndex>,
-    pub entities: HashMap<String, EntityIndex>,
+    pub outer: Option<ScopeKey>,
+    pub entities: HashMap<String, EntityKey>,
 }
 
 impl Scope {
-    pub fn new(outer: Option<ScopeIndex>) -> Scope {
+    pub fn new(outer: Option<ScopeKey>) -> Scope {
         Scope {
             outer: outer,
             entities: HashMap::new(),
         }
     }
 
-    pub fn look_up(&self, name: &String) -> Option<&EntityIndex> {
+    pub fn look_up(&self, name: &String) -> Option<&EntityKey> {
         self.entities.get(name)
     }
 
-    pub fn insert(&mut self, name: String, entity: EntityIndex) -> Option<EntityIndex> {
+    pub fn insert(&mut self, name: String, entity: EntityKey) -> Option<EntityKey> {
         match self.entities.get(&name) {
             Some(i) => Some(*i),
             None => {

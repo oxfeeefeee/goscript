@@ -6,23 +6,23 @@ use slotmap::{new_key_type, DenseSlotMap};
 
 const DEFAULT_CAPACITY: usize = 16;
 
-new_key_type! { pub struct LabeledStmtIndex; }
-new_key_type! { pub struct AssignStmtIndex; }
-new_key_type! { pub struct SpecIndex; }
-new_key_type! { pub struct FuncDeclIndex; }
-new_key_type! { pub struct IdentIndex; }
-new_key_type! { pub struct FieldIndex; }
-new_key_type! { pub struct EntityIndex; }
-new_key_type! { pub struct ScopeIndex; }
+new_key_type! { pub struct LabeledStmtKey; }
+new_key_type! { pub struct AssignStmtKey; }
+new_key_type! { pub struct SpecKey; }
+new_key_type! { pub struct FuncDeclKey; }
+new_key_type! { pub struct IdentKey; }
+new_key_type! { pub struct FieldKey; }
+new_key_type! { pub struct EntityKey; }
+new_key_type! { pub struct ScopeKey; }
 
-pub type LabeledStmtArena = DenseSlotMap<LabeledStmtIndex, ast::LabeledStmt>;
-pub type AssignStmtArena = DenseSlotMap<AssignStmtIndex, ast::AssignStmt>;
-pub type SpecArena = DenseSlotMap<SpecIndex, ast::Spec>;
-pub type FuncDeclArena = DenseSlotMap<FuncDeclIndex, ast::FuncDecl>;
-pub type IdentArena = DenseSlotMap<IdentIndex, ast::Ident>;
-pub type FieldArena = DenseSlotMap<FieldIndex, ast::Field>;
-pub type EntityArena = DenseSlotMap<EntityIndex, scope::Entity>;
-pub type ScopeArena = DenseSlotMap<ScopeIndex, scope::Scope>;
+pub type LabeledStmtArena = DenseSlotMap<LabeledStmtKey, ast::LabeledStmt>;
+pub type AssignStmtArena = DenseSlotMap<AssignStmtKey, ast::AssignStmt>;
+pub type SpecArena = DenseSlotMap<SpecKey, ast::Spec>;
+pub type FuncDeclArena = DenseSlotMap<FuncDeclKey, ast::FuncDecl>;
+pub type IdentArena = DenseSlotMap<IdentKey, ast::Ident>;
+pub type FieldArena = DenseSlotMap<FieldKey, ast::Field>;
+pub type EntityArena = DenseSlotMap<EntityKey, scope::Entity>;
+pub type ScopeArena = DenseSlotMap<ScopeKey, scope::Scope>;
 
 pub struct Objects {
     pub l_stmts: LabeledStmtArena,

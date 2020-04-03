@@ -1,5 +1,5 @@
 use super::position;
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 

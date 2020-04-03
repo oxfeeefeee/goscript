@@ -1,10 +1,8 @@
 use super::errors;
 use super::position;
 use super::token::Token;
-use std::cell::RefCell;
 use std::iter::Peekable;
 use std::path::Path;
-use std::rc::Rc;
 use std::str::Chars;
 
 type ErrorHandler = fn(pos: position::Position, msg: &str);
