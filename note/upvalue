@@ -1,0 +1,2 @@
+compile time: record upvalue for each function
+runtime: when creating closure, mark locals that are used as upvalue, so that when clearing stack, they get copied to a global container

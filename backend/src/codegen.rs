@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #[macro_use]
 use super::opcode::*;
+use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::value::GosValue;
@@ -42,10 +43,8 @@ pub struct PackageVal {
     pub name: String,
     pub main_func: FunctionKey,
     pub imports: Vec<PackageKey>,
-    pub vars: Vec<GosValue>,
-    pub consts: Vec<GosValue>,
-    pub funcs: Vec<FunctionKey>,
-    pub entities: HashMap<EntityKey, OpIndex>,
+    pub members: Vec<GosValue>,
+    pub look_up: HashMap<EntityKey, OpIndex>,
 }
 
 impl PackageVal {
@@ -54,17 +53,15 @@ impl PackageVal {
             name: name,
             main_func: slotmap::Key::null(),
             imports: Vec::new(),
-            vars: Vec::new(),
-            consts: Vec::new(),
-            funcs: Vec::new(),
-            entities: HashMap::new(),
+            members: Vec::new(),
+            look_up: HashMap::new(),
         }
     }
 
     fn add_func(&mut self, entity: EntityKey, fkey: FunctionKey) {
-        self.funcs.push(fkey);
-        self.entities
-            .insert(entity, (self.funcs.len() - 1) as OpIndex);
+        self.members.push(GosValue::Function(fkey));
+        self.look_up
+            .insert(entity, (self.members.len() - 1) as OpIndex);
     }
 }
 
@@ -78,7 +75,7 @@ pub struct FunctionVal {
     pub param_count: usize,
     pub ret_count: usize,
     pub entities: HashMap<EntityKey, OpIndex>,
-    local_alloc: i16,
+    local_alloc: u16,
 }
 
 impl FunctionVal {
@@ -92,6 +89,10 @@ impl FunctionVal {
             entities: HashMap::new(),
             local_alloc: 0,
         }
+    }
+
+    pub fn local_count(&self) -> usize {
+        self.local_alloc as usize - self.param_count - self.ret_count
     }
 
     fn add_local(&mut self, entity: Option<EntityKey>) -> OpIndex {
@@ -144,6 +145,58 @@ impl FunctionVal {
             .sum()
     }
 
+    fn emit_load_local_or_const(&mut self, id: &Ident, objs: &AstObjects, pkg: &PackageVal) {
+        match id.entity_obj(objs) {
+            Some(entity) => {
+                let entity_key = id.entity_key().unwrap();
+                let ll = self.entities.get(&entity_key);
+                let local_level = if ll.is_none() {
+                    None
+                } else {
+                    Some(ll.unwrap().clone())
+                };
+                let pkg_level = if ll.is_none() {
+                    Some(pkg.look_up[&entity_key].clone())
+                } else {
+                    None
+                };
+                dbg!(id);
+                dbg!(entity);
+                match entity.kind {
+                    EntityKind::Var | EntityKind::Fun => {
+                        if local_level.is_some() {
+                            self.emit_load_local(local_level.unwrap());
+                        } else {
+                            self.emit_load_pkg_member(pkg_level.unwrap());
+                        }
+                    }
+                    EntityKind::Con => {
+                        if local_level.is_some() {
+                            self.emit_push_const(local_level.unwrap());
+                        } else {
+                            self.emit_load_pkg_member(pkg_level.unwrap());
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            None => unreachable!(),
+        };
+    }
+
+    fn emit_load_pkg_member(&mut self, i: OpIndex) {
+        self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
+        self.code.push(CodeData::Data(i));
+    }
+
+    fn emit_load_local(&mut self, local: OpIndex) {
+        let code = Opcode::get_load_local(local);
+        self.code.push(CodeData::Code(code));
+        if let Opcode::LOAD_LOCAL = code {
+            self.code.push(CodeData::Data(local));
+        }
+    }
+
     fn emit_store_local(&mut self, local: OpIndex) {
         self.code.push(CodeData::Code(Opcode::STORE_LOCAL));
         self.code.push(CodeData::Data(local));
@@ -153,6 +206,32 @@ impl FunctionVal {
     fn emit_push_const(&mut self, i: OpIndex) {
         self.code.push(CodeData::Code(Opcode::PUSH_CONST));
         self.code.push(CodeData::Data(i));
+    }
+
+    fn emit_binary_primi_call(&mut self, token: &Token) {
+        match token {
+            Token::ADD => {
+                self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
+                self.code.push(CodeData::Data(Primitive::Add as OpIndex));
+            }
+            Token::SUB => {
+                self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
+                self.code.push(CodeData::Data(Primitive::Sub as OpIndex));
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    fn emit_return(&mut self) {
+        self.code.push(CodeData::Code(Opcode::RETURN));
+    }
+
+    fn emit_pre_call(&mut self) {
+        self.code.push(CodeData::Code(Opcode::PRE_CALL));
+    }
+
+    fn emit_call(&mut self, _args: usize) {
+        self.code.push(CodeData::Code(Opcode::CALL));
     }
 }
 
@@ -182,15 +261,8 @@ impl<'a> Visitor for CodeGen<'a> {
 
     fn visit_expr_ident(&mut self, ident: &IdentKey) {
         let id = &self.ast_objs.idents[*ident];
-        //current_func_mut!()
-        match id.entity_obj(self.ast_objs) {
-            Some(entity) => match entity.kind {
-                EntityKind::Var => {}
-                EntityKind::Con => {}
-                _ => {}
-            },
-            None => {}
-        };
+        let pkg = current_pkg!(self);
+        current_func_mut!(self).emit_load_local_or_const(id, self.ast_objs, pkg);
     }
 
     fn visit_expr_option(&mut self, op: &Option<Expr>) {
@@ -250,8 +322,10 @@ impl<'a> Visitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_call(&mut self, args: usize) {
-        //dbg!(args);
+    fn visit_expr_call(&mut self, args: &Vec<Expr>) {
+        current_func_mut!(self).emit_pre_call();
+        let count = args.iter().map(|e| self.visit_expr(e)).count();
+        current_func_mut!(self).emit_call(count);
     }
 
     fn visit_expr_star(&mut self) {
@@ -263,7 +337,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_binary(&mut self, op: &Token) {
-        //dbg!(op);
+        current_func_mut!(self).emit_binary_primi_call(op);
     }
 
     fn visit_expr_key_value(&mut self) {
@@ -318,6 +392,10 @@ impl<'a> Visitor for CodeGen<'a> {
         if let Some(stmt) = &decl.body {
             self.visit_stmt_block(stmt);
         }
+        // it will not be executed if it's redundant
+        let func = &mut self.objects.functions[fkey];
+        func.emit_return();
+
         let ident = &self.ast_objs.idents[decl.name];
         current_pkg_mut!(self).add_func(ident.entity_key().unwrap(), fkey);
         if ident.name == "main" {
@@ -342,7 +420,6 @@ impl<'a> Visitor for CodeGen<'a> {
         let is_def = stmt.token == Token::DEFINE;
 
         // handle the left hand side
-        //let func = self.current_func_mut();
         let mut locals: Vec<OpIndex> = stmt
             .lhs
             .iter()
@@ -383,7 +460,11 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
-        //dbg!(rstmt);
+        for (i, expr) in rstmt.results.iter().enumerate() {
+            self.visit_expr(expr);
+            current_func_mut!(self).emit_store_local(i as OpIndex);
+        }
+        current_func_mut!(self).emit_return();
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {

@@ -38,24 +38,12 @@ pub enum Opcode {
     STORE_FIELD = 241,
     LOAD_THIS_FIELD = 250,
     STORE_THIS_FIELD = 251,
-    LOAD_MODULE_VAR = 260,
-    STORE_MODULE_VAR = 261,
-    CALL0 = 300,
-    CALL1 = 301,
-    CALL2 = 302,
-    CALL3 = 303,
-    CALL4 = 304,
-    CALL5 = 305,
-    CALL6 = 306,
-    CALL7 = 307,
-    CALL8 = 308,
-    CALL9 = 309,
-    CALL10 = 310,
-    CALL11 = 311,
-    CALL12 = 312,
-    CALL13 = 313,
-    CALL14 = 314,
-    CALL15 = 315,
+    LOAD_PKG_VAR = 260,
+    STORE_PKG_VAR = 261,
+    PRE_CALL = 300,
+    CALL = 301,
+    CALL_PRIMI_1_1 = 310,
+    CALL_PRIMI_2_1 = 311,
     JUMP = 400,
     LOOP = 401,
     JUMP_IF = 402,
@@ -127,24 +115,12 @@ impl Opcode {
             Opcode::STORE_FIELD => ("STORE_FIELD", 0),
             Opcode::LOAD_THIS_FIELD => ("LOAD_THIS_FIELD", 1),
             Opcode::STORE_THIS_FIELD => ("STORE_THIS_FIELD", 0),
-            Opcode::LOAD_MODULE_VAR => ("LOAD_MODULE_VAR", 1),
-            Opcode::STORE_MODULE_VAR => ("STORE_MODULE_VAR", 0),
-            Opcode::CALL0 => ("CALL0", 0),
-            Opcode::CALL1 => ("CALL1", -1),
-            Opcode::CALL2 => ("CALL2", -2),
-            Opcode::CALL3 => ("CALL3", -3),
-            Opcode::CALL4 => ("CALL4", -4),
-            Opcode::CALL5 => ("CALL5", -5),
-            Opcode::CALL6 => ("CALL6", -6),
-            Opcode::CALL7 => ("CALL7", -7),
-            Opcode::CALL8 => ("CALL8", -8),
-            Opcode::CALL9 => ("CALL9", -9),
-            Opcode::CALL10 => ("CALL10", -10),
-            Opcode::CALL11 => ("CALL11", -11),
-            Opcode::CALL12 => ("CALL12", -12),
-            Opcode::CALL13 => ("CALL13", -13),
-            Opcode::CALL14 => ("CALL14", -14),
-            Opcode::CALL15 => ("CALL15", -15),
+            Opcode::LOAD_PKG_VAR => ("LOAD_PKG_VAR", 1),
+            Opcode::STORE_PKG_VAR => ("STORE_PKG_VAR", 0),
+            Opcode::PRE_CALL => ("PRE_CALL", -128),
+            Opcode::CALL => ("CALL", -128),
+            Opcode::CALL_PRIMI_1_1 => ("CALL_PRIMI_1_1", 0),
+            Opcode::CALL_PRIMI_2_1 => ("CALL_PRIMI_2_1", -1),
             Opcode::JUMP => ("JUMP", 0),
             Opcode::LOOP => ("LOOP", 0),
             Opcode::JUMP_IF => ("JUMP_IF", -1),
@@ -176,6 +152,22 @@ impl fmt::Display for Opcode {
 pub enum CodeData {
     Code(Opcode),
     Data(OpIndex),
+}
+
+impl CodeData {
+    pub fn unwrap_code(&self) -> &Opcode {
+        match self {
+            CodeData::Code(code) => code,
+            CodeData::Data(_) => unreachable!(),
+        }
+    }
+
+    pub fn unwrap_data(&self) -> &OpIndex {
+        match self {
+            CodeData::Code(_) => unreachable!(),
+            CodeData::Data(data) => data,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,91 +1,251 @@
 #![allow(dead_code)]
 use super::codegen::ByteCode;
+use super::opcode::*;
+use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::value::GosValue;
 use std::cell::{Ref, RefCell, RefMut};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
-struct CallFrame {
-    closure: ClosureKey,
-    ip: usize,
-    stack_base: usize,
+enum Callable {
+    Function(FunctionKey),
+    Closure(ClosureKey),
 }
 
-#[derive(Clone, Debug)]
-pub struct Fiber<'b> {
-    stack: Vec<GosValue>,
-    frames: Vec<CallFrame>,
-    stack_top: usize,
-    code: &'b ByteCode,
-    objects: Rc<RefCell<VMObjects>>,
-    caller: Option<Rc<RefCell<Fiber<'b>>>>,
-}
-
-impl<'b> Fiber<'b> {
-    pub fn new(
-        caller: Option<Rc<RefCell<Fiber<'b>>>>,
-        code: &'b ByteCode,
-        objects: Rc<RefCell<VMObjects>>,
-    ) -> Fiber<'b> {
-        Fiber {
-            stack: Vec::new(),
-            frames: Vec::new(),
-            stack_top: 0,
-            caller: caller,
-            code: code,
-            objects: objects,
+impl Callable {
+    fn get_func(&self, objs: &VMObjects) -> FunctionKey {
+        match self {
+            Callable::Function(f) => *f,
+            Callable::Closure(c) => {
+                let cls = &objs.closures[*c];
+                cls.func
+            }
         }
     }
 
-    pub fn run(&mut self, closure: ClosureKey) {
-        let cls = &self.objects().closures[closure];
-        let func = &self.code.objects.functions[cls.func];
-        dbg!(func);
-    }
-
-    fn objects(&self) -> Ref<VMObjects> {
-        self.objects.borrow()
-    }
-
-    fn mut_objects(&self) -> RefMut<VMObjects> {
-        self.objects.borrow_mut()
+    fn ret_count(&self, objs: &VMObjects) -> usize {
+        let fkey = self.get_func(objs);
+        objs.functions[fkey].ret_count
     }
 }
 
-pub struct GosVM<'b> {
-    current_fiber: Option<Rc<RefCell<Fiber<'b>>>>,
-    objects: Rc<RefCell<VMObjects>>,
-    code: &'b ByteCode,
+#[derive(Clone, Debug)]
+struct CallFrame {
+    callable: Callable,
+    pc: usize,
+    stack_base: usize,
+    ret_count: usize,
 }
 
-impl<'b> GosVM<'b> {
-    pub fn new(bc: &'b ByteCode) -> GosVM<'b> {
-        let objs = Rc::new(RefCell::new(VMObjects::new()));
+impl CallFrame {
+    fn new_with_func(fkey: FunctionKey, sbase: usize) -> CallFrame {
+        CallFrame {
+            callable: Callable::Function(fkey),
+            pc: 0,
+            stack_base: sbase,
+            ret_count: 0,
+        }
+    }
+
+    fn new_with_closure(ckey: ClosureKey, sbase: usize) -> CallFrame {
+        CallFrame {
+            callable: Callable::Closure(ckey),
+            pc: 0,
+            stack_base: sbase,
+            ret_count: 0,
+        }
+    }
+
+    fn new_with_gos_value(val: &GosValue, sbase: usize) -> CallFrame {
+        match val {
+            GosValue::Function(fkey) => CallFrame::new_with_func(fkey.clone(), sbase),
+            GosValue::Closure(ckey) => CallFrame::new_with_closure(ckey.clone(), sbase),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Fiber {
+    stack: Vec<GosValue>,
+    frames: Vec<CallFrame>,
+    caller: Option<Rc<RefCell<Fiber>>>,
+    next_frame: Option<CallFrame>,
+}
+
+impl Fiber {
+    fn new(caller: Option<Rc<RefCell<Fiber>>>) -> Fiber {
+        Fiber {
+            stack: Vec::new(),
+            frames: Vec::new(),
+            caller: caller,
+            next_frame: None,
+        }
+    }
+
+    fn run(&mut self, fkey: FunctionKey, objs: &mut VMObjects) {
+        let frame = CallFrame::new_with_func(fkey, 0);
+        self.frames.push(frame);
+        self.main_loop(objs);
+    }
+
+    fn main_loop(&mut self, objs: &mut VMObjects) {
+        let mut frame = self.frames.last_mut().unwrap();
+        let fkey = frame.callable.get_func(objs);
+        let func = &objs.functions[fkey];
+        // allocate local variables
+        for _ in 0..func.local_count() {
+            self.stack.push(GosValue::Nil);
+        }
+        let mut consts = &func.consts;
+        let mut code = &func.code;
+        let mut stack_base = frame.stack_base;
+
+        loop {
+            let instruction = code[frame.pc].unwrap_code();
+            frame.pc += 1;
+            dbg!(instruction);
+            dbg!(self.stack.len() - stack_base);
+            match instruction {
+                Opcode::PUSH_CONST => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    self.stack.push(consts[*index as usize].clone());
+                }
+                Opcode::PUSH_NIL => {
+                    self.stack.push(GosValue::Nil);
+                }
+                Opcode::PUSH_FALSE => self.stack.push(GosValue::Bool(false)),
+                Opcode::PUSH_TRUE => self.stack.push(GosValue::Bool(true)),
+                Opcode::POP => {
+                    self.stack.pop();
+                }
+                Opcode::LOAD_LOCAL0
+                | Opcode::LOAD_LOCAL1
+                | Opcode::LOAD_LOCAL2
+                | Opcode::LOAD_LOCAL3
+                | Opcode::LOAD_LOCAL4
+                | Opcode::LOAD_LOCAL5
+                | Opcode::LOAD_LOCAL6
+                | Opcode::LOAD_LOCAL7
+                | Opcode::LOAD_LOCAL8
+                | Opcode::LOAD_LOCAL9
+                | Opcode::LOAD_LOCAL10
+                | Opcode::LOAD_LOCAL11
+                | Opcode::LOAD_LOCAL12
+                | Opcode::LOAD_LOCAL13
+                | Opcode::LOAD_LOCAL14
+                | Opcode::LOAD_LOCAL15 => {
+                    let index = instruction.load_local_index();
+                    self.stack.push(self.stack[stack_base + index as usize]);
+                }
+                Opcode::LOAD_LOCAL => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    self.stack.push(self.stack[stack_base + *index as usize]);
+                }
+                Opcode::STORE_LOCAL => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let val = self.stack.last().unwrap().clone();
+                    self.stack[stack_base + *index as usize] = val;
+                }
+                Opcode::LOAD_PKG_VAR => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let pkg = &objs.packages[func.package];
+                    self.stack.push(pkg.members[*index as usize]);
+                }
+                Opcode::STORE_PKG_VAR => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let pkg = &mut objs.packages[func.package];
+                    let val = self.stack.last().unwrap().clone();
+                    pkg.members[*index as usize] = val;
+                }
+                Opcode::PRE_CALL => {
+                    let val = self.stack.last().unwrap();
+                    dbg!(&self.stack);
+                    let sbase = self.stack.len() - 1;
+                    let frame = CallFrame::new_with_gos_value(val, sbase);
+                    let ret_count = frame.callable.ret_count(objs);
+                    self.next_frame = Some(frame);
+                    self.stack.pop();
+                    // placeholders for return values
+                    for _ in 0..ret_count {
+                        self.stack.push(GosValue::Nil)
+                    }
+                }
+                Opcode::CALL => {
+                    self.frames.push(self.next_frame.take().unwrap());
+                    frame = self.frames.last_mut().unwrap();
+                    stack_base = frame.stack_base;
+                    let func = &objs.functions[frame.callable.get_func(objs)];
+                    // for recovering the stack when it returns
+                    frame.ret_count = func.ret_count;
+                    // allocate local variables
+                    for _ in 0..func.local_count() {
+                        self.stack.push(GosValue::Nil);
+                    }
+                    consts = &func.consts;
+                    code = &func.code;
+                }
+                Opcode::CALL_PRIMI_1_1 => {
+                    unimplemented!();
+                }
+                Opcode::CALL_PRIMI_2_1 => {
+                    let primi = Primitive::from(*code[frame.pc].unwrap_data() as OpIndex);
+                    frame.pc += 1;
+                    primi.call(&mut self.stack);
+                }
+                Opcode::RETURN => {
+                    dbg!(&self.stack);
+                    let garbage = self.stack.len() - (stack_base + frame.ret_count);
+                    for _ in 0..garbage {
+                        self.stack.pop();
+                    }
+                    self.frames.pop();
+                    if self.frames.is_empty() {
+                        break;
+                    }
+                    frame = self.frames.last_mut().unwrap();
+                    stack_base = frame.stack_base;
+                    let func = &objs.functions[frame.callable.get_func(objs)];
+                    consts = &func.consts;
+                    code = &func.code;
+                }
+                _ => unimplemented!(),
+            };
+        }
+    }
+}
+
+pub struct GosVM {
+    fibers: Vec<Rc<RefCell<Fiber>>>,
+    current_fiber: Option<Rc<RefCell<Fiber>>>,
+    objects: VMObjects,
+    packages: HashMap<String, PackageKey>,
+}
+
+impl GosVM {
+    pub fn new(bc: ByteCode) -> GosVM {
         let mut vm = GosVM {
+            fibers: Vec::new(),
             current_fiber: None,
-            objects: objs.clone(),
-            code: bc,
+            objects: bc.objects,
+            packages: bc.packages,
         };
-        vm.current_fiber = Some(Rc::new(RefCell::new(Fiber::new(None, bc, objs))));
+        let fb = Rc::new(RefCell::new(Fiber::new(None)));
+        vm.fibers.push(fb.clone());
+        vm.current_fiber = Some(fb);
         vm
     }
 
-    pub fn run(&self, entry: FunctionKey) {
-        let closure = self
-            .borrow_mut_objects()
-            .closures
-            .insert(ClosureVal::new(entry));
-        let fb = self.current_fiber.as_ref().unwrap();
-        fb.borrow_mut().run(closure);
-    }
-
-    fn borrow_objects(&self) -> Ref<VMObjects> {
-        self.objects.borrow()
-    }
-
-    fn borrow_mut_objects(&self) -> RefMut<VMObjects> {
-        self.objects.borrow_mut()
+    pub fn run(&mut self, entry: FunctionKey) {
+        let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
+        fb.run(entry, &mut self.objects);
     }
 }

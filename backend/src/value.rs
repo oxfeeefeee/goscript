@@ -36,6 +36,12 @@ impl PartialEq for GosValue {
     }
 }
 
+impl Default for GosValue {
+    fn default() -> Self {
+        GosValue::Nil
+    }
+}
+
 impl Eq for GosValue {}
 
 impl Hash for GosValue {

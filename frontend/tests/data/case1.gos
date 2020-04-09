@@ -1,6 +1,8 @@
 package main
 
-var i = a.b[1]
+//var i = a.b[1]
+
+var i = a + b
 
 /*
 func a(i int) int {

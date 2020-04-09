@@ -1,4 +1,5 @@
 mod opcode;
+mod primitive;
 mod types;
 mod value;
 
