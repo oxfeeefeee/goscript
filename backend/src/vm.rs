@@ -26,6 +26,13 @@ impl Callable {
         }
     }
 
+    fn get_closure(&self) -> ClosureKey {
+        match self {
+            Callable::Function(_) => unreachable!(),
+            Callable::Closure(c) => *c,
+        }
+    }
+
     fn ret_count(&self, objs: &VMObjects) -> usize {
         let fkey = self.get_func(objs);
         objs.functions[fkey].ret_count
@@ -60,6 +67,7 @@ impl CallFrame {
     }
 
     fn new_with_gos_value(val: &GosValue, sbase: usize) -> CallFrame {
+        dbg!(val);
         match val {
             GosValue::Function(fkey) => CallFrame::new_with_func(fkey.clone(), sbase),
             GosValue::Closure(ckey) => CallFrame::new_with_closure(ckey.clone(), sbase),
@@ -104,11 +112,12 @@ impl Fiber {
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
 
+        dbg!(code);
+
         loop {
             let instruction = code[frame.pc].unwrap_code();
             frame.pc += 1;
             dbg!(instruction);
-            dbg!(self.stack.len() - stack_base);
             match instruction {
                 Opcode::PUSH_CONST => {
                     let index = code[frame.pc].unwrap_data();
@@ -166,6 +175,27 @@ impl Fiber {
                     let val = self.stack.last().unwrap().clone();
                     pkg.members[*index as usize] = val;
                 }
+                Opcode::LOAD_UPVALUE => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let cls = frame.callable.get_closure();
+                    let cls_val = &objs.closures[cls];
+                    let uv = &cls_val.upvalues[*index as usize];
+                    match uv {
+                        UpValue::Open(level, ind) => {
+                            drop(frame); // temporarily let go of the ownership
+                            let frame_ind = self.frames.len() - (*level as usize) - 1 - 1;
+                            let stack_ptr = self.frames[frame_ind].stack_base + (*ind as usize);
+                            self.stack.push(self.stack[stack_ptr].clone());
+                            frame = self.frames.last_mut().unwrap();
+                        }
+                        UpValue::Closed(key) => {
+                            let val = &objs.boxed[*key];
+                            self.stack.push(val.clone());
+                        }
+                    }
+                }
+                Opcode::STORE_UPVALUE => {}
                 Opcode::PRE_CALL => {
                     let val = self.stack.last().unwrap();
                     dbg!(&self.stack);
@@ -216,6 +246,14 @@ impl Fiber {
                     let func = &objs.functions[frame.callable.get_func(objs)];
                     consts = &func.consts;
                     code = &func.code;
+                }
+                Opcode::NEW_CLOSURE => {
+                    let fkey = self.stack.last().unwrap().get_function();
+                    let func = &objs.functions[*fkey];
+                    let cls = ClosureVal::new(*fkey, func.up_ptrs.clone());
+                    let ckey = objs.closures.insert(cls);
+                    self.stack.pop();
+                    self.stack.push(GosValue::Closure(ckey));
                 }
                 _ => unimplemented!(),
             };

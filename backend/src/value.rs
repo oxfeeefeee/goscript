@@ -94,6 +94,15 @@ impl GosValue {
             unreachable!();
         }
     }
+
+    #[inline]
+    pub fn get_function(&self) -> &FunctionKey {
+        if let GosValue::Function(f) = self {
+            f
+        } else {
+            unreachable!();
+        }
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Clone, Debug)]

@@ -72,6 +72,7 @@ pub struct FunctionVal {
     pub package: PackageKey,
     pub code: Vec<CodeData>,
     pub consts: Vec<GosValue>,
+    pub up_ptrs: Vec<UpValue>,
     pub param_count: usize,
     pub ret_count: usize,
     pub entities: HashMap<EntityKey, OpIndex>,
@@ -84,6 +85,7 @@ impl FunctionVal {
             package: package,
             code: Vec::new(),
             consts: Vec::new(),
+            up_ptrs: Vec::new(),
             param_count: 0,
             ret_count: 0,
             entities: HashMap::new(),
@@ -119,6 +121,17 @@ impl FunctionVal {
         result
     }
 
+    fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> OpIndex {
+        self.entities
+            .get(entity)
+            .map(|x| *x)
+            .or_else(|| {
+                self.up_ptrs.push(uv);
+                (self.up_ptrs.len() - 1).try_into().ok()
+            })
+            .unwrap()
+    }
+
     fn add_params<'e>(
         &mut self,
         fl: &FieldList,
@@ -145,45 +158,6 @@ impl FunctionVal {
             .sum()
     }
 
-    fn emit_load_local_or_const(&mut self, id: &Ident, objs: &AstObjects, pkg: &PackageVal) {
-        match id.entity_obj(objs) {
-            Some(entity) => {
-                let entity_key = id.entity_key().unwrap();
-                let ll = self.entities.get(&entity_key);
-                let local_level = if ll.is_none() {
-                    None
-                } else {
-                    Some(ll.unwrap().clone())
-                };
-                let pkg_level = if ll.is_none() {
-                    Some(pkg.look_up[&entity_key].clone())
-                } else {
-                    None
-                };
-                dbg!(id);
-                dbg!(entity);
-                match entity.kind {
-                    EntityKind::Var | EntityKind::Fun => {
-                        if local_level.is_some() {
-                            self.emit_load_local(local_level.unwrap());
-                        } else {
-                            self.emit_load_pkg_member(pkg_level.unwrap());
-                        }
-                    }
-                    EntityKind::Con => {
-                        if local_level.is_some() {
-                            self.emit_push_const(local_level.unwrap());
-                        } else {
-                            self.emit_load_pkg_member(pkg_level.unwrap());
-                        }
-                    }
-                    _ => unreachable!(),
-                }
-            }
-            None => unreachable!(),
-        };
-    }
-
     fn emit_load_pkg_member(&mut self, i: OpIndex) {
         self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
         self.code.push(CodeData::Data(i));
@@ -205,6 +179,11 @@ impl FunctionVal {
 
     fn emit_push_const(&mut self, i: OpIndex) {
         self.code.push(CodeData::Code(Opcode::PUSH_CONST));
+        self.code.push(CodeData::Data(i));
+    }
+
+    fn emit_load_upvalue(&mut self, i: OpIndex) {
+        self.code.push(CodeData::Code(Opcode::LOAD_UPVALUE));
         self.code.push(CodeData::Data(i));
     }
 
@@ -233,6 +212,10 @@ impl FunctionVal {
     fn emit_call(&mut self, _args: usize) {
         self.code.push(CodeData::Code(Opcode::CALL));
     }
+
+    fn emit_new_closure(&mut self) {
+        self.code.push(CodeData::Code(Opcode::NEW_CLOSURE));
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -260,9 +243,49 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_ident(&mut self, ident: &IdentKey) {
+        // 1. try local frist
         let id = &self.ast_objs.idents[*ident];
-        let pkg = current_pkg!(self);
-        current_func_mut!(self).emit_load_local_or_const(id, self.ast_objs, pkg);
+        let entity = id.entity_obj(self.ast_objs).unwrap();
+        let entity_key = id.entity_key().unwrap();
+        let local = current_func_mut!(self)
+            .entities
+            .get(&entity_key)
+            .map(|x| *x);
+        if local.is_some() {
+            let func = current_func_mut!(self);
+            match entity.kind {
+                EntityKind::Var => func.emit_load_local(local.unwrap()),
+                EntityKind::Con => func.emit_push_const(local.unwrap()),
+                _ => unreachable!(),
+            }
+            return;
+        }
+        // 2. try upvalue
+        let upvalue = self
+            .func_stack
+            .clone()
+            .iter()
+            .enumerate()
+            .rev()
+            .skip(1)
+            .find_map(|(level, ifunc)| {
+                let f = &mut self.objects.functions[*ifunc];
+                let index = f.entities.get(&entity_key).map(|x| *x);
+                if let Some(ind) = index {
+                    Some(UpValue::Open(level as OpIndex, ind as OpIndex))
+                } else {
+                    None
+                }
+            });
+        if let Some(uv) = upvalue {
+            let func = current_func_mut!(self);
+            let index = func.try_add_upvalue(&entity_key, uv);
+            func.emit_load_upvalue(index);
+            return;
+        }
+        // 3. try the package level
+        let index = current_pkg!(self).look_up[&entity_key];
+        current_func_mut!(self).emit_load_pkg_member(index);
     }
 
     fn visit_expr_option(&mut self, op: &Option<Expr>) {
@@ -293,8 +316,14 @@ impl<'a> Visitor for CodeGen<'a> {
         func.emit_push_const(i);
     }
 
+    /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit) {
-        //dbg!(flit);
+        dbg!(flit);
+        let fkey = self.gen_func_def(&flit.typ, &flit.body);
+        let func = current_func_mut!(self);
+        let i = func.add_const(None, GosValue::Function(fkey));
+        func.emit_push_const(i);
+        func.emit_new_closure();
     }
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
@@ -377,24 +406,13 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) {
-        let mut func = FunctionVal::new(self.current_pkg.clone());
         let decl = &self.ast_objs.decls[*fdecl];
-        let typ = &decl.typ;
-        func.ret_count = match &typ.results {
-            Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
-            None => 0,
-        };
-        func.param_count = func.add_params(&typ.params, self.ast_objs, self.errors);
-
-        let fkey = self.objects.functions.insert(func);
-        self.func_stack.push(fkey.clone());
-        // process function body
-        if let Some(stmt) = &decl.body {
-            self.visit_stmt_block(stmt);
+        if decl.body.is_none() {
+            unimplemented!()
         }
-        // it will not be executed if it's redundant
-        let func = &mut self.objects.functions[fkey];
-        func.emit_return();
+        let stmt = decl.body.as_ref().unwrap();
+        let typ = &decl.typ;
+        let fkey = self.gen_func_def(typ, stmt);
 
         let ident = &self.ast_objs.idents[decl.name];
         current_pkg_mut!(self).add_func(ident.entity_key().unwrap(), fkey);
@@ -521,6 +539,26 @@ impl<'a> CodeGen<'a> {
             func_stack: Vec::new(),
             errors: err,
         }
+    }
+
+    fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
+        let mut func = FunctionVal::new(self.current_pkg.clone());
+        func.ret_count = match &typ.results {
+            Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
+            None => 0,
+        };
+        func.param_count = func.add_params(&typ.params, self.ast_objs, self.errors);
+
+        let fkey = self.objects.functions.insert(func);
+        self.func_stack.push(fkey.clone());
+        // process function body
+        self.visit_stmt_block(body);
+        // it will not be executed if it's redundant
+        let func = &mut self.objects.functions[fkey];
+        func.emit_return();
+
+        self.func_stack.pop();
+        fkey
     }
 
     pub fn gen(&mut self, f: File) {

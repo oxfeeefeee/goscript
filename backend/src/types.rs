@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![macro_use]
+use super::opcode::OpIndex;
 use super::value::GosValue;
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::{Ref, RefCell};
@@ -18,7 +19,7 @@ new_key_type! { pub struct MapKey; }
 new_key_type! { pub struct StructKey; }
 new_key_type! { pub struct ChannelKey; }
 new_key_type! { pub struct VecKey; }
-new_key_type! { pub struct UpValueKey; }
+new_key_type! { pub struct BoxedKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 
@@ -32,7 +33,7 @@ pub struct Objects {
     pub structs: DenseSlotMap<StructKey, StructVal>,
     pub channels: DenseSlotMap<ChannelKey, ChannelVal>,
     pub vecs: DenseSlotMap<VecKey, VecVal>,
-    pub upvalues: DenseSlotMap<UpValueKey, UpValueVal>,
+    pub boxed: DenseSlotMap<BoxedKey, GosValue>,
     pub functions: DenseSlotMap<FunctionKey, FunctionVal>,
     pub packages: DenseSlotMap<PackageKey, PackageVal>,
 }
@@ -48,7 +49,7 @@ impl Objects {
             structs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             channels: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             vecs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            upvalues: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            boxed: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
         }
@@ -66,16 +67,17 @@ impl Objects {
 pub struct InterfaceVal {}
 
 #[derive(Clone, Debug)]
-pub struct UpValueVal {}
-
-#[derive(Clone, Debug)]
 pub struct ClosureVal {
     pub func: FunctionKey,
+    pub upvalues: Vec<UpValue>,
 }
 
 impl ClosureVal {
-    pub fn new(key: FunctionKey) -> ClosureVal {
-        ClosureVal { func: key }
+    pub fn new(key: FunctionKey, upvalues: Vec<UpValue>) -> ClosureVal {
+        ClosureVal {
+            func: key,
+            upvalues: upvalues,
+        }
     }
 }
 
@@ -191,4 +193,12 @@ impl<'a, 'o> Iterator for SliceValIter<'a, 'o> {
             None
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum UpValue {
+    /// Parent CallFrame is still alive, pointing to a local variable
+    Open(OpIndex, OpIndex), // (level, index)
+    // Parent CallFrame is released, pointing to a Boxed value in the global pool
+    Closed(BoxedKey),
 }

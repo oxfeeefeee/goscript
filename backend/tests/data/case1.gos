@@ -11,20 +11,33 @@ func main() int {
 
     m, n := a(1, 2)
 }*/
+
+//------------------
 /*
-func main(i int, iii int) (a int, b int) {
+func funca(i int) int {
+    j := i + 2 + 2 + i - 1
+    return j
+}
+
+func funcb(i int, iii int) (a int, b int) {
     fff := 4
     fff = 5
-    fff = fff + 100
+    fff = fff + 100 + i + funca(fff)
     return fff, fff
 }
-*/
 
-func a(i int) (a int, b int) {
-    j := i + 2 + 2 + i - 1
-    a, b = j, j + 1
-}
 
 func main() {
-    re, re2 := a(3)
+    re, re2 := funcb(3, 4)
 } 
+*/
+//-------------------
+
+
+func main() {
+    a := 44
+    b := func() int {
+        return a
+    }
+    c := b()
+}
