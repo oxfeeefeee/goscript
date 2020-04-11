@@ -37,7 +37,8 @@ func main() {
 func main() {
     a := 44
     b := func() int {
-        return a
+        a = 43
+        return a + 10
     }
-    c := b()
+    c := b() + 10
 }

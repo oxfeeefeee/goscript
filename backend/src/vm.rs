@@ -195,7 +195,25 @@ impl Fiber {
                         }
                     }
                 }
-                Opcode::STORE_UPVALUE => {}
+                Opcode::STORE_UPVALUE => {
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let cls = frame.callable.get_closure();
+                    let cls_val = &objs.closures[cls];
+                    let uv = &cls_val.upvalues[*index as usize];
+                    match uv {
+                        UpValue::Open(level, ind) => {
+                            drop(frame); // temporarily let go of the ownership
+                            let frame_ind = self.frames.len() - (*level as usize) - 1 - 1;
+                            let stack_ptr = self.frames[frame_ind].stack_base + (*ind as usize);
+                            self.stack[stack_ptr] = self.stack.last().unwrap().clone();
+                            frame = self.frames.last_mut().unwrap();
+                        }
+                        UpValue::Closed(key) => {
+                            objs.boxed[*key] = self.stack.last().unwrap().clone();
+                        }
+                    }
+                }
                 Opcode::PRE_CALL => {
                     let val = self.stack.last().unwrap();
                     dbg!(&self.stack);

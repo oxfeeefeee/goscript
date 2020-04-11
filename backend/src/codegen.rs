@@ -67,6 +67,26 @@ impl PackageVal {
 
 // ----------------------------------------------------------------------------
 // FunctionVal
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FnEntIndex {
+    Const(OpIndex),
+    LocalVar(OpIndex),
+    UpValue(OpIndex),
+    PackageMember(OpIndex),
+}
+
+impl From<FnEntIndex> for OpIndex {
+    fn from(t: FnEntIndex) -> OpIndex {
+        match t {
+            FnEntIndex::Const(i) => i,
+            FnEntIndex::LocalVar(i) => i,
+            FnEntIndex::UpValue(i) => i,
+            FnEntIndex::PackageMember(i) => i,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FunctionVal {
     pub package: PackageKey,
@@ -75,7 +95,7 @@ pub struct FunctionVal {
     pub up_ptrs: Vec<UpValue>,
     pub param_count: usize,
     pub ret_count: usize,
-    pub entities: HashMap<EntityKey, OpIndex>,
+    pub entities: HashMap<EntityKey, FnEntIndex>,
     local_alloc: u16,
 }
 
@@ -97,37 +117,40 @@ impl FunctionVal {
         self.local_alloc as usize - self.param_count - self.ret_count
     }
 
-    fn add_local(&mut self, entity: Option<EntityKey>) -> OpIndex {
+    fn add_local(&mut self, entity: Option<EntityKey>) -> FnEntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
-            let old = self.entities.insert(key, result);
+            let old = self.entities.insert(key, FnEntIndex::LocalVar(result));
             assert_eq!(old, None);
         };
         self.local_alloc += 1;
-        result
+        FnEntIndex::LocalVar(result)
     }
 
-    fn get_entity_index(&self, entity: &EntityKey) -> &OpIndex {
-        self.entities.get(entity).unwrap()
+    fn get_entity_index(&self, entity: &EntityKey) -> FnEntIndex {
+        self.entities.get(entity).unwrap().clone()
     }
 
-    fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> OpIndex {
+    fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> FnEntIndex {
         self.consts.push(cst);
         let result = (self.consts.len() - 1).try_into().unwrap();
         if let Some(key) = entity {
-            let old = self.entities.insert(key, result);
+            let old = self.entities.insert(key, FnEntIndex::Const(result));
             assert_eq!(old, None);
         }
-        result
+        FnEntIndex::Const(result)
     }
 
-    fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> OpIndex {
+    fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> FnEntIndex {
         self.entities
             .get(entity)
             .map(|x| *x)
             .or_else(|| {
                 self.up_ptrs.push(uv);
-                (self.up_ptrs.len() - 1).try_into().ok()
+                let i = (self.up_ptrs.len() - 1).try_into().ok();
+                let et = FnEntIndex::UpValue(i.unwrap());
+                self.entities.insert(*entity, et);
+                i.map(|x| FnEntIndex::UpValue(x))
             })
             .unwrap()
     }
@@ -158,33 +181,40 @@ impl FunctionVal {
             .sum()
     }
 
-    fn emit_load_pkg_member(&mut self, i: OpIndex) {
-        self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
-        self.code.push(CodeData::Data(i));
-    }
-
-    fn emit_load_local(&mut self, local: OpIndex) {
-        let code = Opcode::get_load_local(local);
-        self.code.push(CodeData::Code(code));
-        if let Opcode::LOAD_LOCAL = code {
-            self.code.push(CodeData::Data(local));
+    fn emit_load(&mut self, index: FnEntIndex) {
+        match index {
+            FnEntIndex::Const(i) => {
+                self.code.push(CodeData::Code(Opcode::PUSH_CONST));
+                self.code.push(CodeData::Data(i));
+            }
+            FnEntIndex::LocalVar(i) => {
+                let code = Opcode::get_load_local(i);
+                self.code.push(CodeData::Code(code));
+                if let Opcode::LOAD_LOCAL = code {
+                    self.code.push(CodeData::Data(i));
+                }
+            }
+            FnEntIndex::UpValue(i) => {
+                self.code.push(CodeData::Code(Opcode::LOAD_UPVALUE));
+                self.code.push(CodeData::Data(i));
+            }
+            FnEntIndex::PackageMember(i) => {
+                self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
+                self.code.push(CodeData::Data(i));
+            }
         }
     }
 
-    fn emit_store_local(&mut self, local: OpIndex) {
-        self.code.push(CodeData::Code(Opcode::STORE_LOCAL));
-        self.code.push(CodeData::Data(local));
+    fn emit_store(&mut self, index: FnEntIndex) {
+        let (code, i) = match index {
+            FnEntIndex::Const(_) => unreachable!(),
+            FnEntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
+            FnEntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
+            FnEntIndex::PackageMember(_) => unimplemented!(),
+        };
+        self.code.push(CodeData::Code(code));
+        self.code.push(CodeData::Data(i));
         self.code.push(CodeData::Code(Opcode::POP));
-    }
-
-    fn emit_push_const(&mut self, i: OpIndex) {
-        self.code.push(CodeData::Code(Opcode::PUSH_CONST));
-        self.code.push(CodeData::Data(i));
-    }
-
-    fn emit_load_upvalue(&mut self, i: OpIndex) {
-        self.code.push(CodeData::Code(Opcode::LOAD_UPVALUE));
-        self.code.push(CodeData::Data(i));
     }
 
     fn emit_binary_primi_call(&mut self, token: &Token) {
@@ -243,49 +273,8 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_ident(&mut self, ident: &IdentKey) {
-        // 1. try local frist
-        let id = &self.ast_objs.idents[*ident];
-        let entity = id.entity_obj(self.ast_objs).unwrap();
-        let entity_key = id.entity_key().unwrap();
-        let local = current_func_mut!(self)
-            .entities
-            .get(&entity_key)
-            .map(|x| *x);
-        if local.is_some() {
-            let func = current_func_mut!(self);
-            match entity.kind {
-                EntityKind::Var => func.emit_load_local(local.unwrap()),
-                EntityKind::Con => func.emit_push_const(local.unwrap()),
-                _ => unreachable!(),
-            }
-            return;
-        }
-        // 2. try upvalue
-        let upvalue = self
-            .func_stack
-            .clone()
-            .iter()
-            .enumerate()
-            .rev()
-            .skip(1)
-            .find_map(|(level, ifunc)| {
-                let f = &mut self.objects.functions[*ifunc];
-                let index = f.entities.get(&entity_key).map(|x| *x);
-                if let Some(ind) = index {
-                    Some(UpValue::Open(level as OpIndex, ind as OpIndex))
-                } else {
-                    None
-                }
-            });
-        if let Some(uv) = upvalue {
-            let func = current_func_mut!(self);
-            let index = func.try_add_upvalue(&entity_key, uv);
-            func.emit_load_upvalue(index);
-            return;
-        }
-        // 3. try the package level
-        let index = current_pkg!(self).look_up[&entity_key];
-        current_func_mut!(self).emit_load_pkg_member(index);
+        let index = self.resolve_ident(ident);
+        current_func_mut!(self).emit_load(index);
     }
 
     fn visit_expr_option(&mut self, op: &Option<Expr>) {
@@ -313,7 +302,7 @@ impl<'a> Visitor for CodeGen<'a> {
         };
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
-        func.emit_push_const(i);
+        func.emit_load(i);
     }
 
     /// Add function as a const and then generate a closure of it
@@ -322,7 +311,7 @@ impl<'a> Visitor for CodeGen<'a> {
         let fkey = self.gen_func_def(&flit.typ, &flit.body);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
-        func.emit_push_const(i);
+        func.emit_load(i);
         func.emit_new_closure();
     }
 
@@ -438,17 +427,17 @@ impl<'a> Visitor for CodeGen<'a> {
         let is_def = stmt.token == Token::DEFINE;
 
         // handle the left hand side
-        let mut locals: Vec<OpIndex> = stmt
+        let mut locals: Vec<FnEntIndex> = stmt
             .lhs
             .iter()
             .map(|expr| {
                 if let Expr::Ident(ident) = expr {
-                    let ident = self.ast_objs.idents[*ident.as_ref()].clone();
+                    let id = self.ast_objs.idents[*ident.as_ref()].clone();
                     let func = current_func_mut!(self);
                     if is_def {
-                        func.add_local(ident.entity.into_key())
+                        func.add_local(id.entity.into_key())
                     } else {
-                        *func.get_entity_index(&ident.entity.clone().into_key().unwrap())
+                        self.resolve_ident(ident)
                     }
                 } else {
                     unreachable!();
@@ -465,7 +454,7 @@ impl<'a> Visitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         locals.reverse();
         for l in locals.iter() {
-            func.emit_store_local(*l);
+            func.emit_store(*l);
         }
     }
 
@@ -480,7 +469,7 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
-            current_func_mut!(self).emit_store_local(i as OpIndex);
+            current_func_mut!(self).emit_store(FnEntIndex::LocalVar(i as OpIndex));
         }
         current_func_mut!(self).emit_return();
     }
@@ -539,6 +528,43 @@ impl<'a> CodeGen<'a> {
             func_stack: Vec::new(),
             errors: err,
         }
+    }
+
+    fn resolve_ident(&mut self, ident: &IdentKey) -> FnEntIndex {
+        // 1. try local frist
+        let id = &self.ast_objs.idents[*ident];
+        let entity_key = id.entity_key().unwrap();
+        let local = current_func_mut!(self)
+            .entities
+            .get(&entity_key)
+            .map(|x| *x);
+        if local.is_some() {
+            return local.unwrap();
+        }
+        // 2. try upvalue
+        let upvalue = self
+            .func_stack
+            .clone()
+            .iter()
+            .enumerate()
+            .rev()
+            .skip(1)
+            .find_map(|(level, ifunc)| {
+                let f = &mut self.objects.functions[*ifunc];
+                let index = f.entities.get(&entity_key).map(|x| *x);
+                if let Some(ind) = index {
+                    Some(UpValue::Open(level as OpIndex, ind.into()))
+                } else {
+                    None
+                }
+            });
+        if let Some(uv) = upvalue {
+            let func = current_func_mut!(self);
+            let index = func.try_add_upvalue(&entity_key, uv);
+            return index;
+        }
+        // 3. try the package level
+        FnEntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
