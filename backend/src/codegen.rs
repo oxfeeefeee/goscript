@@ -5,6 +5,7 @@ use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::value::GosValue;
+use super::vm::UpValue;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs;
@@ -546,14 +547,13 @@ impl<'a> CodeGen<'a> {
             .func_stack
             .clone()
             .iter()
-            .enumerate()
             .rev()
             .skip(1)
-            .find_map(|(level, ifunc)| {
+            .find_map(|ifunc| {
                 let f = &mut self.objects.functions[*ifunc];
                 let index = f.entities.get(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
-                    Some(UpValue::Open(level as OpIndex, ind.into()))
+                    Some(UpValue::Open(*ifunc, ind.into()))
                 } else {
                     None
                 }

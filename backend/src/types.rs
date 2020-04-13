@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 pub use super::codegen::{FunctionVal, PackageVal};
+pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -65,21 +66,6 @@ impl Objects {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceVal {}
-
-#[derive(Clone, Debug)]
-pub struct ClosureVal {
-    pub func: FunctionKey,
-    pub upvalues: Vec<UpValue>,
-}
-
-impl ClosureVal {
-    pub fn new(key: FunctionKey, upvalues: Vec<UpValue>) -> ClosureVal {
-        ClosureVal {
-            func: key,
-            upvalues: upvalues,
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // StringVal
@@ -193,12 +179,4 @@ impl<'a, 'o> Iterator for SliceValIter<'a, 'o> {
             None
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum UpValue {
-    /// Parent CallFrame is still alive, pointing to a local variable
-    Open(OpIndex, OpIndex), // (level, index)
-    // Parent CallFrame is released, pointing to a Boxed value in the global pool
-    Closed(BoxedKey),
 }

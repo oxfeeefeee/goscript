@@ -8,6 +8,31 @@ fn load_parse_gen(path: &str, trace: bool) {
     vm.run(entry);
 }
 #[test]
-fn test_parser_case1() {
+fn test_case1() {
     let err_cnt = load_parse_gen("./tests/data/case1.gos", true);
+}
+
+#[test]
+fn test_closure1() {
+    let err_cnt = load_parse_gen("./tests/data/closure1.go", true);
+}
+
+#[test]
+fn test_closure2() {
+    let err_cnt = load_parse_gen("./tests/data/closure2.go", true);
+}
+
+#[test]
+fn test_closure3() {
+    let err_cnt = load_parse_gen("./tests/data/closure3.go", true);
+}
+
+#[test]
+fn test_closure4() {
+    let err_cnt = load_parse_gen("./tests/data/closure4.go", true);
+}
+
+#[test]
+fn test_func1() {
+    let err_cnt = load_parse_gen("./tests/data/func1.go", true);
 }

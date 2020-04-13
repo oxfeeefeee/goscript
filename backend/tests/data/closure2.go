@@ -1,0 +1,11 @@
+package main
+
+func main() {
+    a := 44
+    b := func() int {
+        a = 43
+        return a + 10
+    }()
+    c := b + 10
+}
+//63

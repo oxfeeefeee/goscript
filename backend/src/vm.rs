@@ -5,9 +5,40 @@ use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::value::GosValue;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+#[derive(Clone, Debug)]
+pub struct ClosureVal {
+    pub func: FunctionKey,
+    pub upvalues: Vec<UpValue>,
+}
+
+impl ClosureVal {
+    pub fn new(key: FunctionKey, upvalues: Vec<UpValue>) -> ClosureVal {
+        ClosureVal {
+            func: key,
+            upvalues: upvalues,
+        }
+    }
+
+    pub fn close_upvalue(&mut self, func: FunctionKey, index: OpIndex, boxed: BoxedKey) {
+        for i in 0..self.upvalues.len() {
+            if self.upvalues[i] == UpValue::Open(func, index) {
+                self.upvalues[i] = UpValue::Closed(boxed);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum UpValue {
+    /// Parent CallFrame is still alive, pointing to a local variable
+    Open(FunctionKey, OpIndex), // (func, level, index)
+    // Parent CallFrame is released, pointing to a Boxed value in the global pool
+    Closed(BoxedKey),
+}
 
 #[derive(Clone, Debug)]
 enum Callable {
@@ -45,6 +76,8 @@ struct CallFrame {
     pc: usize,
     stack_base: usize,
     ret_count: usize,
+    // closures that have upvalues pointing to this frame
+    referred_by: Option<HashMap<OpIndex, Vec<ClosureKey>>>,
 }
 
 impl CallFrame {
@@ -54,6 +87,7 @@ impl CallFrame {
             pc: 0,
             stack_base: sbase,
             ret_count: 0,
+            referred_by: None,
         }
     }
 
@@ -63,15 +97,41 @@ impl CallFrame {
             pc: 0,
             stack_base: sbase,
             ret_count: 0,
+            referred_by: None,
         }
     }
 
     fn new_with_gos_value(val: &GosValue, sbase: usize) -> CallFrame {
-        dbg!(val);
         match val {
             GosValue::Function(fkey) => CallFrame::new_with_func(fkey.clone(), sbase),
             GosValue::Closure(ckey) => CallFrame::new_with_closure(ckey.clone(), sbase),
             _ => unreachable!(),
+        }
+    }
+
+    fn add_referred_by(&mut self, index: OpIndex, ckey: ClosureKey) {
+        if self.referred_by.is_none() {
+            self.referred_by = Some(HashMap::new());
+        }
+        let map = self.referred_by.as_mut().unwrap();
+        match map.get_mut(&index) {
+            Some(v) => {
+                v.push(ckey);
+            }
+            None => {
+                map.insert(index, vec![ckey]);
+            }
+        }
+    }
+
+    fn remove_referred_by(&mut self, index: OpIndex, ckey: ClosureKey) {
+        let map = self.referred_by.as_mut().unwrap();
+        let v = map.get_mut(&index).unwrap();
+        for i in 0..v.len() {
+            if v[i] == ckey {
+                v.swap_remove(i);
+                break;
+            }
         }
     }
 }
@@ -181,16 +241,24 @@ impl Fiber {
                     let cls = frame.callable.get_closure();
                     let cls_val = &objs.closures[cls];
                     let uv = &cls_val.upvalues[*index as usize];
+                    dbg!(uv, cls_val, "aaa");
                     match uv {
-                        UpValue::Open(level, ind) => {
+                        UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
-                            let frame_ind = self.frames.len() - (*level as usize) - 1 - 1;
-                            let stack_ptr = self.frames[frame_ind].stack_base + (*ind as usize);
+                            let upframe = self
+                                .frames
+                                .iter()
+                                .rev()
+                                .skip(1)
+                                .find(|x| x.callable.get_func(objs) == *f)
+                                .unwrap();
+                            let stack_ptr = upframe.stack_base + (*ind as usize);
                             self.stack.push(self.stack[stack_ptr].clone());
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(key) => {
                             let val = &objs.boxed[*key];
+                            dbg!(&val);
                             self.stack.push(val.clone());
                         }
                     }
@@ -202,10 +270,16 @@ impl Fiber {
                     let cls_val = &objs.closures[cls];
                     let uv = &cls_val.upvalues[*index as usize];
                     match uv {
-                        UpValue::Open(level, ind) => {
+                        UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
-                            let frame_ind = self.frames.len() - (*level as usize) - 1 - 1;
-                            let stack_ptr = self.frames[frame_ind].stack_base + (*ind as usize);
+                            let upframe = self
+                                .frames
+                                .iter()
+                                .rev()
+                                .skip(1)
+                                .find(|x| x.callable.get_func(objs) == *f)
+                                .unwrap();
+                            let stack_ptr = upframe.stack_base + (*ind as usize);
                             self.stack[stack_ptr] = self.stack.last().unwrap().clone();
                             frame = self.frames.last_mut().unwrap();
                         }
@@ -216,7 +290,6 @@ impl Fiber {
                 }
                 Opcode::PRE_CALL => {
                     let val = self.stack.last().unwrap();
-                    dbg!(&self.stack);
                     let sbase = self.stack.len() - 1;
                     let frame = CallFrame::new_with_gos_value(val, sbase);
                     let ret_count = frame.callable.ret_count(objs);
@@ -240,6 +313,7 @@ impl Fiber {
                     }
                     consts = &func.consts;
                     code = &func.code;
+                    dbg!(&code);
                 }
                 Opcode::CALL_PRIMI_1_1 => {
                     unimplemented!();
@@ -251,6 +325,49 @@ impl Fiber {
                 }
                 Opcode::RETURN => {
                     dbg!(&self.stack);
+                    // first handle upvalues in 3 steps:
+                    // 1. clean up any referred_by created by this frame
+                    match frame.callable {
+                        Callable::Closure(c) => {
+                            let cls_val = &objs.closures[c];
+                            for uv in cls_val.upvalues.iter() {
+                                match uv {
+                                    UpValue::Open(f, ind) => {
+                                        drop(frame); // temporarily let go of the ownership
+                                        let upframe = self
+                                            .frames
+                                            .iter_mut()
+                                            .rev()
+                                            .skip(1)
+                                            .find(|x| x.callable.get_func(objs) == *f)
+                                            .unwrap();
+                                        upframe.remove_referred_by(*ind, c.clone());
+                                        frame = self.frames.last_mut().unwrap();
+                                    }
+                                    // Do nothing for closed ones for now, Will be delt with it by GC.
+                                    UpValue::Closed(_) => {}
+                                }
+                            }
+                        }
+                        Callable::Function(_) => {}
+                    }
+                    // 2. close any active upvalue this frame contains
+                    if let Some(referred) = &frame.referred_by {
+                        for (ind, referrers) in referred {
+                            dbg!(ind, referrers, "bbb");
+                            if referrers.len() == 0 {
+                                continue;
+                            }
+                            let val = self.stack[stack_base + *ind as usize].clone();
+                            let bkey = objs.boxed.insert(val);
+                            let func = frame.callable.get_func(objs);
+                            for r in referrers.iter() {
+                                let cls_val = &mut objs.closures[*r];
+                                cls_val.close_upvalue(func, *ind, bkey);
+                            }
+                        }
+                    }
+
                     let garbage = self.stack.len() - (stack_base + frame.ret_count);
                     for _ in 0..garbage {
                         self.stack.pop();
@@ -270,6 +387,23 @@ impl Fiber {
                     let func = &objs.functions[*fkey];
                     let cls = ClosureVal::new(*fkey, func.up_ptrs.clone());
                     let ckey = objs.closures.insert(cls);
+                    // set referred_by for the frames down in the stack
+                    for uv in func.up_ptrs.iter() {
+                        match uv {
+                            UpValue::Open(func, ind) => {
+                                drop(frame); // temporarily let go of the ownership
+                                let upframe = self
+                                    .frames
+                                    .iter_mut()
+                                    .rev()
+                                    .find(|x| x.callable.get_func(objs) == *func)
+                                    .unwrap();
+                                upframe.add_referred_by(*ind, ckey.clone());
+                                frame = self.frames.last_mut().unwrap();
+                            }
+                            UpValue::Closed(_) => unreachable!(),
+                        }
+                    }
                     self.stack.pop();
                     self.stack.push(GosValue::Closure(ckey));
                 }
