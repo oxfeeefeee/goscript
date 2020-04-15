@@ -11,7 +11,7 @@ A compiler and VM in Rust that runs Go.
 ### Rationale
 + A scripting language that is Rust friendly is needed.
 + Go is popular and easy(even as a scripting language).
-+ If go were an embedded language it would be way better than Lua.
++ If Go were an embedded language it would be way better than Lua.
 + If Go were a glue language it would be way better than Python, in terms of project maintainability.
 
 ### Implementation

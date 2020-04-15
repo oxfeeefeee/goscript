@@ -173,7 +173,6 @@ impl Fiber {
         let mut stack_base = frame.stack_base;
 
         dbg!(code);
-
         loop {
             let instruction = code[frame.pc].unwrap_code();
             frame.pc += 1;
@@ -238,11 +237,7 @@ impl Fiber {
                 Opcode::LOAD_UPVALUE => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let cls = frame.callable.get_closure();
-                    let cls_val = &objs.closures[cls];
-                    let uv = &cls_val.upvalues[*index as usize];
-                    dbg!(uv, cls_val, "aaa");
-                    match uv {
+                    match &objs.closures[frame.callable.get_closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
                             let upframe = self
@@ -266,10 +261,7 @@ impl Fiber {
                 Opcode::STORE_UPVALUE => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let cls = frame.callable.get_closure();
-                    let cls_val = &objs.closures[cls];
-                    let uv = &cls_val.upvalues[*index as usize];
-                    match uv {
+                    match &objs.closures[frame.callable.get_closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
                             let upframe = self
@@ -324,7 +316,6 @@ impl Fiber {
                     primi.call(&mut self.stack);
                 }
                 Opcode::RETURN => {
-                    dbg!(&self.stack);
                     // first handle upvalues in 3 steps:
                     // 1. clean up any referred_by created by this frame
                     match frame.callable {
@@ -368,14 +359,18 @@ impl Fiber {
                         }
                     }
 
-                    let garbage = self.stack.len() - (stack_base + frame.ret_count);
+                    let ret_count = frame.ret_count;
+                    drop(frame);
+                    self.frames.pop();
+                    if self.frames.is_empty() {
+                        dbg!(&self.stack);
+                        break;
+                    }
+                    let garbage = self.stack.len() - (stack_base + ret_count);
                     for _ in 0..garbage {
                         self.stack.pop();
                     }
-                    self.frames.pop();
-                    if self.frames.is_empty() {
-                        break;
-                    }
+
                     frame = self.frames.last_mut().unwrap();
                     stack_base = frame.stack_base;
                     let func = &objs.functions[frame.callable.get_func(objs)];
@@ -385,8 +380,9 @@ impl Fiber {
                 Opcode::NEW_CLOSURE => {
                     let fkey = self.stack.last().unwrap().get_function();
                     let func = &objs.functions[*fkey];
-                    let cls = ClosureVal::new(*fkey, func.up_ptrs.clone());
-                    let ckey = objs.closures.insert(cls);
+                    let ckey = objs
+                        .closures
+                        .insert(ClosureVal::new(*fkey, func.up_ptrs.clone()));
                     // set referred_by for the frames down in the stack
                     for uv in func.up_ptrs.iter() {
                         match uv {

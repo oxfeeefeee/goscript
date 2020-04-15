@@ -36,3 +36,8 @@ fn test_closure4() {
 fn test_func1() {
     let err_cnt = load_parse_gen("./tests/data/func1.go", true);
 }
+
+#[test]
+fn test_blankid() {
+    let err_cnt = load_parse_gen("./tests/data/blankid.go", true);
+}

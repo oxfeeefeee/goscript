@@ -14,7 +14,6 @@ use goscript_frontend::ast::*;
 use goscript_frontend::ast_objects::Objects as AstObjects;
 use goscript_frontend::ast_objects::*;
 use goscript_frontend::errors::{ErrorList, FilePosErrors};
-use goscript_frontend::scope::*;
 use goscript_frontend::token::Token;
 use goscript_frontend::visitor::{walk_decl, walk_expr, walk_stmt, Visitor};
 use goscript_frontend::{FileSet, Parser};
@@ -75,6 +74,7 @@ pub enum FnEntIndex {
     LocalVar(OpIndex),
     UpValue(OpIndex),
     PackageMember(OpIndex),
+    Blank,
 }
 
 impl From<FnEntIndex> for OpIndex {
@@ -84,6 +84,7 @@ impl From<FnEntIndex> for OpIndex {
             FnEntIndex::LocalVar(i) => i,
             FnEntIndex::UpValue(i) => i,
             FnEntIndex::PackageMember(i) => i,
+            FnEntIndex::Blank => unreachable!(),
         }
     }
 }
@@ -203,18 +204,25 @@ impl FunctionVal {
                 self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
                 self.code.push(CodeData::Data(i));
             }
+            FnEntIndex::Blank => unreachable!(),
         }
     }
 
     fn emit_store(&mut self, index: FnEntIndex) {
-        let (code, i) = match index {
-            FnEntIndex::Const(_) => unreachable!(),
-            FnEntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
-            FnEntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
-            FnEntIndex::PackageMember(_) => unimplemented!(),
-        };
-        self.code.push(CodeData::Code(code));
-        self.code.push(CodeData::Data(i));
+        match index {
+            FnEntIndex::Blank => {}
+            _ => {
+                let (code, i) = match index {
+                    FnEntIndex::Const(_) => unreachable!(),
+                    FnEntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
+                    FnEntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
+                    FnEntIndex::PackageMember(_) => unimplemented!(),
+                    FnEntIndex::Blank => unreachable!(),
+                };
+                self.code.push(CodeData::Code(code));
+                self.code.push(CodeData::Data(i));
+            }
+        }
         self.code.push(CodeData::Code(Opcode::POP));
     }
 
@@ -435,7 +443,9 @@ impl<'a> Visitor for CodeGen<'a> {
                 if let Expr::Ident(ident) = expr {
                     let id = self.ast_objs.idents[*ident.as_ref()].clone();
                     let func = current_func_mut!(self);
-                    if is_def {
+                    if id.is_blank() {
+                        FnEntIndex::Blank
+                    } else if is_def {
                         func.add_local(id.entity.into_key())
                     } else {
                         self.resolve_ident(ident)

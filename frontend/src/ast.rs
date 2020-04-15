@@ -476,6 +476,10 @@ impl Ident {
             _ => None,
         }
     }
+
+    pub fn is_blank(&self) -> bool {
+        &self.name == "_"
+    }
 }
 
 // An Ellipsis node stands for the "..." type in a
