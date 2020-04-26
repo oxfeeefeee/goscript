@@ -41,3 +41,8 @@ fn test_func1() {
 fn test_blankid() {
     let err_cnt = load_parse_gen("./tests/data/blankid.go", true);
 }
+
+#[test]
+fn test_declare() {
+    let err_cnt = load_parse_gen("./tests/data/declare.go", true);
+}

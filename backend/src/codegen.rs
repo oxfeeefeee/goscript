@@ -4,7 +4,6 @@ use super::opcode::*;
 use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
-use super::value::GosValue;
 use super::vm::UpValue;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -295,20 +294,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit) {
-        let val = match &blit.token {
-            Token::INT(i) => GosValue::Int(i.parse::<i64>().unwrap()),
-            Token::FLOAT(f) => GosValue::Float(f.parse::<f64>().unwrap()),
-            Token::IMAG(_) => unimplemented!(),
-            Token::CHAR(_) => unimplemented!(),
-            Token::STRING(s) => {
-                let val = StringVal {
-                    dark: false,
-                    data: s.clone(),
-                };
-                GosValue::Str(self.objects.strings.insert(val))
-            }
-            _ => unreachable!(),
-        };
+        let val = GosValue::from_literal(&blit.token, &mut self.objects);
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -316,7 +302,6 @@ impl<'a> Visitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit) {
-        dbg!(flit);
         let fkey = self.gen_func_def(&flit.typ, &flit.body);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
@@ -400,7 +385,20 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) {
-        unimplemented!();
+        for s in gdecl.specs.iter() {
+            let spec = &self.ast_objs.specs[*s];
+            match spec {
+                Spec::Import(_is) => {}
+                Spec::Type(_ts) => {}
+                Spec::Value(vs) => {
+                    if gdecl.token == Token::VAR {
+                        self.gen_assign_def_var(&vs.names, &vs.values, &vs.typ, true);
+                    } else {
+                        assert!(gdecl.token == Token::CONST);
+                    }
+                }
+            }
+        }
     }
 
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) {
@@ -434,39 +432,18 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
         let stmt = &self.ast_objs.a_stmts[*astmt];
         let is_def = stmt.token == Token::DEFINE;
-
-        // handle the left hand side
-        let mut locals: Vec<FnEntIndex> = stmt
+        let names: Vec<IdentKey> = stmt
             .lhs
             .iter()
             .map(|expr| {
                 if let Expr::Ident(ident) = expr {
-                    let id = self.ast_objs.idents[*ident.as_ref()].clone();
-                    let func = current_func_mut!(self);
-                    if id.is_blank() {
-                        FnEntIndex::Blank
-                    } else if is_def {
-                        func.add_local(id.entity.into_key())
-                    } else {
-                        self.resolve_ident(ident)
-                    }
+                    *ident.as_ref()
                 } else {
                     unreachable!();
                 }
             })
             .collect();
-
-        // handle the right hand side
-        for val in stmt.rhs.iter() {
-            self.visit_expr(val);
-        }
-
-        // now the values should be on stack, generate code to set them to the vars
-        let func = current_func_mut!(self);
-        locals.reverse();
-        for l in locals.iter() {
-            func.emit_store(*l);
-        }
+        self.gen_assign_def_var(&names, &stmt.rhs, &None, is_def);
     }
 
     fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
@@ -577,6 +554,61 @@ impl<'a> CodeGen<'a> {
         FnEntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
     }
 
+    fn gen_assign_def_var(
+        &mut self,
+        names: &Vec<IdentKey>,
+        values: &Vec<Expr>,
+        typ: &Option<Expr>,
+        is_def: bool,
+    ) {
+        // handle the left hand side
+        let mut locals: Vec<FnEntIndex> = names
+            .iter()
+            .map(|ikey| {
+                let id = self.ast_objs.idents[*ikey].clone();
+                let func = current_func_mut!(self);
+                if id.is_blank() {
+                    FnEntIndex::Blank
+                } else if is_def {
+                    func.add_local(id.entity.into_key())
+                } else {
+                    self.resolve_ident(ikey)
+                }
+            })
+            .collect();
+
+        // handle the right hand side
+        if values.len() == names.len() {
+            for val in values.iter() {
+                self.visit_expr(val);
+            }
+        } else if values.len() == 0 {
+            let val = self.get_type_default(&typ.as_ref().unwrap());
+            for _ in 0..names.len() {
+                let func = current_func_mut!(self);
+                let i = func.add_const(None, val);
+                func.emit_load(i);
+            }
+        } else {
+            let ident = &self.ast_objs.idents[names[0]];
+            self.errors.add(
+                ident.pos,
+                format!(
+                    "assignment mismatch: {} variables but {} values",
+                    names.len(),
+                    values.len()
+                ),
+            )
+        }
+
+        // now the values should be on stack, generate code to set them to the vars
+        let func = current_func_mut!(self);
+        locals.reverse();
+        for l in locals.iter() {
+            func.emit_store(*l);
+        }
+    }
+
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
         let mut func = FunctionVal::new(self.current_pkg.clone());
         func.ret_count = match &typ.results {
@@ -595,6 +627,16 @@ impl<'a> CodeGen<'a> {
 
         self.func_stack.pop();
         fkey
+    }
+
+    pub fn get_type_default(&self, expr: &Expr) -> GosValue {
+        match expr {
+            Expr::Ident(idkey) => {
+                let id = &self.ast_objs.idents[*idkey.as_ref()];
+                GosValue::primitive_default(&id.name)
+            }
+            _ => unimplemented!(),
+        }
     }
 
     pub fn gen(&mut self, f: File) {

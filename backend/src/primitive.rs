@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::opcode::OpIndex;
-use super::value::GosValue;
+use super::types::GosValue;
 use std::mem::transmute;
 
 #[derive(Copy, Clone, Debug)]
@@ -37,7 +37,7 @@ fn add(stack: &mut Vec<GosValue>) {
     let b = &stack[len - 1];
     let c = match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia + ib),
-        (GosValue::Float(fa), GosValue::Float(fb)) => GosValue::Float(fa + fb),
+        (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa + fb),
         _ => GosValue::Nil,
     };
     stack[len - 2] = c;
@@ -50,7 +50,7 @@ fn sub(stack: &mut Vec<GosValue>) {
     let b = &stack[len - 1];
     let c = match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia - ib),
-        (GosValue::Float(fa), GosValue::Float(fb)) => GosValue::Float(fa - fb),
+        (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa - fb),
         _ => GosValue::Nil,
     };
     stack[len - 2] = c;

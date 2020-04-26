@@ -4,7 +4,6 @@ use super::opcode::*;
 use super::primitive::Primitive;
 use super::types::Objects as VMObjects;
 use super::types::*;
-use super::value::GosValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -35,7 +34,7 @@ impl ClosureVal {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UpValue {
     /// Parent CallFrame is still alive, pointing to a local variable
-    Open(FunctionKey, OpIndex), // (func, level, index)
+    Open(FunctionKey, OpIndex), // (func, index)
     // Parent CallFrame is released, pointing to a Boxed value in the global pool
     Closed(BoxedKey),
 }
