@@ -13,6 +13,7 @@ use goscript_frontend::ast::*;
 use goscript_frontend::ast_objects::Objects as AstObjects;
 use goscript_frontend::ast_objects::*;
 use goscript_frontend::errors::{ErrorList, FilePosErrors};
+use goscript_frontend::position;
 use goscript_frontend::token::Token;
 use goscript_frontend::visitor::{walk_decl, walk_expr, walk_stmt, Visitor};
 use goscript_frontend::{FileSet, Parser};
@@ -294,7 +295,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit) {
-        let val = GosValue::from_literal(&blit.token, &mut self.objects);
+        let val = self.value_from_literal(&blit, None);
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -395,6 +396,7 @@ impl<'a> Visitor for CodeGen<'a> {
                         self.gen_assign_def_var(&vs.names, &vs.values, &vs.typ, true);
                     } else {
                         assert!(gdecl.token == Token::CONST);
+                        self.gen_def_const(&vs.names, &vs.values, &vs.typ);
                     }
                 }
             }
@@ -554,6 +556,19 @@ impl<'a> CodeGen<'a> {
         FnEntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
     }
 
+    fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>, typ: &Option<Expr>) {
+        if names.len() != values.len() {
+            let ident = &self.ast_objs.idents[names[0]];
+            self.error_mismatch(ident.pos, names.len(), values.len());
+            return;
+        }
+        for i in 0..names.len() {
+            let ident = self.ast_objs.idents[names[i]].clone();
+            let val = self.get_const_value(&values[i], typ);
+            current_func_mut!(self).add_const(ident.entity.into_key(), val);
+        }
+    }
+
     fn gen_assign_def_var(
         &mut self,
         names: &Vec<IdentKey>,
@@ -591,14 +606,7 @@ impl<'a> CodeGen<'a> {
             }
         } else {
             let ident = &self.ast_objs.idents[names[0]];
-            self.errors.add(
-                ident.pos,
-                format!(
-                    "assignment mismatch: {} variables but {} values",
-                    names.len(),
-                    values.len()
-                ),
-            )
+            self.error_mismatch(ident.pos, names.len(), values.len());
         }
 
         // now the values should be on stack, generate code to set them to the vars
@@ -607,6 +615,13 @@ impl<'a> CodeGen<'a> {
         for l in locals.iter() {
             func.emit_store(*l);
         }
+    }
+
+    fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
+        self.errors.add(
+            pos,
+            format!("assignment mismatch: {} variables but {} values", l, r),
+        )
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
@@ -636,6 +651,81 @@ impl<'a> CodeGen<'a> {
                 GosValue::primitive_default(&id.name)
             }
             _ => unimplemented!(),
+        }
+    }
+
+    pub fn get_const_value(&mut self, expr: &Expr, typ: &Option<Expr>) -> GosValue {
+        match expr {
+            Expr::BasicLit(lit) => {
+                let t = typ.as_ref().map(|e| self.get_type_default(e));
+                self.value_from_literal(lit, t.as_ref())
+            }
+            _ => {
+                self.errors.add_str(
+                    expr.pos(self.ast_objs),
+                    "complex constant not supported yet",
+                );
+                GosValue::Nil
+            }
+        }
+    }
+
+    // this is a primitive version of Go's constant evaluation, which needs to be implemented
+    // as part of the Type Checker
+    pub fn value_from_literal(&mut self, blit: &BasicLit, typ: Option<&GosValue>) -> GosValue {
+        if typ.is_none() {
+            match &blit.token {
+                Token::INT(i) => GosValue::Int(i.parse::<isize>().unwrap()),
+                Token::FLOAT(f) => GosValue::Float64(f.parse::<f64>().unwrap()),
+                Token::IMAG(_) => unimplemented!(),
+                Token::CHAR(c) => GosValue::Int(c.chars().skip(1).next().unwrap() as isize),
+                Token::STRING(s) => GosValue::new_str(s.to_string(), &mut self.objects),
+                _ => unreachable!(),
+            }
+        } else {
+            match (typ.unwrap(), &blit.token) {
+                (GosValue::Int(_), Token::FLOAT(f)) => {
+                    let fval = f.parse::<f64>().unwrap();
+                    if fval.fract() != 0.0 {
+                        self.errors
+                            .add(blit.pos, format!("constant {} truncated to integer", f));
+                        GosValue::Nil
+                    } else if (fval.round() as isize) > std::isize::MAX
+                        || (fval.round() as isize) < std::isize::MIN
+                    {
+                        self.errors.add(blit.pos, format!("{} overflows int", f));
+                        GosValue::Nil
+                    } else {
+                        GosValue::Int(fval.round() as isize)
+                    }
+                }
+                (GosValue::Int(_), Token::INT(ilit)) => match ilit.parse::<isize>() {
+                    Ok(i) => GosValue::Int(i),
+                    Err(_) => {
+                        self.errors.add(blit.pos, format!("{} overflows int", ilit));
+                        GosValue::Nil
+                    }
+                },
+                (GosValue::Int(_), Token::CHAR(c)) => {
+                    GosValue::Int(c.chars().skip(1).next().unwrap() as isize)
+                }
+                (GosValue::Float64(_), Token::FLOAT(f)) => {
+                    GosValue::Float64(f.parse::<f64>().unwrap())
+                }
+                (GosValue::Float64(_), Token::INT(i)) => {
+                    GosValue::Float64(i.parse::<f64>().unwrap())
+                }
+                (GosValue::Float64(_), Token::CHAR(c)) => {
+                    GosValue::Float64(c.chars().skip(1).next().unwrap() as isize as f64)
+                }
+                (GosValue::Str(_), Token::STRING(s)) => {
+                    GosValue::new_str(s.to_string(), &mut self.objects)
+                }
+                (_, _) => {
+                    self.errors.add_str(blit.pos, "invalid constant literal");
+                    GosValue::Nil
+                }
+            }
         }
     }
 

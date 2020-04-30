@@ -14,35 +14,35 @@ fn test_case1() {
 
 #[test]
 fn test_closure1() {
-    let err_cnt = load_parse_gen("./tests/data/closure1.go", true);
+    let err_cnt = load_parse_gen("./tests/data/closure1.gos", true);
 }
 
 #[test]
 fn test_closure2() {
-    let err_cnt = load_parse_gen("./tests/data/closure2.go", true);
+    let err_cnt = load_parse_gen("./tests/data/closure2.gos", true);
 }
 
 #[test]
 fn test_closure3() {
-    let err_cnt = load_parse_gen("./tests/data/closure3.go", true);
+    let err_cnt = load_parse_gen("./tests/data/closure3.gos", true);
 }
 
 #[test]
 fn test_closure4() {
-    let err_cnt = load_parse_gen("./tests/data/closure4.go", true);
+    let err_cnt = load_parse_gen("./tests/data/closure4.gos", true);
 }
 
 #[test]
 fn test_func1() {
-    let err_cnt = load_parse_gen("./tests/data/func1.go", true);
+    let err_cnt = load_parse_gen("./tests/data/func1.gos", true);
 }
 
 #[test]
 fn test_blankid() {
-    let err_cnt = load_parse_gen("./tests/data/blankid.go", true);
+    let err_cnt = load_parse_gen("./tests/data/blankid.gos", true);
 }
 
 #[test]
 fn test_declare() {
-    let err_cnt = load_parse_gen("./tests/data/declare.go", true);
+    let err_cnt = load_parse_gen("./tests/data/declare.gos", true);
 }

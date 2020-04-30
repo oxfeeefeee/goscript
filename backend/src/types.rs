@@ -118,22 +118,11 @@ impl GosValue {
         o.new_string(s)
     }
 
-    pub fn from_literal(t: &Token, o: &mut Objects) -> GosValue {
-        match t {
-            Token::INT(i) => GosValue::Int(i.parse::<isize>().unwrap()),
-            Token::FLOAT(f) => GosValue::Float64(f.parse::<f64>().unwrap()),
-            Token::IMAG(_) => unimplemented!(),
-            Token::CHAR(_) => unimplemented!(),
-            Token::STRING(s) => GosValue::new_str(s.to_string(), o),
-            _ => unreachable!(),
-        }
-    }
-
     pub fn primitive_default(typ: &str) -> GosValue {
         match typ {
             t if t == "bool" => GosValue::Bool(false),
             t if t == "int" => GosValue::Int(0),
-            t if t == "float64" => GosValue::Float64(0.0),
+            t if t == "float" || t == "float64" => GosValue::Float64(0.0),
             t if t == "string" => GosValue::Str(slotmap::Key::null()),
             _ => GosValue::Nil,
         }
@@ -361,6 +350,11 @@ mod test {
         let mut s = DefaultHasher::new();
         t.hash(&mut s);
         s.finish()
+    }
+
+    #[test]
+    fn test_float() {
+        dbg!("1000000000000000000000001e10".parse::<f64>().unwrap());
     }
 
     #[test]

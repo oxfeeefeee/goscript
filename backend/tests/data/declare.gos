@@ -1,0 +1,7 @@
+package main
+
+func main() {
+
+	const i, j float = 1.0, 2
+	k := i + j
+}
