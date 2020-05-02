@@ -1,0 +1,7 @@
+package main
+
+func main() {
+    //var s = [][]int{{0},{1},{2}}
+    var s = []int{0,100,2}
+    i := s[1] + 200
+}

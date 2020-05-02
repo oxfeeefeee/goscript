@@ -226,18 +226,9 @@ impl FunctionVal {
         self.code.push(CodeData::Code(Opcode::POP));
     }
 
-    fn emit_binary_primi_call(&mut self, token: &Token) {
-        match token {
-            Token::ADD => {
-                self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
-                self.code.push(CodeData::Data(Primitive::Add as OpIndex));
-            }
-            Token::SUB => {
-                self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
-                self.code.push(CodeData::Data(Primitive::Sub as OpIndex));
-            }
-            _ => unimplemented!(),
-        }
+    fn emit_binary_primi_call(&mut self, primi: Primitive) {
+        self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
+        self.code.push(CodeData::Data(primi as OpIndex));
     }
 
     fn emit_return(&mut self) {
@@ -311,7 +302,10 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
-        unimplemented!();
+        let val = self.value_from_comp_literal(clit.typ.as_ref().unwrap(), &clit.elts);
+        let func = current_func_mut!(self);
+        let i = func.add_const(None, val);
+        func.emit_load(i);
     }
 
     fn visit_expr_paren(&mut self) {
@@ -324,7 +318,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_index(&mut self) {
-        unimplemented!();
+        current_func_mut!(self).emit_binary_primi_call(Primitive::Index);
     }
 
     fn visit_expr_slice(&mut self) {
@@ -350,7 +344,12 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_binary(&mut self, op: &Token) {
-        current_func_mut!(self).emit_binary_primi_call(op);
+        let primi = match op {
+            Token::ADD => Primitive::Add,
+            Token::SUB => Primitive::Sub,
+            _ => unimplemented!(),
+        };
+        current_func_mut!(self).emit_binary_primi_call(primi);
     }
 
     fn visit_expr_key_value(&mut self) {
@@ -564,7 +563,7 @@ impl<'a> CodeGen<'a> {
         }
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
-            let val = self.get_const_value(&values[i], typ);
+            let val = self.get_const_value(&values[i], typ.as_ref());
             current_func_mut!(self).add_const(ident.entity.into_key(), val);
         }
     }
@@ -654,7 +653,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn get_const_value(&mut self, expr: &Expr, typ: &Option<Expr>) -> GosValue {
+    pub fn get_const_value(&mut self, expr: &Expr, typ: Option<&Expr>) -> GosValue {
         match expr {
             Expr::BasicLit(lit) => {
                 let t = typ.as_ref().map(|e| self.get_type_default(e));
@@ -726,6 +725,32 @@ impl<'a> CodeGen<'a> {
                     GosValue::Nil
                 }
             }
+        }
+    }
+
+    pub fn value_from_comp_literal(&mut self, typ: &Expr, elts: &Vec<Expr>) -> GosValue {
+        match typ {
+            Expr::Array(arr) => {
+                if arr.as_ref().len.is_some() {
+                    unimplemented!()
+                }
+                match &arr.as_ref().elt {
+                    Expr::Array(_) | Expr::Map(_) => unimplemented!(),
+                    Expr::Ident(_) => {
+                        let mut vals: Vec<GosValue> = elts
+                            .iter()
+                            .map(|elt| self.get_const_value(elt, Some(&arr.as_ref().elt)))
+                            .collect();
+                        let slice = self.objects.new_slice(elts.len());
+                        let slice_val = &mut self.objects.slices[*slice.get_slice()];
+                        slice_val.append(&mut vals);
+                        slice
+                    }
+                    _ => unimplemented!(),
+                }
+            }
+            Expr::Map(map) => unimplemented!(),
+            _ => unimplemented!(),
         }
     }
 

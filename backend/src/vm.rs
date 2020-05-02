@@ -34,7 +34,7 @@ impl ClosureVal {
 #[derive(Clone, Debug, PartialEq)]
 pub enum UpValue {
     /// Parent CallFrame is still alive, pointing to a local variable
-    Open(FunctionKey, OpIndex), // (func, index)
+    Open(FunctionKey, OpIndex), // (what func is the var defined, the index of the var)
     // Parent CallFrame is released, pointing to a Boxed value in the global pool
     Closed(BoxedKey),
 }
@@ -312,7 +312,7 @@ impl Fiber {
                 Opcode::CALL_PRIMI_2_1 => {
                     let primi = Primitive::from(*code[frame.pc].unwrap_data() as OpIndex);
                     frame.pc += 1;
-                    primi.call(&mut self.stack);
+                    primi.call(&mut self.stack, objs);
                 }
                 Opcode::RETURN => {
                     // first handle upvalues in 3 steps:

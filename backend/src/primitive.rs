@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use super::opcode::OpIndex;
 use super::types::GosValue;
+use super::types::Objects;
 use std::mem::transmute;
 
 #[derive(Copy, Clone, Debug)]
@@ -8,6 +9,7 @@ use std::mem::transmute;
 pub enum Primitive {
     Add = 0,
     Sub = 1,
+    Index = 10,
 }
 
 impl From<Primitive> for OpIndex {
@@ -23,10 +25,11 @@ impl From<OpIndex> for Primitive {
 }
 
 impl Primitive {
-    pub fn call(&self, stack: &mut Vec<GosValue>) {
+    pub fn call(&self, stack: &mut Vec<GosValue>, objs: &Objects) {
         match self {
             Primitive::Add => add(stack),
             Primitive::Sub => sub(stack),
+            Primitive::Index => index(stack, objs),
         }
     }
 }
@@ -52,6 +55,29 @@ fn sub(stack: &mut Vec<GosValue>) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia - ib),
         (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa - fb),
         _ => GosValue::Nil,
+    };
+    stack[len - 2] = c;
+    stack.pop();
+}
+
+fn index(stack: &mut Vec<GosValue>, objs: &Objects) {
+    let len = stack.len();
+    let val = &stack[len - 2];
+    let ind = &stack[len - 1];
+    dbg!(&val);
+    dbg!(&ind);
+    let c = match val {
+        GosValue::Slice(skey) => {
+            let slice = &objs.slices[*skey];
+            if let Some(v) = slice.get_item(ind.get_int() as usize) {
+                v
+            } else {
+                // todo: runtime error
+                unimplemented!();
+            }
+        }
+        GosValue::Map(map) => unimplemented!(),
+        _ => unreachable!(),
     };
     stack[len - 2] = c;
     stack.pop();

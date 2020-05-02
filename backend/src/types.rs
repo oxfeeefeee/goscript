@@ -54,11 +54,23 @@ impl Objects {
         }
     }
 
-    pub fn new_string(&mut self, s: String) -> GosValue {
+    pub fn new_str(&mut self, s: String) -> GosValue {
         GosValue::Str(self.strings.insert(StringVal {
             dark: false,
             data: s,
         }))
+    }
+
+    pub fn new_slice(&mut self, cap: usize) -> GosValue {
+        let s = SliceVal {
+            dark: false,
+            begin: 0,
+            end: 0,
+            soft_cap: cap,
+            vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
+        };
+        let key = self.slices.insert(s);
+        GosValue::Slice(key)
     }
 
     pub fn new_map(&mut self) -> GosValue {
@@ -115,7 +127,15 @@ impl Eq for GosValue {}
 
 impl GosValue {
     pub fn new_str(s: String, o: &mut Objects) -> GosValue {
-        o.new_string(s)
+        o.new_str(s)
+    }
+
+    pub fn new_slice(cap: usize, o: &mut Objects) -> GosValue {
+        o.new_slice(cap)
+    }
+
+    pub fn new_map(o: &mut Objects) -> GosValue {
+        o.new_map()
     }
 
     pub fn primitive_default(typ: &str) -> GosValue {
@@ -132,6 +152,24 @@ impl GosValue {
     pub fn get_bool(&self) -> bool {
         if let GosValue::Bool(b) = self {
             *b
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[inline]
+    pub fn get_int(&self) -> isize {
+        if let GosValue::Int(i) = self {
+            *i
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[inline]
+    pub fn get_slice(&self) -> &SliceKey {
+        if let GosValue::Slice(s) = self {
+            s
         } else {
             unreachable!();
         }
@@ -296,12 +334,30 @@ pub struct SliceVal {
     pub dark: bool,
     pub begin: usize,
     pub end: usize,
+    pub soft_cap: usize, // <= self.vec.capacity()
     pub vec: Rc<RefCell<Vec<GosValue>>>,
 }
 
 impl<'a> SliceVal {
     pub fn len(&self) -> usize {
         self.end - self.begin
+    }
+
+    pub fn cap(&self) -> usize {
+        self.soft_cap - self.begin
+    }
+
+    pub fn push(&mut self, val: GosValue) {
+        self.try_grow_vec(self.len() + 1);
+        self.vec.borrow_mut().push(val);
+        self.end += 1;
+    }
+
+    pub fn append(&mut self, vals: &mut Vec<GosValue>) {
+        let new_len = self.len() + vals.len();
+        self.try_grow_vec(new_len);
+        self.vec.borrow_mut().append(vals);
+        self.end = self.begin + new_len;
     }
 
     pub fn iter(&'a self) -> SliceValIter<'a> {
@@ -321,6 +377,28 @@ impl<'a> SliceVal {
 
     pub fn set_item(&self, i: usize, val: &GosValue) {
         self.vec.borrow_mut()[i] = *val;
+    }
+
+    fn try_grow_vec(&mut self, len: usize) {
+        let mut cap = self.cap();
+        assert!(cap >= self.len());
+        if cap >= len {
+            return;
+        }
+
+        while cap < len {
+            if cap < 1024 {
+                cap *= 2
+            } else {
+                cap = (cap as f32 * 1.25) as usize
+            }
+        }
+        let mut new_vec: Vec<GosValue> = Vec::with_capacity(cap);
+        new_vec.copy_from_slice(&self.vec.borrow()[self.begin..self.end]);
+        self.vec = Rc::new(RefCell::new(new_vec));
+        self.begin = 0;
+        self.end = cap;
+        self.soft_cap = cap;
     }
 }
 

@@ -46,3 +46,8 @@ fn test_blankid() {
 fn test_declare() {
     let err_cnt = load_parse_gen("./tests/data/declare.gos", true);
 }
+
+#[test]
+fn test_slice1() {
+    let err_cnt = load_parse_gen("./tests/data/slice1.gos", true);
+}
