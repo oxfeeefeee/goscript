@@ -563,7 +563,7 @@ impl<'a> CodeGen<'a> {
         }
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
-            let val = self.get_const_value(&values[i], typ.as_ref());
+            let val = self.get_const_value(typ.as_ref(), &values[i]);
             current_func_mut!(self).add_const(ident.entity.into_key(), val);
         }
     }
@@ -653,7 +653,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn get_const_value(&mut self, expr: &Expr, typ: Option<&Expr>) -> GosValue {
+    pub fn get_const_value(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match expr {
             Expr::BasicLit(lit) => {
                 let t = typ.as_ref().map(|e| self.get_type_default(e));
@@ -732,22 +732,30 @@ impl<'a> CodeGen<'a> {
         match typ {
             Expr::Array(arr) => {
                 if arr.as_ref().len.is_some() {
+                    // array is not supported yet
                     unimplemented!()
                 }
-                match &arr.as_ref().elt {
-                    Expr::Array(_) | Expr::Map(_) => unimplemented!(),
-                    Expr::Ident(_) => {
-                        let mut vals: Vec<GosValue> = elts
-                            .iter()
-                            .map(|elt| self.get_const_value(elt, Some(&arr.as_ref().elt)))
-                            .collect();
-                        let slice = self.objects.new_slice(elts.len());
-                        let slice_val = &mut self.objects.slices[*slice.get_slice()];
-                        slice_val.append(&mut vals);
-                        slice
-                    }
+                let mut vals: Vec<GosValue> = match &arr.as_ref().elt {
+                    Expr::Array(_) | Expr::Map(_) => elts
+                        .iter()
+                        .map(|elt| {
+                            if let Expr::CompositeLit(clit) = elt {
+                                self.value_from_comp_literal(&arr.as_ref().elt, &clit.elts)
+                            } else {
+                                unreachable!()
+                            }
+                        })
+                        .collect(),
+                    Expr::Ident(_) => elts
+                        .iter()
+                        .map(|elt| self.get_const_value(Some(&arr.as_ref().elt), elt))
+                        .collect(),
                     _ => unimplemented!(),
-                }
+                };
+                let slice = self.objects.new_slice(elts.len());
+                let slice_val = &mut self.objects.slices[*slice.get_slice()];
+                slice_val.append(&mut vals);
+                slice
             }
             Expr::Map(map) => unimplemented!(),
             _ => unimplemented!(),

@@ -64,8 +64,6 @@ fn index(stack: &mut Vec<GosValue>, objs: &Objects) {
     let len = stack.len();
     let val = &stack[len - 2];
     let ind = &stack[len - 1];
-    dbg!(&val);
-    dbg!(&ind);
     let c = match val {
         GosValue::Slice(skey) => {
             let slice = &objs.slices[*skey];

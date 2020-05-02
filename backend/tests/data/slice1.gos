@@ -1,7 +1,7 @@
 package main
 
 func main() {
-    //var s = [][]int{{0},{1},{2}}
-    var s = []int{0,100,2}
-    i := s[1] + 200
+    var s1 = [][]int{{0},{99},{2}}
+    var s2 = []int{0,100,2}
+    i := s1[1][0] + s2[1]
 }
