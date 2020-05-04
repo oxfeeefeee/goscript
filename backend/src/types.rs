@@ -73,9 +73,11 @@ impl Objects {
         GosValue::Slice(key)
     }
 
-    pub fn new_map(&mut self) -> GosValue {
+    pub fn new_map(&mut self, default_val: GosValue) -> GosValue {
         let val = MapVal {
             dark: false,
+            objs: unsafe { std::mem::transmute(&self) },
+            default_val: default_val,
             data: HashMap::new(),
         };
         let key = self.maps.insert(val);
@@ -134,8 +136,8 @@ impl GosValue {
         o.new_slice(cap)
     }
 
-    pub fn new_map(o: &mut Objects) -> GosValue {
-        o.new_map()
+    pub fn new_map(o: &mut Objects, default: GosValue) -> GosValue {
+        o.new_map(default)
     }
 
     pub fn primitive_default(typ: &str) -> GosValue {
@@ -170,6 +172,15 @@ impl GosValue {
     pub fn get_slice(&self) -> &SliceKey {
         if let GosValue::Slice(s) = self {
             s
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[inline]
+    pub fn get_map(&self) -> &MapKey {
+        if let GosValue::Map(m) = self {
+            m
         } else {
             unreachable!();
         }
@@ -273,12 +284,6 @@ pub struct HashKey {
     pub objs: &'static Objects,
 }
 
-#[derive(Clone, Debug)]
-pub struct MapVal {
-    pub dark: bool,
-    pub data: HashMap<HashKey, GosValue>,
-}
-
 impl Eq for HashKey {}
 
 impl PartialEq for HashKey {
@@ -306,6 +311,35 @@ impl Hash for HashKey {
             GosValue::Closure(_) => {unreachable!()}
             GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}*/
             _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MapVal {
+    pub dark: bool,
+    objs: &'static Objects,
+    default_val: GosValue,
+    data: HashMap<HashKey, GosValue>,
+}
+
+impl MapVal {
+    pub fn insert(&mut self, key: GosValue, val: GosValue) -> Option<GosValue> {
+        let hk = HashKey {
+            val: key,
+            objs: self.objs,
+        };
+        self.data.insert(hk, val)
+    }
+
+    pub fn get(&self, key: &GosValue) -> &GosValue {
+        let hk = HashKey {
+            val: *key,
+            objs: self.objs,
+        };
+        match self.data.get(&hk) {
+            Some(v) => v,
+            None => &self.default_val,
         }
     }
 }
@@ -367,7 +401,7 @@ impl<'a> SliceVal {
         }
     }
 
-    pub fn get_item(&self, i: usize) -> Option<GosValue> {
+    pub fn get(&self, i: usize) -> Option<GosValue> {
         if let Some(val) = self.vec.borrow().get(i) {
             Some(val.clone())
         } else {
@@ -413,7 +447,7 @@ impl<'a> Iterator for SliceValIter<'a> {
     fn next(&mut self) -> Option<GosValue> {
         if self.cur < self.slice.end {
             self.cur += 1;
-            Some(self.slice.get_item(self.cur - 1).unwrap())
+            Some(self.slice.get(self.cur - 1).unwrap())
         } else {
             None
         }

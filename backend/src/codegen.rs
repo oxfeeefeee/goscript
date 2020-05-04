@@ -286,7 +286,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit) {
-        let val = self.value_from_literal(&blit, None);
+        let val = self.get_const_value(None, &blit);
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -302,7 +302,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
-        let val = self.value_from_comp_literal(clit.typ.as_ref().unwrap(), &clit.elts);
+        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -563,7 +563,7 @@ impl<'a> CodeGen<'a> {
         }
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
-            let val = self.get_const_value(typ.as_ref(), &values[i]);
+            let val = self.value_from_basic_literal(typ.as_ref(), &values[i]);
             current_func_mut!(self).add_const(ident.entity.into_key(), val);
         }
     }
@@ -616,13 +616,6 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
-        self.errors.add(
-            pos,
-            format!("assignment mismatch: {} variables but {} values", l, r),
-        )
-    }
-
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
         let mut func = FunctionVal::new(self.current_pkg.clone());
         func.ret_count = match &typ.results {
@@ -643,22 +636,21 @@ impl<'a> CodeGen<'a> {
         fkey
     }
 
-    pub fn get_type_default(&self, expr: &Expr) -> GosValue {
-        match expr {
-            Expr::Ident(idkey) => {
-                let id = &self.ast_objs.idents[*idkey.as_ref()];
-                GosValue::primitive_default(&id.name)
-            }
-            _ => unimplemented!(),
+    pub fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
+        match typ {
+            Some(type_expr) => match type_expr {
+                Expr::Array(_) | Expr::Map(_) | Expr::Struct(_) => {
+                    self.value_from_comp_literal(type_expr, expr)
+                }
+                _ => self.value_from_basic_literal(typ, expr),
+            },
+            None => self.value_from_basic_literal(None, expr),
         }
     }
 
-    pub fn get_const_value(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
+    pub fn value_from_basic_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match expr {
-            Expr::BasicLit(lit) => {
-                let t = typ.as_ref().map(|e| self.get_type_default(e));
-                self.value_from_literal(lit, t.as_ref())
-            }
+            Expr::BasicLit(lit) => self.get_const_value(typ, lit),
             _ => {
                 self.errors.add_str(
                     expr.pos(self.ast_objs),
@@ -671,8 +663,9 @@ impl<'a> CodeGen<'a> {
 
     // this is a primitive version of Go's constant evaluation, which needs to be implemented
     // as part of the Type Checker
-    pub fn value_from_literal(&mut self, blit: &BasicLit, typ: Option<&GosValue>) -> GosValue {
-        if typ.is_none() {
+    pub fn get_const_value(&mut self, typ: Option<&Expr>, blit: &BasicLit) -> GosValue {
+        let type_val = typ.as_ref().map(|e| self.get_type_default(e));
+        if type_val.is_none() {
             match &blit.token {
                 Token::INT(i) => GosValue::Int(i.parse::<isize>().unwrap()),
                 Token::FLOAT(f) => GosValue::Float64(f.parse::<f64>().unwrap()),
@@ -682,7 +675,7 @@ impl<'a> CodeGen<'a> {
                 _ => unreachable!(),
             }
         } else {
-            match (typ.unwrap(), &blit.token) {
+            match (type_val.unwrap(), &blit.token) {
                 (GosValue::Int(_), Token::FLOAT(f)) => {
                     let fval = f.parse::<f64>().unwrap();
                     if fval.fract() != 0.0 {
@@ -728,38 +721,81 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn value_from_comp_literal(&mut self, typ: &Expr, elts: &Vec<Expr>) -> GosValue {
+    pub fn get_type_default(&self, expr: &Expr) -> GosValue {
+        match expr {
+            Expr::Ident(idkey) => {
+                let id = &self.ast_objs.idents[*idkey.as_ref()];
+                GosValue::primitive_default(&id.name)
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> GosValue {
+        dbg!(expr);
+        match expr {
+            Expr::CompositeLit(lit) => self.get_comp_value(typ, lit),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> GosValue {
         match typ {
             Expr::Array(arr) => {
                 if arr.as_ref().len.is_some() {
                     // array is not supported yet
                     unimplemented!()
                 }
-                let mut vals: Vec<GosValue> = match &arr.as_ref().elt {
-                    Expr::Array(_) | Expr::Map(_) => elts
-                        .iter()
-                        .map(|elt| {
-                            if let Expr::CompositeLit(clit) = elt {
-                                self.value_from_comp_literal(&arr.as_ref().elt, &clit.elts)
-                            } else {
-                                unreachable!()
-                            }
-                        })
-                        .collect(),
-                    Expr::Ident(_) => elts
-                        .iter()
-                        .map(|elt| self.get_const_value(Some(&arr.as_ref().elt), elt))
-                        .collect(),
-                    _ => unimplemented!(),
-                };
-                let slice = self.objects.new_slice(elts.len());
+                let mut vals: Vec<GosValue> = literal
+                    .elts
+                    .iter()
+                    .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
+                    .collect();
+                let slice = self.objects.new_slice(literal.elts.len());
                 let slice_val = &mut self.objects.slices[*slice.get_slice()];
                 slice_val.append(&mut vals);
                 slice
             }
-            Expr::Map(map) => unimplemented!(),
+            Expr::Map(map) => {
+                let key_vals: Vec<(GosValue, GosValue)> = literal
+                    .elts
+                    .iter()
+                    .map(|etl| {
+                        if let Expr::KeyValue(kv) = etl {
+                            (
+                                self.value_from_literal(Some(&map.key), &kv.as_ref().key),
+                                self.value_from_literal(Some(&map.val), &kv.as_ref().val),
+                            )
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .collect();
+                let map = self.objects.new_map(self.get_type_default(&map.val));
+                for kv in key_vals.iter() {
+                    self.objects.maps[*map.get_map()].insert(kv.0, kv.1);
+                }
+                map
+            }
             _ => unimplemented!(),
         }
+    }
+
+    fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
+        self.errors.add(
+            pos,
+            format!("assignment mismatch: {} variables but {} values", l, r),
+        )
+    }
+
+    fn error_type(&self, pos: position::Pos, msg: &str) {
+        self.errors.add(
+            pos,
+            format!(
+                "type error(should be caught by Type Checker when it's in place): {}",
+                msg
+            ),
+        )
     }
 
     pub fn gen(&mut self, f: File) {

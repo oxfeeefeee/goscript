@@ -67,14 +67,14 @@ fn index(stack: &mut Vec<GosValue>, objs: &Objects) {
     let c = match val {
         GosValue::Slice(skey) => {
             let slice = &objs.slices[*skey];
-            if let Some(v) = slice.get_item(ind.get_int() as usize) {
+            if let Some(v) = slice.get(ind.get_int() as usize) {
                 v
             } else {
                 // todo: runtime error
                 unimplemented!();
             }
         }
-        GosValue::Map(map) => unimplemented!(),
+        GosValue::Map(mkey) => (&objs.maps[*mkey]).get(ind).clone(),
         _ => unreachable!(),
     };
     stack[len - 2] = c;
