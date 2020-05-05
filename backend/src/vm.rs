@@ -1,12 +1,30 @@
 #![allow(dead_code)]
 use super::codegen::ByteCode;
 use super::opcode::*;
-use super::primitive::Primitive;
+use super::prim_ops::PrimOps;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+macro_rules! get_value {
+    ($vm:ident, $code:ident, $frame:ident, $instruction:ident, $op:path) => {
+        if let $op = $instruction {
+            $vm.stack.last().unwrap().clone()
+        } else {
+            let val_ind = *$code[$frame.pc].unwrap_data() as usize;
+            $frame.pc += 1;
+            $vm.stack[$vm.stack.len() - val_ind - 1].clone()
+        }
+    };
+}
+
+macro_rules! get_upframe {
+    ($iter:expr, $objs:ident, $f:ident) => {
+        $iter.find(|x| x.callable.get_func($objs) == *$f).unwrap();
+    };
+}
 
 #[derive(Clone, Debug)]
 pub struct ClosureVal {
@@ -214,10 +232,10 @@ impl Fiber {
                     frame.pc += 1;
                     self.stack.push(self.stack[stack_base + *index as usize]);
                 }
-                Opcode::STORE_LOCAL => {
+                Opcode::STORE_LOCAL | Opcode::STORE_LOCAL_NON_TOP => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let val = self.stack.last().unwrap().clone();
+                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_LOCAL);
                     self.stack[stack_base + *index as usize] = val;
                 }
                 Opcode::LOAD_PKG_VAR => {
@@ -226,11 +244,11 @@ impl Fiber {
                     let pkg = &objs.packages[func.package];
                     self.stack.push(pkg.members[*index as usize]);
                 }
-                Opcode::STORE_PKG_VAR => {
+                Opcode::STORE_PKG_VAR | Opcode::STORE_PKG_VAR_NON_TOP => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
                     let pkg = &mut objs.packages[func.package];
-                    let val = self.stack.last().unwrap().clone();
+                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_PKG_VAR);
                     pkg.members[*index as usize] = val;
                 }
                 Opcode::LOAD_UPVALUE => {
@@ -239,13 +257,7 @@ impl Fiber {
                     match &objs.closures[frame.callable.get_closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
-                            let upframe = self
-                                .frames
-                                .iter()
-                                .rev()
-                                .skip(1)
-                                .find(|x| x.callable.get_func(objs) == *f)
-                                .unwrap();
+                            let upframe = get_upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
                             self.stack.push(self.stack[stack_ptr].clone());
                             frame = self.frames.last_mut().unwrap();
@@ -257,25 +269,20 @@ impl Fiber {
                         }
                     }
                 }
-                Opcode::STORE_UPVALUE => {
+                Opcode::STORE_UPVALUE | Opcode::STORE_UPVALUE_NON_TOP => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
+                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_UPVALUE);
                     match &objs.closures[frame.callable.get_closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
-                            let upframe = self
-                                .frames
-                                .iter()
-                                .rev()
-                                .skip(1)
-                                .find(|x| x.callable.get_func(objs) == *f)
-                                .unwrap();
+                            let upframe = get_upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
-                            self.stack[stack_ptr] = self.stack.last().unwrap().clone();
+                            self.stack[stack_ptr] = val;
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(key) => {
-                            objs.boxed[*key] = self.stack.last().unwrap().clone();
+                            objs.boxed[*key] = val;
                         }
                     }
                 }
@@ -306,13 +313,13 @@ impl Fiber {
                     code = &func.code;
                     dbg!(&code);
                 }
-                Opcode::CALL_PRIMI_1_1 => {
+                Opcode::CALL_PRIM_1_1 => {
                     unimplemented!();
                 }
-                Opcode::CALL_PRIMI_2_1 => {
-                    let primi = Primitive::from(*code[frame.pc].unwrap_data() as OpIndex);
+                Opcode::CALL_PRIM_2_1 => {
+                    let prim = PrimOps::from(*code[frame.pc].unwrap_data() as OpIndex);
                     frame.pc += 1;
-                    primi.call(&mut self.stack, objs);
+                    prim.call(&mut self.stack, objs);
                 }
                 Opcode::RETURN => {
                     // first handle upvalues in 3 steps:
@@ -324,13 +331,11 @@ impl Fiber {
                                 match uv {
                                     UpValue::Open(f, ind) => {
                                         drop(frame); // temporarily let go of the ownership
-                                        let upframe = self
-                                            .frames
-                                            .iter_mut()
-                                            .rev()
-                                            .skip(1)
-                                            .find(|x| x.callable.get_func(objs) == *f)
-                                            .unwrap();
+                                        let upframe = get_upframe!(
+                                            self.frames.iter_mut().rev().skip(1),
+                                            objs,
+                                            f
+                                        );
                                         upframe.remove_referred_by(*ind, c.clone());
                                         frame = self.frames.last_mut().unwrap();
                                     }
@@ -344,7 +349,6 @@ impl Fiber {
                     // 2. close any active upvalue this frame contains
                     if let Some(referred) = &frame.referred_by {
                         for (ind, referrers) in referred {
-                            dbg!(ind, referrers, "bbb");
                             if referrers.len() == 0 {
                                 continue;
                             }
@@ -387,12 +391,8 @@ impl Fiber {
                         match uv {
                             UpValue::Open(func, ind) => {
                                 drop(frame); // temporarily let go of the ownership
-                                let upframe = self
-                                    .frames
-                                    .iter_mut()
-                                    .rev()
-                                    .find(|x| x.callable.get_func(objs) == *func)
-                                    .unwrap();
+                                let upframe =
+                                    get_upframe!(self.frames.iter_mut().rev(), objs, func);
                                 upframe.add_referred_by(*ind, ckey.clone());
                                 frame = self.frames.last_mut().unwrap();
                             }

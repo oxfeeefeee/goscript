@@ -6,30 +6,30 @@ use std::mem::transmute;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(i16)]
-pub enum Primitive {
+pub enum PrimOps {
     Add = 0,
     Sub = 1,
     Index = 10,
 }
 
-impl From<Primitive> for OpIndex {
-    fn from(c: Primitive) -> Self {
+impl From<PrimOps> for OpIndex {
+    fn from(c: PrimOps) -> Self {
         c as OpIndex
     }
 }
 
-impl From<OpIndex> for Primitive {
+impl From<OpIndex> for PrimOps {
     fn from(i: OpIndex) -> Self {
         unsafe { transmute(i as i16) }
     }
 }
 
-impl Primitive {
+impl PrimOps {
     pub fn call(&self, stack: &mut Vec<GosValue>, objs: &Objects) {
         match self {
-            Primitive::Add => add(stack),
-            Primitive::Sub => sub(stack),
-            Primitive::Index => index(stack, objs),
+            PrimOps::Add => add(stack),
+            PrimOps::Sub => sub(stack),
+            PrimOps::Index => index(stack, objs),
         }
     }
 }

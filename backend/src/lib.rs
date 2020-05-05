@@ -1,5 +1,5 @@
 mod opcode;
-mod primitive;
+mod prim_ops;
 mod types;
 
 pub mod codegen;

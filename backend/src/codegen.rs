@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #[macro_use]
 use super::opcode::*;
-use super::primitive::Primitive;
+use super::prim_ops::PrimOps;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::vm::UpValue;
@@ -66,10 +66,17 @@ impl PackageVal {
 }
 
 // ----------------------------------------------------------------------------
-// FunctionVal
+// LeftHandSide
+
+#[derive(Clone, Debug)]
+pub enum LeftHandSide {
+    Primitive(EntIndex),
+    Slice,
+    Map,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum FnEntIndex {
+pub enum EntIndex {
     Const(OpIndex),
     LocalVar(OpIndex),
     UpValue(OpIndex),
@@ -77,17 +84,20 @@ pub enum FnEntIndex {
     Blank,
 }
 
-impl From<FnEntIndex> for OpIndex {
-    fn from(t: FnEntIndex) -> OpIndex {
+impl From<EntIndex> for OpIndex {
+    fn from(t: EntIndex) -> OpIndex {
         match t {
-            FnEntIndex::Const(i) => i,
-            FnEntIndex::LocalVar(i) => i,
-            FnEntIndex::UpValue(i) => i,
-            FnEntIndex::PackageMember(i) => i,
-            FnEntIndex::Blank => unreachable!(),
+            EntIndex::Const(i) => i,
+            EntIndex::LocalVar(i) => i,
+            EntIndex::UpValue(i) => i,
+            EntIndex::PackageMember(i) => i,
+            EntIndex::Blank => unreachable!(),
         }
     }
 }
+
+// ----------------------------------------------------------------------------
+// FunctionVal
 
 #[derive(Clone, Debug)]
 pub struct FunctionVal {
@@ -97,7 +107,7 @@ pub struct FunctionVal {
     pub up_ptrs: Vec<UpValue>,
     pub param_count: usize,
     pub ret_count: usize,
-    pub entities: HashMap<EntityKey, FnEntIndex>,
+    pub entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
 }
 
@@ -119,40 +129,40 @@ impl FunctionVal {
         self.local_alloc as usize - self.param_count - self.ret_count
     }
 
-    fn add_local(&mut self, entity: Option<EntityKey>) -> FnEntIndex {
+    fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
-            let old = self.entities.insert(key, FnEntIndex::LocalVar(result));
+            let old = self.entities.insert(key, EntIndex::LocalVar(result));
             assert_eq!(old, None);
         };
         self.local_alloc += 1;
-        FnEntIndex::LocalVar(result)
+        EntIndex::LocalVar(result)
     }
 
-    fn get_entity_index(&self, entity: &EntityKey) -> FnEntIndex {
+    fn get_entity_index(&self, entity: &EntityKey) -> EntIndex {
         self.entities.get(entity).unwrap().clone()
     }
 
-    fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> FnEntIndex {
+    fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
         self.consts.push(cst);
         let result = (self.consts.len() - 1).try_into().unwrap();
         if let Some(key) = entity {
-            let old = self.entities.insert(key, FnEntIndex::Const(result));
+            let old = self.entities.insert(key, EntIndex::Const(result));
             assert_eq!(old, None);
         }
-        FnEntIndex::Const(result)
+        EntIndex::Const(result)
     }
 
-    fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> FnEntIndex {
+    fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> EntIndex {
         self.entities
             .get(entity)
             .map(|x| *x)
             .or_else(|| {
                 self.up_ptrs.push(uv);
                 let i = (self.up_ptrs.len() - 1).try_into().ok();
-                let et = FnEntIndex::UpValue(i.unwrap());
+                let et = EntIndex::UpValue(i.unwrap());
                 self.entities.insert(*entity, et);
-                i.map(|x| FnEntIndex::UpValue(x))
+                i.map(|x| EntIndex::UpValue(x))
             })
             .unwrap()
     }
@@ -183,41 +193,41 @@ impl FunctionVal {
             .sum()
     }
 
-    fn emit_load(&mut self, index: FnEntIndex) {
+    fn emit_load(&mut self, index: EntIndex) {
         match index {
-            FnEntIndex::Const(i) => {
+            EntIndex::Const(i) => {
                 self.code.push(CodeData::Code(Opcode::PUSH_CONST));
                 self.code.push(CodeData::Data(i));
             }
-            FnEntIndex::LocalVar(i) => {
+            EntIndex::LocalVar(i) => {
                 let code = Opcode::get_load_local(i);
                 self.code.push(CodeData::Code(code));
                 if let Opcode::LOAD_LOCAL = code {
                     self.code.push(CodeData::Data(i));
                 }
             }
-            FnEntIndex::UpValue(i) => {
+            EntIndex::UpValue(i) => {
                 self.code.push(CodeData::Code(Opcode::LOAD_UPVALUE));
                 self.code.push(CodeData::Data(i));
             }
-            FnEntIndex::PackageMember(i) => {
+            EntIndex::PackageMember(i) => {
                 self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
                 self.code.push(CodeData::Data(i));
             }
-            FnEntIndex::Blank => unreachable!(),
+            EntIndex::Blank => unreachable!(),
         }
     }
 
-    fn emit_store(&mut self, index: FnEntIndex) {
+    fn emit_store(&mut self, index: EntIndex) {
         match index {
-            FnEntIndex::Blank => {}
+            EntIndex::Blank => {}
             _ => {
                 let (code, i) = match index {
-                    FnEntIndex::Const(_) => unreachable!(),
-                    FnEntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
-                    FnEntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
-                    FnEntIndex::PackageMember(_) => unimplemented!(),
-                    FnEntIndex::Blank => unreachable!(),
+                    EntIndex::Const(_) => unreachable!(),
+                    EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
+                    EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
+                    EntIndex::PackageMember(_) => unimplemented!(),
+                    EntIndex::Blank => unreachable!(),
                 };
                 self.code.push(CodeData::Code(code));
                 self.code.push(CodeData::Data(i));
@@ -226,9 +236,9 @@ impl FunctionVal {
         self.code.push(CodeData::Code(Opcode::POP));
     }
 
-    fn emit_binary_primi_call(&mut self, primi: Primitive) {
-        self.code.push(CodeData::Code(Opcode::CALL_PRIMI_2_1));
-        self.code.push(CodeData::Data(primi as OpIndex));
+    fn emit_binary_prim_call(&mut self, prim: PrimOps) {
+        self.code.push(CodeData::Code(Opcode::CALL_PRIM_2_1));
+        self.code.push(CodeData::Data(prim as OpIndex));
     }
 
     fn emit_return(&mut self) {
@@ -318,7 +328,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_index(&mut self) {
-        current_func_mut!(self).emit_binary_primi_call(Primitive::Index);
+        current_func_mut!(self).emit_binary_prim_call(PrimOps::Index);
     }
 
     fn visit_expr_slice(&mut self) {
@@ -345,11 +355,11 @@ impl<'a> Visitor for CodeGen<'a> {
 
     fn visit_expr_binary(&mut self, op: &Token) {
         let primi = match op {
-            Token::ADD => Primitive::Add,
-            Token::SUB => Primitive::Sub,
+            Token::ADD => PrimOps::Add,
+            Token::SUB => PrimOps::Sub,
             _ => unimplemented!(),
         };
-        current_func_mut!(self).emit_binary_primi_call(primi);
+        current_func_mut!(self).emit_binary_prim_call(primi);
     }
 
     fn visit_expr_key_value(&mut self) {
@@ -458,7 +468,7 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
-            current_func_mut!(self).emit_store(FnEntIndex::LocalVar(i as OpIndex));
+            current_func_mut!(self).emit_store(EntIndex::LocalVar(i as OpIndex));
         }
         current_func_mut!(self).emit_return();
     }
@@ -519,7 +529,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn resolve_ident(&mut self, ident: &IdentKey) -> FnEntIndex {
+    fn resolve_ident(&mut self, ident: &IdentKey) -> EntIndex {
         // 1. try local frist
         let id = &self.ast_objs.idents[*ident];
         let entity_key = id.entity_key().unwrap();
@@ -552,7 +562,7 @@ impl<'a> CodeGen<'a> {
             return index;
         }
         // 3. try the package level
-        FnEntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
+        EntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
     }
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>, typ: &Option<Expr>) {
@@ -576,13 +586,13 @@ impl<'a> CodeGen<'a> {
         is_def: bool,
     ) {
         // handle the left hand side
-        let mut locals: Vec<FnEntIndex> = names
+        let mut locals: Vec<EntIndex> = names
             .iter()
             .map(|ikey| {
                 let id = self.ast_objs.idents[*ikey].clone();
                 let func = current_func_mut!(self);
                 if id.is_blank() {
-                    FnEntIndex::Blank
+                    EntIndex::Blank
                 } else if is_def {
                     func.add_local(id.entity.into_key())
                 } else {
@@ -661,7 +671,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    // this is a primitive version of Go's constant evaluation, which needs to be implemented
+    // this is a simplified version of Go's constant evaluation, which needs to be implemented
     // as part of the Type Checker
     pub fn get_const_value(&mut self, typ: Option<&Expr>, blit: &BasicLit) -> GosValue {
         let type_val = typ.as_ref().map(|e| self.get_type_default(e));
