@@ -624,6 +624,7 @@ impl<'a> CodeGen<'a> {
             .collect();
 
         // handle the right hand side
+        let ident = &self.ast_objs.idents[names[0]];
         if values.len() == names.len() {
             for val in values.iter() {
                 self.visit_expr(val);
@@ -635,8 +636,14 @@ impl<'a> CodeGen<'a> {
                 let i = func.add_const(None, val);
                 func.emit_load(i);
             }
+        } else if values.len() == 1 {
+            // function call
+            if let Expr::Call(_) = values[0] {
+                self.visit_expr(&values[0]);
+            } else {
+                self.error_mismatch(ident.pos, names.len(), values.len());
+            }
         } else {
-            let ident = &self.ast_objs.idents[names[0]];
             self.error_mismatch(ident.pos, names.len(), values.len());
         }
 

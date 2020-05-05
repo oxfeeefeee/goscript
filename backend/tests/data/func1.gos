@@ -16,3 +16,5 @@ func funcb(i int, iii int) (a int, b int) {
 func main() {
     re, re2 := funcb(3, 4)
 } 
+
+//121, 121
