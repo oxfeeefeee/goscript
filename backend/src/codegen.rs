@@ -218,21 +218,41 @@ impl FunctionVal {
         }
     }
 
-    fn emit_store(&mut self, index: EntIndex) {
+    fn emit_store(&mut self, index: EntIndex, stack_index: OpIndex) {
         match index {
             EntIndex::Blank => {}
             _ => {
                 let (code, i) = match index {
                     EntIndex::Const(_) => unreachable!(),
-                    EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
-                    EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
+                    EntIndex::LocalVar(i) => (
+                        if stack_index == 0 {
+                            Opcode::STORE_LOCAL
+                        } else {
+                            Opcode::STORE_LOCAL_NON_TOP
+                        },
+                        i,
+                    ),
+                    EntIndex::UpValue(i) => (
+                        if stack_index == 0 {
+                            Opcode::STORE_UPVALUE
+                        } else {
+                            Opcode::STORE_UPVALUE_NON_TOP
+                        },
+                        i,
+                    ),
                     EntIndex::PackageMember(_) => unimplemented!(),
                     EntIndex::Blank => unreachable!(),
                 };
                 self.code.push(CodeData::Code(code));
                 self.code.push(CodeData::Data(i));
+                if stack_index < 0 {
+                    self.code.push(CodeData::Data(stack_index));
+                }
             }
         }
+    }
+
+    fn emit_pop(&mut self) {
         self.code.push(CodeData::Code(Opcode::POP));
     }
 
@@ -468,7 +488,9 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
-            current_func_mut!(self).emit_store(EntIndex::LocalVar(i as OpIndex));
+            let f = current_func_mut!(self);
+            f.emit_store(EntIndex::LocalVar(i as OpIndex), 0);
+            f.emit_pop();
         }
         current_func_mut!(self).emit_return();
     }
@@ -586,7 +608,7 @@ impl<'a> CodeGen<'a> {
         is_def: bool,
     ) {
         // handle the left hand side
-        let mut locals: Vec<EntIndex> = names
+        let locals: Vec<EntIndex> = names
             .iter()
             .map(|ikey| {
                 let id = self.ast_objs.idents[*ikey].clone();
@@ -620,9 +642,11 @@ impl<'a> CodeGen<'a> {
 
         // now the values should be on stack, generate code to set them to the vars
         let func = current_func_mut!(self);
-        locals.reverse();
-        for l in locals.iter() {
-            func.emit_store(*l);
+        for (i, l) in locals.iter().enumerate() {
+            func.emit_store(*l, i as i16 + 1 - locals.len() as i16);
+        }
+        for _ in 0..locals.len() {
+            func.emit_pop();
         }
     }
 

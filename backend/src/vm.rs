@@ -13,9 +13,10 @@ macro_rules! get_value {
         if let $op = $instruction {
             $vm.stack.last().unwrap().clone()
         } else {
-            let val_ind = *$code[$frame.pc].unwrap_data() as usize;
+            let val_ind = *$code[$frame.pc].unwrap_data() as i16;
             $frame.pc += 1;
-            $vm.stack[$vm.stack.len() - val_ind - 1].clone()
+            let index = ($vm.stack.len() as i16 + val_ind - 1) as usize;
+            $vm.stack[index].clone()
         }
     };
 }
