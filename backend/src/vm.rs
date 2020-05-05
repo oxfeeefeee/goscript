@@ -11,12 +11,12 @@ use std::rc::Rc;
 macro_rules! get_value {
     ($vm:ident, $code:ident, $frame:ident, $instruction:ident, $op:path) => {
         if let $op = $instruction {
-            $vm.stack.last().unwrap().clone()
+            $vm.stack.last().unwrap()
         } else {
             let val_ind = *$code[$frame.pc].unwrap_data() as i16;
             $frame.pc += 1;
             let index = ($vm.stack.len() as i16 + val_ind - 1) as usize;
-            $vm.stack[index].clone()
+            $vm.stack.get(index).unwrap()
         }
     };
 }
@@ -237,7 +237,7 @@ impl Fiber {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
                     let val = get_value!(self, code, frame, instruction, Opcode::STORE_LOCAL);
-                    self.stack[stack_base + *index as usize] = val;
+                    self.stack[stack_base + *index as usize] = val.clone();
                 }
                 Opcode::LOAD_PKG_VAR => {
                     let index = code[frame.pc].unwrap_data();
@@ -248,9 +248,9 @@ impl Fiber {
                 Opcode::STORE_PKG_VAR | Opcode::STORE_PKG_VAR_NON_TOP => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let pkg = &mut objs.packages[func.package];
                     let val = get_value!(self, code, frame, instruction, Opcode::STORE_PKG_VAR);
-                    pkg.members[*index as usize] = val;
+                    let pkg = &mut objs.packages[func.package];
+                    pkg.members[*index as usize] = val.clone();
                 }
                 Opcode::LOAD_UPVALUE => {
                     let index = code[frame.pc].unwrap_data();
@@ -279,12 +279,29 @@ impl Fiber {
                             drop(frame); // temporarily let go of the ownership
                             let upframe = get_upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
-                            self.stack[stack_ptr] = val;
+                            self.stack[stack_ptr] = val.clone();
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(key) => {
-                            objs.boxed[*key] = val;
+                            objs.boxed[*key] = val.clone();
                         }
+                    }
+                }
+                Opcode::STORE_INDEXING | Opcode::STORE_INDEXING_NON_TOP => {
+                    let lhs_index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let index = (self.stack.len() as i16 + lhs_index - 1) as usize;
+                    let store = self.stack.get(index).unwrap();
+                    let key = self.stack.get(index + 1).unwrap();
+                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_INDEXING);
+                    match store {
+                        GosValue::Slice(s) => {
+                            objs.slices[*s].set(key.get_int() as usize, val);
+                        }
+                        GosValue::Map(m) => {
+                            objs.maps[*m].insert(key.clone(), val.clone());
+                        }
+                        _ => unreachable!(),
                     }
                 }
                 Opcode::PRE_CALL => {

@@ -4,6 +4,7 @@ func main() {
     var s1 = map[int]int{1:2}
     var v = s1[1]
     var v2 = s1[100]
-    s1[0] = 8
+    s1[0], v, v2 = 8, s1[100], s1[1]
+    var v3 = s1[0]
 }
-//2, 0
+//0, 2, 8

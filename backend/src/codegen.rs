@@ -71,8 +71,7 @@ impl PackageVal {
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    Slice,
-    Map,
+    IndexExpr(OpIndex),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -218,33 +217,47 @@ impl FunctionVal {
         }
     }
 
-    fn emit_store(&mut self, index: EntIndex, stack_index: OpIndex) {
-        match index {
-            EntIndex::Blank => {}
-            _ => {
-                let (code, i) = match index {
-                    EntIndex::Const(_) => unreachable!(),
-                    EntIndex::LocalVar(i) => (
-                        if stack_index == 0 {
-                            Opcode::STORE_LOCAL
-                        } else {
-                            Opcode::STORE_LOCAL_NON_TOP
-                        },
-                        i,
-                    ),
-                    EntIndex::UpValue(i) => (
-                        if stack_index == 0 {
-                            Opcode::STORE_UPVALUE
-                        } else {
-                            Opcode::STORE_UPVALUE_NON_TOP
-                        },
-                        i,
-                    ),
-                    EntIndex::PackageMember(_) => unimplemented!(),
-                    EntIndex::Blank => unreachable!(),
+    fn emit_store(&mut self, lhs: &LeftHandSide, stack_index: OpIndex) {
+        match lhs {
+            LeftHandSide::Primitive(index) => match index {
+                EntIndex::Blank => {}
+                _ => {
+                    let (code, i) = match index {
+                        EntIndex::Const(_) => unreachable!(),
+                        EntIndex::LocalVar(i) => (
+                            if stack_index == 0 {
+                                Opcode::STORE_LOCAL
+                            } else {
+                                Opcode::STORE_LOCAL_NON_TOP
+                            },
+                            i,
+                        ),
+                        EntIndex::UpValue(i) => (
+                            if stack_index == 0 {
+                                Opcode::STORE_UPVALUE
+                            } else {
+                                Opcode::STORE_UPVALUE_NON_TOP
+                            },
+                            i,
+                        ),
+                        EntIndex::PackageMember(_) => unimplemented!(),
+                        EntIndex::Blank => unreachable!(),
+                    };
+                    self.code.push(CodeData::Code(code));
+                    self.code.push(CodeData::Data(*i));
+                    if stack_index < 0 {
+                        self.code.push(CodeData::Data(stack_index));
+                    }
+                }
+            },
+            LeftHandSide::IndexExpr(i) => {
+                let code = if stack_index == 0 {
+                    Opcode::STORE_INDEXING
+                } else {
+                    Opcode::STORE_INDEXING_NON_TOP
                 };
                 self.code.push(CodeData::Code(code));
-                self.code.push(CodeData::Data(i));
+                self.code.push(CodeData::Data(*i));
                 if stack_index < 0 {
                     self.code.push(CodeData::Data(stack_index));
                 }
@@ -475,13 +488,17 @@ impl<'a> Visitor for CodeGen<'a> {
         let lhs: Vec<LeftHandSide> = stmt
             .lhs
             .iter()
-            .map(|expr| {
-                if let Expr::Ident(ident) = expr {
+            .map(|expr| match expr {
+                Expr::Ident(ident) => {
                     let idx = self.add_local_or_resolve_ident(ident.as_ref(), is_def);
                     LeftHandSide::Primitive(idx)
-                } else {
-                    unreachable!();
                 }
+                Expr::Index(ind_expr) => {
+                    self.visit_expr(&ind_expr.as_ref().expr);
+                    self.visit_expr(&ind_expr.as_ref().index);
+                    LeftHandSide::IndexExpr(0) // the true index will be calculated later
+                }
+                _ => unreachable!(),
             })
             .collect();
         self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
@@ -499,7 +516,10 @@ impl<'a> Visitor for CodeGen<'a> {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
             let f = current_func_mut!(self);
-            f.emit_store(EntIndex::LocalVar(i as OpIndex), 0);
+            f.emit_store(
+                &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
+                0,
+            );
             f.emit_pop();
         }
         current_func_mut!(self).emit_return();
@@ -629,15 +649,6 @@ impl<'a> CodeGen<'a> {
         typ: &Option<Expr>,
         pos: position::Pos,
     ) {
-        // handle the left hand side
-        let locals: Vec<EntIndex> = lhs
-            .iter()
-            .map(|lhs_type| match lhs_type {
-                LeftHandSide::Primitive(idx) => *idx,
-                _ => unimplemented!(),
-            })
-            .collect();
-
         // handle the right hand side
         if values.len() == lhs.len() {
             for val in values.iter() {
@@ -661,12 +672,28 @@ impl<'a> CodeGen<'a> {
             self.error_mismatch(pos, lhs.len(), values.len());
         }
 
-        // now the values should be on stack, generate code to set them to the vars
+        // now the values should be on stack, generate code to set them to the lhs
         let func = current_func_mut!(self);
-        for (i, l) in locals.iter().enumerate() {
-            func.emit_store(*l, i as i16 + 1 - locals.len() as i16);
+        let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
+            LeftHandSide::Primitive(_) => acc,
+            LeftHandSide::IndexExpr(_) => acc + 2,
+        });
+        let total_rhs_val = lhs.len() as i16;
+        let total_val = (total_lhs_val + total_rhs_val) as i16;
+        let mut current_indexing_index = 1 - total_val;
+        for (i, l) in lhs.iter().enumerate() {
+            let val_index = i as i16 + 1 - total_rhs_val;
+            match l {
+                LeftHandSide::Primitive(_) => {
+                    func.emit_store(l, val_index);
+                }
+                LeftHandSide::IndexExpr(_) => {
+                    func.emit_store(&LeftHandSide::IndexExpr(current_indexing_index), val_index);
+                    current_indexing_index += 2;
+                }
+            }
         }
-        for _ in 0..locals.len() {
+        for _ in 0..total_val {
             func.emit_pop();
         }
     }

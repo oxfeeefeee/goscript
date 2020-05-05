@@ -409,7 +409,7 @@ impl<'a> SliceVal {
         }
     }
 
-    pub fn set_item(&self, i: usize, val: &GosValue) {
+    pub fn set(&self, i: usize, val: &GosValue) {
         self.vec.borrow_mut()[i] = *val;
     }
 
