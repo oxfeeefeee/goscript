@@ -422,7 +422,15 @@ impl<'a> Visitor for CodeGen<'a> {
                 Spec::Type(_ts) => {}
                 Spec::Value(vs) => {
                     if gdecl.token == Token::VAR {
-                        self.gen_assign_def_var(&vs.names, &vs.values, &vs.typ, true);
+                        let pos = self.ast_objs.idents[vs.names[0]].pos;
+                        let lhs = vs
+                            .names
+                            .iter()
+                            .map(|n| {
+                                LeftHandSide::Primitive(self.add_local_or_resolve_ident(n, true))
+                            })
+                            .collect();
+                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, pos);
                     } else {
                         assert!(gdecl.token == Token::CONST);
                         self.gen_def_const(&vs.names, &vs.values, &vs.typ);
@@ -463,18 +471,20 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
         let stmt = &self.ast_objs.a_stmts[*astmt];
         let is_def = stmt.token == Token::DEFINE;
-        let names: Vec<IdentKey> = stmt
+        let pos = stmt.lhs[0].pos(&self.ast_objs);
+        let lhs: Vec<LeftHandSide> = stmt
             .lhs
             .iter()
             .map(|expr| {
                 if let Expr::Ident(ident) = expr {
-                    *ident.as_ref()
+                    let idx = self.add_local_or_resolve_ident(ident.as_ref(), is_def);
+                    LeftHandSide::Primitive(idx)
                 } else {
                     unreachable!();
                 }
             })
             .collect();
-        self.gen_assign_def_var(&names, &stmt.rhs, &None, is_def);
+        self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
     }
 
     fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
@@ -587,6 +597,18 @@ impl<'a> CodeGen<'a> {
         EntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
     }
 
+    fn add_local_or_resolve_ident(&mut self, ikey: &IdentKey, is_def: bool) -> EntIndex {
+        let id = self.ast_objs.idents[*ikey].clone();
+        let func = current_func_mut!(self);
+        if id.is_blank() {
+            EntIndex::Blank
+        } else if is_def {
+            func.add_local(id.entity.into_key())
+        } else {
+            self.resolve_ident(ikey)
+        }
+    }
+
     fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>, typ: &Option<Expr>) {
         if names.len() != values.len() {
             let ident = &self.ast_objs.idents[names[0]];
@@ -602,36 +624,28 @@ impl<'a> CodeGen<'a> {
 
     fn gen_assign_def_var(
         &mut self,
-        names: &Vec<IdentKey>,
+        lhs: &Vec<LeftHandSide>,
         values: &Vec<Expr>,
         typ: &Option<Expr>,
-        is_def: bool,
+        pos: position::Pos,
     ) {
         // handle the left hand side
-        let locals: Vec<EntIndex> = names
+        let locals: Vec<EntIndex> = lhs
             .iter()
-            .map(|ikey| {
-                let id = self.ast_objs.idents[*ikey].clone();
-                let func = current_func_mut!(self);
-                if id.is_blank() {
-                    EntIndex::Blank
-                } else if is_def {
-                    func.add_local(id.entity.into_key())
-                } else {
-                    self.resolve_ident(ikey)
-                }
+            .map(|lhs_type| match lhs_type {
+                LeftHandSide::Primitive(idx) => *idx,
+                _ => unimplemented!(),
             })
             .collect();
 
         // handle the right hand side
-        let ident = &self.ast_objs.idents[names[0]];
-        if values.len() == names.len() {
+        if values.len() == lhs.len() {
             for val in values.iter() {
                 self.visit_expr(val);
             }
         } else if values.len() == 0 {
             let val = self.get_type_default(&typ.as_ref().unwrap());
-            for _ in 0..names.len() {
+            for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val);
                 func.emit_load(i);
@@ -641,10 +655,10 @@ impl<'a> CodeGen<'a> {
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0]);
             } else {
-                self.error_mismatch(ident.pos, names.len(), values.len());
+                self.error_mismatch(pos, lhs.len(), values.len());
             }
         } else {
-            self.error_mismatch(ident.pos, names.len(), values.len());
+            self.error_mismatch(pos, lhs.len(), values.len());
         }
 
         // now the values should be on stack, generate code to set them to the vars
