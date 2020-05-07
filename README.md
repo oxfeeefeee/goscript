@@ -1,8 +1,8 @@
 # Goscript
-A compiler and VM in Rust that runs Go.
+Go specs implemented as a scripting language in Rust.
 
 ### The Goal
-+ To be full compatible with Go, i.e. to be able to run any valid Go code.
++ To be full compatible with Go, i.e. to be able to run any valid Go code.(But only a subset of functionalities will be supported in version 0.1)
 
 ### Use Cases
 + As an embedded language like Lua.
@@ -20,7 +20,7 @@ A compiler and VM in Rust that runs Go.
 
 ### Progress
 + The parser is basically finished, we still need to port the Type Checker.
-+ A piece of code can be run on the VM as a proof of concept, there is a lot to be done.
++ You can take a look at [here](https://github.com/oxfeeefeee/goscript/tree/master/backend/tests/data) to see what it can run for now.
 + In short, this is just the beginning, it's impossible to do it all by myself. 
 
 ### Join us

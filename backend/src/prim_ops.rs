@@ -9,7 +9,6 @@ use std::mem::transmute;
 pub enum PrimOps {
     Add = 0,
     Sub = 1,
-    Index = 10,
 }
 
 impl From<PrimOps> for OpIndex {
@@ -29,7 +28,6 @@ impl PrimOps {
         match self {
             PrimOps::Add => add(stack),
             PrimOps::Sub => sub(stack),
-            PrimOps::Index => index(stack, objs),
         }
     }
 }
@@ -55,27 +53,6 @@ fn sub(stack: &mut Vec<GosValue>) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia - ib),
         (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa - fb),
         _ => GosValue::Nil,
-    };
-    stack[len - 2] = c;
-    stack.pop();
-}
-
-fn index(stack: &mut Vec<GosValue>, objs: &Objects) {
-    let len = stack.len();
-    let val = &stack[len - 2];
-    let ind = &stack[len - 1];
-    let c = match val {
-        GosValue::Slice(skey) => {
-            let slice = &objs.slices[*skey];
-            if let Some(v) = slice.get(ind.get_int() as usize) {
-                v
-            } else {
-                // todo: runtime error
-                unimplemented!();
-            }
-        }
-        GosValue::Map(mkey) => (&objs.maps[*mkey]).get(ind).clone(),
-        _ => unreachable!(),
     };
     stack[len - 2] = c;
     stack.pop();

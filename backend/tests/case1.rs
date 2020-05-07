@@ -3,9 +3,9 @@
 extern crate goscript_backend as be;
 
 fn load_parse_gen(path: &str, trace: bool) {
-    let (bc, entry) = be::codegen::CodeGen::load_parse_gen(path, trace);
+    let bc = be::codegen::CodeGen::load_parse_gen(path, trace);
     let mut vm = be::vm::GosVM::new(bc);
-    vm.run(entry);
+    vm.run();
 }
 #[test]
 fn test_case1() {
@@ -55,4 +55,9 @@ fn test_slice1() {
 #[test]
 fn test_map1() {
     let _err_cnt = load_parse_gen("./tests/data/map1.gos", true);
+}
+
+#[test]
+fn test_pkg() {
+    let _err_cnt = load_parse_gen("./tests/data/pkg.gos", true);
 }

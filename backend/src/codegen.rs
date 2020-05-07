@@ -37,33 +37,56 @@ macro_rules! current_pkg_mut {
 }
 
 // ----------------------------------------------------------------------------
-// package
+// PackageVal
 #[derive(Clone, Debug)]
 pub struct PackageVal {
-    pub name: String,
-    pub main_func: FunctionKey,
-    pub imports: Vec<PackageKey>,
-    pub members: Vec<GosValue>,
-    pub look_up: HashMap<EntityKey, OpIndex>,
+    name: String,
+    members: Vec<GosValue>, // imports, const, var, func are all stored here
+    member_indices: HashMap<EntityKey, OpIndex>,
 }
 
 impl PackageVal {
     fn new(name: String) -> PackageVal {
         PackageVal {
             name: name,
-            main_func: slotmap::Key::null(),
-            imports: Vec::new(),
-            members: Vec::new(),
-            look_up: HashMap::new(),
+            members: vec![GosValue::Nil], // put a placeholder for main function
+            member_indices: HashMap::new(),
         }
     }
 
-    fn add_func(&mut self, entity: EntityKey, fkey: FunctionKey) {
-        self.members.push(GosValue::Function(fkey));
-        self.look_up
-            .insert(entity, (self.members.len() - 1) as OpIndex);
+    fn add_func(&mut self, entity: EntityKey, fkey: FunctionKey, is_main: bool) {
+        let index = if is_main {
+            self.members[0] = GosValue::Function(fkey);
+            0
+        } else {
+            self.members.push(GosValue::Function(fkey));
+            (self.members.len() - 1) as OpIndex
+        };
+        self.member_indices.insert(entity, index);
+    }
+
+    fn member_index(&self, entity: &EntityKey) -> OpIndex {
+        self.member_indices[entity]
+    }
+
+    pub fn member(&self, i: OpIndex) -> GosValue {
+        self.members[i as usize]
+    }
+
+    pub fn set_member(&mut self, i: OpIndex, val: GosValue) {
+        self.members[i as usize] = val;
     }
 }
+
+// ----------------------------------------------------------------------------
+// StructDefVal
+#[derive(Clone, Debug)]
+pub struct StructDefVal {}
+
+// ----------------------------------------------------------------------------
+// InterfaceDefVal
+#[derive(Clone, Debug)]
+pub struct InterfaceDefVal {}
 
 // ----------------------------------------------------------------------------
 // LeftHandSide
@@ -80,6 +103,7 @@ pub enum EntIndex {
     LocalVar(OpIndex),
     UpValue(OpIndex),
     PackageMember(OpIndex),
+    Global(OpIndex),
     Blank,
 }
 
@@ -90,6 +114,7 @@ impl From<EntIndex> for OpIndex {
             EntIndex::LocalVar(i) => i,
             EntIndex::UpValue(i) => i,
             EntIndex::PackageMember(i) => i,
+            EntIndex::Global(i) => i,
             EntIndex::Blank => unreachable!(),
         }
     }
@@ -210,7 +235,11 @@ impl FunctionVal {
                 self.code.push(CodeData::Data(i));
             }
             EntIndex::PackageMember(i) => {
-                self.code.push(CodeData::Code(Opcode::LOAD_PKG_VAR));
+                self.code.push(CodeData::Code(Opcode::LOAD_THIS_PKG_FIELD));
+                self.code.push(CodeData::Data(i));
+            }
+            EntIndex::Global(i) => {
+                self.code.push(CodeData::Code(Opcode::LOAD_GLOBAL));
                 self.code.push(CodeData::Data(i));
             }
             EntIndex::Blank => unreachable!(),
@@ -228,7 +257,7 @@ impl FunctionVal {
                             if stack_index == 0 {
                                 Opcode::STORE_LOCAL
                             } else {
-                                Opcode::STORE_LOCAL_NON_TOP
+                                Opcode::STORE_LOCAL_NT
                             },
                             i,
                         ),
@@ -236,11 +265,12 @@ impl FunctionVal {
                             if stack_index == 0 {
                                 Opcode::STORE_UPVALUE
                             } else {
-                                Opcode::STORE_UPVALUE_NON_TOP
+                                Opcode::STORE_UPVALUE_NT
                             },
                             i,
                         ),
                         EntIndex::PackageMember(_) => unimplemented!(),
+                        EntIndex::Global(_) => unreachable!(),
                         EntIndex::Blank => unreachable!(),
                     };
                     self.code.push(CodeData::Code(code));
@@ -252,9 +282,9 @@ impl FunctionVal {
             },
             LeftHandSide::IndexExpr(i) => {
                 let code = if stack_index == 0 {
-                    Opcode::STORE_INDEXING
+                    Opcode::STORE_FIELD
                 } else {
-                    Opcode::STORE_INDEXING_NON_TOP
+                    Opcode::STORE_FIELD_NT
                 };
                 self.code.push(CodeData::Code(code));
                 self.code.push(CodeData::Data(*i));
@@ -265,8 +295,16 @@ impl FunctionVal {
         }
     }
 
+    fn emit_code(&mut self, code: Opcode) {
+        self.code.push(CodeData::Code(code));
+    }
+
+    fn emit_data(&mut self, data: OpIndex) {
+        self.code.push(CodeData::Data(data));
+    }
+
     fn emit_pop(&mut self) {
-        self.code.push(CodeData::Code(Opcode::POP));
+        self.emit_code(Opcode::POP);
     }
 
     fn emit_binary_prim_call(&mut self, prim: PrimOps) {
@@ -274,20 +312,24 @@ impl FunctionVal {
         self.code.push(CodeData::Data(prim as OpIndex));
     }
 
+    fn emit_load_field(&mut self) {
+        self.emit_code(Opcode::LOAD_FIELD);
+    }
+
     fn emit_return(&mut self) {
-        self.code.push(CodeData::Code(Opcode::RETURN));
+        self.emit_code(Opcode::RETURN);
     }
 
     fn emit_pre_call(&mut self) {
-        self.code.push(CodeData::Code(Opcode::PRE_CALL));
+        self.emit_code(Opcode::PRE_CALL);
     }
 
-    fn emit_call(&mut self, _args: usize) {
+    fn emit_call(&mut self) {
         self.code.push(CodeData::Code(Opcode::CALL));
     }
 
     fn emit_new_closure(&mut self) {
-        self.code.push(CodeData::Code(Opcode::NEW_CLOSURE));
+        self.emit_code(Opcode::NEW_CLOSURE);
     }
 }
 
@@ -296,7 +338,8 @@ impl FunctionVal {
 pub struct CodeGen<'a> {
     objects: VMObjects,
     ast_objs: &'a AstObjects,
-    packages: HashMap<String, PackageKey>,
+    package_indices: HashMap<String, OpIndex>,
+    packages: Vec<PackageKey>,
     current_pkg: PackageKey,
     func_stack: Vec<FunctionKey>,
     errors: &'a FilePosErrors<'a>,
@@ -361,7 +404,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_index(&mut self) {
-        current_func_mut!(self).emit_binary_prim_call(PrimOps::Index);
+        current_func_mut!(self).emit_load_field();
     }
 
     fn visit_expr_slice(&mut self) {
@@ -374,8 +417,8 @@ impl<'a> Visitor for CodeGen<'a> {
 
     fn visit_expr_call(&mut self, args: &Vec<Expr>) {
         current_func_mut!(self).emit_pre_call();
-        let count = args.iter().map(|e| self.visit_expr(e)).count();
-        current_func_mut!(self).emit_call(count);
+        let _count = args.iter().map(|e| self.visit_expr(e)).count();
+        current_func_mut!(self).emit_call();
     }
 
     fn visit_expr_star(&mut self) {
@@ -463,10 +506,7 @@ impl<'a> Visitor for CodeGen<'a> {
         let fkey = self.gen_func_def(typ, stmt);
 
         let ident = &self.ast_objs.idents[decl.name];
-        current_pkg_mut!(self).add_func(ident.entity_key().unwrap(), fkey);
-        if ident.name == "main" {
-            current_pkg_mut!(self).main_func = fkey;
-        }
+        current_pkg_mut!(self).add_func(ident.entity_key().unwrap(), fkey, ident.name == "main");
     }
 
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
@@ -574,7 +614,8 @@ impl<'a> CodeGen<'a> {
         CodeGen {
             objects: VMObjects::new(),
             ast_objs: aobjects,
-            packages: HashMap::new(),
+            package_indices: HashMap::new(),
+            packages: Vec::new(),
             current_pkg: slotmap::Key::null(),
             func_stack: Vec::new(),
             errors: err,
@@ -614,7 +655,7 @@ impl<'a> CodeGen<'a> {
             return index;
         }
         // 3. try the package level
-        EntIndex::PackageMember(current_pkg!(self).look_up[&entity_key])
+        EntIndex::PackageMember(current_pkg!(self).member_index(&entity_key))
     }
 
     fn add_local_or_resolve_ident(&mut self, ikey: &IdentKey, is_def: bool) -> EntIndex {
@@ -880,33 +921,45 @@ impl<'a> CodeGen<'a> {
         )
     }
 
-    pub fn gen(&mut self, f: File) {
+    fn gen(&mut self, f: File) {
         let pkg = &self.ast_objs.idents[f.name];
-        if !self.packages.contains_key(&pkg.name) {
-            let pkgval = PackageVal::new(pkg.name.clone());
-            let pkey = self.objects.packages.insert(pkgval);
-            self.packages.insert(pkg.name.clone(), pkey);
-            self.current_pkg = pkey;
-        } else {
-            // find package
-        }
+        let pkgval = PackageVal::new(pkg.name.clone());
+        let pkey = self.objects.packages.insert(pkgval);
+        self.packages.push(pkey);
+        self.package_indices
+            .insert(pkg.name.clone(), self.packages.len() as i16 - 1);
+        self.current_pkg = pkey;
+
         for d in f.decls.iter() {
             self.visit_decl(d)
         }
     }
 
-    pub fn into_byte_code(self) -> (ByteCode, FunctionKey) {
-        let fk = current_pkg!(self).main_func;
-        (
-            ByteCode {
-                objects: self.objects,
-                packages: self.packages,
-            },
-            fk,
-        )
+    fn gen_entry(&mut self) -> FunctionKey {
+        // import the 0th pkg and call the 0th function of the pkg
+        let mut func = FunctionVal::new(slotmap::Key::null());
+        func.add_const(None, GosValue::Int(0));
+        func.emit_code(Opcode::IMPORT);
+        func.emit_data(0);
+        func.emit_load(EntIndex::Const(0));
+        func.emit_load_field();
+        func.emit_pre_call();
+        func.emit_call();
+        func.emit_return();
+        self.objects.functions.insert(func)
     }
 
-    pub fn load_parse_gen(path: &str, trace: bool) -> (ByteCode, FunctionKey) {
+    pub fn into_byte_code(mut self) -> ByteCode {
+        let entry = self.gen_entry();
+        ByteCode {
+            objects: self.objects,
+            package_indices: self.package_indices,
+            packages: self.packages,
+            entry: entry,
+        }
+    }
+
+    pub fn load_parse_gen(path: &str, trace: bool) -> ByteCode {
         let mut astobjs = AstObjects::new();
         let mut fset = FileSet::new();
         let el = ErrorList::new();
@@ -931,7 +984,9 @@ impl<'a> CodeGen<'a> {
 #[derive(Clone, Debug)]
 pub struct ByteCode {
     pub objects: VMObjects,
-    pub packages: HashMap<String, PackageKey>,
+    pub package_indices: HashMap<String, OpIndex>,
+    pub packages: Vec<PackageKey>,
+    pub entry: FunctionKey,
 }
 
 #[cfg(test)]

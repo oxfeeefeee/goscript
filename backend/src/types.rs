@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-pub use super::codegen::{FunctionVal, PackageVal};
+pub use super::codegen::{FunctionVal, InterfaceDefVal, PackageVal, StructDefVal};
 pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
@@ -23,6 +23,8 @@ new_key_type! { pub struct ChannelKey; }
 new_key_type! { pub struct BoxedKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
+new_key_type! { pub struct StructDefKey; }
+new_key_type! { pub struct InterfaceDefKey; }
 
 #[derive(Clone, Debug)]
 pub struct Objects {
@@ -36,6 +38,8 @@ pub struct Objects {
     pub boxed: DenseSlotMap<BoxedKey, GosValue>,
     pub functions: DenseSlotMap<FunctionKey, FunctionVal>,
     pub packages: DenseSlotMap<PackageKey, PackageVal>,
+    pub struct_defs: DenseSlotMap<StructDefKey, StructDefVal>,
+    pub interface_defs: DenseSlotMap<InterfaceDefKey, InterfaceDefVal>,
 }
 
 impl Objects {
@@ -51,6 +55,8 @@ impl Objects {
             boxed: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            struct_defs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            interface_defs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
         }
     }
 
@@ -101,8 +107,10 @@ pub enum GosValue {
     Map(MapKey),
     Struct(StructKey),
     Channel(ChannelKey),
-    Function(FunctionKey),
     Boxed(BoxedKey),
+    // below are not visible to users
+    Function(FunctionKey),
+    Package(PackageKey),
 }
 
 impl PartialEq for GosValue {
