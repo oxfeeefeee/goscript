@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::codegen::ByteCode;
+use super::code_gen::ByteCode;
 use super::opcode::*;
 use super::prim_ops::PrimOps;
 use super::types::Objects as VMObjects;

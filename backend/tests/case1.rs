@@ -3,7 +3,7 @@
 extern crate goscript_backend as be;
 
 fn load_parse_gen(path: &str, trace: bool) {
-    let bc = be::codegen::CodeGen::load_parse_gen(path, trace);
+    let bc = be::code_gen::CodeGen::load_parse_gen(path, trace);
     let mut vm = be::vm::GosVM::new(bc);
     vm.run();
 }

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-pub use super::codegen::{FunctionVal, InterfaceDefVal, PackageVal, StructDefVal};
+pub use super::code_gen::{FunctionVal, InterfaceDefVal, PackageVal, StructDefVal};
 pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
