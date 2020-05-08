@@ -24,7 +24,7 @@ impl From<OpIndex> for PrimOps {
 }
 
 impl PrimOps {
-    pub fn call(&self, stack: &mut Vec<GosValue>, objs: &Objects) {
+    pub fn call(&self, stack: &mut Vec<GosValue>, _objs: &Objects) {
         match self {
             PrimOps::Add => add(stack),
             PrimOps::Sub => sub(stack),

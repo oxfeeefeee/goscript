@@ -1,5 +1,10 @@
 package main
 
+const c = 100
 var i = 1
+var j = i + 1 + c
 
-func main() {}
+func main() {
+    k := i + 3
+    l := j
+}

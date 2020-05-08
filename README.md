@@ -15,7 +15,7 @@ Go specs implemented as a scripting language in Rust.
 + If Go were a glue language it would be way better than Python, in terms of project maintainability.
 
 ### Implementation
-+ The parser is a port of the official implementation shipped with the Go installer.
++ The parser is a port of the Go official implementation.
 + The VM is based on that of Lua/Wren.
 
 ### Progress

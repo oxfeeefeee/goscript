@@ -24,18 +24,6 @@ macro_rules! current_func_mut {
     };
 }
 
-macro_rules! current_pkg {
-    ($owner:ident) => {
-        &$owner.objects.packages[$owner.current_pkg]
-    };
-}
-
-macro_rules! current_pkg_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.packages[$owner.current_pkg]
-    };
-}
-
 // ----------------------------------------------------------------------------
 // PackageVal
 #[derive(Clone, Debug)]
@@ -43,34 +31,71 @@ pub struct PackageVal {
     name: String,
     members: Vec<GosValue>, // imports, const, var, func are all stored here
     member_indices: HashMap<EntityKey, OpIndex>,
+    main_func_index: Option<usize>,
+    // maps func_member_index of the constructor to pkg_member_index
+    var_mapping: Option<HashMap<OpIndex, OpIndex>>,
 }
 
 impl PackageVal {
     fn new(name: String) -> PackageVal {
         PackageVal {
             name: name,
-            members: vec![GosValue::Nil], // put a placeholder for main function
+            members: Vec::new(),
             member_indices: HashMap::new(),
+            main_func_index: None,
+            var_mapping: Some(HashMap::new()),
         }
     }
 
-    fn add_func(&mut self, entity: EntityKey, fkey: FunctionKey, is_main: bool) {
-        let index = if is_main {
-            self.members[0] = GosValue::Function(fkey);
-            0
-        } else {
-            self.members.push(GosValue::Function(fkey));
-            (self.members.len() - 1) as OpIndex
-        };
+    fn add_member(&mut self, entity: EntityKey, val: GosValue) -> OpIndex {
+        self.members.push(val);
+        let index = (self.members.len() - 1) as OpIndex;
         self.member_indices.insert(entity, index);
+        index as OpIndex
+    }
+
+    // add placeholder for vars, will be initialized when imported
+    fn add_var(&mut self, entity: EntityKey, fn_index: EntIndex) -> OpIndex {
+        let index = self.add_member(entity, GosValue::Nil);
+        self.var_mapping
+            .as_mut()
+            .unwrap()
+            .insert(fn_index.into(), index);
+        index
+    }
+
+    pub fn init_var(&mut self, fn_member_index: &OpIndex, val: GosValue) {
+        let index = self.var_mapping.as_ref().unwrap()[fn_member_index];
+        self.members[index as usize] = val;
+    }
+
+    pub fn var_count(&self) -> usize {
+        self.var_mapping.as_ref().unwrap().len()
+    }
+
+    fn set_main_func(&mut self, index: OpIndex) {
+        self.main_func_index = Some(index as usize);
     }
 
     fn member_index(&self, entity: &EntityKey) -> OpIndex {
         self.member_indices[entity]
     }
 
+    pub fn inited(&self) -> bool {
+        self.var_mapping.is_none()
+    }
+
+    pub fn set_inited(&mut self) {
+        self.var_mapping = None
+    }
+
+    // pass negative index for main func
     pub fn member(&self, i: OpIndex) -> GosValue {
-        self.members[i as usize]
+        if i >= 0 {
+            self.members[i as usize]
+        } else {
+            self.members[self.main_func_index.unwrap()]
+        }
     }
 
     pub fn set_member(&mut self, i: OpIndex, val: GosValue) {
@@ -129,14 +154,15 @@ pub struct FunctionVal {
     pub code: Vec<CodeData>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<UpValue>,
-    pub param_count: usize,
-    pub ret_count: usize,
-    pub entities: HashMap<EntityKey, EntIndex>,
+    param_count: usize,
+    ret_count: usize,
+    entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
+    is_ctor: bool,
 }
 
 impl FunctionVal {
-    fn new(package: PackageKey) -> FunctionVal {
+    fn new(package: PackageKey, ctor: bool) -> FunctionVal {
         FunctionVal {
             package: package,
             code: Vec::new(),
@@ -146,13 +172,23 @@ impl FunctionVal {
             ret_count: 0,
             entities: HashMap::new(),
             local_alloc: 0,
+            is_ctor: ctor,
         }
+    }
+
+    pub fn ret_count(&self) -> usize {
+        self.ret_count
     }
 
     pub fn local_count(&self) -> usize {
         self.local_alloc as usize - self.param_count - self.ret_count
     }
 
+    fn entity_index(&self, entity: &EntityKey) -> EntIndex {
+        self.entities.get(entity).unwrap().clone()
+    }
+
+    // for unnamed return values, entity == None
     fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
@@ -161,10 +197,6 @@ impl FunctionVal {
         };
         self.local_alloc += 1;
         EntIndex::LocalVar(result)
-    }
-
-    fn get_entity_index(&self, entity: &EntityKey) -> EntIndex {
-        self.entities.get(entity).unwrap().clone()
     }
 
     fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
@@ -220,6 +252,7 @@ impl FunctionVal {
     fn emit_load(&mut self, index: EntIndex) {
         match index {
             EntIndex::Const(i) => {
+                // todo: optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_SHORT
                 self.code.push(CodeData::Code(Opcode::PUSH_CONST));
                 self.code.push(CodeData::Data(i));
             }
@@ -293,6 +326,23 @@ impl FunctionVal {
                 }
             }
         }
+    }
+
+    fn emit_import(&mut self, index: OpIndex) {
+        self.emit_code(Opcode::IMPORT);
+        self.emit_data(index);
+        self.emit_code(Opcode::JUMP_IF);
+        let mut cd = vec![
+            CodeData::Code(Opcode::PUSH_SHORT),
+            CodeData::Data(0 as OpIndex),
+            CodeData::Code(Opcode::LOAD_FIELD),
+            CodeData::Code(Opcode::PRE_CALL),
+            CodeData::Code(Opcode::CALL),
+            CodeData::Code(Opcode::INIT_PKG),
+            CodeData::Data(index),
+        ];
+        self.emit_data(cd.len() as OpIndex);
+        self.code.append(&mut cd);
     }
 
     fn emit_code(&mut self, code: Opcode) {
@@ -506,7 +556,11 @@ impl<'a> Visitor for CodeGen<'a> {
         let fkey = self.gen_func_def(typ, stmt);
 
         let ident = &self.ast_objs.idents[decl.name];
-        current_pkg_mut!(self).add_func(ident.entity_key().unwrap(), fkey, ident.name == "main");
+        let pkg = &mut self.objects.packages[self.current_pkg];
+        let index = pkg.add_member(ident.entity_key().unwrap(), GosValue::Function(fkey));
+        if ident.name == "main" {
+            pkg.set_main_func(index);
+        }
     }
 
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
@@ -638,8 +692,9 @@ impl<'a> CodeGen<'a> {
             .func_stack
             .clone()
             .iter()
+            .skip(1) // skip constructor
             .rev()
-            .skip(1)
+            .skip(1) // skip itself
             .find_map(|ifunc| {
                 let f = &mut self.objects.functions[*ifunc];
                 let index = f.entities.get(&entity_key).map(|x| *x);
@@ -655,16 +710,24 @@ impl<'a> CodeGen<'a> {
             return index;
         }
         // 3. try the package level
-        EntIndex::PackageMember(current_pkg!(self).member_index(&entity_key))
+        let pkg = &self.objects.packages[self.current_pkg];
+        EntIndex::PackageMember(pkg.member_index(&entity_key))
     }
 
     fn add_local_or_resolve_ident(&mut self, ikey: &IdentKey, is_def: bool) -> EntIndex {
-        let id = self.ast_objs.idents[*ikey].clone();
+        let ident = self.ast_objs.idents[*ikey].clone();
         let func = current_func_mut!(self);
-        if id.is_blank() {
+        if ident.is_blank() {
             EntIndex::Blank
         } else if is_def {
-            func.add_local(id.entity.into_key())
+            let ident_key = ident.entity.into_key();
+            let index = func.add_local(ident_key.clone());
+            if func.is_ctor {
+                dbg!(func.package);
+                let pkg = &mut self.objects.packages[func.package];
+                pkg.add_var(ident_key.unwrap(), index);
+            }
+            index
         } else {
             self.resolve_ident(ikey)
         }
@@ -679,7 +742,13 @@ impl<'a> CodeGen<'a> {
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
             let val = self.value_from_basic_literal(typ.as_ref(), &values[i]);
-            current_func_mut!(self).add_const(ident.entity.into_key(), val);
+            let func = current_func_mut!(self);
+            let ident_key = ident.entity.into_key();
+            func.add_const(ident_key.clone(), val);
+            if func.is_ctor {
+                let pkg = &mut self.objects.packages[func.package];
+                pkg.add_member(ident_key.unwrap(), val);
+            }
         }
     }
 
@@ -740,7 +809,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
-        let mut func = FunctionVal::new(self.current_pkg.clone());
+        let mut func = FunctionVal::new(self.current_pkg.clone(), false);
         func.ret_count = match &typ.results {
             Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
             None => 0,
@@ -752,8 +821,7 @@ impl<'a> CodeGen<'a> {
         // process function body
         self.visit_stmt_block(body);
         // it will not be executed if it's redundant
-        let func = &mut self.objects.functions[fkey];
-        func.emit_return();
+        self.objects.functions[fkey].emit_return();
 
         self.func_stack.pop();
         fkey
@@ -922,26 +990,39 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen(&mut self, f: File) {
-        let pkg = &self.ast_objs.idents[f.name];
-        let pkgval = PackageVal::new(pkg.name.clone());
-        let pkey = self.objects.packages.insert(pkgval);
+        let pkg_name = &self.ast_objs.idents[f.name].name;
+        let pkg_val = PackageVal::new(pkg_name.clone());
+        let pkey = self.objects.packages.insert(pkg_val);
+
+        let ctor_func = FunctionVal::new(pkey, true);
+        let fkey = self.objects.functions.insert(ctor_func);
+        // the 0th member is the constructor
+        self.objects.packages[pkey].add_member(slotmap::Key::null(), GosValue::Function(fkey));
+
         self.packages.push(pkey);
-        self.package_indices
-            .insert(pkg.name.clone(), self.packages.len() as i16 - 1);
+        let index = self.packages.len() as i16 - 1;
+        self.package_indices.insert(pkg_name.clone(), index);
         self.current_pkg = pkey;
 
+        self.func_stack.push(fkey.clone());
         for d in f.decls.iter() {
             self.visit_decl(d)
         }
+        let func = &mut self.objects.functions[fkey];
+        func.emit_return();
+        // set the return count as pkg's variable count, so that when the construction
+        // is finished running, the values are left on the stack
+        func.ret_count = self.objects.packages[pkey].var_count();
+        self.func_stack.pop();
     }
 
+    // generate the entry function for ByteCode
     fn gen_entry(&mut self) -> FunctionKey {
-        // import the 0th pkg and call the 0th function of the pkg
-        let mut func = FunctionVal::new(slotmap::Key::null());
-        func.add_const(None, GosValue::Int(0));
-        func.emit_code(Opcode::IMPORT);
-        func.emit_data(0);
-        func.emit_load(EntIndex::Const(0));
+        // import the 0th pkg and call the main function of the pkg
+        let mut func = FunctionVal::new(slotmap::Key::null(), false);
+        func.emit_import(0);
+        func.emit_code(Opcode::PUSH_SHORT);
+        func.emit_data(-1);
         func.emit_load_field();
         func.emit_pre_call();
         func.emit_call();

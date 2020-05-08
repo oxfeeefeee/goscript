@@ -13,6 +13,7 @@ pub enum Opcode {
     PUSH_NIL = 101,
     PUSH_FALSE = 102,
     PUSH_TRUE = 103,
+    PUSH_SHORT = 104,
     POP = 110,
     LOAD_LOCAL0 = 200,
     LOAD_LOCAL1 = 201,
@@ -46,6 +47,8 @@ pub enum Opcode {
     STORE_THIS_PKG_FIELD = 254,
     STORE_THIS_PKG_FIELD_NT = 255,
     LOAD_GLOBAL = 260,
+    IMPORT = 261,
+    INIT_PKG = 262,
     PRE_CALL = 300,
     CALL = 301,
     CALL_PRIM_1_1 = 310,
@@ -61,7 +64,6 @@ pub enum Opcode {
     NEW_STRUCT = 502,
     NEW_SLICE = 503,
     NEW_MAP = 504,
-    IMPORT = 601,
 }
 
 impl Opcode {
@@ -97,6 +99,7 @@ impl Opcode {
             Opcode::PUSH_NIL => ("PUSH_NIL", 1),
             Opcode::PUSH_FALSE => ("PUSH_FALSE", 1),
             Opcode::PUSH_TRUE => ("PUSH_TRUE", 1),
+            Opcode::PUSH_SHORT => ("PUSH_SHORT", 1),
             Opcode::POP => ("POP", -1),
             Opcode::LOAD_LOCAL0 => ("LOAD_LOCAL0", 1),
             Opcode::LOAD_LOCAL1 => ("LOAD_LOCAL1", 1),
@@ -130,6 +133,8 @@ impl Opcode {
             Opcode::STORE_THIS_PKG_FIELD => ("STORE_THIS_PKG_FIELD", 0),
             Opcode::STORE_THIS_PKG_FIELD_NT => ("STORE_THIS_PKG_FIELD_NT", 0),
             Opcode::LOAD_GLOBAL => ("LOAD_GLOBAL", 0),
+            Opcode::IMPORT => ("IMPORT", 0),
+            Opcode::INIT_PKG => ("INIT_PKG", -128),
             Opcode::PRE_CALL => ("PRE_CALL", -128),
             Opcode::CALL => ("CALL", -128),
             Opcode::CALL_PRIM_1_1 => ("CALL_PRIM_1_1", 0),
@@ -145,7 +150,6 @@ impl Opcode {
             Opcode::NEW_STRUCT => ("NEW_STRUCT", 0),
             Opcode::NEW_SLICE => ("NEW_SLICE", 0),
             Opcode::NEW_MAP => ("NEW_MAP", 0),
-            Opcode::IMPORT => ("IMPORT", 0),
         }
     }
 
