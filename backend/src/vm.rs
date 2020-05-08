@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 macro_rules! get_value {
-    ($vm:ident, $code:ident, $frame:ident, $instruction:ident, $op:path) => {
+    ($stack:ident, $code:ident, $frame:ident, $instruction:ident, $op:path) => {
         if let $op = $instruction {
-            $vm.stack.last().unwrap()
+            $stack.last().unwrap()
         } else {
             let val_ind = *$code[$frame.pc].unwrap_data() as i16;
             $frame.pc += 1;
-            let index = ($vm.stack.len() as i16 + val_ind - 1) as usize;
-            $vm.stack.get(index).unwrap()
+            let index = ($stack.len() as i16 + val_ind - 1) as usize;
+            $stack.get(index).unwrap()
         }
     };
 }
@@ -182,9 +182,10 @@ impl Fiber {
         let mut frame = self.frames.last_mut().unwrap();
         let fkey = frame.callable.get_func(objs);
         let mut func = &objs.functions[fkey];
+        let stack = &mut self.stack;
         // allocate local variables
         for _ in 0..func.local_count() {
-            self.stack.push(GosValue::Nil);
+            stack.push(GosValue::Nil);
         }
         let mut consts = &func.consts;
         let mut code = &func.code;
@@ -199,20 +200,20 @@ impl Fiber {
                 Opcode::PUSH_CONST => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    self.stack.push(consts[*index as usize].clone());
+                    stack.push(consts[*index as usize].clone());
                 }
                 Opcode::PUSH_NIL => {
-                    self.stack.push(GosValue::Nil);
+                    stack.push(GosValue::Nil);
                 }
-                Opcode::PUSH_FALSE => self.stack.push(GosValue::Bool(false)),
-                Opcode::PUSH_TRUE => self.stack.push(GosValue::Bool(true)),
+                Opcode::PUSH_FALSE => stack.push(GosValue::Bool(false)),
+                Opcode::PUSH_TRUE => stack.push(GosValue::Bool(true)),
                 Opcode::PUSH_SHORT => {
                     let short = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    self.stack.push(GosValue::Int(*short as isize));
+                    stack.push(GosValue::Int(*short as isize));
                 }
                 Opcode::POP => {
-                    self.stack.pop();
+                    stack.pop();
                 }
                 Opcode::LOAD_LOCAL0
                 | Opcode::LOAD_LOCAL1
@@ -231,18 +232,18 @@ impl Fiber {
                 | Opcode::LOAD_LOCAL14
                 | Opcode::LOAD_LOCAL15 => {
                     let index = instruction.load_local_index();
-                    self.stack.push(self.stack[stack_base + index as usize]);
+                    stack.push(stack[stack_base + index as usize]);
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    self.stack.push(self.stack[stack_base + *index as usize]);
+                    stack.push(stack[stack_base + *index as usize]);
                 }
                 Opcode::STORE_LOCAL | Opcode::STORE_LOCAL_NT => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_LOCAL);
-                    self.stack[stack_base + *index as usize] = val.clone();
+                    let val = get_value!(stack, code, frame, instruction, Opcode::STORE_LOCAL);
+                    stack[stack_base + *index as usize] = val.clone();
                 }
                 Opcode::LOAD_UPVALUE => {
                     let index = code[frame.pc].unwrap_data();
@@ -252,20 +253,20 @@ impl Fiber {
                             drop(frame); // temporarily let go of the ownership
                             let upframe = get_upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
-                            self.stack.push(self.stack[stack_ptr].clone());
+                            stack.push(stack[stack_ptr].clone());
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(key) => {
                             let val = &objs.boxed[*key];
                             dbg!(&val);
-                            self.stack.push(val.clone());
+                            stack.push(val.clone());
                         }
                     }
                 }
                 Opcode::LOAD_FIELD => {
-                    let len = self.stack.len();
-                    let val = &self.stack[len - 2];
-                    let ind = &self.stack[len - 1];
+                    let len = stack.len();
+                    let val = &stack[len - 2];
+                    let ind = &stack[len - 1];
                     let c = match val {
                         GosValue::Slice(skey) => {
                             let slice = &objs.slices[*skey];
@@ -283,19 +284,19 @@ impl Fiber {
                         }
                         _ => unreachable!(),
                     };
-                    self.stack[len - 2] = c;
-                    self.stack.pop();
+                    stack[len - 2] = c;
+                    stack.pop();
                 }
                 Opcode::STORE_UPVALUE | Opcode::STORE_UPVALUE_NT => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_UPVALUE);
+                    let val = get_value!(stack, code, frame, instruction, Opcode::STORE_UPVALUE);
                     match &objs.closures[frame.callable.get_closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame); // temporarily let go of the ownership
                             let upframe = get_upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
-                            self.stack[stack_ptr] = val.clone();
+                            stack[stack_ptr] = val.clone();
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(key) => {
@@ -306,10 +307,10 @@ impl Fiber {
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_NT => {
                     let lhs_index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let index = (self.stack.len() as i16 + lhs_index - 1) as usize;
-                    let store = self.stack.get(index).unwrap();
-                    let key = self.stack.get(index + 1).unwrap();
-                    let val = get_value!(self, code, frame, instruction, Opcode::STORE_FIELD);
+                    let index = (stack.len() as i16 + lhs_index - 1) as usize;
+                    let store = stack.get(index).unwrap();
+                    let key = stack.get(index + 1).unwrap();
+                    let val = get_value!(stack, code, frame, instruction, Opcode::STORE_FIELD);
                     match store {
                         GosValue::Slice(s) => {
                             objs.slices[*s].set(key.get_int() as usize, val);
@@ -324,13 +325,18 @@ impl Fiber {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
                     let pkg = &objs.packages[func.package];
-                    self.stack.push(pkg.member(*index));
+                    stack.push(pkg.member(*index));
                 }
                 Opcode::STORE_THIS_PKG_FIELD | Opcode::STORE_THIS_PKG_FIELD_NT => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let val =
-                        get_value!(self, code, frame, instruction, Opcode::STORE_THIS_PKG_FIELD);
+                    let val = get_value!(
+                        stack,
+                        code,
+                        frame,
+                        instruction,
+                        Opcode::STORE_THIS_PKG_FIELD
+                    );
                     let pkg = &mut objs.packages[func.package];
                     pkg.set_member(*index, val.clone());
                 }
@@ -338,9 +344,8 @@ impl Fiber {
                     let index = *code[frame.pc].unwrap_data() as usize;
                     frame.pc += 1;
                     let pkey = pkgs[index];
-                    self.stack.push(GosValue::Package(pkey));
-                    self.stack
-                        .push(GosValue::Bool(objs.packages[pkey].inited()));
+                    stack.push(GosValue::Package(pkey));
+                    stack.push(GosValue::Bool(objs.packages[pkey].inited()));
                 }
                 Opcode::INIT_PKG => {
                     let index = *code[frame.pc].unwrap_data() as usize;
@@ -350,23 +355,23 @@ impl Fiber {
                     // the var values are left on the stack as return values
                     let count = pkg.var_count();
                     for i in 0..count {
-                        let val = self.stack.pop().unwrap();
+                        let val = stack.pop().unwrap();
                         let index = (count - 1 - i) as OpIndex;
                         pkg.init_var(&index, val);
                     }
                     // the one pushed by IMPORT was poped by LOAD_FIELD
-                    self.stack.push(GosValue::Package(pkey));
+                    stack.push(GosValue::Package(pkey));
                 }
                 Opcode::PRE_CALL => {
-                    let val = self.stack.last().unwrap();
-                    let sbase = self.stack.len() - 1;
+                    let val = stack.last().unwrap();
+                    let sbase = stack.len() - 1;
                     let frame = CallFrame::new_with_gos_value(val, sbase);
                     let ret_count = frame.callable.ret_count(objs);
                     self.next_frame = Some(frame);
-                    self.stack.pop();
+                    stack.pop();
                     // placeholders for return values
                     for _ in 0..ret_count {
-                        self.stack.push(GosValue::Nil)
+                        stack.push(GosValue::Nil)
                     }
                 }
                 Opcode::CALL => {
@@ -378,7 +383,7 @@ impl Fiber {
                     frame.ret_count = func.ret_count();
                     // allocate local variables
                     for _ in 0..func.local_count() {
-                        self.stack.push(GosValue::Nil);
+                        stack.push(GosValue::Nil);
                     }
                     consts = &func.consts;
                     code = &func.code;
@@ -390,11 +395,11 @@ impl Fiber {
                 Opcode::CALL_PRIM_2_1 => {
                     let prim = PrimOps::from(*code[frame.pc].unwrap_data() as OpIndex);
                     frame.pc += 1;
-                    prim.call(&mut self.stack, objs);
+                    prim.call(stack, objs);
                 }
                 Opcode::JUMP => unimplemented!(),
                 Opcode::JUMP_IF => {
-                    let val = self.stack.last().unwrap();
+                    let val = stack.last().unwrap();
                     if val.get_bool() {
                         let offset = code[frame.pc].unwrap_data();
                         frame.pc += 1;
@@ -402,7 +407,7 @@ impl Fiber {
                     } else {
                         frame.pc += 1;
                     }
-                    self.stack.pop();
+                    stack.pop();
                 }
                 Opcode::RETURN => {
                     // first handle upvalues in 2 steps:
@@ -435,7 +440,7 @@ impl Fiber {
                             if referrers.len() == 0 {
                                 continue;
                             }
-                            let val = self.stack[stack_base + *ind as usize].clone();
+                            let val = stack[stack_base + *ind as usize].clone();
                             let bkey = objs.boxed.insert(val);
                             let func = frame.callable.get_func(objs);
                             for r in referrers.iter() {
@@ -448,13 +453,13 @@ impl Fiber {
                     let ret_count = frame.ret_count;
                     drop(frame);
                     self.frames.pop();
-                    dbg!(&self.stack);
+                    dbg!(&stack);
                     if self.frames.is_empty() {
                         break;
                     }
-                    let garbage = self.stack.len() - (stack_base + ret_count);
+                    let garbage = stack.len() - (stack_base + ret_count);
                     for _ in 0..garbage {
-                        self.stack.pop();
+                        stack.pop();
                     }
 
                     frame = self.frames.last_mut().unwrap();
@@ -465,7 +470,7 @@ impl Fiber {
                     code = &func.code;
                 }
                 Opcode::NEW_CLOSURE => {
-                    let fkey = self.stack.last().unwrap().get_function();
+                    let fkey = stack.last().unwrap().get_function();
                     let func = &objs.functions[*fkey];
                     let ckey = objs
                         .closures
@@ -483,8 +488,8 @@ impl Fiber {
                             UpValue::Closed(_) => unreachable!(),
                         }
                     }
-                    self.stack.pop();
-                    self.stack.push(GosValue::Closure(ckey));
+                    stack.pop();
+                    stack.push(GosValue::Closure(ckey));
                 }
                 _ => unimplemented!(),
             };
