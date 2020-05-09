@@ -7,13 +7,13 @@ pub const MAX_INLINE_ARG_INDEX: OpIndex = 15;
 
 pub type OpIndex = i16;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Opcode {
     PUSH_CONST = 100,
     PUSH_NIL = 101,
     PUSH_FALSE = 102,
     PUSH_TRUE = 103,
-    PUSH_SHORT = 104,
+    PUSH_IMM = 104,
     POP = 110,
     LOAD_LOCAL0 = 200,
     LOAD_LOCAL1 = 201,
@@ -40,9 +40,9 @@ pub enum Opcode {
     LOAD_FIELD = 240,
     STORE_FIELD = 241,
     STORE_FIELD_NT = 242,
-    LOAD_THIS_FIELD = 250,
-    STORE_THIS_FIELD = 251,
-    STORE_THIS_FIELD_NT = 252,
+    LOAD_FIELD_IMM = 250,
+    STORE_FIELD_IMM = 251,
+    STORE_FIELD_IMM_NT = 252,
     LOAD_THIS_PKG_FIELD = 253,
     STORE_THIS_PKG_FIELD = 254,
     STORE_THIS_PKG_FIELD_NT = 255,
@@ -99,7 +99,7 @@ impl Opcode {
             Opcode::PUSH_NIL => ("PUSH_NIL", 1),
             Opcode::PUSH_FALSE => ("PUSH_FALSE", 1),
             Opcode::PUSH_TRUE => ("PUSH_TRUE", 1),
-            Opcode::PUSH_SHORT => ("PUSH_SHORT", 1),
+            Opcode::PUSH_IMM => ("PUSH_IMM", 1),
             Opcode::POP => ("POP", -1),
             Opcode::LOAD_LOCAL0 => ("LOAD_LOCAL0", 1),
             Opcode::LOAD_LOCAL1 => ("LOAD_LOCAL1", 1),
@@ -126,9 +126,9 @@ impl Opcode {
             Opcode::LOAD_FIELD => ("LOAD_FIELD", -1),
             Opcode::STORE_FIELD => ("STORE_FIELD", 0),
             Opcode::STORE_FIELD_NT => ("STORE_FIELD_NT", 0),
-            Opcode::LOAD_THIS_FIELD => ("LOAD_THIS_FIELD", -1),
-            Opcode::STORE_THIS_FIELD => ("STORE_THIS_FIELD", 0),
-            Opcode::STORE_THIS_FIELD_NT => ("STORE_THIS_FIELD_NT", 0),
+            Opcode::LOAD_FIELD_IMM => ("LOAD_FIELD_IMM", 0),
+            Opcode::STORE_FIELD_IMM => ("STORE_FIELD_IMM", 0),
+            Opcode::STORE_FIELD_IMM_NT => ("STORE_FIELD_IMM_NT", 0),
             Opcode::LOAD_THIS_PKG_FIELD => ("LOAD_THIS_PKG_FIELD", -1),
             Opcode::STORE_THIS_PKG_FIELD => ("STORE_THIS_PKG_FIELD", 0),
             Opcode::STORE_THIS_PKG_FIELD_NT => ("STORE_THIS_PKG_FIELD_NT", 0),

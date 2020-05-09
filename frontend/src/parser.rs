@@ -2329,8 +2329,12 @@ impl<'a> Parser<'a> {
 	    // containing block.
 	    // (Global identifiers are resolved in a separate phase after parsing.)
         let placeholder = Expr::new_bad(0, 0);
-        let index = specs_mut!(self).insert(Spec::Type(Box::new(TypeSpec{
-            name: ident, assign: 0, typ: placeholder})));
+        let spec_val = Spec::Type(Box::new(TypeSpec{
+            name: ident, assign: 0, typ: placeholder
+        }));
+        let index = specs_mut!(self).insert(spec_val);
+        let scope = self.top_scope.unwrap();
+        self.declare(DeclObj::Spec(index), EntityData::NoData, EntityKind::Typ, &scope);
         let assign = if self.token == Token::ASSIGN {
             self.next();
             self.pos

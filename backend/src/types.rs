@@ -1,14 +1,13 @@
 #![allow(dead_code)]
 #![macro_use]
-use super::opcode::OpIndex;
-use goscript_frontend::Token;
 use slotmap::{new_key_type, DenseSlotMap};
-use std::cell::{Ref, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 pub use super::code_gen::{FunctionVal, InterfaceDefVal, PackageVal, StructDefVal};
+use super::opcode::OpIndex;
 pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
@@ -23,8 +22,7 @@ new_key_type! { pub struct ChannelKey; }
 new_key_type! { pub struct BoxedKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
-new_key_type! { pub struct StructDefKey; }
-new_key_type! { pub struct InterfaceDefKey; }
+new_key_type! { pub struct TypeKey; }
 
 #[derive(Clone, Debug)]
 pub struct Objects {
@@ -38,13 +36,13 @@ pub struct Objects {
     pub boxed: DenseSlotMap<BoxedKey, GosValue>,
     pub functions: DenseSlotMap<FunctionKey, FunctionVal>,
     pub packages: DenseSlotMap<PackageKey, PackageVal>,
-    pub struct_defs: DenseSlotMap<StructDefKey, StructDefVal>,
-    pub interface_defs: DenseSlotMap<InterfaceDefKey, InterfaceDefVal>,
+    pub types: DenseSlotMap<TypeKey, GosType>,
+    pub basic_types: HashMap<&'static str, GosValue>,
 }
 
 impl Objects {
     pub fn new() -> Objects {
-        Objects {
+        let mut objs = Objects {
             interfaces: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             closures: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             strings: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
@@ -55,9 +53,19 @@ impl Objects {
             boxed: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            struct_defs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            interface_defs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-        }
+            types: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            basic_types: HashMap::new(),
+        };
+        let btype = GosType::new_bool(&mut objs);
+        objs.basic_types.insert("bool", btype);
+        let itype = GosType::new_int(&mut objs);
+        objs.basic_types.insert("int", itype);
+        let ftype = GosType::new_float64(&mut objs);
+        objs.basic_types.insert("float", ftype);
+        objs.basic_types.insert("float64", ftype);
+        let stype = GosType::new_str(&mut objs);
+        objs.basic_types.insert("string", stype);
+        objs
     }
 
     pub fn new_str(&mut self, s: String) -> GosValue {
@@ -89,6 +97,15 @@ impl Objects {
         let key = self.maps.insert(val);
         GosValue::Map(key)
     }
+
+    pub fn new_type(&mut self, t: GosType) -> GosValue {
+        let key = self.types.insert(t);
+        GosValue::Type(key)
+    }
+
+    pub fn basic_type(&self, name: &str) -> Option<&GosValue> {
+        self.basic_types.get(name)
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -99,18 +116,19 @@ pub enum GosValue {
     Nil,
     Bool(bool),
     Int(isize),
-    Float64(f64),
-    Interface(InterfaceKey),
-    Str(StringKey),
+    Float64(f64),   // becasue in Go there is no "float", just float64
+    Str(StringKey), // "String" is taken
     Closure(ClosureKey),
     Slice(SliceKey),
     Map(MapKey),
+    Interface(InterfaceKey),
     Struct(StructKey),
     Channel(ChannelKey),
     Boxed(BoxedKey),
     // below are not visible to users
     Function(FunctionKey),
     Package(PackageKey),
+    Type(TypeKey),
 }
 
 impl PartialEq for GosValue {
@@ -119,7 +137,7 @@ impl PartialEq for GosValue {
             (GosValue::Nil, GosValue::Nil) => true,
             (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
-            (GosValue::Float64(x), GosValue::Float64(y)) => float_eq(x, y),
+            (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
             (GosValue::Str(x), GosValue::Str(y)) => x == y,
             (GosValue::Slice(x), GosValue::Slice(y)) => x == y,
             _ => false,
@@ -148,14 +166,8 @@ impl GosValue {
         o.new_map(default)
     }
 
-    pub fn primitive_default(typ: &str) -> GosValue {
-        match typ {
-            t if t == "bool" => GosValue::Bool(false),
-            t if t == "int" => GosValue::Int(0),
-            t if t == "float" || t == "float64" => GosValue::Float64(0.0),
-            t if t == "string" => GosValue::Str(slotmap::Key::null()),
-            _ => GosValue::Nil,
-        }
+    pub fn new_type(t: GosType, o: &mut Objects) -> GosValue {
+        o.new_type(t)
     }
 
     #[inline]
@@ -202,53 +214,150 @@ impl GosValue {
             unreachable!();
         }
     }
-}
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
-pub struct ChannelObj {}
-
-trait Float {
-    type Bits: Hash;
-    fn float_is_nan(&self) -> bool;
-    fn float_to_bits(&self) -> Self::Bits;
-}
-
-impl Float for f32 {
-    type Bits = u32;
-    fn float_is_nan(&self) -> bool {
-        self.is_nan()
-    }
-    fn float_to_bits(&self) -> u32 {
-        self.to_bits()
-    }
-}
-
-impl Float for f64 {
-    type Bits = u64;
-    fn float_is_nan(&self) -> bool {
-        self.is_nan()
-    }
-    fn float_to_bits(&self) -> u64 {
-        self.to_bits()
-    }
-}
-
-fn float_eq<T: Float + PartialEq>(x: &T, y: &T) -> bool {
-    match (x, y) {
-        (a, _) if a.float_is_nan() => false,
-        (_, b) if b.float_is_nan() => false,
-        (a, b) => a == b,
-    }
-}
-
-fn float_hash<T: Float, H: Hasher>(f: &T, state: &mut H) {
-    match f {
-        x if x.float_is_nan() => {
-            "NAN".hash(state);
+    #[inline]
+    pub fn get_type(&self) -> &TypeKey {
+        if let GosValue::Type(t) = self {
+            t
+        } else {
+            unreachable!();
         }
-        x => {
-            x.float_to_bits().hash(state);
-        }
+    }
+
+    pub fn get_type_val<'a>(&self, objs: &'a Objects) -> &'a GosType {
+        let tkey = self.get_type();
+        &objs.types[*tkey]
+    }
+}
+
+// ----------------------------------------------------------------------------
+// GosType
+#[derive(Clone, Debug)]
+pub enum GosTypeData {
+    None,
+    Closure(Vec<GosValue>, Vec<GosValue>),
+    Slice(GosValue),
+    Map(GosValue, GosValue),
+    Interface(Vec<GosValue>),
+    // the hasmap maps field name to field index
+    Struct(Vec<GosValue>, HashMap<String, usize>),
+    Channel(GosValue),
+    Boxed(GosValue),
+}
+
+#[derive(Clone, Debug)]
+pub struct GosType {
+    zero_val: GosValue,
+    data: GosTypeData,
+}
+
+impl GosType {
+    pub fn new_bool(objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Bool(false),
+            data: GosTypeData::None,
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_int(objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Int(0),
+            data: GosTypeData::None,
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_float64(objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Float64(0.0),
+            data: GosTypeData::None,
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_str(objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Str(slotmap::Key::null()),
+            data: GosTypeData::None,
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_closure(args: Vec<GosValue>, rets: Vec<GosValue>, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Closure(slotmap::Key::null()),
+            data: GosTypeData::Closure(args, rets),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_slice(vtype: GosValue, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Slice(slotmap::Key::null()),
+            data: GosTypeData::Slice(vtype),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Map(slotmap::Key::null()),
+            data: GosTypeData::Map(ktype, vtype),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_interface(fields: Vec<GosValue>, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Interface(slotmap::Key::null()),
+            data: GosTypeData::Interface(fields),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_struct(
+        fields: Vec<GosValue>,
+        meta: HashMap<String, usize>,
+        objs: &mut Objects,
+    ) -> GosValue {
+        let field_zeros: Vec<GosValue> = fields
+            .iter()
+            .map(|x| x.get_type_val(objs).zero_val().clone())
+            .collect();
+        let struct_val = StructVal {
+            dark: false,
+            typ: slotmap::Key::null(),
+            fields: field_zeros,
+        };
+        let struct_key = objs.structs.insert(struct_val);
+        let typ = GosType {
+            zero_val: GosValue::Struct(struct_key),
+            data: GosTypeData::Struct(fields, meta),
+        };
+        let typ_key = objs.types.insert(typ);
+        objs.structs[struct_key].typ = typ_key;
+        GosValue::Type(typ_key)
+    }
+
+    pub fn new_channel(vtype: GosValue, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Channel(slotmap::Key::null()),
+            data: GosTypeData::Channel(vtype),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn new_boxed(inner: GosValue, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            zero_val: GosValue::Boxed(slotmap::Key::null()),
+            data: GosTypeData::Boxed(inner),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
+    pub fn zero_val(&self) -> &GosValue {
+        &self.zero_val
     }
 }
 
@@ -306,7 +415,7 @@ impl Hash for HashKey {
             GosValue::Nil => 0.hash(state),
             GosValue::Bool(b) => b.hash(state),
             GosValue::Int(i) => i.hash(state),
-            GosValue::Float64(f) => float_hash(f, state),
+            GosValue::Float64(f) => f.to_bits().hash(state),
             GosValue::Str(s) => self.objs.strings[*s].data.hash(state),
             /*
             GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
@@ -355,9 +464,22 @@ impl MapVal {
 // ----------------------------------------------------------------------------
 // StructVal
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct StructVal {
     pub dark: bool,
+    pub typ: TypeKey,
+    pub fields: Vec<GosValue>,
+}
+
+impl StructVal {
+    pub fn field_index(&self, name: &String, objs: &Objects) -> OpIndex {
+        let t = &objs.types[self.typ];
+        if let GosTypeData::Struct(_, map) = &t.data {
+            map[name] as OpIndex
+        } else {
+            unreachable!()
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -374,10 +496,10 @@ pub struct ChannelVal {
 #[derive(Clone, Debug)]
 pub struct SliceVal {
     pub dark: bool,
-    pub begin: usize,
-    pub end: usize,
-    pub soft_cap: usize, // <= self.vec.capacity()
-    pub vec: Rc<RefCell<Vec<GosValue>>>,
+    begin: usize,
+    end: usize,
+    soft_cap: usize, // <= self.vec.capacity()
+    vec: Rc<RefCell<Vec<GosValue>>>,
 }
 
 impl<'a> SliceVal {
@@ -476,6 +598,54 @@ mod test {
     fn test_float() {
         dbg!("1000000000000000000000001e10".parse::<f64>().unwrap());
     }
+
+    /*
+        trait Float {
+        type Bits: Hash;
+        fn float_is_nan(&self) -> bool;
+        fn float_to_bits(&self) -> Self::Bits;
+    }
+
+    impl Float for f32 {
+        type Bits = u32;
+        fn float_is_nan(&self) -> bool {
+            self.is_nan()
+        }
+        fn float_to_bits(&self) -> u32 {
+            self.to_bits()
+        }
+    }
+
+    impl Float for f64 {
+        type Bits = u64;
+        fn float_is_nan(&self) -> bool {
+            self.is_nan()
+        }
+        fn float_to_bits(&self) -> u64 {
+            self.to_bits()
+        }
+    }
+
+    fn float_eq<T: Float + PartialEq>(x: &T, y: &T) -> bool {
+        match (x, y) {
+            (a, _) if a.float_is_nan() => false,
+            (_, b) if b.float_is_nan() => false,
+            (a, b) => a == b,
+        }
+    }
+
+    fn float_hash<T: Float, H: Hasher>(f: &T, state: &mut H) {
+        match f {
+            x if x.float_is_nan() => {
+                "NAN".hash(state);
+            }
+            x => {
+                x.float_to_bits().hash(state);
+            }
+        }
+    }
+
+        */
 
     #[test]
     fn test_types() {

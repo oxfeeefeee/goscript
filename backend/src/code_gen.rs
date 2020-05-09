@@ -188,6 +188,11 @@ impl FunctionVal {
         self.entities.get(entity).unwrap().clone()
     }
 
+    fn const_val(&self, entity: &EntityKey) -> &GosValue {
+        let index: OpIndex = self.entity_index(entity).into();
+        &self.consts[index as usize]
+    }
+
     // for unnamed return values, entity == None
     fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
@@ -200,6 +205,7 @@ impl FunctionVal {
     }
 
     fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
+        // todo: filter out duplicated consts
         self.consts.push(cst);
         let result = (self.consts.len() - 1).try_into().unwrap();
         if let Some(key) = entity {
@@ -207,6 +213,19 @@ impl FunctionVal {
             assert_eq!(old, None);
         }
         EntIndex::Const(result)
+    }
+
+    fn add_const_def(
+        &mut self,
+        entity: EntityKey,
+        cst: GosValue,
+        pkg: &mut PackageVal,
+    ) -> EntIndex {
+        let index = self.add_const(Some(entity.clone()), cst);
+        if self.is_ctor {
+            pkg.add_member(entity, cst);
+        }
+        index
     }
 
     fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> EntIndex {
@@ -333,7 +352,7 @@ impl FunctionVal {
         self.emit_data(index);
         self.emit_code(Opcode::JUMP_IF);
         let mut cd = vec![
-            CodeData::Code(Opcode::PUSH_SHORT),
+            CodeData::Code(Opcode::PUSH_IMM),
             CodeData::Data(0 as OpIndex),
             CodeData::Code(Opcode::LOAD_FIELD),
             CodeData::Code(Opcode::PRE_CALL),
@@ -358,12 +377,17 @@ impl FunctionVal {
     }
 
     fn emit_binary_prim_call(&mut self, prim: PrimOps) {
-        self.code.push(CodeData::Code(Opcode::CALL_PRIM_2_1));
-        self.code.push(CodeData::Data(prim as OpIndex));
+        self.emit_code(Opcode::CALL_PRIM_2_1);
+        self.emit_data(prim as OpIndex);
     }
 
     fn emit_load_field(&mut self) {
         self.emit_code(Opcode::LOAD_FIELD);
+    }
+
+    fn emit_load_field_imm(&mut self, imm: OpIndex) {
+        self.emit_code(Opcode::LOAD_FIELD_IMM);
+        self.emit_data(imm);
     }
 
     fn emit_return(&mut self) {
@@ -449,8 +473,13 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_selector(&mut self, ident: &IdentKey) {
-        let sid = &self.ast_objs.idents[*ident];
-        dbg!(sid);
+        // todo: use index instead of string when Type Checker is in place
+        let name = self.ast_objs.idents[*ident].name.clone();
+        let gosval = GosValue::new_str(name, &mut self.objects);
+        let func = current_func_mut!(self);
+        let index = func.add_const(None, gosval);
+        func.emit_load(index);
+        func.emit_load_field();
     }
 
     fn visit_expr_index(&mut self) {
@@ -524,8 +553,15 @@ impl<'a> Visitor for CodeGen<'a> {
         for s in gdecl.specs.iter() {
             let spec = &self.ast_objs.specs[*s];
             match spec {
-                Spec::Import(_is) => {}
-                Spec::Type(_ts) => {}
+                Spec::Import(_is) => unimplemented!(),
+                Spec::Type(ts) => {
+                    let ident = self.ast_objs.idents[ts.name].clone();
+                    let ident_key = ident.entity.into_key();
+                    let typ = self.gen_type(&ts.typ);
+                    let func = current_func_mut!(self);
+                    let pkg = &mut self.objects.packages[func.package];
+                    func.add_const_def(ident_key.unwrap(), typ, pkg);
+                }
                 Spec::Value(vs) => {
                     if gdecl.token == Token::VAR {
                         let pos = self.ast_objs.idents[vs.names[0]].pos;
@@ -744,11 +780,8 @@ impl<'a> CodeGen<'a> {
             let val = self.value_from_basic_literal(typ.as_ref(), &values[i]);
             let func = current_func_mut!(self);
             let ident_key = ident.entity.into_key();
-            func.add_const(ident_key.clone(), val);
-            if func.is_ctor {
-                let pkg = &mut self.objects.packages[func.package];
-                pkg.add_member(ident_key.unwrap(), val);
-            }
+            let pkg = &mut self.objects.packages[func.package];
+            func.add_const_def(ident_key.unwrap(), val, pkg);
         }
     }
 
@@ -827,7 +860,7 @@ impl<'a> CodeGen<'a> {
         fkey
     }
 
-    pub fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
+    fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match typ {
             Some(type_expr) => match type_expr {
                 Expr::Array(_) | Expr::Map(_) | Expr::Struct(_) => {
@@ -839,7 +872,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn value_from_basic_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
+    fn value_from_basic_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match expr {
             Expr::BasicLit(lit) => self.get_const_value(typ, lit),
             _ => {
@@ -854,7 +887,7 @@ impl<'a> CodeGen<'a> {
 
     // this is a simplified version of Go's constant evaluation, which needs to be implemented
     // as part of the Type Checker
-    pub fn get_const_value(&mut self, typ: Option<&Expr>, blit: &BasicLit) -> GosValue {
+    fn get_const_value(&mut self, typ: Option<&Expr>, blit: &BasicLit) -> GosValue {
         let type_val = typ.as_ref().map(|e| self.get_type_default(e));
         if type_val.is_none() {
             match &blit.token {
@@ -912,25 +945,75 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn get_type_default(&self, expr: &Expr) -> GosValue {
+    fn gen_type(&mut self, expr: &Expr) -> GosValue {
         match expr {
-            Expr::Ident(idkey) => {
-                let id = &self.ast_objs.idents[*idkey.as_ref()];
-                GosValue::primitive_default(&id.name)
+            Expr::Ident(ikey) => {
+                let ident = &self.ast_objs.idents[*ikey.as_ref()];
+                match self.objects.basic_type(&ident.name) {
+                    Some(val) => val.clone(),
+                    None => {
+                        let func = current_func_mut!(self);
+                        let ident_key = ident.entity.clone().into_key().unwrap();
+                        func.const_val(&ident_key).clone()
+                    }
+                }
             }
-            _ => unimplemented!(),
+            Expr::Array(atype) => {
+                let vtype = self.gen_type(&atype.elt);
+                GosType::new_slice(vtype, &mut self.objects)
+            }
+            Expr::Map(mtype) => {
+                let ktype = self.gen_type(&mtype.key);
+                let vtype = self.gen_type(&mtype.val);
+                GosType::new_map(ktype, vtype, &mut self.objects)
+            }
+            Expr::Struct(stype) => {
+                let mut fields = Vec::new();
+                let mut map = HashMap::<String, usize>::new();
+                let mut i = 0;
+                for f in stype.fields.list.iter() {
+                    let field = &self.ast_objs.fields[*f];
+                    let typ = self.gen_type(&field.typ);
+                    for name in &field.names {
+                        fields.push(typ);
+                        map.insert(self.ast_objs.idents[*name].name.clone(), i);
+                        i += 1;
+                    }
+                }
+                GosType::new_struct(fields, map, &mut self.objects)
+            }
+            Expr::Interface(itype) => {
+                let methods = itype
+                    .methods
+                    .list
+                    .iter()
+                    .map(|x| {
+                        let field = &self.ast_objs.fields[*x];
+                        self.gen_type(&field.typ)
+                    })
+                    .collect();
+                GosType::new_interface(methods, &mut self.objects)
+            }
+            Expr::Chan(_ctype) => unimplemented!(),
+            _ => unreachable!(),
         }
     }
 
-    pub fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> GosValue {
-        dbg!(expr);
+    fn get_type_default(&mut self, expr: &Expr) -> GosValue {
+        let typ = self.gen_type(expr);
+        let typ_val = &self.objects.types[*typ.get_type()];
+        dbg!(typ_val);
+        typ_val.zero_val().clone()
+    }
+
+    fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> GosValue {
         match expr {
             Expr::CompositeLit(lit) => self.get_comp_value(typ, lit),
             _ => unreachable!(),
         }
     }
 
-    pub fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> GosValue {
+    fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> GosValue {
         match typ {
             Expr::Array(arr) => {
                 if arr.as_ref().len.is_some() {
@@ -962,7 +1045,8 @@ impl<'a> CodeGen<'a> {
                         }
                     })
                     .collect();
-                let map = self.objects.new_map(self.get_type_default(&map.val));
+                let val = self.get_type_default(&map.val);
+                let map = self.objects.new_map(val);
                 for kv in key_vals.iter() {
                     self.objects.maps[*map.get_map()].insert(kv.0, kv.1);
                 }
@@ -1021,7 +1105,7 @@ impl<'a> CodeGen<'a> {
         // import the 0th pkg and call the main function of the pkg
         let mut func = FunctionVal::new(slotmap::Key::null(), false);
         func.emit_import(0);
-        func.emit_code(Opcode::PUSH_SHORT);
+        func.emit_code(Opcode::PUSH_IMM);
         func.emit_data(-1);
         func.emit_load_field();
         func.emit_pre_call();

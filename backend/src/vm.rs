@@ -207,7 +207,7 @@ impl Fiber {
                 }
                 Opcode::PUSH_FALSE => stack.push(GosValue::Bool(false)),
                 Opcode::PUSH_TRUE => stack.push(GosValue::Bool(true)),
-                Opcode::PUSH_SHORT => {
+                Opcode::PUSH_IMM => {
                     let short = code[frame.pc].unwrap_data();
                     frame.pc += 1;
                     stack.push(GosValue::Int(*short as isize));
@@ -278,6 +278,17 @@ impl Fiber {
                             }
                         }
                         GosValue::Map(mkey) => (&objs.maps[*mkey]).get(ind).clone(),
+                        GosValue::Struct(skey) => {
+                            let sval = &objs.structs[*skey];
+                            match ind {
+                                GosValue::Int(i) => sval.fields[*i as usize],
+                                GosValue::Str(s) => {
+                                    let str_val = &objs.strings[*s];
+                                    sval.fields[sval.field_index(&str_val.data, objs) as usize]
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
                         GosValue::Package(pkey) => {
                             let pkg = &objs.packages[*pkey];
                             pkg.member(ind.get_int() as OpIndex)
@@ -286,6 +297,36 @@ impl Fiber {
                     };
                     stack[len - 2] = c;
                     stack.pop();
+                }
+                Opcode::LOAD_FIELD_IMM => {
+                    let len = stack.len();
+                    let val = &stack[len - 1];
+                    let index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let c = match val {
+                        GosValue::Slice(skey) => {
+                            let slice = &objs.slices[*skey];
+                            if let Some(v) = slice.get(*index as usize) {
+                                v
+                            } else {
+                                // todo: runtime error
+                                unimplemented!();
+                            }
+                        }
+                        GosValue::Map(mkey) => (&objs.maps[*mkey])
+                            .get(&GosValue::Int(*index as isize))
+                            .clone(),
+                        GosValue::Struct(skey) => {
+                            let sval = &objs.structs[*skey];
+                            sval.fields[*index as usize]
+                        }
+                        GosValue::Package(pkey) => {
+                            let pkg = &objs.packages[*pkey];
+                            pkg.member(*index as OpIndex)
+                        }
+                        _ => unreachable!(),
+                    };
+                    stack[len - 1] = c;
                 }
                 Opcode::STORE_UPVALUE | Opcode::STORE_UPVALUE_NT => {
                     let index = code[frame.pc].unwrap_data();
@@ -317,6 +358,24 @@ impl Fiber {
                         }
                         GosValue::Map(m) => {
                             objs.maps[*m].insert(key.clone(), val.clone());
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                Opcode::STORE_FIELD_IMM | Opcode::STORE_FIELD_IMM_NT => {
+                    let lhs_index = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let index = (stack.len() as i16 + lhs_index - 1) as usize;
+                    let store = stack.get(index).unwrap();
+                    let key = code[frame.pc].unwrap_data();
+                    frame.pc += 1;
+                    let val = get_value!(stack, code, frame, instruction, Opcode::STORE_FIELD_IMM);
+                    match store {
+                        GosValue::Slice(s) => {
+                            objs.slices[*s].set(*key as usize, val);
+                        }
+                        GosValue::Map(m) => {
+                            objs.maps[*m].insert(GosValue::Int(*key as isize), val.clone());
                         }
                         _ => unreachable!(),
                     }

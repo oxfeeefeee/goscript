@@ -1,0 +1,8 @@
+package main
+
+func main() {
+    type S struct {i float}
+	var s S
+    x := 1
+    j := s.i
+}
