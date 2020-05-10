@@ -382,6 +382,11 @@ impl Function {
         self.emit_code(Opcode::RETURN);
     }
 
+    fn emit_return_pkg_ctor(&mut self, vcount: usize) {
+        self.emit_code(Opcode::RETURN_PKG_CTOR);
+        self.emit_data(vcount as OpIndex);
+    }
+
     fn emit_pre_call(&mut self) {
         self.emit_code(Opcode::PRE_CALL);
     }
@@ -1126,10 +1131,7 @@ impl<'a> CodeGen<'a> {
             self.visit_decl(d)
         }
         let func = &mut self.objects.functions[fkey];
-        func.emit_return();
-        // set the return count as pkg's variable count, so that when the construction
-        // is finished running, the values are left on the stack
-        func.ret_count = self.objects.packages[pkey].var_count();
+        func.emit_return_pkg_ctor(self.objects.packages[pkey].var_count());
         self.func_stack.pop();
     }
 

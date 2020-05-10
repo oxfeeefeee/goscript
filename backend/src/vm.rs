@@ -489,7 +489,7 @@ impl Fiber {
                     }
                     stack.pop();
                 }
-                Opcode::RETURN => {
+                Opcode::RETURN | Opcode::RETURN_PKG_CTOR => {
                     // first handle upvalues in 2 steps:
                     // 1. clean up any referred_by created by this frame
                     match frame.callable {
@@ -530,7 +530,11 @@ impl Fiber {
                         }
                     }
 
-                    let ret_count = frame.ret_count(objs);
+                    let mut ret_count = frame.ret_count(objs);
+                    if *instruction == Opcode::RETURN_PKG_CTOR {
+                        ret_count = *code[frame.pc].unwrap_data() as usize;
+                        frame.pc += 1;
+                    }
                     drop(frame);
                     self.frames.pop();
                     dbg!(&stack);
