@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
-pub use super::code_gen::{FunctionVal, InterfaceDefVal, PackageVal, StructDefVal};
+pub use super::code_gen::{Function, Package};
 use super::opcode::OpIndex;
 pub use super::vm::ClosureVal;
 
@@ -34,10 +34,11 @@ pub struct Objects {
     pub structs: DenseSlotMap<StructKey, StructVal>,
     pub channels: DenseSlotMap<ChannelKey, ChannelVal>,
     pub boxed: DenseSlotMap<BoxedKey, GosValue>,
-    pub functions: DenseSlotMap<FunctionKey, FunctionVal>,
-    pub packages: DenseSlotMap<PackageKey, PackageVal>,
+    pub functions: DenseSlotMap<FunctionKey, Function>,
+    pub packages: DenseSlotMap<PackageKey, Package>,
     pub types: DenseSlotMap<TypeKey, GosType>,
     pub basic_types: HashMap<&'static str, GosValue>,
+    pub default_closure_type: Option<GosValue>,
 }
 
 impl Objects {
@@ -55,6 +56,7 @@ impl Objects {
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             types: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             basic_types: HashMap::new(),
+            default_closure_type: None,
         };
         let btype = GosType::new_bool(&mut objs);
         objs.basic_types.insert("bool", btype);
@@ -65,6 +67,7 @@ impl Objects {
         objs.basic_types.insert("float64", ftype);
         let stype = GosType::new_str(&mut objs);
         objs.basic_types.insert("string", stype);
+        objs.default_closure_type = Some(GosType::new_closure(vec![], vec![], &mut objs));
         objs
     }
 
@@ -125,7 +128,7 @@ pub enum GosValue {
     Struct(StructKey),
     Channel(ChannelKey),
     Boxed(BoxedKey),
-    // below are not visible to users
+    // below are not visible to users, they are "values" not "variables"
     Function(FunctionKey),
     Package(PackageKey),
     Type(TypeKey),
@@ -245,10 +248,20 @@ pub enum GosTypeData {
     Boxed(GosValue),
 }
 
+impl GosTypeData {
+    pub fn closure_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
+        if let GosTypeData::Closure(params, returns) = self {
+            (params, returns)
+        } else {
+            unreachable!();
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GosType {
-    zero_val: GosValue,
-    data: GosTypeData,
+    pub zero_val: GosValue,
+    pub data: GosTypeData,
 }
 
 impl GosType {
@@ -284,10 +297,14 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_closure(args: Vec<GosValue>, rets: Vec<GosValue>, objs: &mut Objects) -> GosValue {
+    pub fn new_closure(
+        params: Vec<GosValue>,
+        results: Vec<GosValue>,
+        objs: &mut Objects,
+    ) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Closure(slotmap::Key::null()),
-            data: GosTypeData::Closure(args, rets),
+            data: GosTypeData::Closure(params, results),
         };
         GosValue::Type(objs.types.insert(typ))
     }

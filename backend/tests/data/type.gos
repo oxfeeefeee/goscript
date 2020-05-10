@@ -2,15 +2,24 @@ package main
 
 type S1 struct {i int}
 
+type Add func(a int, b int) int
+
+
 func main() {
     type S2 struct {i int}
 	var s1 S1
     var s2 S2
+
+    var afunc Add = func(i int, j int) int { return i + j}
+
     s1.i = 1
     s2.i = s1.i + 2
 
     _, a := 2, s2.i
-    b, s2.i := 8, 9
+    var b int
+    b, s2.i = 8, 9
     c := s2.i
+    d := afunc(b, c)
+    var e int
 }
 // 3, 8, 9

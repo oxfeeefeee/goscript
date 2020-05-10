@@ -25,9 +25,9 @@ macro_rules! current_func_mut {
 }
 
 // ----------------------------------------------------------------------------
-// PackageVal
+// Package
 #[derive(Clone, Debug)]
-pub struct PackageVal {
+pub struct Package {
     name: String,
     members: Vec<GosValue>, // imports, const, var, func are all stored here
     member_indices: HashMap<EntityKey, OpIndex>,
@@ -36,9 +36,9 @@ pub struct PackageVal {
     var_mapping: Option<HashMap<OpIndex, OpIndex>>,
 }
 
-impl PackageVal {
-    fn new(name: String) -> PackageVal {
-        PackageVal {
+impl Package {
+    fn new(name: String) -> Package {
+        Package {
             name: name,
             members: Vec::new(),
             member_indices: HashMap::new(),
@@ -104,16 +104,6 @@ impl PackageVal {
 }
 
 // ----------------------------------------------------------------------------
-// StructDefVal
-#[derive(Clone, Debug)]
-pub struct StructDefVal {}
-
-// ----------------------------------------------------------------------------
-// InterfaceDefVal
-#[derive(Clone, Debug)]
-pub struct InterfaceDefVal {}
-
-// ----------------------------------------------------------------------------
 // LeftHandSide
 
 #[derive(Clone, Debug)]
@@ -146,14 +136,17 @@ impl From<EntIndex> for OpIndex {
 }
 
 // ----------------------------------------------------------------------------
-// FunctionVal
+// Function
 
 #[derive(Clone, Debug)]
-pub struct FunctionVal {
+pub struct Function {
     pub package: PackageKey,
+    pub typ: TypeKey,
     pub code: Vec<CodeData>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<UpValue>,
+    // param_count, ret_count can be read from typ,
+    // these fields are for faster access
     param_count: usize,
     ret_count: usize,
     entities: HashMap<EntityKey, EntIndex>,
@@ -161,10 +154,11 @@ pub struct FunctionVal {
     is_ctor: bool,
 }
 
-impl FunctionVal {
-    fn new(package: PackageKey, ctor: bool) -> FunctionVal {
-        FunctionVal {
+impl Function {
+    fn new(package: PackageKey, typ: TypeKey, ctor: bool) -> Function {
+        Function {
             package: package,
+            typ: typ,
             code: Vec::new(),
             consts: Vec::new(),
             up_ptrs: Vec::new(),
@@ -214,12 +208,7 @@ impl FunctionVal {
         EntIndex::Const(result)
     }
 
-    fn add_const_def(
-        &mut self,
-        entity: EntityKey,
-        cst: GosValue,
-        pkg: &mut PackageVal,
-    ) -> EntIndex {
+    fn add_const_def(&mut self, entity: EntityKey, cst: GosValue, pkg: &mut Package) -> EntIndex {
         let index = self.add_const(Some(entity.clone()), cst);
         if self.is_ctor {
             pkg.add_member(entity, cst);
@@ -845,7 +834,8 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
-        let mut func = FunctionVal::new(self.current_pkg.clone(), false);
+        let ftype = self.get_or_gen_type(&Expr::Func(Box::new(typ.clone())));
+        let mut func = Function::new(self.current_pkg.clone(), *ftype.get_type(), false);
         func.ret_count = match &typ.results {
             Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
             None => 0,
@@ -1006,6 +996,29 @@ impl<'a> CodeGen<'a> {
                     .collect();
                 GosType::new_interface(methods, &mut self.objects)
             }
+            Expr::Func(ftype) => {
+                let params: Vec<GosValue> = ftype
+                    .params
+                    .list
+                    .iter()
+                    .map(|x| {
+                        let field = &self.ast_objs.fields[*x];
+                        self.get_or_gen_type(&field.typ)
+                    })
+                    .collect();
+                let results: Vec<GosValue> = match &ftype.results {
+                    Some(re) => re
+                        .list
+                        .iter()
+                        .map(|x| {
+                            let field = &self.ast_objs.fields[*x];
+                            self.get_or_gen_type(&field.typ)
+                        })
+                        .collect(),
+                    None => Vec::new(),
+                };
+                GosType::new_closure(params, results, &mut self.objects)
+            }
             Expr::Chan(_ctype) => unimplemented!(),
             _ => unreachable!(),
         }
@@ -1095,10 +1108,10 @@ impl<'a> CodeGen<'a> {
 
     fn gen(&mut self, f: File) {
         let pkg_name = &self.ast_objs.idents[f.name].name;
-        let pkg_val = PackageVal::new(pkg_name.clone());
+        let pkg_val = Package::new(pkg_name.clone());
         let pkey = self.objects.packages.insert(pkg_val);
-
-        let ctor_func = FunctionVal::new(pkey, true);
+        let ftype = self.objects.default_closure_type.unwrap();
+        let ctor_func = Function::new(pkey, *ftype.get_type(), true);
         let fkey = self.objects.functions.insert(ctor_func);
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(slotmap::Key::null(), GosValue::Function(fkey));
@@ -1123,7 +1136,8 @@ impl<'a> CodeGen<'a> {
     // generate the entry function for ByteCode
     fn gen_entry(&mut self) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
-        let mut func = FunctionVal::new(slotmap::Key::null(), false);
+        let ftype = self.objects.default_closure_type.unwrap();
+        let mut func = Function::new(slotmap::Key::null(), *ftype.get_type(), false);
         func.emit_import(0);
         func.emit_code(Opcode::PUSH_IMM);
         func.emit_data(-1);

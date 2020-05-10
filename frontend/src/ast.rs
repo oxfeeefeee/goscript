@@ -623,7 +623,7 @@ pub struct StructType {
 // Pointer types are represented via StarExpr nodes.
 
 // A FuncType node represents a function type.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FuncType {
     pub func: Option<position::Pos>,
     pub params: FieldList,
@@ -982,7 +982,7 @@ impl Node for Field {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FieldList {
     pub openning: Option<position::Pos>,
     pub list: Vec<FieldKey>,

@@ -2,7 +2,7 @@
 Go specs implemented as a scripting language in Rust.
 
 ### The Goal
-+ To be full compatible with Go, i.e. to be able to run any valid Go code.(But only a subset of functionalities will be supported in version 0.1)
++ To be full compatible with Go, i.e. to be able to run any valid Go code.(But only a subset of features will be supported in version 0.1)
 
 ### Use Cases
 + As an embedded language like Lua.

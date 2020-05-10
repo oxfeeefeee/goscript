@@ -9,7 +9,9 @@ func funcb(i int, iii int) (a int, b int) {
     fff := 4
     fff = 5
     fff = fff + 100 + i + funca(fff)
-    return fff, fff
+    //a = fff
+    b = fff
+    return
 }
 
 
@@ -17,4 +19,4 @@ func main() {
     re, re2 := funcb(3, 4)
 } 
 
-//121, 121
+//0, 121

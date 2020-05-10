@@ -93,7 +93,6 @@ struct CallFrame {
     callable: Callable,
     pc: usize,
     stack_base: usize,
-    ret_count: usize,
     // closures that have upvalues pointing to this frame
     referred_by: Option<HashMap<OpIndex, Vec<ClosureKey>>>,
 }
@@ -104,7 +103,6 @@ impl CallFrame {
             callable: Callable::Function(fkey),
             pc: 0,
             stack_base: sbase,
-            ret_count: 0,
             referred_by: None,
         }
     }
@@ -114,7 +112,6 @@ impl CallFrame {
             callable: Callable::Closure(ckey),
             pc: 0,
             stack_base: sbase,
-            ret_count: 0,
             referred_by: None,
         }
     }
@@ -151,6 +148,10 @@ impl CallFrame {
                 break;
             }
         }
+    }
+
+    fn ret_count(&self, objs: &VMObjects) -> usize {
+        self.callable.ret_count(objs)
     }
 }
 
@@ -441,12 +442,18 @@ impl Fiber {
                     let val = stack.last().unwrap();
                     let sbase = stack.len() - 1;
                     let frame = CallFrame::new_with_gos_value(val, sbase);
-                    let ret_count = frame.callable.ret_count(objs);
+                    let ret_count = frame.ret_count(objs);
+                    let func_key = frame.callable.get_func(&objs);
                     self.next_frame = Some(frame);
                     stack.pop();
-                    // placeholders for return values
-                    for _ in 0..ret_count {
-                        stack.push(GosValue::Nil)
+                    // init return values
+                    if ret_count > 0 {
+                        let type_key = objs.functions[func_key].typ;
+                        let type_data = &objs.types[type_key].data;
+                        let (_, returns) = type_data.closure_type_data();
+                        for r in returns.iter() {
+                            stack.push(r.get_type_val(&objs).zero_val.clone())
+                        }
                     }
                 }
                 Opcode::CALL => {
@@ -454,9 +461,7 @@ impl Fiber {
                     frame = self.frames.last_mut().unwrap();
                     stack_base = frame.stack_base;
                     func = &objs.functions[frame.callable.get_func(objs)];
-                    // for recovering the stack when it returns
-                    frame.ret_count = func.ret_count();
-                    // allocate local variables
+                    // allocate placeholders for local variables
                     for _ in 0..func.local_count() {
                         stack.push(GosValue::Nil);
                     }
@@ -525,7 +530,7 @@ impl Fiber {
                         }
                     }
 
-                    let ret_count = frame.ret_count;
+                    let ret_count = frame.ret_count(objs);
                     drop(frame);
                     self.frames.pop();
                     dbg!(&stack);
