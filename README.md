@@ -21,7 +21,7 @@ Go specs implemented as a scripting language in Rust.
 ### Progress
 + The parser is basically finished, we still need to port the Type Checker.
 + You can take a look at [here](https://github.com/oxfeeefeee/goscript/tree/master/backend/tests/data) to see what it can run for now.
-+ It shoud be able to run leetcode answers sooooon, with 3 major tasks left to do: TypeChecker, GC, API.
++ It should be able to run leetcode answers sooooon, with 4 major tasks left to do: TypeChecker, GC, Library, API. If anyone is interested in becoming a co-author, pick one(or more) of those above :)
 
 ### Join us
 + If you like the idea, and would like to help, please contact oxfeeefeee at gmail.

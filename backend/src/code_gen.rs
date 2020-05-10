@@ -188,8 +188,7 @@ impl FunctionVal {
         self.entities.get(entity).unwrap().clone()
     }
 
-    fn const_val(&self, entity: &EntityKey) -> &GosValue {
-        let index: OpIndex = self.entity_index(entity).into();
+    fn const_val(&self, index: OpIndex) -> &GosValue {
         &self.consts[index as usize]
     }
 
@@ -553,7 +552,7 @@ impl<'a> Visitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
-                    let typ = self.gen_type(&ts.typ);
+                    let typ = self.get_or_gen_type(&ts.typ);
                     let func = current_func_mut!(self);
                     let pkg = &mut self.objects.packages[func.package];
                     func.add_const_def(ident_key.unwrap(), typ, pkg);
@@ -949,26 +948,35 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_type(&mut self, expr: &Expr) -> GosValue {
+    fn get_or_gen_type(&mut self, expr: &Expr) -> GosValue {
         match expr {
             Expr::Ident(ikey) => {
                 let ident = &self.ast_objs.idents[*ikey.as_ref()];
                 match self.objects.basic_type(&ident.name) {
                     Some(val) => val.clone(),
                     None => {
-                        let func = current_func_mut!(self);
-                        let ident_key = ident.entity.clone().into_key().unwrap();
-                        func.const_val(&ident_key).clone()
+                        let i = self.resolve_ident(ikey);
+                        match i {
+                            EntIndex::Const(i) => {
+                                let func = current_func_mut!(self);
+                                func.const_val(i.into()).clone()
+                            }
+                            EntIndex::PackageMember(i) => {
+                                let pkg = &self.objects.packages[self.current_pkg];
+                                pkg.member(i)
+                            }
+                            _ => unreachable!(),
+                        }
                     }
                 }
             }
             Expr::Array(atype) => {
-                let vtype = self.gen_type(&atype.elt);
+                let vtype = self.get_or_gen_type(&atype.elt);
                 GosType::new_slice(vtype, &mut self.objects)
             }
             Expr::Map(mtype) => {
-                let ktype = self.gen_type(&mtype.key);
-                let vtype = self.gen_type(&mtype.val);
+                let ktype = self.get_or_gen_type(&mtype.key);
+                let vtype = self.get_or_gen_type(&mtype.val);
                 GosType::new_map(ktype, vtype, &mut self.objects)
             }
             Expr::Struct(stype) => {
@@ -977,7 +985,7 @@ impl<'a> CodeGen<'a> {
                 let mut i = 0;
                 for f in stype.fields.list.iter() {
                     let field = &self.ast_objs.fields[*f];
-                    let typ = self.gen_type(&field.typ);
+                    let typ = self.get_or_gen_type(&field.typ);
                     for name in &field.names {
                         fields.push(typ);
                         map.insert(self.ast_objs.idents[*name].name.clone(), i);
@@ -993,7 +1001,7 @@ impl<'a> CodeGen<'a> {
                     .iter()
                     .map(|x| {
                         let field = &self.ast_objs.fields[*x];
-                        self.gen_type(&field.typ)
+                        self.get_or_gen_type(&field.typ)
                     })
                     .collect();
                 GosType::new_interface(methods, &mut self.objects)
@@ -1004,7 +1012,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> GosValue {
-        let typ = self.gen_type(expr);
+        let typ = self.get_or_gen_type(expr);
         let typ_val = &self.objects.types[*typ.get_type()];
         dbg!(typ_val);
         typ_val.zero_val().clone()

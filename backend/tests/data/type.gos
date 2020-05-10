@@ -1,12 +1,16 @@
 package main
 
-func main() {
-    type S struct {i int}
-	var s S
-    //x := 1
+type S1 struct {i int}
 
-    a := s.i
-    s.i = 8
-    b := s.i
+func main() {
+    type S2 struct {i int}
+	var s1 S1
+    var s2 S2
+    s1.i = 1
+    s2.i = s1.i + 2
+
+    _, a := 2, s2.i
+    b, s2.i := 8, 9
+    c := s2.i
 }
-// 0, 8
+// 3, 8, 9
