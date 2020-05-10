@@ -359,6 +359,19 @@ impl Fiber {
                         GosValue::Map(m) => {
                             objs.maps[*m].insert(key.clone(), val.clone());
                         }
+                        GosValue::Struct(s) => {
+                            match key {
+                                GosValue::Int(i) => {
+                                    objs.structs[*s].fields[*i as usize] = val.clone()
+                                }
+                                GosValue::Str(skey) => {
+                                    let str_val = &objs.strings[*skey];
+                                    let i = objs.structs[*s].field_index(&str_val.data, objs);
+                                    objs.structs[*s].fields[i as usize] = val.clone();
+                                }
+                                _ => unreachable!(),
+                            };
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -376,6 +389,9 @@ impl Fiber {
                         }
                         GosValue::Map(m) => {
                             objs.maps[*m].insert(GosValue::Int(*key as isize), val.clone());
+                        }
+                        GosValue::Struct(s) => {
+                            objs.structs[*s].fields[index] = val.clone();
                         }
                         _ => unreachable!(),
                     }

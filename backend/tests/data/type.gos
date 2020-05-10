@@ -1,8 +1,12 @@
 package main
 
 func main() {
-    type S struct {i float}
+    type S struct {i int}
 	var s S
-    x := 1
-    j := s.i
+    //x := 1
+
+    a := s.i
+    s.i = 8
+    b := s.i
 }
+// 0, 8

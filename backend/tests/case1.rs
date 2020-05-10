@@ -59,7 +59,11 @@ fn test_map1() {
 
 #[test]
 fn test_pkg() {
-    println!("size {}", std::mem::size_of::<be::types::GosValue>());
+    println!(
+        "size {} {}",
+        std::mem::size_of::<be::types::GosValue>(),
+        std::mem::size_of::<be::types::InterfaceKey>()
+    );
     let _err_cnt = load_parse_gen("./tests/data/pkg.gos", true);
 }
 

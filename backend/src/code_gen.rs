@@ -117,9 +117,9 @@ pub struct InterfaceDefVal {}
 // LeftHandSide
 
 #[derive(Clone, Debug)]
-pub enum LeftHandSide {
+enum LeftHandSide {
     Primitive(EntIndex),
-    IndexExpr(OpIndex),
+    IndexSelExpr(OpIndex),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -332,7 +332,7 @@ impl FunctionVal {
                     }
                 }
             },
-            LeftHandSide::IndexExpr(i) => {
+            LeftHandSide::IndexSelExpr(i) => {
                 let code = if stack_index == 0 {
                     Opcode::STORE_FIELD
                 } else {
@@ -474,12 +474,8 @@ impl<'a> Visitor for CodeGen<'a> {
 
     fn visit_expr_selector(&mut self, ident: &IdentKey) {
         // todo: use index instead of string when Type Checker is in place
-        let name = self.ast_objs.idents[*ident].name.clone();
-        let gosval = GosValue::new_str(name, &mut self.objects);
-        let func = current_func_mut!(self);
-        let index = func.add_const(None, gosval);
-        func.emit_load(index);
-        func.emit_load_field();
+        self.gen_push_ident_str(ident);
+        current_func_mut!(self).emit_load_field();
     }
 
     fn visit_expr_index(&mut self) {
@@ -626,7 +622,12 @@ impl<'a> Visitor for CodeGen<'a> {
                 Expr::Index(ind_expr) => {
                     self.visit_expr(&ind_expr.as_ref().expr);
                     self.visit_expr(&ind_expr.as_ref().index);
-                    LeftHandSide::IndexExpr(0) // the true index will be calculated later
+                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
+                }
+                Expr::Selector(sexpr) => {
+                    self.visit_expr(&sexpr.expr);
+                    self.gen_push_ident_str(&sexpr.sel);
+                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
                 }
                 _ => unreachable!(),
             })
@@ -819,7 +820,7 @@ impl<'a> CodeGen<'a> {
         let func = current_func_mut!(self);
         let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
             LeftHandSide::Primitive(_) => acc,
-            LeftHandSide::IndexExpr(_) => acc + 2,
+            LeftHandSide::IndexSelExpr(_) => acc + 2,
         });
         let total_rhs_val = lhs.len() as i16;
         let total_val = (total_lhs_val + total_rhs_val) as i16;
@@ -830,8 +831,11 @@ impl<'a> CodeGen<'a> {
                 LeftHandSide::Primitive(_) => {
                     func.emit_store(l, val_index);
                 }
-                LeftHandSide::IndexExpr(_) => {
-                    func.emit_store(&LeftHandSide::IndexExpr(current_indexing_index), val_index);
+                LeftHandSide::IndexSelExpr(_) => {
+                    func.emit_store(
+                        &LeftHandSide::IndexSelExpr(current_indexing_index),
+                        val_index,
+                    );
                     current_indexing_index += 2;
                 }
             }
@@ -1054,6 +1058,14 @@ impl<'a> CodeGen<'a> {
             }
             _ => unimplemented!(),
         }
+    }
+
+    fn gen_push_ident_str(&mut self, ident: &IdentKey) {
+        let name = self.ast_objs.idents[*ident].name.clone();
+        let gosval = GosValue::new_str(name, &mut self.objects);
+        let func = current_func_mut!(self);
+        let index = func.add_const(None, gosval);
+        func.emit_load(index);
     }
 
     fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
