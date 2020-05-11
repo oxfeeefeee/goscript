@@ -6,6 +6,7 @@ func funca(i int) int {
 }
 
 func funcb(i int, iii int) (a int, b int) {
+    
     fff := 4
     fff = 5
     fff = fff + 100 + i + funca(fff)
@@ -16,7 +17,7 @@ func funcb(i int, iii int) (a int, b int) {
 
 
 func main() {
-    re, re2 := funcb(3, 4)
+    var re, r2 = funcb(3, 4)
 } 
 
 //0, 121

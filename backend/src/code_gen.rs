@@ -1,7 +1,6 @@
 #![allow(dead_code)]
-#[macro_use]
+
 use super::opcode::*;
-use super::prim_ops::PrimOps;
 use super::types::Objects as VMObjects;
 use super::types::*;
 use super::vm::UpValue;
@@ -110,6 +109,7 @@ impl Package {
 enum LeftHandSide {
     Primitive(EntIndex),
     IndexSelExpr(OpIndex),
+    Deref(OpIndex),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -147,8 +147,8 @@ pub struct Function {
     pub up_ptrs: Vec<UpValue>,
     // param_count, ret_count can be read from typ,
     // these fields are for faster access
-    param_count: usize,
-    ret_count: usize,
+    pub param_count: usize,
+    pub ret_count: usize,
     entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
     is_ctor: bool,
@@ -169,11 +169,6 @@ impl Function {
             is_ctor: ctor,
         }
     }
-
-    pub fn ret_count(&self) -> usize {
-        self.ret_count
-    }
-
     pub fn local_count(&self) -> usize {
         self.local_alloc as usize - self.param_count - self.ret_count
     }
@@ -332,6 +327,18 @@ impl Function {
                     self.code.push(CodeData::Data(stack_index));
                 }
             }
+            LeftHandSide::Deref(i) => {
+                let code = if stack_index == 0 {
+                    Opcode::STORE_DEREF
+                } else {
+                    Opcode::STORE_DEREF_NT
+                };
+                self.code.push(CodeData::Code(code));
+                self.code.push(CodeData::Data(*i));
+                if stack_index < 0 {
+                    self.code.push(CodeData::Data(stack_index));
+                }
+            }
         }
     }
 
@@ -345,8 +352,6 @@ impl Function {
             CodeData::Code(Opcode::LOAD_FIELD),
             CodeData::Code(Opcode::PRE_CALL),
             CodeData::Code(Opcode::CALL),
-            CodeData::Code(Opcode::INIT_PKG),
-            CodeData::Data(index),
         ];
         self.emit_data(cd.len() as OpIndex);
         self.code.append(&mut cd);
@@ -364,11 +369,6 @@ impl Function {
         self.emit_code(Opcode::POP);
     }
 
-    fn emit_binary_prim_call(&mut self, prim: PrimOps) {
-        self.emit_code(Opcode::CALL_PRIM_2_1);
-        self.emit_data(prim as OpIndex);
-    }
-
     fn emit_load_field(&mut self) {
         self.emit_code(Opcode::LOAD_FIELD);
     }
@@ -382,9 +382,9 @@ impl Function {
         self.emit_code(Opcode::RETURN);
     }
 
-    fn emit_return_pkg_ctor(&mut self, vcount: usize) {
-        self.emit_code(Opcode::RETURN_PKG_CTOR);
-        self.emit_data(vcount as OpIndex);
+    fn emit_return_init_pkg(&mut self, index: OpIndex) {
+        self.emit_code(Opcode::RETURN_INIT_PKG);
+        self.emit_data(index);
     }
 
     fn emit_pre_call(&mut self) {
@@ -430,7 +430,7 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_load(index);
     }
 
-    fn visit_expr_option(&mut self, op: &Option<Expr>) {
+    fn visit_expr_option(&mut self, _op: &Option<Expr>) {
         unimplemented!();
     }
 
@@ -490,20 +490,26 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_star(&mut self) {
-        unimplemented!();
+        //todo: could this be a pointer type?
+        let code = Opcode::DEREF;
+        current_func_mut!(self).emit_code(code);
     }
 
     fn visit_expr_unary(&mut self, op: &Token) {
-        unimplemented!();
+        let code = match op {
+            Token::AND => Opcode::REF,
+            _ => unimplemented!(),
+        };
+        current_func_mut!(self).emit_code(code);
     }
 
     fn visit_expr_binary(&mut self, op: &Token) {
-        let primi = match op {
-            Token::ADD => PrimOps::Add,
-            Token::SUB => PrimOps::Sub,
+        let code = match op {
+            Token::ADD => Opcode::ADD,
+            Token::SUB => Opcode::SUB,
             _ => unimplemented!(),
         };
-        current_func_mut!(self).emit_binary_prim_call(primi);
+        current_func_mut!(self).emit_code(code);
     }
 
     fn visit_expr_key_value(&mut self) {
@@ -518,15 +524,15 @@ impl<'a> Visitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_struct_type(&mut self, s: &StructType) {
+    fn visit_expr_struct_type(&mut self, _s: &StructType) {
         unimplemented!();
     }
 
-    fn visit_expr_func_type(&mut self, s: &FuncType) {
+    fn visit_expr_func_type(&mut self, _s: &FuncType) {
         unimplemented!();
     }
 
-    fn visit_expr_interface_type(&mut self, s: &InterfaceType) {
+    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) {
         unimplemented!();
     }
 
@@ -534,7 +540,7 @@ impl<'a> Visitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_chan_type(&mut self, dir: &ChanDir) {
+    fn visit_chan_type(&mut self, _dir: &ChanDir) {
         unimplemented!();
     }
 
@@ -588,15 +594,15 @@ impl<'a> Visitor for CodeGen<'a> {
         }
     }
 
-    fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
+    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) {
         unimplemented!();
     }
 
-    fn visit_stmt_send(&mut self, sstmt: &SendStmt) {
+    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
+    fn visit_stmt_incdec(&mut self, _idcstmt: &IncDecStmt) {
         unimplemented!();
     }
 
@@ -622,17 +628,21 @@ impl<'a> Visitor for CodeGen<'a> {
                     self.gen_push_ident_str(&sexpr.sel);
                     LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
                 }
+                Expr::Star(sexpr) => {
+                    self.visit_expr(&sexpr.expr);
+                    LeftHandSide::Deref(0) // the true index will be calculated later
+                }
                 _ => unreachable!(),
             })
             .collect();
         self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
     }
 
-    fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
+    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_defer(&mut self, dstmt: &DeferStmt) {
+    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {
         unimplemented!();
     }
 
@@ -649,7 +659,7 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_return();
     }
 
-    fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
+    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) {
         unimplemented!();
     }
 
@@ -660,35 +670,35 @@ impl<'a> Visitor for CodeGen<'a> {
         }
     }
 
-    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
+    fn visit_stmt_if(&mut self, _ifstmt: &IfStmt) {
         //dbg!(ifstmt);
     }
 
-    fn visit_stmt_case(&mut self, cclause: &CaseClause) {
+    fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
         unimplemented!();
     }
 
-    fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
+    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
+    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_comm(&mut self, cclause: &CommClause) {
+    fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
         unimplemented!();
     }
 
-    fn visit_stmt_select(&mut self, sstmt: &SelectStmt) {
+    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
+    fn visit_stmt_for(&mut self, _fstmt: &ForStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
+    fn visit_stmt_range(&mut self, _rstmt: &RangeStmt) {
         unimplemented!();
     }
 }
@@ -814,6 +824,7 @@ impl<'a> CodeGen<'a> {
         let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
             LeftHandSide::Primitive(_) => acc,
             LeftHandSide::IndexSelExpr(_) => acc + 2,
+            LeftHandSide::Deref(_) => acc + 1,
         });
         let total_rhs_val = lhs.len() as i16;
         let total_val = (total_lhs_val + total_rhs_val) as i16;
@@ -830,6 +841,10 @@ impl<'a> CodeGen<'a> {
                         val_index,
                     );
                     current_indexing_index += 2;
+                }
+                LeftHandSide::Deref(_) => {
+                    func.emit_store(&LeftHandSide::Deref(current_indexing_index), val_index);
+                    current_indexing_index += 1;
                 }
             }
         }
@@ -893,7 +908,9 @@ impl<'a> CodeGen<'a> {
                 Token::FLOAT(f) => GosValue::Float64(f.parse::<f64>().unwrap()),
                 Token::IMAG(_) => unimplemented!(),
                 Token::CHAR(c) => GosValue::Int(c.chars().skip(1).next().unwrap() as isize),
-                Token::STRING(s) => GosValue::new_str(s.to_string(), &mut self.objects),
+                Token::STRING(s) => {
+                    GosValue::new_str(s[1..s.len() - 1].to_string(), &mut self.objects.strings)
+                }
                 _ => unreachable!(),
             }
         } else {
@@ -933,7 +950,7 @@ impl<'a> CodeGen<'a> {
                     GosValue::Float64(c.chars().skip(1).next().unwrap() as isize as f64)
                 }
                 (GosValue::Str(_), Token::STRING(s)) => {
-                    GosValue::new_str(s.to_string(), &mut self.objects)
+                    GosValue::new_str(s.to_string(), &mut self.objects.strings)
                 }
                 (_, _) => {
                     self.errors.add_str(blit.pos, "invalid constant literal");
@@ -1055,7 +1072,7 @@ impl<'a> CodeGen<'a> {
                     .iter()
                     .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
                     .collect();
-                let slice = self.objects.new_slice(literal.elts.len());
+                let slice = GosValue::new_slice(literal.elts.len(), &mut self.objects.slices);
                 let slice_val = &mut self.objects.slices[*slice.get_slice()];
                 slice_val.append(&mut vals);
                 slice
@@ -1076,7 +1093,7 @@ impl<'a> CodeGen<'a> {
                     })
                     .collect();
                 let val = self.get_type_default(&map.val);
-                let map = self.objects.new_map(val);
+                let map = GosValue::new_map(val, &mut self.objects);
                 for kv in key_vals.iter() {
                     self.objects.maps[*map.get_map()].insert(kv.0, kv.1);
                 }
@@ -1088,7 +1105,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_push_ident_str(&mut self, ident: &IdentKey) {
         let name = self.ast_objs.idents[*ident].name.clone();
-        let gosval = GosValue::new_str(name, &mut self.objects);
+        let gosval = GosValue::new_str(name, &mut self.objects.strings);
         let func = current_func_mut!(self);
         let index = func.add_const(None, gosval);
         func.emit_load(index);
@@ -1131,7 +1148,7 @@ impl<'a> CodeGen<'a> {
             self.visit_decl(d)
         }
         let func = &mut self.objects.functions[fkey];
-        func.emit_return_pkg_ctor(self.objects.packages[pkey].var_count());
+        func.emit_return_init_pkg(index);
         self.func_stack.pop();
     }
 

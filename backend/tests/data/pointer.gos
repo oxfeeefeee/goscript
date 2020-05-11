@@ -1,0 +1,16 @@
+package main
+
+type Node struct{
+    i int
+    j int
+}
+
+func main() {
+    var a = "aa"
+    var b = "bb"
+    var c = a + b
+    var d = &c
+    var arr = []int{6,7}
+    i, *d, j := 8, "ccc", arr[0]
+    var e = *d
+}

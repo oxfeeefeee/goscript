@@ -71,3 +71,8 @@ fn test_pkg() {
 fn test_type() {
     let _err_cnt = load_parse_gen("./tests/data/type.gos", true);
 }
+
+#[test]
+fn test_pointer() {
+    let _err_cnt = load_parse_gen("./tests/data/pointer.gos", true);
+}

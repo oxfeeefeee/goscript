@@ -3,6 +3,7 @@
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -24,19 +25,31 @@ new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 new_key_type! { pub struct TypeKey; }
 
+pub type InterfaceObjs = DenseSlotMap<InterfaceKey, InterfaceVal>;
+pub type ClosureObjs = DenseSlotMap<ClosureKey, ClosureVal>;
+pub type StringObjs = DenseSlotMap<StringKey, StringVal>;
+pub type SliceObjs = DenseSlotMap<SliceKey, SliceVal>;
+pub type MapObjs = DenseSlotMap<MapKey, MapVal>;
+pub type StructObjs = DenseSlotMap<StructKey, StructVal>;
+pub type ChannelObjs = DenseSlotMap<ChannelKey, ChannelVal>;
+pub type BoxedObjs = DenseSlotMap<BoxedKey, GosValue>;
+pub type FunctionObjs = DenseSlotMap<FunctionKey, Function>;
+pub type PackageObjs = DenseSlotMap<PackageKey, Package>;
+pub type TypeObjs = DenseSlotMap<TypeKey, GosType>;
+
 #[derive(Clone, Debug)]
 pub struct Objects {
-    pub interfaces: DenseSlotMap<InterfaceKey, InterfaceVal>,
-    pub closures: DenseSlotMap<ClosureKey, ClosureVal>,
-    pub strings: DenseSlotMap<StringKey, StringVal>,
-    pub slices: DenseSlotMap<SliceKey, SliceVal>,
-    pub maps: DenseSlotMap<MapKey, MapVal>,
-    pub structs: DenseSlotMap<StructKey, StructVal>,
-    pub channels: DenseSlotMap<ChannelKey, ChannelVal>,
-    pub boxed: DenseSlotMap<BoxedKey, GosValue>,
-    pub functions: DenseSlotMap<FunctionKey, Function>,
-    pub packages: DenseSlotMap<PackageKey, Package>,
-    pub types: DenseSlotMap<TypeKey, GosType>,
+    pub interfaces: InterfaceObjs,
+    pub closures: ClosureObjs,
+    pub strings: StringObjs,
+    pub slices: SliceObjs,
+    pub maps: MapObjs,
+    pub structs: StructObjs,
+    pub channels: ChannelObjs,
+    pub boxed: BoxedObjs,
+    pub functions: FunctionObjs,
+    pub packages: PackageObjs,
+    pub types: TypeObjs,
     pub basic_types: HashMap<&'static str, GosValue>,
     pub default_closure_type: Option<GosValue>,
 }
@@ -67,48 +80,49 @@ impl Objects {
         objs.basic_types.insert("float64", ftype);
         let stype = GosType::new_str(&mut objs);
         objs.basic_types.insert("string", stype);
+        // default_closure_type is used by manually assembiled functions
         objs.default_closure_type = Some(GosType::new_closure(vec![], vec![], &mut objs));
         objs
-    }
-
-    pub fn new_str(&mut self, s: String) -> GosValue {
-        GosValue::Str(self.strings.insert(StringVal {
-            dark: false,
-            data: s,
-        }))
-    }
-
-    pub fn new_slice(&mut self, cap: usize) -> GosValue {
-        let s = SliceVal {
-            dark: false,
-            begin: 0,
-            end: 0,
-            soft_cap: cap,
-            vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
-        };
-        let key = self.slices.insert(s);
-        GosValue::Slice(key)
-    }
-
-    pub fn new_map(&mut self, default_val: GosValue) -> GosValue {
-        let val = MapVal {
-            dark: false,
-            objs: unsafe { std::mem::transmute(&self) },
-            default_val: default_val,
-            data: HashMap::new(),
-        };
-        let key = self.maps.insert(val);
-        GosValue::Map(key)
-    }
-
-    pub fn new_type(&mut self, t: GosType) -> GosValue {
-        let key = self.types.insert(t);
-        GosValue::Type(key)
     }
 
     pub fn basic_type(&self, name: &str) -> Option<&GosValue> {
         self.basic_types.get(name)
     }
+}
+
+pub fn new_str(strings: &mut StringObjs, s: String) -> GosValue {
+    GosValue::Str(strings.insert(StringVal {
+        dark: false,
+        data: s,
+    }))
+}
+
+pub fn new_slice(slices: &mut SliceObjs, cap: usize) -> GosValue {
+    let s = SliceVal {
+        dark: false,
+        begin: 0,
+        end: 0,
+        soft_cap: cap,
+        vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
+    };
+    let key = slices.insert(s);
+    GosValue::Slice(key)
+}
+
+pub fn new_map(objs: &mut Objects, default_val: GosValue) -> GosValue {
+    let val = MapVal {
+        dark: false,
+        objs: unsafe { std::mem::transmute(&objs) },
+        default_val: default_val,
+        data: HashMap::new(),
+    };
+    let key = objs.maps.insert(val);
+    GosValue::Map(key)
+}
+
+pub fn new_type(types: &mut TypeObjs, t: GosType) -> GosValue {
+    let key = types.insert(t);
+    GosValue::Type(key)
 }
 
 // ----------------------------------------------------------------------------
@@ -121,13 +135,13 @@ pub enum GosValue {
     Int(isize),
     Float64(f64),   // becasue in Go there is no "float", just float64
     Str(StringKey), // "String" is taken
+    Boxed(BoxedKey),
     Closure(ClosureKey),
     Slice(SliceKey),
     Map(MapKey),
     Interface(InterfaceKey),
     Struct(StructKey),
     Channel(ChannelKey),
-    Boxed(BoxedKey),
     // below are not visible to users, they are "values" not "variables"
     Function(FunctionKey),
     Package(PackageKey),
@@ -157,20 +171,20 @@ impl Default for GosValue {
 impl Eq for GosValue {}
 
 impl GosValue {
-    pub fn new_str(s: String, o: &mut Objects) -> GosValue {
-        o.new_str(s)
+    pub fn new_str(s: String, o: &mut StringObjs) -> GosValue {
+        new_str(o, s)
     }
 
-    pub fn new_slice(cap: usize, o: &mut Objects) -> GosValue {
-        o.new_slice(cap)
+    pub fn new_slice(cap: usize, o: &mut SliceObjs) -> GosValue {
+        new_slice(o, cap)
     }
 
-    pub fn new_map(o: &mut Objects, default: GosValue) -> GosValue {
-        o.new_map(default)
+    pub fn new_map(default: GosValue, objs: &mut Objects) -> GosValue {
+        new_map(objs, default)
     }
 
-    pub fn new_type(t: GosType, o: &mut Objects) -> GosValue {
-        o.new_type(t)
+    pub fn new_type(t: GosType, o: &mut TypeObjs) -> GosValue {
+        new_type(o, t)
     }
 
     #[inline]
@@ -227,9 +241,55 @@ impl GosValue {
         }
     }
 
+    #[inline]
+    pub fn get_boxed(&self) -> &BoxedKey {
+        if let GosValue::Boxed(b) = self {
+            b
+        } else {
+            unreachable!();
+        }
+    }
+
     pub fn get_type_val<'a>(&self, objs: &'a Objects) -> &'a GosType {
         let tkey = self.get_type();
         &objs.types[*tkey]
+    }
+}
+
+/// A helper struct for printing debug info of GosValue, we cannot rely on GosValue::Debug
+/// because it requires 'objs' to access the inner data
+pub struct GosValueDebug<'a> {
+    val: &'a GosValue,
+    objs: &'a Objects,
+}
+
+impl<'a> GosValueDebug<'a> {
+    pub fn new(val: &'a GosValue, objs: &'a Objects) -> GosValueDebug<'a> {
+        GosValueDebug {
+            val: val,
+            objs: objs,
+        }
+    }
+}
+
+impl<'a> fmt::Debug for GosValueDebug<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.val {
+            GosValue::Nil | GosValue::Bool(_) | GosValue::Int(_) | GosValue::Float64(_) => {
+                self.val.fmt(f)
+            }
+            GosValue::Str(k) => self.objs.strings[*k].fmt(f),
+            GosValue::Closure(k) => self.objs.closures[*k].fmt(f),
+            GosValue::Slice(k) => self.objs.slices[*k].fmt(f),
+            GosValue::Map(k) => self.objs.maps[*k].fmt(f),
+            GosValue::Interface(k) => self.objs.interfaces[*k].fmt(f),
+            GosValue::Struct(k) => self.objs.structs[*k].fmt(f),
+            GosValue::Channel(k) => self.objs.channels[*k].fmt(f),
+            GosValue::Boxed(k) => self.objs.boxed[*k].fmt(f),
+            GosValue::Function(k) => self.objs.functions[*k].fmt(f),
+            GosValue::Package(k) => self.objs.packages[*k].fmt(f),
+            GosValue::Type(k) => self.objs.types[*k].fmt(f),
+        }
     }
 }
 
@@ -400,19 +460,9 @@ impl PartialEq for StringVal {
 }
 
 // ----------------------------------------------------------------------------
-// VecVal
-
-#[derive(Clone, Debug)]
-pub struct VecVal {
-    // Not visible to users
-    pub dark: bool,
-    pub data: RefCell<Vec<GosValue>>,
-}
-
-// ----------------------------------------------------------------------------
 // MapVal
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct HashKey {
     pub val: GosValue,
     pub objs: &'static Objects,
@@ -423,6 +473,12 @@ impl Eq for HashKey {}
 impl PartialEq for HashKey {
     fn eq(&self, other: &HashKey) -> bool {
         self.val == other.val
+    }
+}
+
+impl fmt::Debug for HashKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.val.fmt(f)
     }
 }
 
@@ -449,12 +505,22 @@ impl Hash for HashKey {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MapVal {
     pub dark: bool,
     objs: &'static Objects,
     default_val: GosValue,
     data: HashMap<HashKey, GosValue>,
+}
+
+impl fmt::Debug for MapVal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MapVal")
+            .field("dark", &self.dark)
+            .field("default_val", &self.default_val)
+            .field("data", &self.data)
+            .finish()
+    }
 }
 
 impl MapVal {
@@ -556,8 +622,8 @@ impl<'a> SliceVal {
         }
     }
 
-    pub fn set(&self, i: usize, val: &GosValue) {
-        self.vec.borrow_mut()[i] = *val;
+    pub fn set(&self, i: usize, val: GosValue) {
+        self.vec.borrow_mut()[i] = val;
     }
 
     fn try_grow_vec(&mut self, len: usize) {
@@ -616,6 +682,19 @@ mod test {
         dbg!("1000000000000000000000001e10".parse::<f64>().unwrap());
     }
 
+    #[test]
+    fn test_gosvalue_debug() {
+        let mut o = Objects::new();
+        let s = new_str(&mut o.strings, "test_string".to_string());
+        let slice = new_slice(&mut o.slices, 10);
+        dbg!(
+            GosValueDebug::new(&s, &o),
+            GosValueDebug::new(&GosValue::Nil, &o),
+            GosValueDebug::new(&GosValue::Int(1), &o),
+            GosValueDebug::new(&slice, &o),
+        );
+    }
+
     /*
         trait Float {
         type Bits: Hash;
@@ -667,17 +746,17 @@ mod test {
     #[test]
     fn test_types() {
         let mut o = Objects::new();
-        let t1: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_string(), &mut o),
+        let _t1: Vec<GosValue> = vec![
+            GosValue::new_str("Norway".to_string(), &mut o.strings),
             GosValue::Int(100),
-            GosValue::new_str("Denmark".to_string(), &mut o),
+            GosValue::new_str("Denmark".to_string(), &mut o.strings),
             GosValue::Int(10),
         ];
 
-        let t2: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_string(), &mut o),
+        let _t2: Vec<GosValue> = vec![
+            GosValue::new_str("Norway".to_string(), &mut o.strings),
             GosValue::Int(100),
-            GosValue::new_str("Denmark".to_string(), &mut o),
+            GosValue::new_str("Denmark".to_string(), &mut o.strings),
             GosValue::Int(10),
         ];
         /*let a = GosValue::new_slice(t1);
