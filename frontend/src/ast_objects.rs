@@ -6,6 +6,12 @@ use slotmap::{new_key_type, DenseSlotMap};
 
 const DEFAULT_CAPACITY: usize = 16;
 
+macro_rules! new_objects {
+    () => {
+        DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
+    };
+}
+
 new_key_type! { pub struct LabeledStmtKey; }
 new_key_type! { pub struct AssignStmtKey; }
 new_key_type! { pub struct SpecKey; }
@@ -15,37 +21,37 @@ new_key_type! { pub struct FieldKey; }
 new_key_type! { pub struct EntityKey; }
 new_key_type! { pub struct ScopeKey; }
 
-pub type LabeledStmtArena = DenseSlotMap<LabeledStmtKey, ast::LabeledStmt>;
-pub type AssignStmtArena = DenseSlotMap<AssignStmtKey, ast::AssignStmt>;
-pub type SpecArena = DenseSlotMap<SpecKey, ast::Spec>;
-pub type FuncDeclArena = DenseSlotMap<FuncDeclKey, ast::FuncDecl>;
-pub type IdentArena = DenseSlotMap<IdentKey, ast::Ident>;
-pub type FieldArena = DenseSlotMap<FieldKey, ast::Field>;
-pub type EntityArena = DenseSlotMap<EntityKey, scope::Entity>;
-pub type ScopeArena = DenseSlotMap<ScopeKey, scope::Scope>;
+pub type LabeledStmts = DenseSlotMap<LabeledStmtKey, ast::LabeledStmt>;
+pub type AssignStmts = DenseSlotMap<AssignStmtKey, ast::AssignStmt>;
+pub type Specs = DenseSlotMap<SpecKey, ast::Spec>;
+pub type FuncDecls = DenseSlotMap<FuncDeclKey, ast::FuncDecl>;
+pub type Idents = DenseSlotMap<IdentKey, ast::Ident>;
+pub type Fields = DenseSlotMap<FieldKey, ast::Field>;
+pub type Entitys = DenseSlotMap<EntityKey, scope::Entity>;
+pub type Scopes = DenseSlotMap<ScopeKey, scope::Scope>;
 
 pub struct Objects {
-    pub l_stmts: LabeledStmtArena,
-    pub a_stmts: AssignStmtArena,
-    pub specs: SpecArena,
-    pub decls: FuncDeclArena,
-    pub idents: IdentArena,
-    pub fields: FieldArena,
-    pub entities: EntityArena,
-    pub scopes: ScopeArena,
+    pub l_stmts: LabeledStmts,
+    pub a_stmts: AssignStmts,
+    pub specs: Specs,
+    pub decls: FuncDecls,
+    pub idents: Idents,
+    pub fields: Fields,
+    pub entities: Entitys,
+    pub scopes: Scopes,
 }
 
 impl Objects {
     pub fn new() -> Objects {
         Objects {
-            l_stmts: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            a_stmts: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            specs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            decls: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            idents: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            fields: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            entities: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            scopes: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            l_stmts: new_objects!(),
+            a_stmts: new_objects!(),
+            specs: new_objects!(),
+            decls: new_objects!(),
+            idents: new_objects!(),
+            fields: new_objects!(),
+            entities: new_objects!(),
+            scopes: new_objects!(),
         }
     }
 }

@@ -710,7 +710,7 @@ impl<'a> CodeGen<'a> {
             ast_objs: aobjects,
             package_indices: HashMap::new(),
             packages: Vec::new(),
-            current_pkg: slotmap::Key::null(),
+            current_pkg: null_key!(),
             func_stack: Vec::new(),
             errors: err,
         }
@@ -1136,7 +1136,7 @@ impl<'a> CodeGen<'a> {
         let ctor_func = Function::new(pkey, *ftype.get_type(), true);
         let fkey = self.objects.functions.insert(ctor_func);
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(slotmap::Key::null(), GosValue::Function(fkey));
+        self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
 
         self.packages.push(pkey);
         let index = self.packages.len() as i16 - 1;
@@ -1156,7 +1156,7 @@ impl<'a> CodeGen<'a> {
     fn gen_entry(&mut self) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let ftype = self.objects.default_closure_type.unwrap();
-        let mut func = Function::new(slotmap::Key::null(), *ftype.get_type(), false);
+        let mut func = Function::new(null_key!(), *ftype.get_type(), false);
         func.emit_import(0);
         func.emit_code(Opcode::PUSH_IMM);
         func.emit_data(-1);

@@ -13,6 +13,18 @@ pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
 
+macro_rules! null_key {
+    () => {
+        slotmap::Key::null()
+    };
+}
+
+macro_rules! new_objects {
+    () => {
+        DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
+    };
+}
+
 new_key_type! { pub struct InterfaceKey; }
 new_key_type! { pub struct ClosureKey; }
 new_key_type! { pub struct StringKey; }
@@ -57,17 +69,17 @@ pub struct Objects {
 impl Objects {
     pub fn new() -> Objects {
         let mut objs = Objects {
-            interfaces: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            closures: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            strings: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            slices: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            maps: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            structs: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            channels: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            boxed: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            types: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            interfaces: new_objects!(),
+            closures: new_objects!(),
+            strings: new_objects!(),
+            slices: new_objects!(),
+            maps: new_objects!(),
+            structs: new_objects!(),
+            channels: new_objects!(),
+            boxed: new_objects!(),
+            functions: new_objects!(),
+            packages: new_objects!(),
+            types: new_objects!(),
             basic_types: HashMap::new(),
             default_closure_type: None,
         };
@@ -351,7 +363,7 @@ impl GosType {
 
     pub fn new_str(objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Str(slotmap::Key::null()),
+            zero_val: GosValue::Str(null_key!()),
             data: GosTypeData::None,
         };
         GosValue::Type(objs.types.insert(typ))
@@ -363,7 +375,7 @@ impl GosType {
         objs: &mut Objects,
     ) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Closure(slotmap::Key::null()),
+            zero_val: GosValue::Closure(null_key!()),
             data: GosTypeData::Closure(params, results),
         };
         GosValue::Type(objs.types.insert(typ))
@@ -371,7 +383,7 @@ impl GosType {
 
     pub fn new_slice(vtype: GosValue, objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Slice(slotmap::Key::null()),
+            zero_val: GosValue::Slice(null_key!()),
             data: GosTypeData::Slice(vtype),
         };
         GosValue::Type(objs.types.insert(typ))
@@ -379,7 +391,7 @@ impl GosType {
 
     pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Map(slotmap::Key::null()),
+            zero_val: GosValue::Map(null_key!()),
             data: GosTypeData::Map(ktype, vtype),
         };
         GosValue::Type(objs.types.insert(typ))
@@ -387,7 +399,7 @@ impl GosType {
 
     pub fn new_interface(fields: Vec<GosValue>, objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Interface(slotmap::Key::null()),
+            zero_val: GosValue::Interface(null_key!()),
             data: GosTypeData::Interface(fields),
         };
         GosValue::Type(objs.types.insert(typ))
@@ -404,7 +416,7 @@ impl GosType {
             .collect();
         let struct_val = StructVal {
             dark: false,
-            typ: slotmap::Key::null(),
+            typ: null_key!(),
             fields: field_zeros,
         };
         let struct_key = objs.structs.insert(struct_val);
@@ -419,7 +431,7 @@ impl GosType {
 
     pub fn new_channel(vtype: GosValue, objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Channel(slotmap::Key::null()),
+            zero_val: GosValue::Channel(null_key!()),
             data: GosTypeData::Channel(vtype),
         };
         GosValue::Type(objs.types.insert(typ))
@@ -427,7 +439,7 @@ impl GosType {
 
     pub fn new_boxed(inner: GosValue, objs: &mut Objects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Boxed(slotmap::Key::null()),
+            zero_val: GosValue::Boxed(null_key!()),
             data: GosTypeData::Boxed(inner),
         };
         GosValue::Type(objs.types.insert(typ))
