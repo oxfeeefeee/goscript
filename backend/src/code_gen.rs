@@ -583,14 +583,31 @@ impl<'a> Visitor for CodeGen<'a> {
             unimplemented!()
         }
         let stmt = decl.body.as_ref().unwrap();
-        let typ = &decl.typ;
-        let fkey = self.gen_func_def(typ, stmt);
-
-        let ident = &self.ast_objs.idents[decl.name];
-        let pkg = &mut self.objects.packages[self.current_pkg];
-        let index = pkg.add_member(ident.entity_key().unwrap(), GosValue::Function(fkey));
-        if ident.name == "main" {
-            pkg.set_main_func(index);
+        // this is a struct method
+        if let Some(self_ident) = &decl.recv {
+            // insert receiver at be beginning of the params
+            let mut ftype = decl.typ.clone();
+            let mut fields = self_ident.clone();
+            fields.list.append(&mut ftype.params.list);
+            ftype.params = fields;
+            let fval = GosValue::Function(self.gen_func_def(&ftype, stmt));
+            let field = &self.ast_objs.fields[self_ident.list[0]];
+            let name = &self.ast_objs.idents[decl.name].name;
+            let type_val = self.get_or_gen_type(&field.typ);
+            let mut typ = type_val.get_type_val_mut(&mut self.objects);
+            if let GosTypeData::Boxed(b) = typ.data {
+                typ = &mut self.objects.types[*b.as_type()];
+            }
+            dbg!("aaa ", &typ.data, name, &fval);
+            typ.data.add_struct_member(name.clone(), fval);
+        } else {
+            let fval = GosValue::Function(self.gen_func_def(&decl.typ, stmt));
+            let ident = &self.ast_objs.idents[decl.name];
+            let pkg = &mut self.objects.packages[self.current_pkg];
+            let index = pkg.add_member(ident.entity_key().unwrap(), fval);
+            if ident.name == "main" {
+                pkg.set_main_func(index);
+            }
         }
     }
 
@@ -855,7 +872,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
         let ftype = self.get_or_gen_type(&Expr::Func(Box::new(typ.clone())));
-        let mut func = Function::new(self.current_pkg.clone(), *ftype.get_type(), false);
+        let mut func = Function::new(self.current_pkg.clone(), *ftype.as_type(), false);
         func.ret_count = match &typ.results {
             Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
             None => 0,
@@ -993,7 +1010,7 @@ impl<'a> CodeGen<'a> {
             }
             Expr::Struct(stype) => {
                 let mut fields = Vec::new();
-                let mut map = HashMap::<String, usize>::new();
+                let mut map = HashMap::<String, OpIndex>::new();
                 let mut i = 0;
                 for f in stype.fields.list.iter() {
                     let field = &self.ast_objs.fields[*f];
@@ -1041,6 +1058,10 @@ impl<'a> CodeGen<'a> {
                 };
                 GosType::new_closure(params, results, &mut self.objects)
             }
+            Expr::Star(sexpr) => {
+                let inner = self.get_or_gen_type(&sexpr.expr);
+                GosType::new_boxed(inner, &mut self.objects)
+            }
             Expr::Chan(_ctype) => unimplemented!(),
             _ => unreachable!(),
         }
@@ -1048,7 +1069,7 @@ impl<'a> CodeGen<'a> {
 
     fn get_type_default(&mut self, expr: &Expr) -> GosValue {
         let typ = self.get_or_gen_type(expr);
-        let typ_val = &self.objects.types[*typ.get_type()];
+        let typ_val = &self.objects.types[*typ.as_type()];
         dbg!(typ_val);
         typ_val.zero_val().clone()
     }
@@ -1073,7 +1094,7 @@ impl<'a> CodeGen<'a> {
                     .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
                     .collect();
                 let slice = GosValue::new_slice(literal.elts.len(), &mut self.objects.slices);
-                let slice_val = &mut self.objects.slices[*slice.get_slice()];
+                let slice_val = &mut self.objects.slices[*slice.as_slice()];
                 slice_val.append(&mut vals);
                 slice
             }
@@ -1095,7 +1116,7 @@ impl<'a> CodeGen<'a> {
                 let val = self.get_type_default(&map.val);
                 let map = GosValue::new_map(val, &mut self.objects);
                 for kv in key_vals.iter() {
-                    self.objects.maps[*map.get_map()].insert(kv.0, kv.1);
+                    self.objects.maps[*map.as_map()].insert(kv.0, kv.1);
                 }
                 map
             }
@@ -1133,7 +1154,7 @@ impl<'a> CodeGen<'a> {
         let pkg_val = Package::new(pkg_name.clone());
         let pkey = self.objects.packages.insert(pkg_val);
         let ftype = self.objects.default_closure_type.unwrap();
-        let ctor_func = Function::new(pkey, *ftype.get_type(), true);
+        let ctor_func = Function::new(pkey, *ftype.as_type(), true);
         let fkey = self.objects.functions.insert(ctor_func);
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
@@ -1156,7 +1177,7 @@ impl<'a> CodeGen<'a> {
     fn gen_entry(&mut self) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let ftype = self.objects.default_closure_type.unwrap();
-        let mut func = Function::new(null_key!(), *ftype.get_type(), false);
+        let mut func = Function::new(null_key!(), *ftype.as_type(), false);
         func.emit_import(0);
         func.emit_code(Opcode::PUSH_IMM);
         func.emit_data(-1);

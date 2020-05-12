@@ -40,5 +40,5 @@ pub fn reference(stack: &mut Vec<GosValue>, boxeds: &mut BoxedObjs) {
 
 pub fn deref(stack: &mut Vec<GosValue>, boxeds: &BoxedObjs) {
     let val = stack.pop().unwrap();
-    stack.push(boxeds[*val.get_boxed()]);
+    stack.push(boxeds[*val.as_boxed()]);
 }

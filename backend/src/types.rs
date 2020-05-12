@@ -200,7 +200,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_bool(&self) -> bool {
+    pub fn as_bool(&self) -> bool {
         if let GosValue::Bool(b) = self {
             *b
         } else {
@@ -209,7 +209,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_int(&self) -> isize {
+    pub fn as_int(&self) -> isize {
         if let GosValue::Int(i) = self {
             *i
         } else {
@@ -218,7 +218,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_slice(&self) -> &SliceKey {
+    pub fn as_slice(&self) -> &SliceKey {
         if let GosValue::Slice(s) = self {
             s
         } else {
@@ -227,7 +227,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_map(&self) -> &MapKey {
+    pub fn as_map(&self) -> &MapKey {
         if let GosValue::Map(m) = self {
             m
         } else {
@@ -236,7 +236,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_function(&self) -> &FunctionKey {
+    pub fn as_function(&self) -> &FunctionKey {
         if let GosValue::Function(f) = self {
             f
         } else {
@@ -245,7 +245,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_type(&self) -> &TypeKey {
+    pub fn as_type(&self) -> &TypeKey {
         if let GosValue::Type(t) = self {
             t
         } else {
@@ -254,7 +254,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_boxed(&self) -> &BoxedKey {
+    pub fn as_boxed(&self) -> &BoxedKey {
         if let GosValue::Boxed(b) = self {
             b
         } else {
@@ -263,8 +263,13 @@ impl GosValue {
     }
 
     pub fn get_type_val<'a>(&self, objs: &'a Objects) -> &'a GosType {
-        let tkey = self.get_type();
+        let tkey = self.as_type();
         &objs.types[*tkey]
+    }
+
+    pub fn get_type_val_mut<'a>(&self, objs: &'a mut Objects) -> &'a mut GosType {
+        let tkey = self.as_type();
+        &mut objs.types[*tkey]
     }
 }
 
@@ -314,8 +319,9 @@ pub enum GosTypeData {
     Slice(GosValue),
     Map(GosValue, GosValue),
     Interface(Vec<GosValue>),
-    // the hasmap maps field name to field index
-    Struct(Vec<GosValue>, HashMap<String, usize>),
+    // the hasmap maps field name to field index, negative index indicates
+    // it's a method
+    Struct(Vec<GosValue>, HashMap<String, OpIndex>),
     Channel(GosValue),
     Boxed(GosValue),
 }
@@ -326,6 +332,23 @@ impl GosTypeData {
             (params, returns)
         } else {
             unreachable!();
+        }
+    }
+
+    pub fn add_struct_member(&mut self, name: String, val: GosValue) {
+        if let GosTypeData::Struct(members, mapping) = self {
+            members.push(val);
+            mapping.insert(name, members.len() as OpIndex - 1);
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn get_struct_member(&self, index: OpIndex) -> &GosValue {
+        if let GosTypeData::Struct(members, _) = self {
+            &members[index as usize]
+        } else {
+            unreachable!()
         }
     }
 }
@@ -407,7 +430,7 @@ impl GosType {
 
     pub fn new_struct(
         fields: Vec<GosValue>,
-        meta: HashMap<String, usize>,
+        meta: HashMap<String, OpIndex>,
         objs: &mut Objects,
     ) -> GosValue {
         let field_zeros: Vec<GosValue> = fields
@@ -567,7 +590,7 @@ pub struct StructVal {
 }
 
 impl StructVal {
-    pub fn field_index(&self, name: &String, objs: &Objects) -> OpIndex {
+    pub fn field_method_index(&self, name: &String, objs: &Objects) -> OpIndex {
         let t = &objs.types[self.typ];
         if let GosTypeData::Struct(_, map) = &t.data {
             map[name] as OpIndex

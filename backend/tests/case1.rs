@@ -8,7 +8,7 @@ fn load_parse_gen(path: &str, trace: bool) {
     vm.run();
 }
 #[test]
-fn test_case1() {
+fn test_bcase1() {
     let _err_cnt = load_parse_gen("./tests/data/case1.gos", true);
 }
 
