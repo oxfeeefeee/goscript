@@ -733,7 +733,6 @@ impl<'a> SliceVal {
         if cap >= len {
             return;
         }
-
         while cap < len {
             if cap < 1024 {
                 cap *= 2
@@ -741,11 +740,12 @@ impl<'a> SliceVal {
                 cap = (cap as f32 * 1.25) as usize
             }
         }
-        let mut new_vec: Vec<GosValue> = Vec::with_capacity(cap);
-        new_vec.copy_from_slice(&self.vec.borrow()[self.begin..self.end]);
-        self.vec = Rc::new(RefCell::new(new_vec));
+        let data_len = self.len();
+        let mut vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
+        vec.reserve_exact(cap - vec.len());
+        self.vec = Rc::new(RefCell::new(vec));
         self.begin = 0;
-        self.end = cap;
+        self.end = data_len;
         self.soft_cap = cap;
     }
 }
