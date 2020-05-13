@@ -48,8 +48,6 @@ pub enum Opcode {
     STORE_THIS_PKG_FIELD_NT = 255,
     STORE_DEREF = 256,
     STORE_DEREF_NT = 257,
-    LOAD_GLOBAL = 260,
-    IMPORT = 261,
 
     ADD = 300,
     SUB,
@@ -58,6 +56,7 @@ pub enum Opcode {
 
     PRE_CALL = 400,
     CALL,
+    CALL_ELLIPSIS, // call with the past parameter followed by ellipsis
     CLOSE_UPVALUE,
     RETURN,
     RETURN_INIT_PKG,
@@ -68,10 +67,12 @@ pub enum Opcode {
     AND,
     OR,
 
-    NEW_CLOSURE = 600,
-    NEW_STRUCT,
-    NEW_SLICE,
-    NEW_MAP,
+    IMPORT = 600, // imports a package
+    NEW,          // for built-in function new
+    MAKE,         // for built-in function make
+    LEN,          // for built-in function len
+    CAP,          // for built-in function cap
+    APPEND,       //for built-in function append
 }
 
 impl Opcode {
@@ -142,8 +143,6 @@ impl Opcode {
             Opcode::STORE_THIS_PKG_FIELD_NT => ("STORE_THIS_PKG_FIELD_NT", 0),
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
             Opcode::STORE_DEREF_NT => ("STORE_DEREF_NT", 0),
-            Opcode::LOAD_GLOBAL => ("LOAD_GLOBAL", 0),
-            Opcode::IMPORT => ("IMPORT", 0),
 
             Opcode::ADD => ("ADD", -1),
             Opcode::SUB => ("SUB", -1),
@@ -152,6 +151,7 @@ impl Opcode {
 
             Opcode::PRE_CALL => ("PRE_CALL", -128),
             Opcode::CALL => ("CALL", -128),
+            Opcode::CALL_ELLIPSIS => ("CALL_ELLIPSIS", -128),
             Opcode::CLOSE_UPVALUE => ("CLOSE_UPVALUE", -1),
             Opcode::RETURN => ("RETURN", -128),
             Opcode::RETURN_INIT_PKG => ("RETURN_INIT_PKG", -128),
@@ -162,10 +162,12 @@ impl Opcode {
             Opcode::AND => ("AND", -1),
             Opcode::OR => ("OR", -1),
 
-            Opcode::NEW_CLOSURE => ("NEW_CLOSURE", 1),
-            Opcode::NEW_STRUCT => ("NEW_STRUCT", 0),
-            Opcode::NEW_SLICE => ("NEW_SLICE", 0),
-            Opcode::NEW_MAP => ("NEW_MAP", 0),
+            Opcode::IMPORT => ("IMPORT", 0),
+            Opcode::NEW => ("NEW", 0),
+            Opcode::MAKE => ("MAKE", 0),
+            Opcode::LEN => ("LEN", 0),
+            Opcode::CAP => ("CAP", 0),
+            Opcode::APPEND => ("APPEND", -128),
         }
     }
 

@@ -121,6 +121,18 @@ pub fn new_slice(slices: &mut SliceObjs, cap: usize) -> GosValue {
     GosValue::Slice(key)
 }
 
+pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
+    let s = SliceVal {
+        dark: false,
+        begin: 0,
+        end: 0,
+        soft_cap: val.len(),
+        vec: Rc::new(RefCell::new(val)),
+    };
+    let key = slices.insert(s);
+    GosValue::Slice(key)
+}
+
 pub fn new_map(objs: &mut Objects, default_val: GosValue) -> GosValue {
     let val = MapVal {
         dark: false,
@@ -145,7 +157,8 @@ pub enum GosValue {
     Nil,
     Bool(bool),
     Int(isize),
-    Float64(f64),   // becasue in Go there is no "float", just float64
+    Float64(f64), // becasue in Go there is no "float", just float64
+    Complex64(f32, f32),
     Str(StringKey), // "String" is taken
     Boxed(BoxedKey),
     Closure(ClosureKey),
@@ -189,6 +202,10 @@ impl GosValue {
 
     pub fn new_slice(cap: usize, o: &mut SliceObjs) -> GosValue {
         new_slice(o, cap)
+    }
+
+    pub fn with_slice_val(val: Vec<GosValue>, o: &mut SliceObjs) -> GosValue {
+        with_slice_val(o, val)
     }
 
     pub fn new_map(default: GosValue, objs: &mut Objects) -> GosValue {
@@ -273,43 +290,6 @@ impl GosValue {
     }
 }
 
-/// A helper struct for printing debug info of GosValue, we cannot rely on GosValue::Debug
-/// because it requires 'objs' to access the inner data
-pub struct GosValueDebug<'a> {
-    val: &'a GosValue,
-    objs: &'a Objects,
-}
-
-impl<'a> GosValueDebug<'a> {
-    pub fn new(val: &'a GosValue, objs: &'a Objects) -> GosValueDebug<'a> {
-        GosValueDebug {
-            val: val,
-            objs: objs,
-        }
-    }
-}
-
-impl<'a> fmt::Debug for GosValueDebug<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.val {
-            GosValue::Nil | GosValue::Bool(_) | GosValue::Int(_) | GosValue::Float64(_) => {
-                self.val.fmt(f)
-            }
-            GosValue::Str(k) => self.objs.strings[*k].fmt(f),
-            GosValue::Closure(k) => self.objs.closures[*k].fmt(f),
-            GosValue::Slice(k) => self.objs.slices[*k].fmt(f),
-            GosValue::Map(k) => self.objs.maps[*k].fmt(f),
-            GosValue::Interface(k) => self.objs.interfaces[*k].fmt(f),
-            GosValue::Struct(k) => self.objs.structs[*k].fmt(f),
-            GosValue::Channel(k) => self.objs.channels[*k].fmt(f),
-            GosValue::Boxed(k) => self.objs.boxed[*k].fmt(f),
-            GosValue::Function(k) => self.objs.functions[*k].fmt(f),
-            GosValue::Package(k) => self.objs.packages[*k].fmt(f),
-            GosValue::Type(k) => self.objs.types[*k].fmt(f),
-        }
-    }
-}
-
 // ----------------------------------------------------------------------------
 // GosType
 #[derive(Clone, Debug)]
@@ -324,33 +304,7 @@ pub enum GosTypeData {
     Struct(Vec<GosValue>, HashMap<String, OpIndex>),
     Channel(GosValue),
     Boxed(GosValue),
-}
-
-impl GosTypeData {
-    pub fn closure_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
-        if let GosTypeData::Closure(params, returns) = self {
-            (params, returns)
-        } else {
-            unreachable!();
-        }
-    }
-
-    pub fn add_struct_member(&mut self, name: String, val: GosValue) {
-        if let GosTypeData::Struct(members, mapping) = self {
-            members.push(val);
-            mapping.insert(name, members.len() as OpIndex - 1);
-        } else {
-            unreachable!();
-        }
-    }
-
-    pub fn get_struct_member(&self, index: OpIndex) -> &GosValue {
-        if let GosTypeData::Struct(members, _) = self {
-            &members[index as usize]
-        } else {
-            unreachable!()
-        }
-    }
+    Variadic(GosValue),
 }
 
 #[derive(Clone, Debug)]
@@ -468,8 +422,97 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
+    pub fn new_variadic(elt: GosValue, objs: &mut Objects) -> GosValue {
+        let typ = GosType {
+            // what does zero_val for this mean exactly?
+            zero_val: GosValue::Slice(null_key!()),
+            data: GosTypeData::Variadic(elt),
+        };
+        GosValue::Type(objs.types.insert(typ))
+    }
+
     pub fn zero_val(&self) -> &GosValue {
         &self.zero_val
+    }
+
+    pub fn closure_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
+        if let GosTypeData::Closure(params, returns) = &self.data {
+            (params, returns)
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn add_struct_member(&mut self, name: String, val: GosValue) {
+        if let GosTypeData::Struct(members, mapping) = &mut self.data {
+            members.push(val);
+            mapping.insert(name, members.len() as OpIndex - 1);
+        } else {
+            unreachable!();
+        }
+    }
+
+    pub fn get_struct_member(&self, index: OpIndex) -> &GosValue {
+        if let GosTypeData::Struct(members, _) = &self.data {
+            &members[index as usize]
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn get_closure_params(&self) -> &Vec<GosValue> {
+        if let GosTypeData::Closure(params, _) = &self.data {
+            &params
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn is_variadic(&self) -> bool {
+        if let GosTypeData::Variadic(_) = &self.data {
+            true
+        } else {
+            false
+        }
+    }
+}
+
+/// A helper struct for printing debug info of GosValue, we cannot rely on GosValue::Debug
+/// because it requires 'objs' to access the inner data
+pub struct GosValueDebug<'a> {
+    val: &'a GosValue,
+    objs: &'a Objects,
+}
+
+impl<'a> GosValueDebug<'a> {
+    pub fn new(val: &'a GosValue, objs: &'a Objects) -> GosValueDebug<'a> {
+        GosValueDebug {
+            val: val,
+            objs: objs,
+        }
+    }
+}
+
+impl<'a> fmt::Debug for GosValueDebug<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.val {
+            GosValue::Nil
+            | GosValue::Bool(_)
+            | GosValue::Int(_)
+            | GosValue::Float64(_)
+            | GosValue::Complex64(_, _) => self.val.fmt(f),
+            GosValue::Str(k) => self.objs.strings[*k].fmt(f),
+            GosValue::Closure(k) => self.objs.closures[*k].fmt(f),
+            GosValue::Slice(k) => self.objs.slices[*k].fmt(f),
+            GosValue::Map(k) => self.objs.maps[*k].fmt(f),
+            GosValue::Interface(k) => self.objs.interfaces[*k].fmt(f),
+            GosValue::Struct(k) => self.objs.structs[*k].fmt(f),
+            GosValue::Channel(k) => self.objs.channels[*k].fmt(f),
+            GosValue::Boxed(k) => self.objs.boxed[*k].fmt(f),
+            GosValue::Function(k) => self.objs.functions[*k].fmt(f),
+            GosValue::Package(k) => self.objs.packages[*k].fmt(f),
+            GosValue::Type(k) => self.objs.types[*k].fmt(f),
+        }
     }
 }
 
@@ -577,6 +620,10 @@ impl MapVal {
             None => &self.default_val,
         }
     }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -627,6 +674,14 @@ impl<'a> SliceVal {
 
     pub fn cap(&self) -> usize {
         self.soft_cap - self.begin
+    }
+
+    pub fn borrow_data_mut(&self) -> std::cell::RefMut<Vec<GosValue>> {
+        self.vec.borrow_mut()
+    }
+
+    pub fn borrow_data(&self) -> std::cell::Ref<Vec<GosValue>> {
+        self.vec.borrow()
     }
 
     pub fn push(&mut self, val: GosValue) {

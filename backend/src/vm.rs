@@ -15,7 +15,7 @@ macro_rules! rhs_val_index {
         } else {
             let val_ind = *$code[$frame.pc].unwrap_data() as i16;
             $frame.pc += 1;
-            ($stack.len() as i16 + val_ind - 1) as usize
+            ($stack.len() as i16 + val_ind) as usize
         }
     };
 }
@@ -41,13 +41,28 @@ macro_rules! bind_method {
         GosValue::Closure(
             $objs.closures.insert(ClosureVal {
                 func: *$objs.types[$sval.typ]
-                    .data
                     .get_struct_member($index)
                     .as_function(),
                 receiver: Some($val.clone()),
                 upvalues: vec![],
             }),
         )
+    };
+}
+
+macro_rules! pack_variadic {
+    ($index:ident, $stack:ident, $objs:ident) => {
+        if $index < $stack.len() {
+            let mut v = Vec::new();
+            v.append(&mut $stack.split_off($index));
+            $stack.push(GosValue::with_slice_val(v, &mut $objs.slices))
+        }
+    };
+}
+
+macro_rules! offset_uint {
+    ($uint:expr, $offset:expr) => {
+        ($uint as isize + $offset as isize) as usize
     };
 }
 
@@ -59,6 +74,7 @@ macro_rules! duplicate {
             | GosValue::Bool(_)
             | GosValue::Int(_)
             | GosValue::Float64(_)
+            | GosValue::Complex64(_, _)
             | GosValue::Str(_)
             | GosValue::Boxed(_)
             | GosValue::Closure(_) => $val.clone(),
@@ -163,7 +179,7 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn new_with_func(fkey: FunctionKey, sbase: usize) -> CallFrame {
+    fn with_func(fkey: FunctionKey, sbase: usize) -> CallFrame {
         CallFrame {
             callable: Callable::Function(fkey),
             pc: 0,
@@ -172,7 +188,7 @@ impl CallFrame {
         }
     }
 
-    fn new_with_closure(ckey: ClosureKey, sbase: usize) -> CallFrame {
+    fn with_closure(ckey: ClosureKey, sbase: usize) -> CallFrame {
         CallFrame {
             callable: Callable::Closure(ckey),
             pc: 0,
@@ -181,10 +197,10 @@ impl CallFrame {
         }
     }
 
-    fn new_with_gos_value(val: &GosValue, sbase: usize) -> CallFrame {
+    fn with_gos_value(val: &GosValue, sbase: usize) -> CallFrame {
         match val {
-            GosValue::Function(fkey) => CallFrame::new_with_func(fkey.clone(), sbase),
-            GosValue::Closure(ckey) => CallFrame::new_with_closure(ckey.clone(), sbase),
+            GosValue::Function(fkey) => CallFrame::with_func(fkey.clone(), sbase),
+            GosValue::Closure(ckey) => CallFrame::with_closure(ckey.clone(), sbase),
             _ => unreachable!(),
         }
     }
@@ -239,7 +255,7 @@ impl Fiber {
     }
 
     fn run(&mut self, fkey: FunctionKey, pkgs: &Vec<PackageKey>, objs: &mut VMObjects) {
-        let frame = CallFrame::new_with_func(fkey, 0);
+        let frame = CallFrame::with_func(fkey, 0);
         self.frames.push(frame);
         self.main_loop(pkgs, objs);
     }
@@ -347,10 +363,10 @@ impl Fiber {
                     }
                 }
                 Opcode::LOAD_FIELD => {
+                    let ind = stack.pop().unwrap();
                     let len = stack.len();
-                    let val = try_unbox!(&stack[len - 2], &objs.boxed);
-                    let ind = &stack[len - 1];
-                    let c = match val {
+                    let val = try_unbox!(&stack[len - 1], &objs.boxed);
+                    stack[len - 1] = match val {
                         GosValue::Slice(skey) => {
                             let slice = &objs.slices[*skey];
                             if let Some(v) = slice.get(ind.as_int() as usize) {
@@ -359,13 +375,13 @@ impl Fiber {
                                 unimplemented!();
                             }
                         }
-                        GosValue::Map(mkey) => (&objs.maps[*mkey]).get(ind).clone(),
+                        GosValue::Map(mkey) => (&objs.maps[*mkey]).get(&ind).clone(),
                         GosValue::Struct(skey) => {
                             let sval = &objs.structs[*skey];
                             match ind {
-                                GosValue::Int(i) => sval.fields[*i as usize],
+                                GosValue::Int(i) => sval.fields[i as usize],
                                 GosValue::Str(s) => {
-                                    let str_val = &objs.strings[*s];
+                                    let str_val = &objs.strings[s];
                                     let index = sval.field_method_index(&str_val.data, objs);
                                     if index < sval.fields.len() as OpIndex {
                                         sval.fields[index as usize]
@@ -382,15 +398,13 @@ impl Fiber {
                         }
                         _ => unreachable!(),
                     };
-                    stack[len - 2] = c;
-                    stack.pop();
                 }
                 Opcode::LOAD_FIELD_IMM => {
                     let len = stack.len();
                     let val = try_unbox!(&stack[len - 1], &objs.boxed);
                     let index = *code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let c = match val {
+                    stack[len - 1] = match val {
                         GosValue::Slice(skey) => {
                             let slice = &objs.slices[*skey];
                             if let Some(v) = slice.get(index as usize) {
@@ -416,12 +430,11 @@ impl Fiber {
                         }
                         _ => unreachable!(),
                     };
-                    stack[len - 1] = c;
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_NT => {
                     let lhs_index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let index = (stack.len() as i16 + lhs_index - 1) as usize;
+                    let index = offset_uint!(stack.len(), *lhs_index);
                     let store = try_unbox!(stack.get(index).unwrap(), &objs.boxed);
                     let key = stack.get(index + 1).unwrap();
                     let i = rhs_val_index!(stack, code, frame, instruction, Opcode::STORE_FIELD);
@@ -453,7 +466,7 @@ impl Fiber {
                 Opcode::STORE_FIELD_IMM | Opcode::STORE_FIELD_IMM_NT => {
                     let lhs_index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let index = (stack.len() as i16 + lhs_index - 1) as usize;
+                    let index = (stack.len() as i16 + lhs_index) as usize;
                     let store = try_unbox!(stack.get(index).unwrap(), &objs.boxed);
                     let key = code[frame.pc].unwrap_data();
                     frame.pc += 1;
@@ -495,17 +508,10 @@ impl Fiber {
                 Opcode::STORE_DEREF | Opcode::STORE_DEREF_NT => {
                     let lhs_index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    let index = (stack.len() as i16 + lhs_index - 1) as usize;
+                    let index = (stack.len() as i16 + lhs_index) as usize;
                     let store = stack.get(index).unwrap();
                     let i = rhs_val_index!(stack, code, frame, instruction, Opcode::STORE_DEREF);
                     objs.boxed[*store.as_boxed()] = duplicate!(stack[i], objs);
-                }
-                Opcode::IMPORT => {
-                    let index = *code[frame.pc].unwrap_data() as usize;
-                    frame.pc += 1;
-                    let pkey = pkgs[index];
-                    stack.push(GosValue::Package(pkey));
-                    stack.push(GosValue::Bool(objs.packages[pkey].inited()));
                 }
 
                 Opcode::ADD => prim_ops::add(stack, &mut objs.strings),
@@ -516,14 +522,13 @@ impl Fiber {
                 Opcode::PRE_CALL => {
                     let val = stack.pop().unwrap();
                     let sbase = stack.len();
-                    let next_frame = CallFrame::new_with_gos_value(&val, sbase);
+                    let next_frame = CallFrame::with_gos_value(&val, sbase);
                     let func_key = next_frame.callable.func(objs);
                     let next_func = &objs.functions[func_key];
                     // init return values
                     if next_func.ret_count > 0 {
                         let type_key = next_func.typ;
-                        let type_data = &objs.types[type_key].data;
-                        let (_, rs) = type_data.closure_type_data();
+                        let (_, rs) = &objs.types[type_key].closure_type_data();
                         let mut returns = rs
                             .iter()
                             .map(|x| x.get_type_val(&objs).zero_val.clone())
@@ -537,7 +542,7 @@ impl Fiber {
                     }
                     self.next_frame = Some(next_frame);
                 }
-                Opcode::CALL => {
+                Opcode::CALL | Opcode::CALL_ELLIPSIS => {
                     self.frames.push(self.next_frame.take().unwrap());
                     frame = self.frames.last_mut().unwrap();
                     func = &objs.functions[frame.callable.func(objs)];
@@ -547,6 +552,19 @@ impl Fiber {
                     dbg!(&consts);
                     dbg!(&code);
                     dbg!(&stack);
+
+                    if func.variadic() && *instruction != Opcode::CALL_ELLIPSIS {
+                        let index = stack_base
+                            + func.param_count
+                            + func.ret_count
+                            + if frame.callable.receiver(&objs).is_some() {
+                                1
+                            } else {
+                                0
+                            }
+                            - 1;
+                        pack_variadic!(index, stack, objs);
+                    }
 
                     // allocate placeholders for local variables
                     for _ in 0..func.local_count() {
@@ -562,7 +580,7 @@ impl Fiber {
                             for uv in cls_val.upvalues.iter() {
                                 match uv {
                                     UpValue::Open(f, ind) => {
-                                        drop(frame); // temporarily let go of the ownership
+                                        drop(frame);
                                         let upframe =
                                             upframe!(self.frames.iter_mut().rev().skip(1), objs, f);
                                         upframe.remove_referred_by(*ind, c.clone());
@@ -638,33 +656,73 @@ impl Fiber {
                     if val.as_bool() {
                         let offset = code[frame.pc].unwrap_data();
                         frame.pc += 1;
-                        frame.pc = (frame.pc as isize + *offset as isize) as usize;
+                        frame.pc = offset_uint!(frame.pc, *offset);
                     } else {
                         frame.pc += 1;
                     }
                     stack.pop();
                 }
 
-                Opcode::NEW_CLOSURE => {
-                    let fkey = stack.last().unwrap().as_function();
-                    let func = &objs.functions[*fkey];
-                    let ckey = objs
-                        .closures
-                        .insert(ClosureVal::new(*fkey, func.up_ptrs.clone()));
-                    // set referred_by for the frames down in the stack
-                    for uv in func.up_ptrs.iter() {
-                        match uv {
-                            UpValue::Open(func, ind) => {
-                                drop(frame);
-                                let upframe = upframe!(self.frames.iter_mut().rev(), objs, func);
-                                upframe.add_referred_by(*ind, ckey.clone());
-                                frame = self.frames.last_mut().unwrap();
+                Opcode::IMPORT => {
+                    let index = *code[frame.pc].unwrap_data() as usize;
+                    frame.pc += 1;
+                    let pkey = pkgs[index];
+                    stack.push(GosValue::Package(pkey));
+                    stack.push(GosValue::Bool(objs.packages[pkey].inited()));
+                }
+                Opcode::NEW => {
+                    let new_val = match stack.pop().unwrap() {
+                        GosValue::Function(fkey) => {
+                            // NEW a closure
+                            let func = &objs.functions[fkey];
+                            let ckey = objs
+                                .closures
+                                .insert(ClosureVal::new(fkey, func.up_ptrs.clone()));
+                            // set referred_by for the frames down in the stack
+                            for uv in func.up_ptrs.iter() {
+                                match uv {
+                                    UpValue::Open(func, ind) => {
+                                        drop(frame);
+                                        let upframe =
+                                            upframe!(self.frames.iter_mut().rev(), objs, func);
+                                        upframe.add_referred_by(*ind, ckey.clone());
+                                        frame = self.frames.last_mut().unwrap();
+                                    }
+                                    UpValue::Closed(_) => unreachable!(),
+                                }
                             }
-                            UpValue::Closed(_) => unreachable!(),
+                            GosValue::Closure(ckey)
                         }
+                        _ => unimplemented!(),
+                    };
+                    stack.push(new_val);
+                }
+                Opcode::MAKE => unimplemented!(),
+                Opcode::LEN => match stack.pop().unwrap() {
+                    GosValue::Slice(skey) => {
+                        stack.push(GosValue::Int(objs.slices[skey].len() as isize));
                     }
-                    stack.pop();
-                    stack.push(GosValue::Closure(ckey));
+                    GosValue::Map(mkey) => {
+                        stack.push(GosValue::Int(objs.maps[mkey].len() as isize));
+                    }
+                    _ => unreachable!(),
+                },
+                Opcode::CAP => match stack.pop().unwrap() {
+                    GosValue::Slice(skey) => {
+                        stack.push(GosValue::Int(objs.slices[skey].cap() as isize));
+                    }
+                    _ => unreachable!(),
+                },
+                Opcode::APPEND => {
+                    let index = offset_uint!(stack.len(), *code[frame.pc].unwrap_data());
+                    frame.pc += 1;
+                    pack_variadic!(index, stack, objs);
+                    let b = stack.pop().unwrap();
+                    let a = &stack[stack.len() - 1];
+                    let vala = &objs.slices[*a.as_slice()];
+                    let valb = &objs.slices[*b.as_slice()];
+                    vala.borrow_data_mut()
+                        .append(&mut valb.borrow_data().clone());
                 }
                 _ => unimplemented!(),
             };

@@ -31,7 +31,7 @@ pub trait Visitor {
 
     fn visit_expr_type_assert(&mut self);
 
-    fn visit_expr_call(&mut self, args: &Vec<Expr>);
+    fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool);
 
     fn visit_expr_star(&mut self);
 
@@ -144,8 +144,7 @@ pub fn walk_expr(v: &mut dyn Visitor, expr: &Expr) {
         }
         Expr::Call(e) => {
             let callexp = e.as_ref();
-            v.visit_expr(&callexp.func);
-            v.visit_expr_call(&callexp.args);
+            v.visit_expr_call(&callexp.func, &callexp.args, callexp.ellipsis.is_some());
         }
         Expr::Star(e) => {
             let starexp = e.as_ref();
