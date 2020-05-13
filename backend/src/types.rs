@@ -1,15 +1,15 @@
 #![allow(dead_code)]
 #![macro_use]
+pub use super::code_gen::{Function, Package};
+use super::opcode::OpIndex;
+pub use super::vm::ClosureVal;
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
+use std::iter::FromIterator;
 use std::rc::Rc;
-
-pub use super::code_gen::{Function, Package};
-use super::opcode::OpIndex;
-pub use super::vm::ClosureVal;
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -682,6 +682,17 @@ impl<'a> SliceVal {
 
     pub fn borrow_data(&self) -> std::cell::Ref<Vec<GosValue>> {
         self.vec.borrow()
+    }
+
+    pub fn deep_clone(&self) -> SliceVal {
+        let vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
+        SliceVal {
+            dark: false,
+            begin: 0,
+            end: self.cap(),
+            soft_cap: self.cap(),
+            vec: Rc::new(RefCell::new(vec)),
+        }
     }
 
     pub fn push(&mut self, val: GosValue) {

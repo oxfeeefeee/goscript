@@ -1,23 +1,32 @@
 package main
 
 func funca(i int) int {
-    j := i + 2 + 2 + i - 1
+    j := i + 1
     return j
 }
 
+
 func funcb(i int, iii int) (a int, b int) {
-    
     fff := 4
     fff = 5
-    fff = fff + 100 + i + funca(fff)
-    //a = fff
-    b = fff
+    fff = fff + 50 + i + funca(i) + iii
+    b = fff 
     return
 }
 
 
+func funcc(x ...int) (int, int, int) {
+    i := []int{8}
+    i = append(i, x...)
+    m, n := funcb(i[0], i[1])
+    return m, n, i[2]
+}
+
+
 func main() {
-    var re, r2 = funcb(3, 4)
+
+    var v, v2, v3 = funcc(100, 200, 300)
+    var i, i2, i3 = funcc([]int{1000, 2000, 3000}...)
 } 
 
-//0, 121
+0 172 200 0 1072 2000

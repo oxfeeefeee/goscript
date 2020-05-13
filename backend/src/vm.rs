@@ -282,7 +282,18 @@ impl Fiber {
                 Opcode::PUSH_CONST => {
                     let index = code[frame.pc].unwrap_data();
                     frame.pc += 1;
-                    stack.push(consts[*index as usize].clone());
+                    let gos_val = &consts[*index as usize];
+                    let val = match gos_val {
+                        // Slice is a special case here because, this is stored slice literal,
+                        // and when it gets "duplicated", the underlying rust vec is not copied
+                        // which leads to all function calls shares the same vec instance
+                        GosValue::Slice(s) => {
+                            let slice = objs.slices[*s].deep_clone();
+                            GosValue::Slice(objs.slices.insert(slice))
+                        }
+                        _ => gos_val.clone(),
+                    };
+                    stack.push(val);
                 }
                 Opcode::PUSH_NIL => {
                     stack.push(GosValue::Nil);
