@@ -2,14 +2,12 @@
 #![macro_use]
 pub use super::code_gen::{Function, Package};
 use super::opcode::OpIndex;
+pub use super::values::{ChannelVal, InterfaceVal, MapVal, SliceVal, StringVal, StructVal};
 pub use super::vm::ClosureVal;
 use slotmap::{new_key_type, DenseSlotMap};
-use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
-use std::rc::Rc;
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -22,6 +20,16 @@ macro_rules! null_key {
 macro_rules! new_objects {
     () => {
         DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
+    };
+}
+
+macro_rules! unwrap_gos_val {
+    ($name:tt, $self_:ident) => {
+        if let GosValue::$name(k) = $self_ {
+            k
+        } else {
+            unreachable!();
+        }
     };
 }
 
@@ -103,45 +111,20 @@ impl Objects {
 }
 
 pub fn new_str(strings: &mut StringObjs, s: String) -> GosValue {
-    GosValue::Str(strings.insert(StringVal {
-        dark: false,
-        data: s,
-    }))
+    GosValue::Str(strings.insert(StringVal::with_str(s)))
 }
 
 pub fn new_slice(slices: &mut SliceObjs, cap: usize) -> GosValue {
-    let s = SliceVal {
-        dark: false,
-        begin: 0,
-        end: 0,
-        soft_cap: cap,
-        vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
-    };
-    let key = slices.insert(s);
-    GosValue::Slice(key)
+    GosValue::Slice(slices.insert(SliceVal::new(cap)))
 }
 
 pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
-    let s = SliceVal {
-        dark: false,
-        begin: 0,
-        end: 0,
-        soft_cap: val.len(),
-        vec: Rc::new(RefCell::new(val)),
-    };
-    let key = slices.insert(s);
-    GosValue::Slice(key)
+    GosValue::Slice(slices.insert(SliceVal::with_data(val)))
 }
 
 pub fn new_map(objs: &mut Objects, default_val: GosValue) -> GosValue {
-    let val = MapVal {
-        dark: false,
-        objs: unsafe { std::mem::transmute(&objs) },
-        default_val: default_val,
-        data: HashMap::new(),
-    };
-    let key = objs.maps.insert(val);
-    GosValue::Map(key)
+    let val = MapVal::new(unsafe { std::mem::transmute(&objs) }, default_val);
+    GosValue::Map(objs.maps.insert(val))
 }
 
 pub fn new_type(types: &mut TypeObjs, t: GosType) -> GosValue {
@@ -151,7 +134,6 @@ pub fn new_type(types: &mut TypeObjs, t: GosType) -> GosValue {
 
 // ----------------------------------------------------------------------------
 // GosValue
-
 #[derive(Clone, Copy, Debug)]
 pub enum GosValue {
     Nil,
@@ -176,13 +158,42 @@ pub enum GosValue {
 impl PartialEq for GosValue {
     fn eq(&self, other: &GosValue) -> bool {
         match (self, other) {
+            // todo: not the "correct" implementation yet,
             (GosValue::Nil, GosValue::Nil) => true,
             (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
             (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
+            (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
             (GosValue::Str(x), GosValue::Str(y)) => x == y,
             (GosValue::Slice(x), GosValue::Slice(y)) => x == y,
             _ => false,
+        }
+    }
+}
+
+impl PartialOrd for GosValue {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for GosValue {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            // todo: not the "correct" implementation yet,
+            (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
+            (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
+            (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
+            (GosValue::Float64(x), GosValue::Float64(y)) => {
+                match x.partial_cmp(y) {
+                    Some(order) => order,
+                    None => Ordering::Less, // todo: not "correct" implementation
+                }
+            }
+            (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
+            (GosValue::Str(_), GosValue::Str(_)) => unimplemented!(),
+            (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }
@@ -196,87 +207,69 @@ impl Default for GosValue {
 impl Eq for GosValue {}
 
 impl GosValue {
+    #[inline]
     pub fn new_str(s: String, o: &mut StringObjs) -> GosValue {
         new_str(o, s)
     }
 
+    #[inline]
     pub fn new_slice(cap: usize, o: &mut SliceObjs) -> GosValue {
         new_slice(o, cap)
     }
 
+    #[inline]
     pub fn with_slice_val(val: Vec<GosValue>, o: &mut SliceObjs) -> GosValue {
         with_slice_val(o, val)
     }
 
+    #[inline]
     pub fn new_map(default: GosValue, objs: &mut Objects) -> GosValue {
         new_map(objs, default)
     }
 
+    #[inline]
     pub fn new_type(t: GosType, o: &mut TypeObjs) -> GosValue {
         new_type(o, t)
     }
 
     #[inline]
-    pub fn as_bool(&self) -> bool {
-        if let GosValue::Bool(b) = self {
-            *b
-        } else {
-            unreachable!();
-        }
+    pub fn as_bool(&self) -> &bool {
+        unwrap_gos_val!(Bool, self)
     }
 
     #[inline]
-    pub fn as_int(&self) -> isize {
-        if let GosValue::Int(i) = self {
-            *i
-        } else {
-            unreachable!();
-        }
+    pub fn as_int(&self) -> &isize {
+        unwrap_gos_val!(Int, self)
+    }
+
+    #[inline]
+    pub fn as_float(&self) -> &f64 {
+        unwrap_gos_val!(Float64, self)
     }
 
     #[inline]
     pub fn as_slice(&self) -> &SliceKey {
-        if let GosValue::Slice(s) = self {
-            s
-        } else {
-            unreachable!();
-        }
+        unwrap_gos_val!(Slice, self)
     }
 
     #[inline]
     pub fn as_map(&self) -> &MapKey {
-        if let GosValue::Map(m) = self {
-            m
-        } else {
-            unreachable!();
-        }
+        unwrap_gos_val!(Map, self)
     }
 
     #[inline]
     pub fn as_function(&self) -> &FunctionKey {
-        if let GosValue::Function(f) = self {
-            f
-        } else {
-            unreachable!();
-        }
+        unwrap_gos_val!(Function, self)
     }
 
     #[inline]
     pub fn as_type(&self) -> &TypeKey {
-        if let GosValue::Type(t) = self {
-            t
-        } else {
-            unreachable!();
-        }
+        unwrap_gos_val!(Type, self)
     }
 
     #[inline]
     pub fn as_boxed(&self) -> &BoxedKey {
-        if let GosValue::Boxed(b) = self {
-            b
-        } else {
-            unreachable!();
-        }
+        unwrap_gos_val!(Boxed, self)
     }
 
     pub fn get_type_val<'a>(&self, objs: &'a Objects) -> &'a GosType {
@@ -516,272 +509,9 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
     }
 }
 
-// ----------------------------------------------------------------------------
-// InterfaceVal
-
-#[derive(Clone, Debug)]
-pub struct InterfaceVal {}
-
-// ----------------------------------------------------------------------------
-// StringVal
-
-#[derive(Clone, Debug)]
-pub struct StringVal {
-    pub dark: bool,
-    pub data: String,
-}
-
-impl PartialEq for StringVal {
-    fn eq(&self, other: &StringVal) -> bool {
-        self.data == other.data
-    }
-}
-
-// ----------------------------------------------------------------------------
-// MapVal
-
-#[derive(Clone)]
-pub struct HashKey {
-    pub val: GosValue,
-    pub objs: &'static Objects,
-}
-
-impl Eq for HashKey {}
-
-impl PartialEq for HashKey {
-    fn eq(&self, other: &HashKey) -> bool {
-        self.val == other.val
-    }
-}
-
-impl fmt::Debug for HashKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.val.fmt(f)
-    }
-}
-
-impl Hash for HashKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match &self.val {
-            GosValue::Nil => 0.hash(state),
-            GosValue::Bool(b) => b.hash(state),
-            GosValue::Int(i) => i.hash(state),
-            GosValue::Float64(f) => f.to_bits().hash(state),
-            GosValue::Str(s) => self.objs.strings[*s].data.hash(state),
-            /*
-            GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
-            GosValue::Map(_) => {unreachable!()}
-            GosValue::Struct(s) => {
-                for item in s.as_ref().borrow().iter() {
-                    item.hash(state);
-                }}
-            GosValue::Interface(i) => {i.as_ref().hash(state);}
-            GosValue::Closure(_) => {unreachable!()}
-            GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}*/
-            _ => unreachable!(),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct MapVal {
-    pub dark: bool,
-    objs: &'static Objects,
-    default_val: GosValue,
-    data: HashMap<HashKey, GosValue>,
-}
-
-impl fmt::Debug for MapVal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MapVal")
-            .field("dark", &self.dark)
-            .field("default_val", &self.default_val)
-            .field("data", &self.data)
-            .finish()
-    }
-}
-
-impl MapVal {
-    pub fn insert(&mut self, key: GosValue, val: GosValue) -> Option<GosValue> {
-        let hk = HashKey {
-            val: key,
-            objs: self.objs,
-        };
-        self.data.insert(hk, val)
-    }
-
-    pub fn get(&self, key: &GosValue) -> &GosValue {
-        let hk = HashKey {
-            val: *key,
-            objs: self.objs,
-        };
-        match self.data.get(&hk) {
-            Some(v) => v,
-            None => &self.default_val,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-}
-
-// ----------------------------------------------------------------------------
-// StructVal
-
-#[derive(Clone, Debug)]
-pub struct StructVal {
-    pub dark: bool,
-    pub typ: TypeKey,
-    pub fields: Vec<GosValue>,
-}
-
-impl StructVal {
-    pub fn field_method_index(&self, name: &String, objs: &Objects) -> OpIndex {
-        let t = &objs.types[self.typ];
-        if let GosTypeData::Struct(_, map) = &t.data {
-            map[name] as OpIndex
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-// ----------------------------------------------------------------------------
-// ChannelVal
-
-#[derive(Clone, Debug)]
-pub struct ChannelVal {
-    pub dark: bool,
-}
-
-// ----------------------------------------------------------------------------
-// SliceVal
-
-#[derive(Clone, Debug)]
-pub struct SliceVal {
-    pub dark: bool,
-    begin: usize,
-    end: usize,
-    soft_cap: usize, // <= self.vec.capacity()
-    vec: Rc<RefCell<Vec<GosValue>>>,
-}
-
-impl<'a> SliceVal {
-    pub fn len(&self) -> usize {
-        self.end - self.begin
-    }
-
-    pub fn cap(&self) -> usize {
-        self.soft_cap - self.begin
-    }
-
-    pub fn borrow_data_mut(&self) -> std::cell::RefMut<Vec<GosValue>> {
-        self.vec.borrow_mut()
-    }
-
-    pub fn borrow_data(&self) -> std::cell::Ref<Vec<GosValue>> {
-        self.vec.borrow()
-    }
-
-    pub fn deep_clone(&self) -> SliceVal {
-        let vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
-        SliceVal {
-            dark: false,
-            begin: 0,
-            end: self.cap(),
-            soft_cap: self.cap(),
-            vec: Rc::new(RefCell::new(vec)),
-        }
-    }
-
-    pub fn push(&mut self, val: GosValue) {
-        self.try_grow_vec(self.len() + 1);
-        self.vec.borrow_mut().push(val);
-        self.end += 1;
-    }
-
-    pub fn append(&mut self, vals: &mut Vec<GosValue>) {
-        let new_len = self.len() + vals.len();
-        self.try_grow_vec(new_len);
-        self.vec.borrow_mut().append(vals);
-        self.end = self.begin + new_len;
-    }
-
-    pub fn iter(&'a self) -> SliceValIter<'a> {
-        SliceValIter {
-            slice: self,
-            cur: self.begin,
-        }
-    }
-
-    pub fn get(&self, i: usize) -> Option<GosValue> {
-        if let Some(val) = self.vec.borrow().get(i) {
-            Some(val.clone())
-        } else {
-            None
-        }
-    }
-
-    pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow_mut()[i] = val;
-    }
-
-    fn try_grow_vec(&mut self, len: usize) {
-        let mut cap = self.cap();
-        assert!(cap >= self.len());
-        if cap >= len {
-            return;
-        }
-        while cap < len {
-            if cap < 1024 {
-                cap *= 2
-            } else {
-                cap = (cap as f32 * 1.25) as usize
-            }
-        }
-        let data_len = self.len();
-        let mut vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
-        vec.reserve_exact(cap - vec.len());
-        self.vec = Rc::new(RefCell::new(vec));
-        self.begin = 0;
-        self.end = data_len;
-        self.soft_cap = cap;
-    }
-}
-
-pub struct SliceValIter<'a> {
-    slice: &'a SliceVal,
-    cur: usize,
-}
-
-impl<'a> Iterator for SliceValIter<'a> {
-    type Item = GosValue;
-
-    fn next(&mut self) -> Option<GosValue> {
-        if self.cur < self.slice.end {
-            self.cur += 1;
-            Some(self.slice.get(self.cur - 1).unwrap())
-        } else {
-            None
-        }
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::hash_map::DefaultHasher;
-    fn calculate_hash<T: Hash>(t: &T) -> u64 {
-        let mut s = DefaultHasher::new();
-        t.hash(&mut s);
-        s.finish()
-    }
-
-    #[test]
-    fn test_float() {
-        dbg!("1000000000000000000000001e10".parse::<f64>().unwrap());
-    }
 
     #[test]
     fn test_gosvalue_debug() {

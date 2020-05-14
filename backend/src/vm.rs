@@ -343,7 +343,7 @@ impl Fiber {
                     frame.pc += 1;
                     match &objs.closures[frame.callable.closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
-                            drop(frame); // temporarily let go of the ownership
+                            drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
                             stack.push(stack[stack_ptr].clone());
@@ -362,7 +362,7 @@ impl Fiber {
                     let val = duplicate!(stack[i], objs);
                     match &objs.closures[frame.callable.closure()].upvalues[*index as usize] {
                         UpValue::Open(f, ind) => {
-                            drop(frame); // temporarily let go of the ownership
+                            drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), objs, f);
                             let stack_ptr = upframe.stack_base + (*ind as usize);
                             stack[stack_ptr] = val;
@@ -380,7 +380,7 @@ impl Fiber {
                     stack[len - 1] = match val {
                         GosValue::Slice(skey) => {
                             let slice = &objs.slices[*skey];
-                            if let Some(v) = slice.get(ind.as_int() as usize) {
+                            if let Some(v) = slice.get(*ind.as_int() as usize) {
                                 v
                             } else {
                                 unimplemented!();
@@ -393,7 +393,8 @@ impl Fiber {
                                 GosValue::Int(i) => sval.fields[i as usize],
                                 GosValue::Str(s) => {
                                     let str_val = &objs.strings[s];
-                                    let index = sval.field_method_index(&str_val.data, objs);
+                                    let index =
+                                        sval.field_method_index(str_val.data_as_ref(), objs);
                                     if index < sval.fields.len() as OpIndex {
                                         sval.fields[index as usize]
                                     } else {
@@ -405,7 +406,7 @@ impl Fiber {
                         }
                         GosValue::Package(pkey) => {
                             let pkg = &objs.packages[*pkey];
-                            pkg.member(ind.as_int() as OpIndex)
+                            pkg.member(*ind.as_int() as OpIndex)
                         }
                         _ => unreachable!(),
                     };
@@ -452,7 +453,7 @@ impl Fiber {
                     let val = duplicate!(stack[i], objs);
                     match store {
                         GosValue::Slice(s) => {
-                            objs.slices[*s].set(key.as_int() as usize, val);
+                            objs.slices[*s].set(*key.as_int() as usize, val);
                         }
                         GosValue::Map(m) => {
                             objs.maps[*m].insert(key.clone(), val.clone());
@@ -465,7 +466,8 @@ impl Fiber {
                                 GosValue::Str(skey) => {
                                     let str_val = &objs.strings[*skey];
                                     let struct_val = &objs.structs[*s];
-                                    let i = struct_val.field_method_index(&str_val.data, objs);
+                                    let i =
+                                        struct_val.field_method_index(str_val.data_as_ref(), objs);
                                     objs.structs[*s].fields[i as usize] = val.clone();
                                 }
                                 _ => unreachable!(),
@@ -527,8 +529,30 @@ impl Fiber {
 
                 Opcode::ADD => prim_ops::add(stack, &mut objs.strings),
                 Opcode::SUB => prim_ops::sub(stack),
-                Opcode::REF => prim_ops::reference(stack, &mut objs.boxed),
-                Opcode::DEREF => prim_ops::deref(stack, &objs.boxed),
+                Opcode::MUL => prim_ops::mul(stack),
+                Opcode::QUO => prim_ops::quo(stack),
+                Opcode::REM => prim_ops::rem(stack),
+                Opcode::AND => prim_ops::and(stack),
+                Opcode::OR => prim_ops::or(stack),
+                Opcode::XOR => prim_ops::xor(stack),
+                Opcode::AND_NOT => prim_ops::and_not(stack),
+                Opcode::SHL => prim_ops::shl(stack),
+                Opcode::SHR => prim_ops::shr(stack),
+                Opcode::UNARY_ADD => prim_ops::unary_and(stack),
+                Opcode::UNARY_SUB => prim_ops::unary_sub(stack),
+                Opcode::UNARY_XOR => prim_ops::unary_xor(stack),
+                Opcode::REF => prim_ops::unary_ref(stack, &mut objs.boxed),
+                Opcode::DEREF => prim_ops::unary_deref(stack, &objs.boxed),
+                Opcode::ARROW => unimplemented!(),
+                Opcode::LAND => prim_ops::logical_and(stack),
+                Opcode::LOR => prim_ops::logical_or(stack),
+                Opcode::LNOT => prim_ops::logical_not(stack),
+                Opcode::EQL => prim_ops::compare_eql(stack),
+                Opcode::LSS => prim_ops::compare_lss(stack),
+                Opcode::GTR => prim_ops::compare_gtr(stack),
+                Opcode::NEQ => prim_ops::compare_neq(stack),
+                Opcode::LEQ => prim_ops::compare_leq(stack),
+                Opcode::GEQ => prim_ops::compare_geq(stack),
 
                 Opcode::PRE_CALL => {
                     let val = stack.pop().unwrap();
@@ -664,7 +688,7 @@ impl Fiber {
                 Opcode::JUMP => unimplemented!(),
                 Opcode::JUMP_IF => {
                     let val = stack.last().unwrap();
-                    if val.as_bool() {
+                    if *val.as_bool() {
                         let offset = code[frame.pc].unwrap_data();
                         frame.pc += 1;
                         frame.pc = offset_uint!(frame.pc, *offset);

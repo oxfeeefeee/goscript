@@ -703,6 +703,28 @@ impl<'a> Visitor for CodeGen<'a> {
                 _ => unreachable!(),
             })
             .collect();
+
+        let simple_op = match stmt.token {
+            Token::ADD_ASSIGN => Some(Token::ADD),         // +=
+            Token::SUB_ASSIGN => Some(Token::SUB),         // -=
+            Token::MUL_ASSIGN => Some(Token::MUL),         // *=
+            Token::QUO_ASSIGN => Some(Token::QUO),         // /=
+            Token::REM_ASSIGN => Some(Token::REM),         // %=
+            Token::AND_ASSIGN => Some(Token::AND),         // &=
+            Token::OR_ASSIGN => Some(Token::OR),           // |=
+            Token::XOR_ASSIGN => Some(Token::XOR),         // ^=
+            Token::SHL_ASSIGN => Some(Token::SHL),         // <<=
+            Token::SHR_ASSIGN => Some(Token::SHR),         // >>=
+            Token::AND_NOT_ASSIGN => Some(Token::AND_NOT), // &^=
+            Token::ASSIGN | Token::DEFINE => None,
+            _ => unreachable!(),
+        };
+        if let Some(code) = simple_op {
+            assert_eq!(stmt.lhs.len(), 1);
+            assert_eq!(stmt.rhs.len(), 1);
+            self.gen_op_assign(&lhs[0], code, &stmt.rhs[0]);
+            return;
+        }
         self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
     }
 
@@ -732,7 +754,6 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {
-        dbg!(bstmt);
         for stmt in bstmt.list.iter() {
             self.visit_stmt(stmt);
         }
@@ -931,6 +952,10 @@ impl<'a> CodeGen<'a> {
         for _ in 0..total_val {
             func.emit_pop();
         }
+    }
+
+    fn gen_op_assign(&mut self, left: &LeftHandSide, op: Token, right: &Expr) {
+        unimplemented!()
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
