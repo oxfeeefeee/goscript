@@ -92,11 +92,19 @@ impl Package {
     }
 
     // pass negative index for main func
-    pub fn member(&self, i: OpIndex) -> GosValue {
+    pub fn member(&self, i: OpIndex) -> &GosValue {
         if i >= 0 {
-            self.members[i as usize]
+            &self.members[i as usize]
         } else {
-            self.members[self.main_func_index.unwrap()]
+            &self.members[self.main_func_index.unwrap()]
+        }
+    }
+
+    pub fn member_mut(&mut self, i: OpIndex) -> &mut GosValue {
+        if i >= 0 {
+            &mut self.members[i as usize]
+        } else {
+            &mut self.members[self.main_func_index.unwrap()]
         }
     }
 
@@ -106,6 +114,9 @@ impl Package {
 }
 
 /// LeftHandSide represents the left hand side of an assign stmt
+/// Primitive stores index of lhs variable
+/// IndexSelExpr stores the index of lhs on the stack
+/// Deref stores the index of lhs on the stack
 #[derive(Clone, Debug)]
 enum LeftHandSide {
     Primitive(EntIndex),
@@ -120,6 +131,7 @@ pub enum EntIndex {
     LocalVar(OpIndex),
     UpValue(OpIndex),
     PackageMember(OpIndex),
+    BuiltIn(Opcode), // built-in identifiers
     Blank,
 }
 
@@ -130,6 +142,7 @@ impl From<EntIndex> for OpIndex {
             EntIndex::LocalVar(i) => i,
             EntIndex::UpValue(i) => i,
             EntIndex::PackageMember(i) => i,
+            EntIndex::BuiltIn(_) => unreachable!(),
             EntIndex::Blank => unreachable!(),
         }
     }
@@ -281,67 +294,77 @@ impl Function {
                 self.code.push(CodeData::Code(Opcode::LOAD_THIS_PKG_FIELD));
                 self.code.push(CodeData::Data(i));
             }
+            EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
         }
     }
 
-    fn emit_store(&mut self, lhs: &LeftHandSide, stack_index: OpIndex) {
-        match lhs {
+    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<OpIndex>) {
+        if let LeftHandSide::Primitive(index) = lhs {
+            if EntIndex::Blank == *index {
+                return;
+            }
+        }
+
+        let (code, i) = match lhs {
             LeftHandSide::Primitive(index) => match index {
-                EntIndex::Blank => {}
-                _ => {
-                    let (code, i) = match index {
-                        EntIndex::Const(_) => unreachable!(),
-                        EntIndex::LocalVar(i) => (
-                            if stack_index == 0 {
-                                Opcode::STORE_LOCAL
-                            } else {
-                                Opcode::STORE_LOCAL_NT
-                            },
-                            i,
-                        ),
-                        EntIndex::UpValue(i) => (
-                            if stack_index == 0 {
-                                Opcode::STORE_UPVALUE
-                            } else {
-                                Opcode::STORE_UPVALUE_NT
-                            },
-                            i,
-                        ),
-                        EntIndex::PackageMember(_) => unimplemented!(),
-                        EntIndex::Blank => unreachable!(),
-                    };
-                    self.code.push(CodeData::Code(code));
-                    self.code.push(CodeData::Data(*i));
-                    if stack_index < 0 {
-                        self.code.push(CodeData::Data(stack_index));
-                    }
-                }
+                EntIndex::Const(_) => unreachable!(),
+                EntIndex::LocalVar(i) => (
+                    if rhs_index == -1 {
+                        match op {
+                            Some(_) => Opcode::STORE_LOCAL_OP,
+                            None => Opcode::STORE_LOCAL,
+                        }
+                    } else {
+                        Opcode::STORE_LOCAL_NT
+                    },
+                    i,
+                ),
+                EntIndex::UpValue(i) => (
+                    if rhs_index == -1 {
+                        match op {
+                            Some(_) => Opcode::STORE_UPVALUE_OP,
+                            None => Opcode::STORE_UPVALUE,
+                        }
+                    } else {
+                        Opcode::STORE_UPVALUE_NT
+                    },
+                    i,
+                ),
+                EntIndex::PackageMember(_) => unimplemented!(),
+                EntIndex::BuiltIn(_) => unreachable!(),
+                EntIndex::Blank => unreachable!(),
             },
             LeftHandSide::IndexSelExpr(i) => {
-                let code = if stack_index == 0 {
-                    Opcode::STORE_FIELD
+                let code = if rhs_index == -1 {
+                    match op {
+                        Some(_) => Opcode::STORE_FIELD_OP,
+                        None => Opcode::STORE_FIELD,
+                    }
                 } else {
                     Opcode::STORE_FIELD_NT
                 };
-                self.code.push(CodeData::Code(code));
-                self.code.push(CodeData::Data(*i));
-                if stack_index < 0 {
-                    self.code.push(CodeData::Data(stack_index));
-                }
+                (code, i)
             }
             LeftHandSide::Deref(i) => {
-                let code = if stack_index == 0 {
-                    Opcode::STORE_DEREF
+                let code = if rhs_index == -1 {
+                    match op {
+                        Some(_) => Opcode::STORE_DEREF_OP,
+                        None => Opcode::STORE_DEREF,
+                    }
                 } else {
                     Opcode::STORE_DEREF_NT
                 };
-                self.code.push(CodeData::Code(code));
-                self.code.push(CodeData::Data(*i));
-                if stack_index < 0 {
-                    self.code.push(CodeData::Data(stack_index));
-                }
+                (code, i)
             }
+        };
+        self.code.push(CodeData::Code(code));
+        self.code.push(CodeData::Data(*i));
+        if rhs_index < -1 {
+            self.code.push(CodeData::Data(rhs_index));
+        }
+        if let Some(data) = op {
+            self.code.push(CodeData::Data(data));
         }
     }
 
@@ -434,7 +457,8 @@ pub struct CodeGen<'a> {
     packages: Vec<PackageKey>,
     current_pkg: PackageKey,
     func_stack: Vec<FunctionKey>,
-    built_ins: Vec<BuiltInFunc>,
+    built_in_funcs: Vec<BuiltInFunc>,
+    built_in_vals: HashMap<&'static str, Opcode>,
     errors: &'a FilePosErrors<'a>,
 }
 
@@ -516,7 +540,7 @@ impl<'a> Visitor for CodeGen<'a> {
             if ident.entity.into_key().is_none() {
                 if let Some(i) = self.built_in_func_index(&ident.name) {
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
-                    let bf = &self.built_ins[i as usize];
+                    let bf = &self.built_in_funcs[i as usize];
                     let func = current_func_mut!(self);
                     func.emit_code(bf.opcode);
                     if bf.variadic {
@@ -550,7 +574,10 @@ impl<'a> Visitor for CodeGen<'a> {
     fn visit_expr_unary(&mut self, op: &Token) {
         let code = match op {
             Token::AND => Opcode::REF,
-            _ => unimplemented!(),
+            Token::ADD => Opcode::UNARY_ADD,
+            Token::SUB => Opcode::UNARY_SUB,
+            Token::XOR => Opcode::UNARY_XOR,
+            _ => unreachable!(),
         };
         current_func_mut!(self).emit_code(code);
     }
@@ -559,7 +586,25 @@ impl<'a> Visitor for CodeGen<'a> {
         let code = match op {
             Token::ADD => Opcode::ADD,
             Token::SUB => Opcode::SUB,
-            _ => unimplemented!(),
+            Token::MUL => Opcode::MUL,
+            Token::QUO => Opcode::QUO,
+            Token::REM => Opcode::REM,
+            Token::AND => Opcode::AND,
+            Token::OR => Opcode::OR,
+            Token::XOR => Opcode::XOR,
+            Token::SHL => Opcode::SHL,
+            Token::SHR => Opcode::SHR,
+            Token::AND_NOT => Opcode::AND_NOT,
+            Token::LAND => Opcode::LAND,
+            Token::LOR => Opcode::LOR,
+            Token::NOT => Opcode::LNOT,
+            Token::EQL => Opcode::EQL,
+            Token::LSS => Opcode::LSS,
+            Token::GTR => Opcode::GTR,
+            Token::NEQ => Opcode::NEQ,
+            Token::LEQ => Opcode::LEQ,
+            Token::GEQ => Opcode::GEQ,
+            _ => unreachable!(),
         };
         current_func_mut!(self).emit_code(code);
     }
@@ -705,27 +750,27 @@ impl<'a> Visitor for CodeGen<'a> {
             .collect();
 
         let simple_op = match stmt.token {
-            Token::ADD_ASSIGN => Some(Token::ADD),         // +=
-            Token::SUB_ASSIGN => Some(Token::SUB),         // -=
-            Token::MUL_ASSIGN => Some(Token::MUL),         // *=
-            Token::QUO_ASSIGN => Some(Token::QUO),         // /=
-            Token::REM_ASSIGN => Some(Token::REM),         // %=
-            Token::AND_ASSIGN => Some(Token::AND),         // &=
-            Token::OR_ASSIGN => Some(Token::OR),           // |=
-            Token::XOR_ASSIGN => Some(Token::XOR),         // ^=
-            Token::SHL_ASSIGN => Some(Token::SHL),         // <<=
-            Token::SHR_ASSIGN => Some(Token::SHR),         // >>=
-            Token::AND_NOT_ASSIGN => Some(Token::AND_NOT), // &^=
+            Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
+            Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
+            Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
+            Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
+            Token::REM_ASSIGN => Some(Opcode::REM),         // %=
+            Token::AND_ASSIGN => Some(Opcode::AND),         // &=
+            Token::OR_ASSIGN => Some(Opcode::OR),           // |=
+            Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
+            Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
+            Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
+            Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
             Token::ASSIGN | Token::DEFINE => None,
             _ => unreachable!(),
         };
         if let Some(code) = simple_op {
             assert_eq!(stmt.lhs.len(), 1);
             assert_eq!(stmt.rhs.len(), 1);
-            self.gen_op_assign(&lhs[0], code, &stmt.rhs[0]);
-            return;
+            self.gen_op_assign(&lhs[0], code as OpIndex, &stmt.rhs[0]);
+        } else {
+            self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
         }
-        self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
     }
 
     fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
@@ -742,7 +787,8 @@ impl<'a> Visitor for CodeGen<'a> {
             let f = current_func_mut!(self);
             f.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
-                0,
+                -1,
+                None,
             );
             f.emit_pop();
         }
@@ -794,13 +840,18 @@ impl<'a> Visitor for CodeGen<'a> {
 
 impl<'a> CodeGen<'a> {
     pub fn new(aobjects: &'a AstObjects, err: &'a FilePosErrors) -> CodeGen<'a> {
-        let built_ins = vec![
+        let funcs = vec![
             BuiltInFunc::new("new", Opcode::NEW, 1, false),
             BuiltInFunc::new("make", Opcode::MAKE, 2, true),
             BuiltInFunc::new("len", Opcode::LEN, 1, false),
             BuiltInFunc::new("cap", Opcode::CAP, 1, false),
             BuiltInFunc::new("append", Opcode::APPEND, 2, true),
+            BuiltInFunc::new("assert", Opcode::ASSERT, 1, false),
         ];
+        let mut vals = HashMap::new();
+        vals.insert("true", Opcode::PUSH_TRUE);
+        vals.insert("false", Opcode::PUSH_FALSE);
+        vals.insert("nil", Opcode::PUSH_NIL);
         CodeGen {
             objects: VMObjects::new(),
             ast_objs: aobjects,
@@ -808,14 +859,22 @@ impl<'a> CodeGen<'a> {
             packages: Vec::new(),
             current_pkg: null_key!(),
             func_stack: Vec::new(),
-            built_ins: built_ins,
+            built_in_funcs: funcs,
+            built_in_vals: vals,
             errors: err,
         }
     }
 
     fn resolve_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        // 1. try local frist
         let id = &self.ast_objs.idents[*ident];
+        // 0. try built-ins
+        if id.entity_key().is_none() {
+            if let Some(op) = self.built_in_vals.get(&*id.name) {
+                return EntIndex::BuiltIn(*op);
+            }
+        }
+
+        // 1. try local frist
         let entity_key = id.entity_key().unwrap();
         let local = current_func_mut!(self)
             .entities
@@ -934,17 +993,23 @@ impl<'a> CodeGen<'a> {
             let val_index = i as i16 - total_rhs_val;
             match l {
                 LeftHandSide::Primitive(_) => {
-                    func.emit_store(l, val_index);
+                    func.emit_store(l, val_index, None);
                 }
                 LeftHandSide::IndexSelExpr(_) => {
                     func.emit_store(
                         &LeftHandSide::IndexSelExpr(current_indexing_index),
                         val_index,
+                        None,
                     );
+                    // the lhs of IndexSelExpr takes two spots
                     current_indexing_index += 2;
                 }
                 LeftHandSide::Deref(_) => {
-                    func.emit_store(&LeftHandSide::Deref(current_indexing_index), val_index);
+                    func.emit_store(
+                        &LeftHandSide::Deref(current_indexing_index),
+                        val_index,
+                        None,
+                    );
                     current_indexing_index += 1;
                 }
             }
@@ -954,8 +1019,27 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_op_assign(&mut self, left: &LeftHandSide, op: Token, right: &Expr) {
-        unimplemented!()
+    fn gen_op_assign(&mut self, left: &LeftHandSide, op: OpIndex, right: &Expr) {
+        self.visit_expr(right);
+        let func = current_func_mut!(self);
+        match left {
+            LeftHandSide::Primitive(_) => {
+                // why no magic number?
+                // local index is resolved visit_stmt_assign
+                func.emit_store(left, -1, Some(op));
+            }
+            LeftHandSide::IndexSelExpr(_) => {
+                // why -3?  stack looks like this(bottom to top) :
+                //  [... target, index, value]
+                func.emit_store(&LeftHandSide::IndexSelExpr(-3), -1, Some(op));
+            }
+            LeftHandSide::Deref(_) => {
+                // why -2?  stack looks like this(bottom to top) :
+                //  [... target, value]
+                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op));
+            }
+        }
+        func.emit_pop();
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> FunctionKey {
@@ -1086,7 +1170,7 @@ impl<'a> CodeGen<'a> {
                             }
                             EntIndex::PackageMember(i) => {
                                 let pkg = &self.objects.packages[self.current_pkg];
-                                pkg.member(i)
+                                *pkg.member(i)
                             }
                             _ => unreachable!(),
                         }
@@ -1231,7 +1315,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn built_in_func_index(&self, name: &str) -> Option<OpIndex> {
-        self.built_ins.iter().enumerate().find_map(|(i, x)| {
+        self.built_in_funcs.iter().enumerate().find_map(|(i, x)| {
             if x.name == name {
                 Some(i as OpIndex)
             } else {

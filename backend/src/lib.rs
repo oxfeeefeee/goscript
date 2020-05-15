@@ -1,7 +1,9 @@
 mod opcode;
-mod prim_ops;
 pub mod types;
 mod values;
+
+#[macro_use]
+mod vm_util;
 
 pub mod code_gen;
 

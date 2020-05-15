@@ -142,6 +142,19 @@ impl MapVal {
         }
     }
 
+    pub fn get_mut(&mut self, key: &GosValue) -> &mut GosValue {
+        let hk = HashKey {
+            val: *key,
+            objs: self.objs,
+        };
+        let result = self.data.get_mut(&hk);
+        if result.is_some() {
+            result.unwrap();
+        }
+        self.insert(*key, self.default_val);
+        self.data.get_mut(&hk).unwrap()
+    }
+
     pub fn len(&self) -> usize {
         self.data.len()
     }

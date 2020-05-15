@@ -30,9 +30,9 @@ pub enum Opcode {
     LOAD_LOCAL14,
     LOAD_LOCAL15,
     LOAD_LOCAL = 220,
-    STORE_LOCAL,
-    STORE_LOCAL_NT,
-    STORE_LOCAL_OP,
+    STORE_LOCAL,    // stores the value on the top of the stack to local
+    STORE_LOCAL_NT, // stores the value that is not on the top of the stack
+    STORE_LOCAL_OP, // stores value with an operation. for +=/-= etc.
     LOAD_UPVALUE = 230,
     STORE_UPVALUE,
     STORE_UPVALUE_NT,
@@ -101,6 +101,7 @@ pub enum Opcode {
     LEN,          // for built-in function len
     CAP,          // for built-in function cap
     APPEND,       //for built-in function append
+    ASSERT,       //for built-in function assert
 }
 
 impl Opcode {
@@ -126,8 +127,14 @@ impl Opcode {
         }
     }
 
+    #[inline]
+    pub fn offset(&self, base: Opcode) -> OpIndex {
+        (*self as i16 - base as i16) as OpIndex
+    }
+
+    #[inline]
     pub fn load_local_index(&self) -> OpIndex {
-        (*self as i16 - Opcode::LOAD_LOCAL0 as i16) as OpIndex
+        self.offset(Opcode::LOAD_LOCAL0)
     }
 
     pub fn property(&self) -> (&str, i8) {
@@ -222,6 +229,7 @@ impl Opcode {
             Opcode::LEN => ("LEN", 0),
             Opcode::CAP => ("CAP", 0),
             Opcode::APPEND => ("APPEND", -128),
+            Opcode::ASSERT => ("ASSERT", 0),
         }
     }
 
