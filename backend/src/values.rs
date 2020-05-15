@@ -1,6 +1,7 @@
 use super::opcode::OpIndex;
-use super::types::{GosTypeData, GosValue, Objects, TypeKey};
+use super::types::{gos_eq, GosTypeData, GosValue, Objects, TypeKey};
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -49,6 +50,20 @@ impl PartialEq for StringVal {
     }
 }
 
+impl Eq for StringVal {}
+
+impl PartialOrd for StringVal {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for StringVal {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.data_as_ref().cmp(other.data_as_ref())
+    }
+}
+
 // ----------------------------------------------------------------------------
 // MapVal
 
@@ -62,7 +77,7 @@ impl Eq for HashKey {}
 
 impl PartialEq for HashKey {
     fn eq(&self, other: &HashKey) -> bool {
-        self.val == other.val
+        gos_eq(&self.val, &other.val, self.objs)
     }
 }
 

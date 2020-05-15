@@ -8,6 +8,9 @@ func main() {
 	i, _, _ := a()
 	_, j, _ := a()
 	_, _, k := a()
+	assert(i == 1)
+	assert(j == 2)
+	assert(k == 3)
 }
 
 //1, 2, 3

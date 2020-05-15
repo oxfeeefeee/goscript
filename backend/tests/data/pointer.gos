@@ -9,8 +9,13 @@ func main() {
     var a = "aa"
     var b = "bb"
     var c = a + b
+    assert(c == "aabb")
     var d = &c
     var arr = []int{6,7}
-    i, *d, j := 8, "ccc", arr[0]
+    *d = "ccc"
+    i, j := 8, arr[0]
     var e = *d
+    assert(i == 8)
+    assert(j == 6)
+    assert(e == "ccc")
 }

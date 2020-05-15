@@ -155,56 +155,37 @@ pub enum GosValue {
     Type(TypeKey),
 }
 
-impl PartialEq for GosValue {
-    fn eq(&self, other: &GosValue) -> bool {
-        match (self, other) {
-            // todo: not the "correct" implementation yet,
-            (GosValue::Nil, GosValue::Nil) => true,
-            (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
-            (GosValue::Int(x), GosValue::Int(y)) => x == y,
-            (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
-            (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
-            (GosValue::Str(x), GosValue::Str(y)) => x == y,
-            (GosValue::Slice(x), GosValue::Slice(y)) => x == y,
-            _ => false,
-        }
+pub fn gos_eq(a: &GosValue, b: &GosValue, objs: &Objects) -> bool {
+    match (a, b) {
+        // todo: not the "correct" implementation yet,
+        (GosValue::Nil, GosValue::Nil) => true,
+        (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
+        (GosValue::Int(x), GosValue::Int(y)) => x == y,
+        (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
+        (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
+        (GosValue::Str(sa), GosValue::Str(sb)) => &objs.strings[*sa] == &objs.strings[*sb],
+        _ => unimplemented!(),
     }
 }
 
-impl PartialOrd for GosValue {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for GosValue {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            // todo: not the "correct" implementation yet,
-            (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
-            (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
-            (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
-            (GosValue::Float64(x), GosValue::Float64(y)) => {
-                match x.partial_cmp(y) {
-                    Some(order) => order,
-                    None => Ordering::Less, // todo: not "correct" implementation
-                }
+pub fn gos_cmp(a: &GosValue, b: &GosValue, objs: &Objects) -> Ordering {
+    match (a, b) {
+        // todo: not the "correct" implementation yet,
+        (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
+        (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
+        (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
+        (GosValue::Float64(x), GosValue::Float64(y)) => {
+            match x.partial_cmp(y) {
+                Some(order) => order,
+                None => Ordering::Less, // todo: not "correct" implementation
             }
-            (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
-            (GosValue::Str(_), GosValue::Str(_)) => unimplemented!(),
-            (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
-            _ => unreachable!(),
         }
+        (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
+        (GosValue::Str(sa), GosValue::Str(sb)) => objs.strings[*sa].cmp(&objs.strings[*sb]),
+        (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
+        _ => unimplemented!(),
     }
 }
-
-impl Default for GosValue {
-    fn default() -> Self {
-        GosValue::Nil
-    }
-}
-
-impl Eq for GosValue {}
 
 impl GosValue {
     #[inline]

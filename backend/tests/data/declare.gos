@@ -7,7 +7,5 @@ func main() {
 	var l int
 	k := i + j
 	k = k  + c + l
-
+	assert(k == 53)
 }
-
-//53

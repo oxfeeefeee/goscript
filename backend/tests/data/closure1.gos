@@ -7,5 +7,5 @@ func main() {
         return a + 10
     }
     c := b() + 10
+    assert(c == 64)
 }
-//64

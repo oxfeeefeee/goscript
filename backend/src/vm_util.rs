@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::opcode::*;
-use super::types::{BoxedObjs, GosValue, StringObjs};
+use super::types::{gos_cmp, gos_eq, BoxedObjs, GosValue, Objects, StringObjs};
 use std::cmp::Ordering;
 
 macro_rules! offset_uint {
@@ -269,34 +269,34 @@ pub fn logical_not(stack: &mut Vec<GosValue>) {
     stack[len - 1] = GosValue::Bool(!stack[len - 1].as_bool());
 }
 
-pub fn compare_eql(stack: &mut Vec<GosValue>) {
+pub fn compare_eql(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Equal));
+    stack.push(GosValue::Bool(gos_eq(&a, &b, objs)));
 }
 
-pub fn compare_lss(stack: &mut Vec<GosValue>) {
+pub fn compare_lss(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Less));
+    stack.push(GosValue::Bool(gos_cmp(&a, &b, objs) == Ordering::Less));
 }
 
-pub fn compare_gtr(stack: &mut Vec<GosValue>) {
+pub fn compare_gtr(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Greater));
+    stack.push(GosValue::Bool(gos_cmp(&a, &b, objs) == Ordering::Greater));
 }
 
-pub fn compare_neq(stack: &mut Vec<GosValue>) {
+pub fn compare_neq(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Equal));
+    stack.push(GosValue::Bool(gos_cmp(&a, &b, objs) != Ordering::Equal));
 }
 
-pub fn compare_leq(stack: &mut Vec<GosValue>) {
+pub fn compare_leq(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Greater));
+    stack.push(GosValue::Bool(gos_cmp(&a, &b, objs) != Ordering::Greater));
 }
 
-pub fn compare_geq(stack: &mut Vec<GosValue>) {
+pub fn compare_geq(stack: &mut Vec<GosValue>, objs: &Objects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Less));
+    stack.push(GosValue::Bool(gos_cmp(&a, &b, objs) != Ordering::Less));
 }
 
 pub fn store_xxx_op(target: &mut GosValue, code: OpIndex, operand: &GosValue) {

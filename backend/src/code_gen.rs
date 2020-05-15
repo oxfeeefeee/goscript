@@ -1390,7 +1390,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn load_parse_gen(path: &str, trace: bool) -> ByteCode {
+    pub fn load_parse_gen(path: &str, trace: bool) -> (ByteCode, usize) {
         let mut astobjs = AstObjects::new();
         let mut fset = FileSet::new();
         let el = ErrorList::new();
@@ -1406,7 +1406,7 @@ impl<'a> CodeGen<'a> {
         let mut code_gen = CodeGen::new(&astobjs, &pos_err);
         code_gen.gen(afile.unwrap());
         print!("\n<- {} ->\n", el);
-        code_gen.into_byte_code()
+        (code_gen.into_byte_code(), el.len())
     }
 }
 

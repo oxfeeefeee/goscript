@@ -452,12 +452,12 @@ impl Fiber {
                 Opcode::LAND => vm_util::logical_and(stack),
                 Opcode::LOR => vm_util::logical_or(stack),
                 Opcode::LNOT => vm_util::logical_not(stack),
-                Opcode::EQL => vm_util::compare_eql(stack),
-                Opcode::LSS => vm_util::compare_lss(stack),
-                Opcode::GTR => vm_util::compare_gtr(stack),
-                Opcode::NEQ => vm_util::compare_neq(stack),
-                Opcode::LEQ => vm_util::compare_leq(stack),
-                Opcode::GEQ => vm_util::compare_geq(stack),
+                Opcode::EQL => vm_util::compare_eql(stack, &objs),
+                Opcode::LSS => vm_util::compare_lss(stack, &objs),
+                Opcode::GTR => vm_util::compare_gtr(stack, &objs),
+                Opcode::NEQ => vm_util::compare_neq(stack, &objs),
+                Opcode::LEQ => vm_util::compare_leq(stack, &objs),
+                Opcode::GEQ => vm_util::compare_geq(stack, &objs),
 
                 Opcode::PRE_CALL => {
                     let val = stack.pop().unwrap();

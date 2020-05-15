@@ -11,5 +11,5 @@ func a(v int) func(int) int {
 func main() {
 	b := a(30)
 	c := b(2)
+	assert(c == 132)
 }
-//132

@@ -7,5 +7,6 @@ var j = i + 1 + c
 func main() {
     k := i + 3
     l := j
+    assert(k == 4)
+    assert(l == 102)
 }
-// 4, 102

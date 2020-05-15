@@ -14,6 +14,5 @@ func main() {
         return c + a
     }
     f := e()
+    assert(f == 104)
 }
-
-//104
