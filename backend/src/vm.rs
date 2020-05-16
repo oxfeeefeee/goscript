@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 use super::code_gen::ByteCode;
 use super::opcode::*;
-use super::types::Objects as VMObjects;
 use super::types::*;
 use super::vm_util;
 use std::cell::RefCell;

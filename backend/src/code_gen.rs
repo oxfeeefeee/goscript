@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
 use super::opcode::*;
-use super::types::Objects as VMObjects;
 use super::types::*;
 use super::vm::UpValue;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::fs;
 
@@ -151,6 +151,7 @@ impl From<EntIndex> for OpIndex {
 /// Function is the direct container of the Opcode.
 #[derive(Clone, Debug)]
 pub struct Function {
+    objs: *const VMObjects,
     pub package: PackageKey,
     pub typ: TypeKey,
     pub code: Vec<CodeData>,
@@ -170,8 +171,15 @@ pub struct Function {
 // Function implementation
 /////////////////////////////////////////////////////////////////////////////
 impl Function {
-    fn new(package: PackageKey, typ: TypeKey, variadic: bool, ctor: bool) -> Function {
+    pub fn new(
+        objs: &VMObjects,
+        package: PackageKey,
+        typ: TypeKey,
+        variadic: bool,
+        ctor: bool,
+    ) -> Function {
         Function {
+            objs: objs,
             package: package,
             typ: typ,
             code: Vec::new(),
@@ -194,12 +202,27 @@ impl Function {
         self.local_alloc as usize - self.param_count - self.ret_count
     }
 
+    fn objs(&self) -> &VMObjects {
+        unsafe { &*self.objs }
+    }
+
     fn entity_index(&self, entity: &EntityKey) -> EntIndex {
         self.entities.get(entity).unwrap().clone()
     }
 
     fn const_val(&self, index: OpIndex) -> &GosValue {
         &self.consts[index as usize]
+    }
+
+    /// returns the index of the const if it's found
+    fn get_const_index(&self, val: &GosValue) -> Option<EntIndex> {
+        self.consts.iter().enumerate().find_map(|(i, x)| {
+            if gos_eq(val, x, self.objs()) {
+                Some(EntIndex::Const(i as OpIndex))
+            } else {
+                None
+            }
+        })
     }
 
     // for unnamed return values, entity == None
@@ -213,15 +236,21 @@ impl Function {
         EntIndex::LocalVar(result)
     }
 
+    /// add a const or get the index of a const.
+    /// when 'entity' is no none, it's a const define, so it should not be called with the
+    /// same 'entity' more than once
     fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
-        // todo: filter out duplicated consts
-        self.consts.push(cst);
-        let result = (self.consts.len() - 1).try_into().unwrap();
-        if let Some(key) = entity {
-            let old = self.entities.insert(key, EntIndex::Const(result));
-            assert_eq!(old, None);
+        if let Some(index) = self.get_const_index(&cst) {
+            index
+        } else {
+            self.consts.push(cst);
+            let result = (self.consts.len() - 1).try_into().unwrap();
+            if let Some(key) = entity {
+                let old = self.entities.insert(key, EntIndex::Const(result));
+                assert_eq!(old, None);
+            }
+            EntIndex::Const(result)
         }
-        EntIndex::Const(result)
     }
 
     fn add_const_def(&mut self, entity: EntityKey, cst: GosValue, pkg: &mut Package) -> EntIndex {
@@ -275,24 +304,35 @@ impl Function {
     fn emit_load(&mut self, index: EntIndex) {
         match index {
             EntIndex::Const(i) => {
-                // todo: optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_SHORT
-                self.code.push(CodeData::Code(Opcode::PUSH_CONST));
-                self.code.push(CodeData::Data(i));
+                // optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_SHORT]
+                match self.const_val(i).clone() {
+                    GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
+                    GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
+                    GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
+                    GosValue::Int(i) if i16::try_from(i).ok().is_some() => {
+                        self.emit_code(Opcode::PUSH_IMM);
+                        self.emit_data(i16::try_from(i).unwrap());
+                    }
+                    _ => {
+                        self.emit_code(Opcode::PUSH_CONST);
+                        self.emit_data(i);
+                    }
+                }
             }
             EntIndex::LocalVar(i) => {
                 let code = Opcode::get_load_local(i);
-                self.code.push(CodeData::Code(code));
+                self.emit_code(code);
                 if let Opcode::LOAD_LOCAL = code {
-                    self.code.push(CodeData::Data(i));
+                    self.emit_data(i);
                 }
             }
             EntIndex::UpValue(i) => {
-                self.code.push(CodeData::Code(Opcode::LOAD_UPVALUE));
-                self.code.push(CodeData::Data(i));
+                self.emit_code(Opcode::LOAD_UPVALUE);
+                self.emit_data(i);
             }
             EntIndex::PackageMember(i) => {
-                self.code.push(CodeData::Code(Opcode::LOAD_THIS_PKG_FIELD));
-                self.code.push(CodeData::Data(i));
+                self.emit_code(Opcode::LOAD_THIS_PKG_FIELD);
+                self.emit_data(i);
             }
             EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
@@ -358,13 +398,13 @@ impl Function {
                 (code, i)
             }
         };
-        self.code.push(CodeData::Code(code));
-        self.code.push(CodeData::Data(*i));
+        self.emit_code(code);
+        self.emit_data(*i);
         if rhs_index < -1 {
-            self.code.push(CodeData::Data(rhs_index));
+            self.emit_data(rhs_index);
         }
         if let Some(data) = op {
-            self.code.push(CodeData::Data(data));
+            self.emit_data(data);
         }
     }
 
@@ -1050,14 +1090,21 @@ impl<'a> CodeGen<'a> {
             && params[params.len() - 1]
                 .get_type_val(&self.objects)
                 .is_variadic();
-        let mut func = Function::new(self.current_pkg.clone(), *ftype.as_type(), variadic, false);
+        let fkey = *GosValue::new_function(
+            self.current_pkg.clone(),
+            *ftype.as_type(),
+            variadic,
+            false,
+            &mut self.objects,
+        )
+        .as_function();
+        let mut func = &mut self.objects.functions[fkey];
         func.ret_count = match &typ.results {
             Some(fl) => func.add_params(&fl, self.ast_objs, self.errors),
             None => 0,
         };
         func.param_count = func.add_params(&typ.params, self.ast_objs, self.errors);
 
-        let fkey = self.objects.functions.insert(func);
         self.func_stack.push(fkey.clone());
         // process function body
         self.visit_stmt_block(body);
@@ -1346,8 +1393,8 @@ impl<'a> CodeGen<'a> {
         let pkg_val = Package::new(pkg_name.clone());
         let pkey = self.objects.packages.insert(pkg_val);
         let ftype = self.objects.default_closure_type.unwrap();
-        let ctor_func = Function::new(pkey, *ftype.as_type(), false, true);
-        let fkey = self.objects.functions.insert(ctor_func);
+        let fkey = *GosValue::new_function(pkey, *ftype.as_type(), false, true, &mut self.objects)
+            .as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
 
@@ -1369,7 +1416,15 @@ impl<'a> CodeGen<'a> {
     fn gen_entry(&mut self) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let ftype = self.objects.default_closure_type.unwrap();
-        let mut func = Function::new(null_key!(), *ftype.as_type(), false, false);
+        let fkey = *GosValue::new_function(
+            null_key!(),
+            *ftype.as_type(),
+            false,
+            false,
+            &mut self.objects,
+        )
+        .as_function();
+        let func = &mut self.objects.functions[fkey];
         func.emit_import(0);
         func.emit_code(Opcode::PUSH_IMM);
         func.emit_data(-1);
@@ -1377,7 +1432,7 @@ impl<'a> CodeGen<'a> {
         func.emit_pre_call();
         func.emit_call(false);
         func.emit_return();
-        self.objects.functions.insert(func)
+        fkey
     }
 
     pub fn into_byte_code(mut self) -> ByteCode {

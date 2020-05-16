@@ -1,5 +1,5 @@
 use super::opcode::OpIndex;
-use super::types::{gos_eq, GosTypeData, GosValue, Objects, TypeKey};
+use super::types::{gos_eq, GosTypeData, GosValue, TypeKey, VMObjects};
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -70,14 +70,20 @@ impl Ord for StringVal {
 #[derive(Clone)]
 pub struct HashKey {
     pub val: GosValue,
-    pub objs: &'static Objects,
+    pub objs: *const VMObjects,
+}
+
+impl HashKey {
+    fn objs(&self) -> &VMObjects {
+        unsafe { &*self.objs }
+    }
 }
 
 impl Eq for HashKey {}
 
 impl PartialEq for HashKey {
     fn eq(&self, other: &HashKey) -> bool {
-        gos_eq(&self.val, &other.val, self.objs)
+        gos_eq(&self.val, &other.val, self.objs())
     }
 }
 
@@ -94,7 +100,7 @@ impl Hash for HashKey {
             GosValue::Bool(b) => b.hash(state),
             GosValue::Int(i) => i.hash(state),
             GosValue::Float64(f) => f.to_bits().hash(state),
-            GosValue::Str(s) => self.objs.strings[*s].data.hash(state),
+            GosValue::Str(s) => self.objs().strings[*s].data.hash(state),
             /*
             GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
             GosValue::Map(_) => {unreachable!()}
@@ -113,7 +119,7 @@ impl Hash for HashKey {
 #[derive(Clone)]
 pub struct MapVal {
     pub dark: bool,
-    objs: &'static Objects,
+    objs: *const VMObjects,
     default_val: GosValue,
     data: HashMap<HashKey, GosValue>,
 }
@@ -129,7 +135,7 @@ impl fmt::Debug for MapVal {
 }
 
 impl MapVal {
-    pub fn new(objs: &'static Objects, default_val: GosValue) -> MapVal {
+    pub fn new(objs: &VMObjects, default_val: GosValue) -> MapVal {
         MapVal {
             dark: false,
             objs: objs,
@@ -186,7 +192,7 @@ pub struct StructVal {
 }
 
 impl StructVal {
-    pub fn field_method_index(&self, name: &String, objs: &Objects) -> OpIndex {
+    pub fn field_method_index(&self, name: &String, objs: &VMObjects) -> OpIndex {
         let t = &objs.types[self.typ];
         if let GosTypeData::Struct(_, map) = &t.data {
             map[name] as OpIndex

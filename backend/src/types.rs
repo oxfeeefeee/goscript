@@ -58,7 +58,7 @@ pub type PackageObjs = DenseSlotMap<PackageKey, Package>;
 pub type TypeObjs = DenseSlotMap<TypeKey, GosType>;
 
 #[derive(Clone, Debug)]
-pub struct Objects {
+pub struct VMObjects {
     pub interfaces: InterfaceObjs,
     pub closures: ClosureObjs,
     pub strings: StringObjs,
@@ -74,9 +74,9 @@ pub struct Objects {
     pub default_closure_type: Option<GosValue>,
 }
 
-impl Objects {
-    pub fn new() -> Objects {
-        let mut objs = Objects {
+impl VMObjects {
+    pub fn new() -> VMObjects {
+        let mut objs = VMObjects {
             interfaces: new_objects!(),
             closures: new_objects!(),
             strings: new_objects!(),
@@ -122,9 +122,20 @@ pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
     GosValue::Slice(slices.insert(SliceVal::with_data(val)))
 }
 
-pub fn new_map(objs: &mut Objects, default_val: GosValue) -> GosValue {
+pub fn new_map(objs: &mut VMObjects, default_val: GosValue) -> GosValue {
     let val = MapVal::new(unsafe { std::mem::transmute(&objs) }, default_val);
     GosValue::Map(objs.maps.insert(val))
+}
+
+pub fn new_function(
+    objs: &mut VMObjects,
+    package: PackageKey,
+    typ: TypeKey,
+    variadic: bool,
+    ctor: bool,
+) -> GosValue {
+    let val = Function::new(objs, package, typ, variadic, ctor);
+    GosValue::Function(objs.functions.insert(val))
 }
 
 pub fn new_type(types: &mut TypeObjs, t: GosType) -> GosValue {
@@ -155,7 +166,7 @@ pub enum GosValue {
     Type(TypeKey),
 }
 
-pub fn gos_eq(a: &GosValue, b: &GosValue, objs: &Objects) -> bool {
+pub fn gos_eq(a: &GosValue, b: &GosValue, objs: &VMObjects) -> bool {
     match (a, b) {
         // todo: not the "correct" implementation yet,
         (GosValue::Nil, GosValue::Nil) => true,
@@ -164,11 +175,11 @@ pub fn gos_eq(a: &GosValue, b: &GosValue, objs: &Objects) -> bool {
         (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
         (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
         (GosValue::Str(sa), GosValue::Str(sb)) => &objs.strings[*sa] == &objs.strings[*sb],
-        _ => unimplemented!(),
+        _ => false,
     }
 }
 
-pub fn gos_cmp(a: &GosValue, b: &GosValue, objs: &Objects) -> Ordering {
+pub fn gos_cmp(a: &GosValue, b: &GosValue, objs: &VMObjects) -> Ordering {
     match (a, b) {
         // todo: not the "correct" implementation yet,
         (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
@@ -204,8 +215,19 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_map(default: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_map(default: GosValue, objs: &mut VMObjects) -> GosValue {
         new_map(objs, default)
+    }
+
+    #[inline]
+    pub fn new_function(
+        package: PackageKey,
+        typ: TypeKey,
+        variadic: bool,
+        ctor: bool,
+        objs: &mut VMObjects,
+    ) -> GosValue {
+        new_function(objs, package, typ, variadic, ctor)
     }
 
     #[inline]
@@ -253,12 +275,12 @@ impl GosValue {
         unwrap_gos_val!(Boxed, self)
     }
 
-    pub fn get_type_val<'a>(&self, objs: &'a Objects) -> &'a GosType {
+    pub fn get_type_val<'a>(&self, objs: &'a VMObjects) -> &'a GosType {
         let tkey = self.as_type();
         &objs.types[*tkey]
     }
 
-    pub fn get_type_val_mut<'a>(&self, objs: &'a mut Objects) -> &'a mut GosType {
+    pub fn get_type_val_mut<'a>(&self, objs: &'a mut VMObjects) -> &'a mut GosType {
         let tkey = self.as_type();
         &mut objs.types[*tkey]
     }
@@ -288,7 +310,7 @@ pub struct GosType {
 }
 
 impl GosType {
-    pub fn new_bool(objs: &mut Objects) -> GosValue {
+    pub fn new_bool(objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Bool(false),
             data: GosTypeData::None,
@@ -296,7 +318,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_int(objs: &mut Objects) -> GosValue {
+    pub fn new_int(objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Int(0),
             data: GosTypeData::None,
@@ -304,7 +326,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_float64(objs: &mut Objects) -> GosValue {
+    pub fn new_float64(objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Float64(0.0),
             data: GosTypeData::None,
@@ -312,7 +334,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_str(objs: &mut Objects) -> GosValue {
+    pub fn new_str(objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Str(null_key!()),
             data: GosTypeData::None,
@@ -323,7 +345,7 @@ impl GosType {
     pub fn new_closure(
         params: Vec<GosValue>,
         results: Vec<GosValue>,
-        objs: &mut Objects,
+        objs: &mut VMObjects,
     ) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Closure(null_key!()),
@@ -332,7 +354,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_slice(vtype: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_slice(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Slice(null_key!()),
             data: GosTypeData::Slice(vtype),
@@ -340,7 +362,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Map(null_key!()),
             data: GosTypeData::Map(ktype, vtype),
@@ -348,7 +370,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_interface(fields: Vec<GosValue>, objs: &mut Objects) -> GosValue {
+    pub fn new_interface(fields: Vec<GosValue>, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Interface(null_key!()),
             data: GosTypeData::Interface(fields),
@@ -359,7 +381,7 @@ impl GosType {
     pub fn new_struct(
         fields: Vec<GosValue>,
         meta: HashMap<String, OpIndex>,
-        objs: &mut Objects,
+        objs: &mut VMObjects,
     ) -> GosValue {
         let field_zeros: Vec<GosValue> = fields
             .iter()
@@ -380,7 +402,7 @@ impl GosType {
         GosValue::Type(typ_key)
     }
 
-    pub fn new_channel(vtype: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_channel(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Channel(null_key!()),
             data: GosTypeData::Channel(vtype),
@@ -388,7 +410,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_boxed(inner: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_boxed(inner: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Boxed(null_key!()),
             data: GosTypeData::Boxed(inner),
@@ -396,7 +418,7 @@ impl GosType {
         GosValue::Type(objs.types.insert(typ))
     }
 
-    pub fn new_variadic(elt: GosValue, objs: &mut Objects) -> GosValue {
+    pub fn new_variadic(elt: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
             // what does zero_val for this mean exactly?
             zero_val: GosValue::Slice(null_key!()),
@@ -455,11 +477,11 @@ impl GosType {
 /// because it requires 'objs' to access the inner data
 pub struct GosValueDebug<'a> {
     val: &'a GosValue,
-    objs: &'a Objects,
+    objs: &'a VMObjects,
 }
 
 impl<'a> GosValueDebug<'a> {
-    pub fn new(val: &'a GosValue, objs: &'a Objects) -> GosValueDebug<'a> {
+    pub fn new(val: &'a GosValue, objs: &'a VMObjects) -> GosValueDebug<'a> {
         GosValueDebug {
             val: val,
             objs: objs,
@@ -496,7 +518,7 @@ mod test {
 
     #[test]
     fn test_gosvalue_debug() {
-        let mut o = Objects::new();
+        let mut o = VMObjects::new();
         let s = new_str(&mut o.strings, "test_string".to_string());
         let slice = new_slice(&mut o.slices, 10);
         dbg!(
@@ -557,7 +579,7 @@ mod test {
 
     #[test]
     fn test_types() {
-        let mut o = Objects::new();
+        let mut o = VMObjects::new();
         let _t1: Vec<GosValue> = vec![
             GosValue::new_str("Norway".to_string(), &mut o.strings),
             GosValue::Int(100),

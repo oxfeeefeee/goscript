@@ -85,3 +85,9 @@ fn test_pointer() {
     let err_cnt = load_parse_gen("./tests/data/pointer.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_operations() {
+    let err_cnt = load_parse_gen("./tests/data/operations.gos", true);
+    assert!(err_cnt == 0);
+}

@@ -12,5 +12,3 @@ func main() {
 	assert(j == 2)
 	assert(k == 3)
 }
-
-//1, 2, 3
