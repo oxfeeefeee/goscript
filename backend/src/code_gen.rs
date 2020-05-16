@@ -304,7 +304,7 @@ impl Function {
     fn emit_load(&mut self, index: EntIndex) {
         match index {
             EntIndex::Const(i) => {
-                // optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_SHORT]
+                // optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_IMM]
                 match self.const_val(i).clone() {
                     GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
                     GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
@@ -755,62 +755,17 @@ impl<'a> Visitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_stmt_incdec(&mut self, _idcstmt: &IncDecStmt) {
-        unimplemented!();
+    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![]);
     }
 
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
         let stmt = &self.ast_objs.a_stmts[*astmt];
-        let is_def = stmt.token == Token::DEFINE;
-        let pos = stmt.lhs[0].pos(&self.ast_objs);
-        let lhs: Vec<LeftHandSide> = stmt
-            .lhs
-            .iter()
-            .map(|expr| match expr {
-                Expr::Ident(ident) => {
-                    let idx = self.add_local_or_resolve_ident(ident.as_ref(), is_def);
-                    LeftHandSide::Primitive(idx)
-                }
-                Expr::Index(ind_expr) => {
-                    self.visit_expr(&ind_expr.as_ref().expr);
-                    self.visit_expr(&ind_expr.as_ref().index);
-                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
-                }
-                Expr::Selector(sexpr) => {
-                    self.visit_expr(&sexpr.expr);
-                    self.gen_push_ident_str(&sexpr.sel);
-                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
-                }
-                Expr::Star(sexpr) => {
-                    self.visit_expr(&sexpr.expr);
-                    LeftHandSide::Deref(0) // the true index will be calculated later
-                }
-                _ => unreachable!(),
-            })
-            .collect();
-
-        let simple_op = match stmt.token {
-            Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
-            Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
-            Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
-            Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
-            Token::REM_ASSIGN => Some(Opcode::REM),         // %=
-            Token::AND_ASSIGN => Some(Opcode::AND),         // &=
-            Token::OR_ASSIGN => Some(Opcode::OR),           // |=
-            Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
-            Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
-            Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
-            Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
-            Token::ASSIGN | Token::DEFINE => None,
-            _ => unreachable!(),
-        };
-        if let Some(code) = simple_op {
-            assert_eq!(stmt.lhs.len(), 1);
-            assert_eq!(stmt.rhs.len(), 1);
-            self.gen_op_assign(&lhs[0], code as OpIndex, &stmt.rhs[0]);
-        } else {
-            self.gen_assign_def_var(&lhs, &stmt.rhs, &None, pos);
-        }
+        self.gen_assign(
+            &stmt.token,
+            &stmt.lhs.iter().map(|x| x).collect(),
+            &stmt.rhs,
+        );
     }
 
     fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
@@ -989,6 +944,63 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    fn gen_assign(&mut self, token: &Token, lhs_exprs: &Vec<&Expr>, rhs_exprs: &Vec<Expr>) {
+        let is_def = *token == Token::DEFINE;
+        let pos = lhs_exprs[0].pos(&self.ast_objs);
+        let lhs: Vec<LeftHandSide> = lhs_exprs
+            .iter()
+            .map(|expr| match expr {
+                Expr::Ident(ident) => {
+                    let idx = self.add_local_or_resolve_ident(ident.as_ref(), is_def);
+                    LeftHandSide::Primitive(idx)
+                }
+                Expr::Index(ind_expr) => {
+                    self.visit_expr(&ind_expr.as_ref().expr);
+                    self.visit_expr(&ind_expr.as_ref().index);
+                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
+                }
+                Expr::Selector(sexpr) => {
+                    self.visit_expr(&sexpr.expr);
+                    self.gen_push_ident_str(&sexpr.sel);
+                    LeftHandSide::IndexSelExpr(0) // the true index will be calculated later
+                }
+                Expr::Star(sexpr) => {
+                    self.visit_expr(&sexpr.expr);
+                    LeftHandSide::Deref(0) // the true index will be calculated later
+                }
+                _ => unreachable!(),
+            })
+            .collect();
+
+        let simple_op = match token {
+            Token::ADD_ASSIGN | Token::INC => Some(Opcode::ADD), // +=
+            Token::SUB_ASSIGN | Token::DEC => Some(Opcode::SUB), // -=
+            Token::MUL_ASSIGN => Some(Opcode::MUL),              // *=
+            Token::QUO_ASSIGN => Some(Opcode::QUO),              // /=
+            Token::REM_ASSIGN => Some(Opcode::REM),              // %=
+            Token::AND_ASSIGN => Some(Opcode::AND),              // &=
+            Token::OR_ASSIGN => Some(Opcode::OR),                // |=
+            Token::XOR_ASSIGN => Some(Opcode::XOR),              // ^=
+            Token::SHL_ASSIGN => Some(Opcode::SHL),              // <<=
+            Token::SHR_ASSIGN => Some(Opcode::SHR),              // >>=
+            Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT),      // &^=
+
+            Token::ASSIGN | Token::DEFINE => None,
+            _ => unreachable!(),
+        };
+        if let Some(code) = simple_op {
+            if *token == Token::INC || *token == Token::DEC {
+                self.gen_op_assign(&lhs[0], code as OpIndex, None);
+            } else {
+                assert_eq!(lhs_exprs.len(), 1);
+                assert_eq!(rhs_exprs.len(), 1);
+                self.gen_op_assign(&lhs[0], code as OpIndex, Some(&rhs_exprs[0]));
+            }
+        } else {
+            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, pos);
+        }
+    }
+
     fn gen_assign_def_var(
         &mut self,
         lhs: &Vec<LeftHandSide>,
@@ -1059,8 +1071,15 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_op_assign(&mut self, left: &LeftHandSide, op: OpIndex, right: &Expr) {
-        self.visit_expr(right);
+    fn gen_op_assign(&mut self, left: &LeftHandSide, op: OpIndex, right: Option<&Expr>) {
+        if let Some(e) = right {
+            self.visit_expr(e);
+        } else {
+            // it's inc/dec
+            let func = current_func_mut!(self);
+            func.emit_code(Opcode::PUSH_IMM);
+            func.emit_data(1);
+        }
         let func = current_func_mut!(self);
         match left {
             LeftHandSide::Primitive(_) => {

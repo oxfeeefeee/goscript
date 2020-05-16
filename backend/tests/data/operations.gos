@@ -42,4 +42,15 @@ func main() {
         k /= j
         assert(k == i / j)
     }
+
+    {
+        type S1 struct {i, j int}
+        var s S1
+        s.i = 1
+        s.j = 2000000000
+        s.i--
+        s.j++
+        assert(s.i == 0)
+        assert(s.j == 2000000001)
+    }
 }
