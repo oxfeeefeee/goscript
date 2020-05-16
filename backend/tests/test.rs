@@ -91,3 +91,9 @@ fn test_operations() {
     let err_cnt = load_parse_gen("./tests/data/operations.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_if() {
+    let err_cnt = load_parse_gen("./tests/data/if.gos", true);
+    assert!(err_cnt == 0);
+}

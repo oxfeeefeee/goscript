@@ -411,7 +411,7 @@ impl Function {
     fn emit_import(&mut self, index: OpIndex) {
         self.emit_code(Opcode::IMPORT);
         self.emit_data(index);
-        self.emit_code(Opcode::JUMP_IF);
+        self.emit_code(Opcode::JUMP_IF_NOT);
         let mut cd = vec![
             CodeData::Code(Opcode::PUSH_IMM),
             CodeData::Data(0 as OpIndex),
@@ -800,8 +800,44 @@ impl<'a> Visitor for CodeGen<'a> {
         }
     }
 
-    fn visit_stmt_if(&mut self, _ifstmt: &IfStmt) {
-        //dbg!(ifstmt);
+    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
+        if let Some(init) = &ifstmt.init {
+            self.visit_stmt(init);
+        }
+        self.visit_expr(&ifstmt.cond);
+        let func = current_func_mut!(self);
+        func.emit_code(Opcode::JUMP_IF_NOT);
+        // place holder, to be set later
+        func.emit_data(0);
+        let marker = func.code.len();
+
+        drop(func);
+        self.visit_stmt_block(&ifstmt.body);
+        let marker_if_arm_end = if ifstmt.els.is_some() {
+            let func = current_func_mut!(self);
+            func.emit_code(Opcode::JUMP);
+            // place holder, to be set later
+            func.emit_data(0);
+            Some(func.code.len())
+        } else {
+            None
+        };
+
+        // set the correct else jump target
+        let func = current_func_mut!(self);
+        // todo: don't crash if OpIndex overflows
+        let offset = i16::try_from(func.code.len() - marker).unwrap();
+        func.code[marker - 1] = CodeData::Data(offset);
+
+        if let Some(els) = &ifstmt.els {
+            self.visit_stmt(els);
+            // set the correct if_arm_end jump target
+            let func = current_func_mut!(self);
+            let marker = marker_if_arm_end.unwrap();
+            // todo: don't crash if OpIndex overflows
+            let offset = i16::try_from(func.code.len() - marker).unwrap();
+            func.code[marker - 1] = CodeData::Data(offset);
+        }
     }
 
     fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
@@ -1084,7 +1120,7 @@ impl<'a> CodeGen<'a> {
         match left {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?
-                // local index is resolved visit_stmt_assign
+                // local index is resolved in gen_assign
                 func.emit_store(left, -1, Some(op));
             }
             LeftHandSide::IndexSelExpr(_) => {

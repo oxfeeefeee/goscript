@@ -588,13 +588,14 @@ impl Fiber {
                     code = &func.code;
                 }
 
-                Opcode::JUMP => unimplemented!(),
-                Opcode::JUMP_IF => {
+                Opcode::JUMP => {
+                    frame.pc = offset_uint!(frame.pc, read_index!(code, frame));
+                }
+                Opcode::JUMP_IF_NOT => {
+                    let offset = read_index!(code, frame);
                     let val = stack.last().unwrap();
-                    if *val.as_bool() {
-                        frame.pc = offset_uint!(frame.pc, read_index!(code, frame));
-                    } else {
-                        frame.pc += 1;
+                    if !*val.as_bool() {
+                        frame.pc = offset_uint!(frame.pc, offset);
                     }
                     stack.pop();
                 }
@@ -603,7 +604,7 @@ impl Fiber {
                     let index = read_index!(code, frame) as usize;
                     let pkey = pkgs[index];
                     stack.push(GosValue::Package(pkey));
-                    stack.push(GosValue::Bool(objs.packages[pkey].inited()));
+                    stack.push(GosValue::Bool(!objs.packages[pkey].inited()));
                 }
                 Opcode::NEW => {
                     let new_val = match stack.pop().unwrap() {

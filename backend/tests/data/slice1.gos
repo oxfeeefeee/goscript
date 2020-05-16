@@ -1,5 +1,13 @@
 package main
 
+
+func a() bool {
+    s := []int{8,8}
+    s[1] -= 9
+    k := s[1] == -1
+    return k
+}
+
 func main() {
     var s1 = [][]int{{0},{99},{2}}
     var s2 = []int{0,100,2}
@@ -8,4 +16,5 @@ func main() {
     j := s2[0]
     assert(i == 198)
     assert(j == 8)
+    assert(a())
 }
