@@ -197,6 +197,10 @@ impl MapVal {
     pub fn borrow_data(&self) -> Ref<HashMap<HashKey, GosValue>> {
         self.map.borrow()
     }
+
+    pub fn clone_data(&self) -> Rc<RefCell<HashMap<HashKey, GosValue>>> {
+        self.map.clone()
+    }
 }
 
 // ----------------------------------------------------------------------------

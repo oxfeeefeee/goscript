@@ -172,6 +172,49 @@ macro_rules! int_store_xxx_op {
     };
 }
 
+macro_rules! map_iter_containers {
+    ($rc:ident, $ptr:ident, $iter:ident) => {
+        let mut $rc: Option<Rc<RefCell<HashMap<HashKey, GosValue>>>> = None;
+        let mut $ptr: Option<*mut Ref<HashMap<HashKey, GosValue>>> = None;
+        let mut $iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+    };
+}
+
+macro_rules! map_range_init_x {
+    ($map:ident, $map_rc:ident, $map_ptr:ident, $map_iter:ident) => {{
+        $map_rc.replace($map);
+        let r = $map_rc.as_ref().unwrap().borrow();
+        let p = Box::into_raw(Box::new(r));
+        $map_ptr = Some(p);
+        let mapref = unsafe { &*p };
+        $map_iter = Some(mapref.iter());
+    }};
+}
+
+macro_rules! map_range {
+    ($stack:ident, $frame:ident, $offset:ident, $map_ptr:ident, $map_iter:ident) => {{
+        let v = $map_iter.as_mut().unwrap().next();
+        if let Some((k, v)) = v {
+            $stack.push(k.val.clone());
+            $stack.push(v.clone());
+            false
+        } else {
+            $map_iter.take();
+            // release the pointer
+            if let Some(p) = $map_ptr {
+                unsafe {
+                    drop(Box::<Ref<HashMap<HashKey, GosValue>>>::from_raw(p));
+                }
+                $map_ptr = None
+            }
+            $stack.pop();
+            $stack.pop();
+            $frame.pc = offset_uint!($frame.pc, $offset);
+            true
+        }
+    }};
+}
+
 pub fn add(stack: &mut Vec<GosValue>, strings: &mut StringObjs) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     let c = match (a, b) {

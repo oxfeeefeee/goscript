@@ -462,6 +462,14 @@ pub struct Ident {
 }
 
 impl Ident {
+    pub fn blank(pos: position::Pos) -> Ident {
+        Ident {
+            pos: pos,
+            name: "_".to_owned(),
+            entity: IdentEntity::NoEntity,
+        }
+    }
+
     pub fn end(&self) -> position::Pos {
         self.pos + self.name.len()
     }

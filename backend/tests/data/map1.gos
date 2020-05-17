@@ -1,7 +1,7 @@
 package main
 
 func main() {
-    var s1 = map[int]int{1:2}
+    var s1 = map[int]int{1:2, 3: 888}
     var v = s1[1]
     var v2 = s1[100]
     s1[0], v, v2 = 8, s1[100], s1[1]
@@ -11,4 +11,5 @@ func main() {
     assert(v2 == 2)
     assert(v3 == 8)
     assert(s1[2] == 3)
+    assert(s1[3] == 888)
 }

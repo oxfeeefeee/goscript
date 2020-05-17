@@ -189,8 +189,23 @@ impl Fiber {
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
 
-        //let mut rmap: Option<HashMap<HashKey, GosValue>> = None;
-        //let mut iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+        let mut map_iter_slot = 0;
+        map_iter_containers!(m_r0, m_p0, m_i0);
+        map_iter_containers!(m_r1, m_p1, m_i1);
+        map_iter_containers!(m_r2, m_p2, m_i2);
+        map_iter_containers!(m_r3, m_p3, m_i3);
+        map_iter_containers!(m_r4, m_p4, m_i4);
+        map_iter_containers!(m_r5, m_p5, m_i5);
+        map_iter_containers!(m_r6, m_p6, m_i6);
+        map_iter_containers!(m_r7, m_p7, m_i7);
+        map_iter_containers!(m_r8, m_p8, m_i8);
+        map_iter_containers!(m_r9, m_p9, m_i9);
+        map_iter_containers!(m_r10, m_p10, m_i10);
+        map_iter_containers!(m_r11, m_p11, m_i11);
+        map_iter_containers!(m_r12, m_p12, m_i12);
+        map_iter_containers!(m_r13, m_p13, m_i13);
+        map_iter_containers!(m_r14, m_p14, m_i14);
+        map_iter_containers!(m_r15, m_p15, m_i15);
 
         dbg!(code);
         loop {
@@ -614,8 +629,65 @@ impl Fiber {
                 // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
                 // and followed by a target jump address
                 Opcode::RANGE => {
-                    //rmap = Some(objs.maps[*stack[0].as_map()].borrow_data().clone());
-                    //iter = Some(rmap.unwrap().iter());
+                    let offset = read_index!(code, frame);
+                    let len = stack.len();
+                    let target = &stack[len - 2];
+                    let mut mark = *stack[len - 1].as_int();
+                    match target {
+                        GosValue::Map(m) => {
+                            let map = objs.maps[*m].clone_data();
+                            if mark < 0 {
+                                mark = map_iter_slot;
+                                map_iter_slot += 1;
+                                assert!(map_iter_slot < 16);
+                                match mark {
+                                    x if x == 0 => map_range_init_x!(map, m_r0, m_p0, m_i0),
+                                    x if x == 1 => map_range_init_x!(map, m_r1, m_p1, m_i1),
+                                    x if x == 2 => map_range_init_x!(map, m_r2, m_p2, m_i2),
+                                    x if x == 3 => map_range_init_x!(map, m_r3, m_p3, m_i3),
+                                    x if x == 4 => map_range_init_x!(map, m_r4, m_p4, m_i4),
+                                    x if x == 5 => map_range_init_x!(map, m_r5, m_p5, m_i5),
+                                    x if x == 6 => map_range_init_x!(map, m_r6, m_p6, m_i6),
+                                    x if x == 7 => map_range_init_x!(map, m_r7, m_p7, m_i7),
+                                    x if x == 8 => map_range_init_x!(map, m_r8, m_p8, m_i8),
+                                    x if x == 9 => map_range_init_x!(map, m_r9, m_p9, m_i9),
+                                    x if x == 10 => map_range_init_x!(map, m_r10, m_p10, m_i10),
+                                    x if x == 11 => map_range_init_x!(map, m_r11, m_p11, m_i11),
+                                    x if x == 12 => map_range_init_x!(map, m_r12, m_p12, m_i12),
+                                    x if x == 13 => map_range_init_x!(map, m_r13, m_p13, m_i13),
+                                    x if x == 14 => map_range_init_x!(map, m_r14, m_p14, m_i14),
+                                    x if x == 15 => map_range_init_x!(map, m_r15, m_p15, m_i15),
+                                    _ => unreachable!(),
+                                }
+                                *stack[len - 1].as_int_mut() = mark;
+                            }
+                            let end = match mark {
+                                x if x == 0 => map_range!(stack, frame, offset, m_p0, m_i0),
+                                x if x == 1 => map_range!(stack, frame, offset, m_p1, m_i1),
+                                x if x == 2 => map_range!(stack, frame, offset, m_p2, m_i2),
+                                x if x == 3 => map_range!(stack, frame, offset, m_p3, m_i3),
+                                x if x == 4 => map_range!(stack, frame, offset, m_p4, m_i4),
+                                x if x == 5 => map_range!(stack, frame, offset, m_p5, m_i5),
+                                x if x == 6 => map_range!(stack, frame, offset, m_p6, m_i6),
+                                x if x == 7 => map_range!(stack, frame, offset, m_p7, m_i7),
+                                x if x == 8 => map_range!(stack, frame, offset, m_p8, m_i8),
+                                x if x == 9 => map_range!(stack, frame, offset, m_p9, m_i9),
+                                x if x == 10 => map_range!(stack, frame, offset, m_p10, m_i10),
+                                x if x == 11 => map_range!(stack, frame, offset, m_p11, m_i11),
+                                x if x == 12 => map_range!(stack, frame, offset, m_p12, m_i12),
+                                x if x == 13 => map_range!(stack, frame, offset, m_p13, m_i13),
+                                x if x == 14 => map_range!(stack, frame, offset, m_p14, m_i14),
+                                x if x == 15 => map_range!(stack, frame, offset, m_p15, m_i15),
+                                _ => unreachable!(),
+                            };
+                            if end {
+                                map_iter_slot -= 1;
+                            }
+                        }
+                        GosValue::Slice(_sl) => {}
+                        GosValue::Str(_s) => {}
+                        _ => unreachable!(),
+                    }
                 }
 
                 Opcode::IMPORT => {

@@ -468,6 +468,10 @@ impl Function {
     fn emit_new(&mut self) {
         self.emit_code(Opcode::NEW);
     }
+
+    fn emit_range(&mut self) {
+        self.emit_code(Opcode::RANGE);
+    }
 }
 
 /// Built-in functions are not called like normal function for performance reasons
@@ -500,6 +504,7 @@ pub struct CodeGen<'a> {
     built_in_funcs: Vec<BuiltInFunc>,
     built_in_vals: HashMap<&'static str, Opcode>,
     errors: &'a FilePosErrors<'a>,
+    blank_key: IdentKey,
 }
 
 impl<'a> Visitor for CodeGen<'a> {
@@ -704,7 +709,7 @@ impl<'a> Visitor for CodeGen<'a> {
                                 LeftHandSide::Primitive(self.add_local_or_resolve_ident(n, true))
                             })
                             .collect();
-                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, pos);
+                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None, pos);
                     } else {
                         assert!(gdecl.token == Token::CONST);
                         self.gen_def_const(&vs.names, &vs.values, &vs.typ);
@@ -756,7 +761,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
-        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![]);
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None);
     }
 
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
@@ -765,6 +770,7 @@ impl<'a> Visitor for CodeGen<'a> {
             &stmt.token,
             &stmt.lhs.iter().map(|x| x).collect(),
             &stmt.rhs,
+            None,
         );
     }
 
@@ -897,12 +903,31 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        dbg!(rstmt);
+        let blank = Expr::Ident(Box::new(self.blank_key));
+        let lhs = vec![
+            rstmt.key.as_ref().unwrap_or(&blank),
+            rstmt.val.as_ref().unwrap_or(&blank),
+        ];
+        let marker = self
+            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))
+            .unwrap();
+
+        self.visit_stmt_block(&rstmt.body);
+        // jump to the top
+        let func = current_func_mut!(self);
+        func.emit_code(Opcode::JUMP);
+        // todo: don't crash if OpIndex overflows
+        let offset = i16::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
+        func.emit_data(offset);
+        // now tell Opcode::RANGE where to jump after it's done
+        // todo: don't crash if OpIndex overflows
+        let end_offset = i16::try_from(func.code.len() - (marker + 2)).unwrap();
+        func.code[marker + 1] = CodeData::Data(end_offset);
     }
 }
 
 impl<'a> CodeGen<'a> {
-    pub fn new(aobjects: &'a AstObjects, err: &'a FilePosErrors) -> CodeGen<'a> {
+    pub fn new(aobjects: &'a AstObjects, err: &'a FilePosErrors, bk: IdentKey) -> CodeGen<'a> {
         let funcs = vec![
             BuiltInFunc::new("new", Opcode::NEW, 1, false),
             BuiltInFunc::new("make", Opcode::MAKE, 2, true),
@@ -925,6 +950,7 @@ impl<'a> CodeGen<'a> {
             built_in_funcs: funcs,
             built_in_vals: vals,
             errors: err,
+            blank_key: bk,
         }
     }
 
@@ -980,6 +1006,7 @@ impl<'a> CodeGen<'a> {
     fn add_local_or_resolve_ident(&mut self, ikey: &IdentKey, is_def: bool) -> EntIndex {
         let ident = self.ast_objs.idents[*ikey].clone();
         let func = current_func_mut!(self);
+        dbg!(&ident);
         if ident.is_blank() {
             EntIndex::Blank
         } else if is_def {
@@ -1012,7 +1039,13 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_assign(&mut self, token: &Token, lhs_exprs: &Vec<&Expr>, rhs_exprs: &Vec<Expr>) {
+    fn gen_assign(
+        &mut self,
+        token: &Token,
+        lhs_exprs: &Vec<&Expr>,
+        rhs_exprs: &Vec<Expr>,
+        range: Option<&Expr>,
+    ) -> Option<usize> {
         let is_def = *token == Token::DEFINE;
         let pos = lhs_exprs[0].pos(&self.ast_objs);
         let lhs: Vec<LeftHandSide> = lhs_exprs
@@ -1064,8 +1097,9 @@ impl<'a> CodeGen<'a> {
                 assert_eq!(rhs_exprs.len(), 1);
                 self.gen_op_assign(&lhs[0], code as OpIndex, Some(&rhs_exprs[0]));
             }
+            None
         } else {
-            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, pos);
+            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, range, pos)
         }
     }
 
@@ -1074,14 +1108,27 @@ impl<'a> CodeGen<'a> {
         lhs: &Vec<LeftHandSide>,
         values: &Vec<Expr>,
         typ: &Option<Expr>,
+        range: Option<&Expr>,
         pos: position::Pos,
-    ) {
+    ) -> Option<usize> {
+        let mut range_marker = None;
         // handle the right hand side
-        if values.len() == lhs.len() {
+        if let Some(r) = range {
+            // the range statement
+            self.visit_expr(r);
+            let func = current_func_mut!(self);
+            func.emit_code(Opcode::PUSH_IMM);
+            func.emit_data(-1);
+            range_marker = Some(func.code.len());
+            func.emit_range();
+            func.emit_data(0); // placeholder, the block_end address.
+        } else if values.len() == lhs.len() {
+            // define or assign with values
             for val in values.iter() {
                 self.visit_expr(val);
             }
         } else if values.len() == 0 {
+            // define without values
             let val = self.get_type_default(&typ.as_ref().unwrap());
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
@@ -1089,7 +1136,7 @@ impl<'a> CodeGen<'a> {
                 func.emit_load(i);
             }
         } else if values.len() == 1 {
-            // function call
+            // define or assign with function call on the right
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0]);
             } else {
@@ -1137,6 +1184,7 @@ impl<'a> CodeGen<'a> {
         for _ in 0..total_val {
             func.emit_pop();
         }
+        range_marker
     }
 
     fn gen_op_assign(&mut self, left: &LeftHandSide, op: OpIndex, right: Option<&Expr>) {
@@ -1544,8 +1592,10 @@ impl<'a> CodeGen<'a> {
             print!("\n<- {} ->\n", el);
             f
         };
+
         let pos_err = FilePosErrors::new(pfile, &el);
-        let mut code_gen = CodeGen::new(&astobjs, &pos_err);
+        let blank_key = astobjs.idents.insert(Ident::blank(0));
+        let mut code_gen = CodeGen::new(&mut astobjs, &pos_err, blank_key);
         code_gen.gen(afile.unwrap());
         print!("\n<- {} ->\n", el);
         (code_gen.into_byte_code(), el.len())
