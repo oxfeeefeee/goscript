@@ -192,7 +192,7 @@ macro_rules! map_range_init {
 }
 
 macro_rules! map_range {
-    ($stack:ident, $frame:ident, $offset:ident, $map_ptr:ident, $map_iter:ident) => {{
+    ($stack:ident, $map_ptr:ident, $map_iter:ident) => {{
         let v = $map_iter.as_mut().unwrap().next();
         if let Some((k, v)) = v {
             $stack.push(k.val.clone());
@@ -209,7 +209,6 @@ macro_rules! map_range {
             }
             $stack.pop();
             $stack.pop();
-            $frame.pc = offset_uint!($frame.pc, $offset);
             true
         }
     }};

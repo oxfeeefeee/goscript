@@ -662,25 +662,26 @@ impl Fiber {
                                 *stack[len - 1].as_int_mut() = mark;
                             }
                             let end = match mark {
-                                x if x == 0 => map_range!(stack, frame, offset, m_p0, m_i0),
-                                x if x == 1 => map_range!(stack, frame, offset, m_p1, m_i1),
-                                x if x == 2 => map_range!(stack, frame, offset, m_p2, m_i2),
-                                x if x == 3 => map_range!(stack, frame, offset, m_p3, m_i3),
-                                x if x == 4 => map_range!(stack, frame, offset, m_p4, m_i4),
-                                x if x == 5 => map_range!(stack, frame, offset, m_p5, m_i5),
-                                x if x == 6 => map_range!(stack, frame, offset, m_p6, m_i6),
-                                x if x == 7 => map_range!(stack, frame, offset, m_p7, m_i7),
-                                x if x == 8 => map_range!(stack, frame, offset, m_p8, m_i8),
-                                x if x == 9 => map_range!(stack, frame, offset, m_p9, m_i9),
-                                x if x == 10 => map_range!(stack, frame, offset, m_p10, m_i10),
-                                x if x == 11 => map_range!(stack, frame, offset, m_p11, m_i11),
-                                x if x == 12 => map_range!(stack, frame, offset, m_p12, m_i12),
-                                x if x == 13 => map_range!(stack, frame, offset, m_p13, m_i13),
-                                x if x == 14 => map_range!(stack, frame, offset, m_p14, m_i14),
-                                x if x == 15 => map_range!(stack, frame, offset, m_p15, m_i15),
+                                x if x == 0 => map_range!(stack, m_p0, m_i0),
+                                x if x == 1 => map_range!(stack, m_p1, m_i1),
+                                x if x == 2 => map_range!(stack, m_p2, m_i2),
+                                x if x == 3 => map_range!(stack, m_p3, m_i3),
+                                x if x == 4 => map_range!(stack, m_p4, m_i4),
+                                x if x == 5 => map_range!(stack, m_p5, m_i5),
+                                x if x == 6 => map_range!(stack, m_p6, m_i6),
+                                x if x == 7 => map_range!(stack, m_p7, m_i7),
+                                x if x == 8 => map_range!(stack, m_p8, m_i8),
+                                x if x == 9 => map_range!(stack, m_p9, m_i9),
+                                x if x == 10 => map_range!(stack, m_p10, m_i10),
+                                x if x == 11 => map_range!(stack, m_p11, m_i11),
+                                x if x == 12 => map_range!(stack, m_p12, m_i12),
+                                x if x == 13 => map_range!(stack, m_p13, m_i13),
+                                x if x == 14 => map_range!(stack, m_p14, m_i14),
+                                x if x == 15 => map_range!(stack, m_p15, m_i15),
                                 _ => unreachable!(),
                             };
                             if end {
+                                frame.pc = offset_uint!(frame.pc, offset);
                                 map_range_slot -= 1;
                             }
                         }
