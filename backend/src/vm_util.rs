@@ -172,7 +172,7 @@ macro_rules! int_store_xxx_op {
     };
 }
 
-macro_rules! map_iter_containers {
+macro_rules! map_range_vars {
     ($rc:ident, $ptr:ident, $iter:ident) => {
         let mut $rc: Option<Rc<RefCell<HashMap<HashKey, GosValue>>>> = None;
         let mut $ptr: Option<*mut Ref<HashMap<HashKey, GosValue>>> = None;

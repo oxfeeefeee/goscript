@@ -190,22 +190,22 @@ impl Fiber {
         let mut stack_base = frame.stack_base;
 
         let mut map_iter_slot = 0;
-        map_iter_containers!(m_r0, m_p0, m_i0);
-        map_iter_containers!(m_r1, m_p1, m_i1);
-        map_iter_containers!(m_r2, m_p2, m_i2);
-        map_iter_containers!(m_r3, m_p3, m_i3);
-        map_iter_containers!(m_r4, m_p4, m_i4);
-        map_iter_containers!(m_r5, m_p5, m_i5);
-        map_iter_containers!(m_r6, m_p6, m_i6);
-        map_iter_containers!(m_r7, m_p7, m_i7);
-        map_iter_containers!(m_r8, m_p8, m_i8);
-        map_iter_containers!(m_r9, m_p9, m_i9);
-        map_iter_containers!(m_r10, m_p10, m_i10);
-        map_iter_containers!(m_r11, m_p11, m_i11);
-        map_iter_containers!(m_r12, m_p12, m_i12);
-        map_iter_containers!(m_r13, m_p13, m_i13);
-        map_iter_containers!(m_r14, m_p14, m_i14);
-        map_iter_containers!(m_r15, m_p15, m_i15);
+        map_range_vars!(m_r0, m_p0, m_i0);
+        map_range_vars!(m_r1, m_p1, m_i1);
+        map_range_vars!(m_r2, m_p2, m_i2);
+        map_range_vars!(m_r3, m_p3, m_i3);
+        map_range_vars!(m_r4, m_p4, m_i4);
+        map_range_vars!(m_r5, m_p5, m_i5);
+        map_range_vars!(m_r6, m_p6, m_i6);
+        map_range_vars!(m_r7, m_p7, m_i7);
+        map_range_vars!(m_r8, m_p8, m_i8);
+        map_range_vars!(m_r9, m_p9, m_i9);
+        map_range_vars!(m_r10, m_p10, m_i10);
+        map_range_vars!(m_r11, m_p11, m_i11);
+        map_range_vars!(m_r12, m_p12, m_i12);
+        map_range_vars!(m_r13, m_p13, m_i13);
+        map_range_vars!(m_r14, m_p14, m_i14);
+        map_range_vars!(m_r15, m_p15, m_i15);
 
         dbg!(code);
         loop {
