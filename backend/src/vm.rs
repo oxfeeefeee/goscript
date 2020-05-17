@@ -189,7 +189,7 @@ impl Fiber {
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
 
-        let mut map_iter_slot = 0;
+        let mut map_range_slot = 0;
         map_range_vars!(m_r0, m_p0, m_i0);
         map_range_vars!(m_r1, m_p1, m_i1);
         map_range_vars!(m_r2, m_p2, m_i2);
@@ -637,9 +637,9 @@ impl Fiber {
                         GosValue::Map(m) => {
                             let map = objs.maps[*m].clone_data();
                             if mark < 0 {
-                                mark = map_iter_slot;
-                                map_iter_slot += 1;
-                                assert!(map_iter_slot < 16);
+                                mark = map_range_slot;
+                                map_range_slot += 1;
+                                assert!(map_range_slot < 16);
                                 match mark {
                                     x if x == 0 => map_range_init_x!(map, m_r0, m_p0, m_i0),
                                     x if x == 1 => map_range_init_x!(map, m_r1, m_p1, m_i1),
@@ -681,7 +681,7 @@ impl Fiber {
                                 _ => unreachable!(),
                             };
                             if end {
-                                map_iter_slot -= 1;
+                                map_range_slot -= 1;
                             }
                         }
                         GosValue::Slice(_sl) => {}
