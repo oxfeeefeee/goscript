@@ -180,7 +180,7 @@ macro_rules! map_range_vars {
     };
 }
 
-macro_rules! map_range_init_x {
+macro_rules! map_range_init {
     ($map:ident, $map_rc:ident, $map_ptr:ident, $map_iter:ident) => {{
         $map_rc.replace($map);
         let r = $map_rc.as_ref().unwrap().borrow();
