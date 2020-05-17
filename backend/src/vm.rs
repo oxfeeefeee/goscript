@@ -2,8 +2,9 @@
 use super::code_gen::ByteCode;
 use super::opcode::*;
 use super::types::*;
+use super::values::HashKey;
 use super::vm_util;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -188,6 +189,9 @@ impl Fiber {
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
 
+        //let mut rmap: Option<HashMap<HashKey, GosValue>> = None;
+        //let mut iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+
         dbg!(code);
         loop {
             let inst = code[frame.pc].unwrap_code();
@@ -198,12 +202,16 @@ impl Fiber {
                     let index = read_index!(code, frame);
                     let gos_val = &consts[index as usize];
                     let val = match gos_val {
-                        // Slice is a special case here because, this is stored slice literal,
+                        // Slice/Map are special cases here because, they are stored literal,
                         // and when it gets "duplicated", the underlying rust vec is not copied
                         // which leads to all function calls shares the same vec instance
                         GosValue::Slice(s) => {
                             let slice = objs.slices[*s].deep_clone();
                             GosValue::Slice(objs.slices.insert(slice))
+                        }
+                        GosValue::Map(m) => {
+                            let map = objs.maps[*m].deep_clone();
+                            GosValue::Map(objs.maps.insert(map))
                         }
                         _ => gos_val.clone(),
                     };
@@ -365,7 +373,10 @@ impl Fiber {
                             set_store_op_val!(target, op, val, is_op_set);
                         }
                         GosValue::Map(m) => {
-                            let target = objs.maps[*m].get_mut(&key);
+                            let map = &objs.maps[*m];
+                            map.touch_key(&key);
+                            let mref = &mut map.borrow_data_mut();
+                            let target = mref.get_mut(&map.hash_key(key)).unwrap();
                             set_store_op_val!(target, op, val, is_op_set);
                         }
                         GosValue::Struct(s) => {
@@ -589,7 +600,8 @@ impl Fiber {
                 }
 
                 Opcode::JUMP => {
-                    frame.pc = offset_uint!(frame.pc, read_index!(code, frame));
+                    let offset = read_index!(code, frame);
+                    frame.pc = offset_uint!(frame.pc, offset);
                 }
                 Opcode::JUMP_IF_NOT => {
                     let offset = read_index!(code, frame);
@@ -598,6 +610,12 @@ impl Fiber {
                         frame.pc = offset_uint!(frame.pc, offset);
                     }
                     stack.pop();
+                }
+                // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
+                // and followed by a target jump address
+                Opcode::RANGE => {
+                    //rmap = Some(objs.maps[*stack[0].as_map()].borrow_data().clone());
+                    //iter = Some(rmap.unwrap().iter());
                 }
 
                 Opcode::IMPORT => {
@@ -697,3 +715,6 @@ impl GosVM {
         fb.run(self.entry, &self.packages, &mut self.objects);
     }
 }
+
+#[cfg(test)]
+mod test {}

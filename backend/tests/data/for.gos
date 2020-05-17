@@ -1,0 +1,17 @@
+package main
+
+
+func main() {
+    j := 0
+    for i := 0; i < 1000; i++ {
+        j += 1
+    }
+    assert(j == 1000)
+
+/*
+    s := []int{1,2,3}
+    for _, i := range s {
+        j += i
+    }
+    */
+}

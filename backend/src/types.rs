@@ -44,6 +44,7 @@ new_key_type! { pub struct BoxedKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 new_key_type! { pub struct TypeKey; }
+new_key_type! { pub struct IterKey; }
 
 pub type InterfaceObjs = DenseSlotMap<InterfaceKey, InterfaceVal>;
 pub type ClosureObjs = DenseSlotMap<ClosureKey, ClosureVal>;
@@ -166,38 +167,6 @@ pub enum GosValue {
     Type(TypeKey),
 }
 
-pub fn gos_eq(a: &GosValue, b: &GosValue, objs: &VMObjects) -> bool {
-    match (a, b) {
-        // todo: not the "correct" implementation yet,
-        (GosValue::Nil, GosValue::Nil) => true,
-        (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
-        (GosValue::Int(x), GosValue::Int(y)) => x == y,
-        (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
-        (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
-        (GosValue::Str(sa), GosValue::Str(sb)) => &objs.strings[*sa] == &objs.strings[*sb],
-        _ => false,
-    }
-}
-
-pub fn gos_cmp(a: &GosValue, b: &GosValue, objs: &VMObjects) -> Ordering {
-    match (a, b) {
-        // todo: not the "correct" implementation yet,
-        (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
-        (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
-        (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
-        (GosValue::Float64(x), GosValue::Float64(y)) => {
-            match x.partial_cmp(y) {
-                Some(order) => order,
-                None => Ordering::Less, // todo: not "correct" implementation
-            }
-        }
-        (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
-        (GosValue::Str(sa), GosValue::Str(sb)) => objs.strings[*sa].cmp(&objs.strings[*sb]),
-        (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
-        _ => unimplemented!(),
-    }
-}
-
 impl GosValue {
     #[inline]
     pub fn new_str(s: String, o: &mut StringObjs) -> GosValue {
@@ -246,6 +215,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_int_mut(&mut self) -> &mut isize {
+        unwrap_gos_val!(Int, self)
+    }
+
+    #[inline]
     pub fn as_float(&self) -> &f64 {
         unwrap_gos_val!(Float64, self)
     }
@@ -283,6 +257,37 @@ impl GosValue {
     pub fn get_type_val_mut<'a>(&self, objs: &'a mut VMObjects) -> &'a mut GosType {
         let tkey = self.as_type();
         &mut objs.types[*tkey]
+    }
+
+    pub fn eq(&self, b: &GosValue, objs: &VMObjects) -> bool {
+        match (self, b) {
+            // todo: not the "correct" implementation yet,
+            (GosValue::Nil, GosValue::Nil) => true,
+            (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
+            (GosValue::Int(x), GosValue::Int(y)) => x == y,
+            (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
+            (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
+            (GosValue::Str(sa), GosValue::Str(sb)) => &objs.strings[*sa] == &objs.strings[*sb],
+            _ => false,
+        }
+    }
+    pub fn cmp(&self, b: &GosValue, objs: &VMObjects) -> Ordering {
+        match (self, b) {
+            // todo: not the "correct" implementation yet,
+            (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
+            (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
+            (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
+            (GosValue::Float64(x), GosValue::Float64(y)) => {
+                match x.partial_cmp(y) {
+                    Some(order) => order,
+                    None => Ordering::Less, // todo: not "correct" implementation
+                }
+            }
+            (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
+            (GosValue::Str(sa), GosValue::Str(sb)) => objs.strings[*sa].cmp(&objs.strings[*sb]),
+            (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
+            _ => unimplemented!(),
+        }
     }
 }
 

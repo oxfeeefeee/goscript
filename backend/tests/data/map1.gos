@@ -6,7 +6,9 @@ func main() {
     var v2 = s1[100]
     s1[0], v, v2 = 8, s1[100], s1[1]
     var v3 = s1[0]
+    s1[2] = 3
     assert(v == 0)
     assert(v2 == 2)
     assert(v3 == 8)
+    assert(s1[2] == 3)
 }

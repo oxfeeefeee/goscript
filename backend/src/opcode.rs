@@ -93,6 +93,7 @@ pub enum Opcode {
     JUMP = 500,
     LOOP,
     JUMP_IF_NOT,
+    RANGE, // for ... range statement
 
     // built-in functinalities
     IMPORT = 600, // imports a package
@@ -222,6 +223,7 @@ impl Opcode {
             Opcode::JUMP => ("JUMP", 0),
             Opcode::LOOP => ("LOOP", 0),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
+            Opcode::RANGE => ("RANGE", 1),
 
             Opcode::IMPORT => ("IMPORT", 0),
             Opcode::NEW => ("NEW", 0),

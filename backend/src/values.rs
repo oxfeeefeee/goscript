@@ -1,6 +1,6 @@
 use super::opcode::OpIndex;
-use super::types::{gos_eq, GosTypeData, GosValue, TypeKey, VMObjects};
-use std::cell::RefCell;
+use super::types::{GosTypeData, GosValue, TypeKey, VMObjects};
+use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -9,17 +9,12 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 
 // ----------------------------------------------------------------------------
-// InterfaceVal
-
-#[derive(Clone, Debug)]
-pub struct InterfaceVal {}
-
-// ----------------------------------------------------------------------------
 // StringVal
 
 #[derive(Clone, Debug)]
 pub struct StringVal {
     pub dark: bool,
+    // strings are readony, so unlike slices and maps, Rc is enough
     data: Rc<String>,
 }
 
@@ -37,10 +32,6 @@ impl StringVal {
 
     pub fn into_string(self) -> String {
         Rc::try_unwrap(self.data).unwrap()
-    }
-
-    pub fn deep_clone(&self) -> StringVal {
-        StringVal::with_str(self.data_as_ref().clone())
     }
 }
 
@@ -70,11 +61,14 @@ impl Ord for StringVal {
 #[derive(Clone)]
 pub struct HashKey {
     pub val: GosValue,
+    // needed for accessing managed data like GosValue::Str
     pub objs: *const VMObjects,
 }
 
 impl HashKey {
     fn objs(&self) -> &VMObjects {
+        // There is no way around it, if you what the Hash trait implemented
+        // because managed data like GosValue::Str needs a ref to VMObjects
         unsafe { &*self.objs }
     }
 }
@@ -83,7 +77,7 @@ impl Eq for HashKey {}
 
 impl PartialEq for HashKey {
     fn eq(&self, other: &HashKey) -> bool {
-        gos_eq(&self.val, &other.val, self.objs())
+        self.val.eq(&other.val, self.objs())
     }
 }
 
@@ -121,7 +115,10 @@ pub struct MapVal {
     pub dark: bool,
     objs: *const VMObjects,
     default_val: GosValue,
-    data: HashMap<HashKey, GosValue>,
+    // Why not Rc or no wrapper at all?
+    // - Sometimes we need to copy it out of VMObjects, so we need a wapper
+    // - If the underlying data is not read-only, you cannot simply use Rc
+    map: Rc<RefCell<HashMap<HashKey, GosValue>>>,
 }
 
 impl fmt::Debug for MapVal {
@@ -129,7 +126,7 @@ impl fmt::Debug for MapVal {
         f.debug_struct("MapVal")
             .field("dark", &self.dark)
             .field("default_val", &self.default_val)
-            .field("data", &self.data)
+            .field("map", &self.map)
             .finish()
     }
 }
@@ -140,74 +137,66 @@ impl MapVal {
             dark: false,
             objs: objs,
             default_val: default_val,
-            data: HashMap::new(),
+            map: Rc::new(RefCell::new(HashMap::new())),
+        }
+    }
+
+    /// deep_clone creates a new MapVal with duplicated content of 'self.map'
+    pub fn deep_clone(&self) -> MapVal {
+        MapVal {
+            dark: false,
+            objs: self.objs,
+            default_val: self.default_val,
+            map: Rc::new(RefCell::new(self.map.borrow().clone())),
         }
     }
 
     pub fn insert(&mut self, key: GosValue, val: GosValue) -> Option<GosValue> {
+        let hk = self.hash_key(key);
+        self.map.borrow_mut().insert(hk, val)
+    }
+
+    pub fn get(&self, key: &GosValue) -> GosValue {
         let hk = HashKey {
+            val: *key,
+            objs: self.objs,
+        };
+        match self.map.borrow().get(&hk) {
+            Some(v) => *v,
+            None => self.default_val,
+        }
+    }
+
+    pub fn hash_key(&self, key: GosValue) -> HashKey {
+        HashKey {
             val: key,
             objs: self.objs,
-        };
-        self.data.insert(hk, val)
+        }
     }
 
-    pub fn get(&self, key: &GosValue) -> &GosValue {
+    /// touch_key makes sure there is a value for the 'key', a default value is set if
+    /// the value is empty
+    pub fn touch_key(&self, key: &GosValue) {
         let hk = HashKey {
             val: *key,
             objs: self.objs,
         };
-        match self.data.get(&hk) {
-            Some(v) => v,
-            None => &self.default_val,
+        if self.map.borrow().get(&hk).is_none() {
+            self.map.borrow_mut().insert(hk, self.default_val);
         }
-    }
-
-    pub fn get_mut(&mut self, key: &GosValue) -> &mut GosValue {
-        let hk = HashKey {
-            val: *key,
-            objs: self.objs,
-        };
-        let result = self.data.get_mut(&hk);
-        if result.is_some() {
-            result.unwrap();
-        }
-        self.insert(*key, self.default_val);
-        self.data.get_mut(&hk).unwrap()
     }
 
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.map.borrow().len()
     }
-}
 
-// ----------------------------------------------------------------------------
-// StructVal
-
-#[derive(Clone, Debug)]
-pub struct StructVal {
-    pub dark: bool,
-    pub typ: TypeKey,
-    pub fields: Vec<GosValue>,
-}
-
-impl StructVal {
-    pub fn field_method_index(&self, name: &String, objs: &VMObjects) -> OpIndex {
-        let t = &objs.types[self.typ];
-        if let GosTypeData::Struct(_, map) = &t.data {
-            map[name] as OpIndex
-        } else {
-            unreachable!()
-        }
+    pub fn borrow_data_mut(&self) -> RefMut<HashMap<HashKey, GosValue>> {
+        self.map.borrow_mut()
     }
-}
 
-// ----------------------------------------------------------------------------
-// ChannelVal
-
-#[derive(Clone, Debug)]
-pub struct ChannelVal {
-    pub dark: bool,
+    pub fn borrow_data(&self) -> Ref<HashMap<HashKey, GosValue>> {
+        self.map.borrow()
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -243,6 +232,7 @@ impl<'a> SliceVal {
         }
     }
 
+    /// deep_clone creates a new SliceVal with duplicated content of 'self.vec'
     pub fn deep_clone(&self) -> SliceVal {
         let vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
         SliceVal {
@@ -283,15 +273,17 @@ impl<'a> SliceVal {
         self.end = self.begin + new_len;
     }
 
-    pub fn iter(&'a self) -> SliceValIter<'a> {
+    pub fn iter(&self) -> SliceValIter {
         SliceValIter {
-            slice: self,
-            cur: self.begin,
+            begin: self.begin,
+            end: self.end,
+            vec: self.vec.clone(),
+            cur: 0,
         }
     }
 
     pub fn get(&self, i: usize) -> Option<GosValue> {
-        if let Some(val) = self.vec.borrow().get(i) {
+        if let Some(val) = self.vec.borrow().get(self.begin + i) {
             Some(val.clone())
         } else {
             None
@@ -299,7 +291,7 @@ impl<'a> SliceVal {
     }
 
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow_mut()[i] = val;
+        self.vec.borrow_mut()[self.begin + i] = val;
     }
 
     fn try_grow_vec(&mut self, len: usize) {
@@ -325,20 +317,82 @@ impl<'a> SliceVal {
     }
 }
 
-pub struct SliceValIter<'a> {
-    slice: &'a SliceVal,
+#[derive(Clone, Debug)]
+pub struct SliceValIter {
+    begin: usize,
+    end: usize,
+    vec: Rc<RefCell<Vec<GosValue>>>,
     cur: usize,
 }
 
-impl<'a> Iterator for SliceValIter<'a> {
-    type Item = GosValue;
+impl<'a> Iterator for SliceValIter {
+    type Item = (GosValue, GosValue);
 
-    fn next(&mut self) -> Option<GosValue> {
-        if self.cur < self.slice.end {
-            self.cur += 1;
-            Some(self.slice.get(self.cur - 1).unwrap())
+    fn next(&mut self) -> Option<(GosValue, GosValue)> {
+        let p = self.cur + self.begin;
+        if p < self.end {
+            Some((
+                GosValue::Int(self.cur as isize),
+                *self.vec.borrow().get(p).unwrap(),
+            ))
         } else {
             None
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// StructVal
+
+#[derive(Clone, Debug)]
+pub struct StructVal {
+    pub dark: bool,
+    pub typ: TypeKey,
+    pub fields: Vec<GosValue>,
+}
+
+impl StructVal {
+    pub fn field_method_index(&self, name: &String, objs: &VMObjects) -> OpIndex {
+        let t = &objs.types[self.typ];
+        if let GosTypeData::Struct(_, map) = &t.data {
+            map[name] as OpIndex
+        } else {
+            unreachable!()
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// InterfaceVal
+
+#[derive(Clone, Debug)]
+pub struct InterfaceVal {}
+
+// ----------------------------------------------------------------------------
+// ChannelVal
+
+#[derive(Clone, Debug)]
+pub struct ChannelVal {
+    pub dark: bool,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn test_size() {
+        dbg!(mem::size_of::<HashMap<HashKey, GosValue>>());
+        dbg!(mem::size_of::<String>());
+        dbg!(mem::size_of::<SliceVal>());
+        dbg!(mem::size_of::<SliceValIter>());
+
+        let mut h: HashMap<isize, isize> = HashMap::new();
+        h.insert(0, 1);
+        let mut h2 = h.clone();
+        h2.insert(0, 3);
+        dbg!(h[&0]);
+        dbg!(h2[&0]);
     }
 }
