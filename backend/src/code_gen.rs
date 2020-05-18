@@ -509,6 +509,9 @@ pub struct CodeGen<'a> {
 
 impl<'a> Visitor for CodeGen<'a> {
     fn visit_expr(&mut self, expr: &Expr) {
+        if let Expr::Ident(i) = expr {
+            dbg!(&self.ast_objs.idents[*i.as_ref()]);
+        }
         walk_expr(self, expr);
     }
 
@@ -525,12 +528,8 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_load(index);
     }
 
-    fn visit_expr_option(&mut self, _op: &Option<Expr>) {
-        unimplemented!();
-    }
-
-    fn visit_expr_ellipsis(&mut self) {
-        unimplemented!();
+    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
+        unreachable!();
     }
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit) {
@@ -557,7 +556,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     fn visit_expr_paren(&mut self) {
-        unimplemented!();
+        //unimplemented!();
     }
 
     fn visit_expr_selector(&mut self, ident: &IdentKey) {
@@ -570,11 +569,25 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_load_field();
     }
 
-    fn visit_expr_slice(&mut self) {
-        unimplemented!();
+    fn visit_expr_slice(&mut self, low: &Option<Expr>, high: &Option<Expr>, max: &Option<Expr>) {
+        match low {
+            None => current_func_mut!(self).emit_code(Opcode::PUSH_NIL),
+            Some(e) => self.visit_expr(e),
+        }
+        match high {
+            None => current_func_mut!(self).emit_code(Opcode::PUSH_NIL),
+            Some(e) => self.visit_expr(e),
+        }
+        match max {
+            None => current_func_mut!(self).emit_code(Opcode::SLICE),
+            Some(e) => {
+                self.visit_expr(e);
+                current_func_mut!(self).emit_code(Opcode::SLICE_FULL);
+            }
+        }
     }
 
-    fn visit_expr_type_assert(&mut self) {
+    fn visit_expr_type_assert(&mut self, _typ: &Option<Expr>) {
         unimplemented!();
     }
 
@@ -658,12 +671,11 @@ impl<'a> Visitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_array_type(&mut self) {
-        unimplemented!();
-    }
-
-    fn visit_expr_slice_type(&mut self) {
-        unimplemented!();
+    fn visit_expr_array_type(&mut self, arr: &Expr) {
+        let val = self.get_or_gen_type(arr);
+        let func = current_func_mut!(self);
+        let i = func.add_const(None, val);
+        func.emit_load(i);
     }
 
     fn visit_expr_struct_type(&mut self, _s: &StructType) {
@@ -1452,15 +1464,12 @@ impl<'a> CodeGen<'a> {
                     // array is not supported yet
                     unimplemented!()
                 }
-                let mut vals: Vec<GosValue> = literal
+                let vals: Vec<GosValue> = literal
                     .elts
                     .iter()
                     .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
                     .collect();
-                let slice = GosValue::new_slice(literal.elts.len(), &mut self.objects.slices);
-                let slice_val = &mut self.objects.slices[*slice.as_slice()];
-                slice_val.append(&mut vals);
-                slice
+                GosValue::with_slice_val(vals, &mut self.objects.slices)
             }
             Expr::Map(map) => {
                 let key_vals: Vec<(GosValue, GosValue)> = literal

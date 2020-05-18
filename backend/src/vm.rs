@@ -2,7 +2,7 @@
 use super::code_gen::ByteCode;
 use super::opcode::*;
 use super::types::*;
-use super::values::HashKey;
+use super::values::{HashKey, SliceEnumIter, SliceRef};
 use super::vm_util;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
@@ -189,29 +189,30 @@ impl Fiber {
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
 
-        let mut map_range_slot = 0;
-        map_range_vars!(m_r0, m_p0, m_i0);
-        map_range_vars!(m_r1, m_p1, m_i1);
-        map_range_vars!(m_r2, m_p2, m_i2);
-        map_range_vars!(m_r3, m_p3, m_i3);
-        map_range_vars!(m_r4, m_p4, m_i4);
-        map_range_vars!(m_r5, m_p5, m_i5);
-        map_range_vars!(m_r6, m_p6, m_i6);
-        map_range_vars!(m_r7, m_p7, m_i7);
-        map_range_vars!(m_r8, m_p8, m_i8);
-        map_range_vars!(m_r9, m_p9, m_i9);
-        map_range_vars!(m_r10, m_p10, m_i10);
-        map_range_vars!(m_r11, m_p11, m_i11);
-        map_range_vars!(m_r12, m_p12, m_i12);
-        map_range_vars!(m_r13, m_p13, m_i13);
-        map_range_vars!(m_r14, m_p14, m_i14);
-        map_range_vars!(m_r15, m_p15, m_i15);
+        let mut range_slot = 0;
+        range_vars!(mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0);
+        range_vars!(mr1, mp1, mi1, lr1, lp1, li1, sr1, sp1, si1);
+        range_vars!(mr2, mp2, mi2, lr2, lp2, li2, sr2, sp2, si2);
+        range_vars!(mr3, mp3, mi3, lr3, lp3, li3, sr3, sp3, si3);
+        range_vars!(mr4, mp4, mi4, lr4, lp4, li4, sr4, sp4, si4);
+        range_vars!(mr5, mp5, mi5, lr5, lp5, li5, sr5, sp5, si5);
+        range_vars!(mr6, mp6, mi6, lr6, lp6, li6, sr6, sp6, si6);
+        range_vars!(mr7, mp7, mi7, lr7, lp7, li7, sr7, sp7, si7);
+        range_vars!(mr8, mp8, mi8, lr8, lp8, li8, sr8, sp8, si8);
+        range_vars!(mr9, mp9, mi9, lr9, lp9, li9, sr9, sp9, si9);
+        range_vars!(mr10, mp10, mi10, lr10, lp10, li10, sr10, sp10, si10);
+        range_vars!(mr11, mp11, mi11, lr11, lp11, li11, sr11, sp11, si11);
+        range_vars!(mr12, mp12, mi12, lr12, lp12, li12, sr12, sp12, si12);
+        range_vars!(mr13, mp13, mi13, lr13, lp13, li13, sr13, sp13, si13);
+        range_vars!(mr14, mp14, mi14, lr14, lp14, li14, sr14, sp14, si14);
+        range_vars!(mr15, mp15, mi15, lr15, lp15, li15, sr15, sp15, si15);
 
-        dbg!(code);
+        let mut total_inst = 0;
         loop {
+            total_inst += 1;
             let inst = code[frame.pc].unwrap_code();
             frame.pc += 1;
-            dbg!(inst);
+            //dbg!(inst);
             match inst {
                 Opcode::PUSH_CONST => {
                     let index = read_index!(code, frame);
@@ -334,6 +335,10 @@ impl Fiber {
                             }
                         }
                         GosValue::Map(mkey) => (&objs.maps[*mkey]).get(&ind).clone(),
+                        GosValue::Str(s) => {
+                            let string = &objs.strings[*s];
+                            GosValue::Int(string.get_byte(*ind.as_int() as usize) as isize)
+                        }
                         GosValue::Struct(skey) => {
                             let sval = &objs.structs[*skey];
                             match ind {
@@ -514,9 +519,9 @@ impl Fiber {
                     stack_base = frame.stack_base;
                     consts = &func.consts;
                     code = &func.code;
-                    dbg!(&consts);
-                    dbg!(&code);
-                    dbg!(&stack);
+                    //dbg!(&consts);
+                    //dbg!(&code);
+                    //dbg!(&stack);
 
                     if func.variadic() && *inst != Opcode::CALL_ELLIPSIS {
                         let index = stack_base
@@ -574,10 +579,10 @@ impl Fiber {
                         }
                     }
 
-                    dbg!(stack.len());
-                    for s in stack.iter() {
-                        dbg!(GosValueDebug::new(&s, &objs));
-                    }
+                    //dbg!(stack.len());
+                    //for s in stack.iter() {
+                    //    dbg!(GosValueDebug::new(&s, &objs));
+                    //}
 
                     match *inst {
                         Opcode::RETURN => {
@@ -604,6 +609,7 @@ impl Fiber {
 
                     self.frames.pop();
                     if self.frames.is_empty() {
+                        dbg!(total_inst);
                         break;
                     }
                     frame = self.frames.last_mut().unwrap();
@@ -631,63 +637,67 @@ impl Fiber {
                 Opcode::RANGE => {
                     let offset = read_index!(code, frame);
                     let len = stack.len();
-                    let target = &stack[len - 2];
+                    let t = stack[len - 2];
                     let mut mark = *stack[len - 1].as_int();
-                    match target {
-                        GosValue::Map(m) => {
-                            let map = objs.maps[*m].clone_data();
-                            if mark < 0 {
-                                mark = map_range_slot;
-                                map_range_slot += 1;
-                                assert!(map_range_slot < 16);
-                                match mark {
-                                    x if x == 0 => map_range_init!(map, m_r0, m_p0, m_i0),
-                                    x if x == 1 => map_range_init!(map, m_r1, m_p1, m_i1),
-                                    x if x == 2 => map_range_init!(map, m_r2, m_p2, m_i2),
-                                    x if x == 3 => map_range_init!(map, m_r3, m_p3, m_i3),
-                                    x if x == 4 => map_range_init!(map, m_r4, m_p4, m_i4),
-                                    x if x == 5 => map_range_init!(map, m_r5, m_p5, m_i5),
-                                    x if x == 6 => map_range_init!(map, m_r6, m_p6, m_i6),
-                                    x if x == 7 => map_range_init!(map, m_r7, m_p7, m_i7),
-                                    x if x == 8 => map_range_init!(map, m_r8, m_p8, m_i8),
-                                    x if x == 9 => map_range_init!(map, m_r9, m_p9, m_i9),
-                                    x if x == 10 => map_range_init!(map, m_r10, m_p10, m_i10),
-                                    x if x == 11 => map_range_init!(map, m_r11, m_p11, m_i11),
-                                    x if x == 12 => map_range_init!(map, m_r12, m_p12, m_i12),
-                                    x if x == 13 => map_range_init!(map, m_r13, m_p13, m_i13),
-                                    x if x == 14 => map_range_init!(map, m_r14, m_p14, m_i14),
-                                    x if x == 15 => map_range_init!(map, m_r15, m_p15, m_i15),
-                                    _ => unreachable!(),
-                                }
-                                *stack[len - 1].as_int_mut() = mark;
-                            }
-                            let end = match mark {
-                                x if x == 0 => map_range!(stack, m_p0, m_i0),
-                                x if x == 1 => map_range!(stack, m_p1, m_i1),
-                                x if x == 2 => map_range!(stack, m_p2, m_i2),
-                                x if x == 3 => map_range!(stack, m_p3, m_i3),
-                                x if x == 4 => map_range!(stack, m_p4, m_i4),
-                                x if x == 5 => map_range!(stack, m_p5, m_i5),
-                                x if x == 6 => map_range!(stack, m_p6, m_i6),
-                                x if x == 7 => map_range!(stack, m_p7, m_i7),
-                                x if x == 8 => map_range!(stack, m_p8, m_i8),
-                                x if x == 9 => map_range!(stack, m_p9, m_i9),
-                                x if x == 10 => map_range!(stack, m_p10, m_i10),
-                                x if x == 11 => map_range!(stack, m_p11, m_i11),
-                                x if x == 12 => map_range!(stack, m_p12, m_i12),
-                                x if x == 13 => map_range!(stack, m_p13, m_i13),
-                                x if x == 14 => map_range!(stack, m_p14, m_i14),
-                                x if x == 15 => map_range!(stack, m_p15, m_i15),
-                                _ => unreachable!(),
-                            };
-                            if end {
-                                frame.pc = offset_uint!(frame.pc, offset);
-                                map_range_slot -= 1;
-                            }
+                    if mark < 0 {
+                        mark = range_slot;
+                        range_slot += 1;
+                        assert!(range_slot < 16);
+                        match mark {
+                            0 => range_init!(objs, t, mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0),
+                            1 => range_init!(objs, t, mr1, mp1, mi1, lr1, lp1, li1, sr1, sp1, si1),
+                            2 => range_init!(objs, t, mr2, mp2, mi2, lr2, lp2, li2, sr2, sp2, si2),
+                            3 => range_init!(objs, t, mr3, mp3, mi3, lr3, lp3, li3, sr3, sp3, si3),
+                            4 => range_init!(objs, t, mr4, mp4, mi4, lr4, lp4, li4, sr4, sp4, si4),
+                            5 => range_init!(objs, t, mr5, mp5, mi5, lr5, lp5, li5, sr5, sp5, si5),
+                            6 => range_init!(objs, t, mr6, mp6, mi6, lr6, lp6, li6, sr6, sp6, si6),
+                            7 => range_init!(objs, t, mr7, mp7, mi7, lr7, lp7, li7, sr7, sp7, si7),
+                            8 => range_init!(objs, t, mr8, mp8, mi8, lr8, lp8, li8, sr8, sp8, si8),
+                            9 => range_init!(objs, t, mr9, mp9, mi9, lr9, lp9, li9, sr9, sp9, si9),
+                            10 => range_init!(
+                                objs, t, mr10, mp10, mi10, lr10, lp10, li10, sr10, sp10, si10
+                            ),
+                            11 => range_init!(
+                                objs, t, mr11, mp11, mi11, lr11, lp11, li11, sr11, sp11, si11
+                            ),
+                            12 => range_init!(
+                                objs, t, mr12, mp12, mi12, lr12, lp12, li12, sr12, sp12, si12
+                            ),
+                            13 => range_init!(
+                                objs, t, mr13, mp13, mi13, lr13, lp13, li13, sr13, sp13, si13
+                            ),
+                            14 => range_init!(
+                                objs, t, mr14, mp14, mi14, lr14, lp14, li14, sr14, sp14, si14
+                            ),
+                            15 => range_init!(
+                                objs, t, mr15, mp15, mi15, lr15, lp15, li15, sr15, sp15, si15
+                            ),
+                            _ => unreachable!(),
                         }
-                        GosValue::Slice(_sl) => {}
-                        GosValue::Str(_s) => {}
+                        *stack[len - 1].as_int_mut() = mark;
+                    }
+                    let end = match mark {
+                        0 => range_body!(t, stack, mp0, mi0, lp0, li0, sp0, si0),
+                        1 => range_body!(t, stack, mp1, mi1, lp1, li1, sp1, si1),
+                        2 => range_body!(t, stack, mp2, mi2, lp2, li2, sp2, si2),
+                        3 => range_body!(t, stack, mp3, mi3, lp3, li3, sp3, si3),
+                        4 => range_body!(t, stack, mp4, mi4, lp4, li4, sp4, si4),
+                        5 => range_body!(t, stack, mp5, mi5, lp5, li5, sp5, si5),
+                        6 => range_body!(t, stack, mp6, mi6, lp6, li6, sp6, si6),
+                        7 => range_body!(t, stack, mp7, mi7, lp7, li7, sp7, si7),
+                        8 => range_body!(t, stack, mp8, mi8, lp8, li8, sp8, si8),
+                        9 => range_body!(t, stack, mp9, mi9, lp9, li9, sp9, si9),
+                        10 => range_body!(t, stack, mp10, mi10, lp10, li10, sp10, si10),
+                        11 => range_body!(t, stack, mp11, mi11, lp11, li11, sp11, si11),
+                        12 => range_body!(t, stack, mp12, mi12, lp12, li12, sp12, si12),
+                        13 => range_body!(t, stack, mp13, mi13, lp13, li13, sp13, si13),
+                        14 => range_body!(t, stack, mp14, mi14, lp14, li14, sp14, si14),
+                        15 => range_body!(t, stack, mp15, mi15, lp15, li15, sp15, si15),
                         _ => unreachable!(),
+                    };
+                    if end {
+                        frame.pc = offset_uint!(frame.pc, offset);
+                        range_slot -= 1;
                     }
                 }
 
@@ -697,6 +707,38 @@ impl Fiber {
                     stack.push(GosValue::Package(pkey));
                     stack.push(GosValue::Bool(!objs.packages[pkey].inited()));
                 }
+                Opcode::SLICE | Opcode::SLICE_FULL => {
+                    let max = if *inst == Opcode::SLICE_FULL {
+                        Some(*stack.pop().unwrap().as_int() as usize)
+                    } else {
+                        None
+                    };
+                    let end_val = stack.pop().unwrap();
+                    let begin_val = stack.pop().unwrap();
+                    let end = if end_val.is_nil() {
+                        None
+                    } else {
+                        Some(*end_val.as_int() as usize)
+                    };
+                    let begin = if begin_val.is_nil() {
+                        None
+                    } else {
+                        Some(*begin_val.as_int() as usize)
+                    };
+                    let target = stack.pop().unwrap();
+                    let result = match target {
+                        GosValue::Slice(sl) => GosValue::Slice(
+                            objs.slices.insert(objs.slices[sl].slice(begin, end, max)),
+                        ),
+                        GosValue::Str(s) => {
+                            dbg!(s);
+                            GosValue::Str(objs.strings.insert(objs.strings[s].slice(begin, end)))
+                        }
+                        _ => unreachable!(),
+                    };
+                    stack.push(result);
+                }
+
                 Opcode::NEW => {
                     let new_val = match stack.pop().unwrap() {
                         GosValue::Function(fkey) => {
@@ -724,13 +766,41 @@ impl Fiber {
                     };
                     stack.push(new_val);
                 }
-                Opcode::MAKE => unimplemented!(),
+                Opcode::MAKE => {
+                    let index = read_index!(code, frame);
+                    let typ = stack[offset_uint!(stack.len(), index - 1)];
+                    let type_val = &objs.types[*typ.as_type()];
+                    let val = match type_val.data {
+                        GosTypeData::Slice(_) => {
+                            let (cap, len) = match index {
+                                -2 => (
+                                    *stack.pop().unwrap().as_int() as usize,
+                                    *stack.pop().unwrap().as_int() as usize,
+                                ),
+                                -1 => {
+                                    let len = *stack.pop().unwrap().as_int() as usize;
+                                    (len, len)
+                                }
+                                _ => unreachable!(),
+                            };
+                            GosValue::new_slice(len, cap, type_val.zero_val(), &mut objs.slices)
+                        }
+                        GosTypeData::Map(k, v) => unimplemented!(),
+                        GosTypeData::Channel(st) => unimplemented!(),
+                        _ => unreachable!(),
+                    };
+                    stack.pop();
+                    stack.push(val);
+                }
                 Opcode::LEN => match stack.pop().unwrap() {
                     GosValue::Slice(skey) => {
                         stack.push(GosValue::Int(objs.slices[skey].len() as isize));
                     }
                     GosValue::Map(mkey) => {
                         stack.push(GosValue::Int(objs.maps[mkey].len() as isize));
+                    }
+                    GosValue::Str(skey) => {
+                        stack.push(GosValue::Int(objs.strings[skey].len() as isize));
                     }
                     _ => unreachable!(),
                 },

@@ -25,11 +25,36 @@ func f2() {
     assert(j == 1000)
 }
 
+func f3() {
+    i := 0
+    i += 'a'
+    i += 'b'
+    i += 'c'
+    i += 'd'
+    var j, k, j2, k2 int
+    for _, c := range "abcd" {
+        j += c
+    }
+    for i := range "abcd" {
+        k += i
+    }
+    for i, c := range "abcd" {
+        j2 += c
+        k2 += i
+    }
+
+    assert(i == j)
+    assert(6 == k)
+    assert(j2 == j)
+    assert(k2 == k)
+}
+
 
 
 func main() {
    f1()
    f2()
+   f3()
 
 /*
     s := []int{1,2,3}

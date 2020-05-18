@@ -11,9 +11,7 @@ pub trait Visitor {
 
     fn visit_expr_ident(&mut self, ident: &IdentKey);
 
-    fn visit_expr_option(&mut self, op: &Option<Expr>);
-
-    fn visit_expr_ellipsis(&mut self);
+    fn visit_expr_ellipsis(&mut self, els: &Option<Expr>);
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit);
 
@@ -27,9 +25,9 @@ pub trait Visitor {
 
     fn visit_expr_index(&mut self);
 
-    fn visit_expr_slice(&mut self);
+    fn visit_expr_slice(&mut self, low: &Option<Expr>, high: &Option<Expr>, max: &Option<Expr>);
 
-    fn visit_expr_type_assert(&mut self);
+    fn visit_expr_type_assert(&mut self, typ: &Option<Expr>);
 
     fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool);
 
@@ -41,9 +39,7 @@ pub trait Visitor {
 
     fn visit_expr_key_value(&mut self);
 
-    fn visit_expr_array_type(&mut self);
-
-    fn visit_expr_slice_type(&mut self);
+    fn visit_expr_array_type(&mut self, arr: &Expr);
 
     fn visit_expr_struct_type(&mut self, s: &StructType);
 
@@ -101,8 +97,7 @@ pub fn walk_expr(v: &mut dyn Visitor, expr: &Expr) {
             v.visit_expr_ident(e.as_ref());
         }
         Expr::Ellipsis(e) => {
-            v.visit_expr_option(&e.as_ref().elt);
-            v.visit_expr_ellipsis();
+            v.visit_expr_ellipsis(&e.as_ref().elt);
         }
         Expr::BasicLit(e) => {
             v.visit_expr_basic_lit(e.as_ref());
@@ -131,16 +126,12 @@ pub fn walk_expr(v: &mut dyn Visitor, expr: &Expr) {
         Expr::Slice(e) => {
             let slexp = e.as_ref();
             v.visit_expr(&slexp.expr);
-            v.visit_expr_option(&slexp.low);
-            v.visit_expr_option(&slexp.high);
-            v.visit_expr_option(&slexp.max);
-            v.visit_expr_slice();
+            v.visit_expr_slice(&slexp.low, &slexp.high, &slexp.max);
         }
         Expr::TypeAssert(e) => {
             let taexp = e.as_ref();
             v.visit_expr(&taexp.expr);
-            v.visit_expr_option(&taexp.typ);
-            v.visit_expr_type_assert();
+            v.visit_expr_type_assert(&taexp.typ);
         }
         Expr::Call(e) => {
             let callexp = e.as_ref();
@@ -168,18 +159,8 @@ pub fn walk_expr(v: &mut dyn Visitor, expr: &Expr) {
             v.visit_expr(&kvexp.val);
             v.visit_expr_key_value();
         }
-        Expr::Array(e) => {
-            let aexp = e.as_ref();
-            v.visit_expr(&aexp.elt);
-            match &aexp.len {
-                Some(exp) => {
-                    v.visit_expr(&exp);
-                    v.visit_expr_array_type();
-                }
-                None => {
-                    v.visit_expr_slice_type();
-                }
-            }
+        Expr::Array(_) => {
+            v.visit_expr_array_type(expr);
         }
         Expr::Struct(e) => {
             v.visit_expr_struct_type(e.as_ref());

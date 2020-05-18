@@ -97,6 +97,8 @@ pub enum Opcode {
 
     // built-in functinalities
     IMPORT = 600, // imports a package
+    SLICE,        //for slice expressions
+    SLICE_FULL,   // for full slice expressions
     NEW,          // for built-in function new
     MAKE,         // for built-in function make
     LEN,          // for built-in function len
@@ -226,6 +228,8 @@ impl Opcode {
             Opcode::RANGE => ("RANGE", 1),
 
             Opcode::IMPORT => ("IMPORT", 0),
+            Opcode::SLICE => ("SLICE", -2),
+            Opcode::SLICE_FULL => ("SLICE_FULL", -3),
             Opcode::NEW => ("NEW", 0),
             Opcode::MAKE => ("MAKE", 0),
             Opcode::LEN => ("LEN", 0),

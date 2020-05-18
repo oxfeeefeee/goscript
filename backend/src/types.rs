@@ -115,8 +115,8 @@ pub fn new_str(strings: &mut StringObjs, s: String) -> GosValue {
     GosValue::Str(strings.insert(StringVal::with_str(s)))
 }
 
-pub fn new_slice(slices: &mut SliceObjs, cap: usize) -> GosValue {
-    GosValue::Slice(slices.insert(SliceVal::new(cap)))
+pub fn new_slice(slices: &mut SliceObjs, len: usize, cap: usize, dval: &GosValue) -> GosValue {
+    GosValue::Slice(slices.insert(SliceVal::new(len, cap, dval)))
 }
 
 pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
@@ -174,8 +174,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_slice(cap: usize, o: &mut SliceObjs) -> GosValue {
-        new_slice(o, cap)
+    pub fn new_slice(len: usize, cap: usize, dval: &GosValue, o: &mut SliceObjs) -> GosValue {
+        new_slice(o, len, cap, dval)
     }
 
     #[inline]
@@ -202,6 +202,14 @@ impl GosValue {
     #[inline]
     pub fn new_type(t: GosType, o: &mut TypeObjs) -> GosValue {
         new_type(o, t)
+    }
+    #[inline]
+    pub fn is_nil(&self) -> bool {
+        if let GosValue::Nil = self {
+            true
+        } else {
+            false
+        }
     }
 
     #[inline]
@@ -525,7 +533,7 @@ mod test {
     fn test_gosvalue_debug() {
         let mut o = VMObjects::new();
         let s = new_str(&mut o.strings, "test_string".to_string());
-        let slice = new_slice(&mut o.slices, 10);
+        let slice = new_slice(&mut o.slices, 10, 10, &GosValue::Int(0));
         dbg!(
             GosValueDebug::new(&s, &o),
             GosValueDebug::new(&GosValue::Nil, &o),

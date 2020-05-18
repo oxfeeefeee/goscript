@@ -103,3 +103,9 @@ fn test_for() {
     let err_cnt = load_parse_gen("./tests/data/for.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_leetcode5() {
+    let err_cnt = load_parse_gen("./tests/data/leetcode5.gos", true);
+    assert!(err_cnt == 0);
+}

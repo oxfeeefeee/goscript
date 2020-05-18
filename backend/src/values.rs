@@ -30,8 +30,34 @@ impl StringVal {
         self.data.as_ref()
     }
 
+    pub fn clone_data(&self) -> Rc<String> {
+        self.data.clone()
+    }
+
     pub fn into_string(self) -> String {
         Rc::try_unwrap(self.data).unwrap()
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.as_ref().len()
+    }
+
+    pub fn get_byte(&self, i: usize) -> u8 {
+        self.data.as_ref().as_bytes()[i]
+    }
+
+    pub fn slice(&self, begin: Option<usize>, end: Option<usize>) -> StringVal {
+        let self_len = self.len();
+        let bi = begin.unwrap_or(0);
+        let ei = end.unwrap_or(self_len);
+        assert!(bi < self_len);
+        assert!(bi <= ei && ei <= self_len);
+        // todo: efficient slice-like string
+        let sub = self.data.as_ref()[bi..ei].to_owned();
+        StringVal {
+            dark: false,
+            data: Rc::new(sub),
+        }
     }
 }
 
@@ -216,21 +242,26 @@ pub struct SliceVal {
 }
 
 impl<'a> SliceVal {
-    pub fn new(cap: usize) -> SliceVal {
-        SliceVal {
+    pub fn new(len: usize, cap: usize, default_val: &GosValue) -> SliceVal {
+        assert!(cap >= len);
+        let mut val = SliceVal {
             dark: false,
             begin: 0,
             end: 0,
             soft_cap: cap,
             vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
+        };
+        for _ in 0..len {
+            val.push(*default_val);
         }
+        val
     }
 
     pub fn with_data(val: Vec<GosValue>) -> SliceVal {
         SliceVal {
             dark: false,
             begin: 0,
-            end: 0,
+            end: val.len(),
             soft_cap: val.len(),
             vec: Rc::new(RefCell::new(val)),
         }
@@ -256,6 +287,10 @@ impl<'a> SliceVal {
         self.soft_cap - self.begin
     }
 
+    pub fn borrow(&self) -> SliceRef {
+        SliceRef::new(self)
+    }
+
     pub fn borrow_data_mut(&self) -> std::cell::RefMut<Vec<GosValue>> {
         self.vec.borrow_mut()
     }
@@ -277,15 +312,6 @@ impl<'a> SliceVal {
         self.end = self.begin + new_len;
     }
 
-    pub fn iter(&self) -> SliceValIter {
-        SliceValIter {
-            begin: self.begin,
-            end: self.end,
-            vec: self.vec.clone(),
-            cur: 0,
-        }
-    }
-
     pub fn get(&self, i: usize) -> Option<GosValue> {
         if let Some(val) = self.vec.borrow().get(self.begin + i) {
             Some(val.clone())
@@ -296,6 +322,24 @@ impl<'a> SliceVal {
 
     pub fn set(&self, i: usize, val: GosValue) {
         self.vec.borrow_mut()[self.begin + i] = val;
+    }
+
+    pub fn slice(&self, begin: Option<usize>, end: Option<usize>, max: Option<usize>) -> SliceVal {
+        let self_len = self.len();
+        let self_cap = self.cap();
+        let bi = begin.unwrap_or(0);
+        let ei = end.unwrap_or(self_len);
+        let mi = max.unwrap_or(self_cap);
+        assert!(bi < self_len);
+        assert!(bi <= ei && ei <= self_len);
+        assert!(ei <= mi && mi <= self_cap);
+        SliceVal {
+            dark: false,
+            begin: self.begin + bi,
+            end: self.begin + ei,
+            soft_cap: self.begin + mi,
+            vec: self.vec.clone(),
+        }
     }
 
     fn try_grow_vec(&mut self, len: usize) {
@@ -321,27 +365,45 @@ impl<'a> SliceVal {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct SliceValIter {
+/// SliceRef works like 'Ref', it means to be used as a temporary warpper
+/// to help accessing inner vec
+pub struct SliceRef<'a> {
+    vec_ref: Ref<'a, Vec<GosValue>>,
     begin: usize,
     end: usize,
-    vec: Rc<RefCell<Vec<GosValue>>>,
-    cur: usize,
 }
 
-impl<'a> Iterator for SliceValIter {
-    type Item = (GosValue, GosValue);
+pub type SliceIter<'a> = std::iter::Take<std::iter::Skip<std::slice::Iter<'a, GosValue>>>;
 
-    fn next(&mut self) -> Option<(GosValue, GosValue)> {
-        let p = self.cur + self.begin;
-        if p < self.end {
-            Some((
-                GosValue::Int(self.cur as isize),
-                *self.vec.borrow().get(p).unwrap(),
-            ))
-        } else {
-            None
+pub type SliceEnumIter<'a> =
+    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::slice::Iter<'a, GosValue>>>>;
+
+impl<'a> SliceRef<'a> {
+    pub fn new(s: &SliceVal) -> SliceRef {
+        SliceRef {
+            vec_ref: s.vec.borrow(),
+            begin: s.begin,
+            end: s.end,
         }
+    }
+
+    pub fn iter(&self) -> SliceIter {
+        self.vec_ref
+            .iter()
+            .skip(self.begin)
+            .take(self.end - self.begin)
+    }
+
+    pub fn enumerate(&self) -> SliceEnumIter {
+        self.vec_ref
+            .iter()
+            .skip(self.begin)
+            .take(self.end - self.begin)
+            .enumerate()
+    }
+
+    pub fn get(&self, i: usize) -> Option<&GosValue> {
+        self.vec_ref.get(self.begin + i)
     }
 }
 
@@ -390,7 +452,6 @@ mod test {
         dbg!(mem::size_of::<HashMap<HashKey, GosValue>>());
         dbg!(mem::size_of::<String>());
         dbg!(mem::size_of::<SliceVal>());
-        dbg!(mem::size_of::<SliceValIter>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

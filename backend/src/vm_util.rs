@@ -172,44 +172,125 @@ macro_rules! int_store_xxx_op {
     };
 }
 
-macro_rules! map_range_vars {
-    ($rc:ident, $ptr:ident, $iter:ident) => {
-        let mut $rc: Option<Rc<RefCell<HashMap<HashKey, GosValue>>>> = None;
-        let mut $ptr: Option<*mut Ref<HashMap<HashKey, GosValue>>> = None;
-        let mut $iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+macro_rules! range_vars {
+    ($m_ref:ident, $m_ptr:ident, $m_iter:ident, $l_ref:ident, $l_ptr:ident, $l_iter:ident,
+        $s_ref:ident, $s_ptr:ident, $s_iter:ident) => {
+        let mut $m_ref: Option<Rc<RefCell<HashMap<HashKey, GosValue>>>> = None;
+        let mut $m_ptr: Option<*mut Ref<HashMap<HashKey, GosValue>>> = None;
+        let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+        let mut $l_ref: Option<SliceVal> = None;
+        let mut $l_ptr: Option<*mut SliceRef> = None;
+        let mut $l_iter: Option<SliceEnumIter> = None;
+        let mut $s_ref: Option<Rc<String>> = None;
+        let mut $s_ptr: Option<*mut Rc<String>> = None;
+        let mut $s_iter: Option<std::iter::Enumerate<std::str::Chars>> = None;
     };
 }
 
-macro_rules! map_range_init {
-    ($map:ident, $map_rc:ident, $map_ptr:ident, $map_iter:ident) => {{
-        $map_rc.replace($map);
-        let r = $map_rc.as_ref().unwrap().borrow();
-        let p = Box::into_raw(Box::new(r));
-        $map_ptr = Some(p);
-        let mapref = unsafe { &*p };
-        $map_iter = Some(mapref.iter());
+macro_rules! range_init {
+    ($objs:ident, $target:ident, $map_ref:ident, $map_ptr:ident, $map_iter:ident,
+        $slice_ref:ident, $slice_ptr:ident, $slice_iter:ident, 
+        $str_ref:ident, $str_ptr:ident, $str_iter:ident) => {{
+        match $target {
+            GosValue::Map(m) => {
+                let map = $objs.maps[m].clone_data();
+                $map_ref.replace(map);
+                let r = $map_ref.as_ref().unwrap().borrow();
+                let p = Box::into_raw(Box::new(r));
+                $map_ptr = Some(p);
+                let mapref = unsafe { &*p };
+                $map_iter = Some(mapref.iter());
+            }
+            GosValue::Slice(sl) => {
+                let slice = $objs.slices[sl].clone();
+                $slice_ref.replace(slice);
+                let r = $slice_ref.as_ref().unwrap().borrow();
+                let p = Box::into_raw(Box::new(r));
+                $slice_ptr = Some(p);
+                let sliceref = unsafe { &*p };
+                $slice_iter = Some(sliceref.enumerate());
+            }
+            GosValue::Str(s) => {
+                let string = $objs.strings[s].clone_data();
+                $str_ref.replace(string);
+                let r = $str_ref.as_ref().unwrap().clone();
+                let p = Box::into_raw(Box::new(r));
+                $str_ptr = Some(p);
+                let strref = unsafe { &*p };
+                $str_iter = Some(strref.chars().enumerate());
+            }
+            _ => unreachable!(),
+        }
     }};
 }
 
-macro_rules! map_range {
-    ($stack:ident, $map_ptr:ident, $map_iter:ident) => {{
-        let v = $map_iter.as_mut().unwrap().next();
-        if let Some((k, v)) = v {
-            $stack.push(k.val.clone());
-            $stack.push(v.clone());
-            false
-        } else {
-            $map_iter.take();
-            // release the pointer
-            if let Some(p) = $map_ptr {
-                unsafe {
-                    drop(Box::<Ref<HashMap<HashKey, GosValue>>>::from_raw(p));
+macro_rules! range_body {
+    ($target:ident, $stack:ident, 
+        $map_ptr:ident, $map_iter:ident,
+        $slice_ptr:ident, $slice_iter:ident,
+        $str_ptr:ident, $str_iter:ident) => {{
+        match $target {
+            GosValue::Map(_) => {
+                let v = $map_iter.as_mut().unwrap().next();
+                if let Some((k, v)) = v {
+                    $stack.push(k.val.clone());
+                    $stack.push(v.clone());
+                    false
+                } else {
+                    $map_iter.take();
+                    // release the pointer
+                    if let Some(p) = $map_ptr {
+                        unsafe {
+                            drop(Box::<Ref<HashMap<HashKey, GosValue>>>::from_raw(p));
+                        }
+                        $map_ptr = None
+                    }
+                    $stack.pop();
+                    $stack.pop();
+                    true
                 }
-                $map_ptr = None
             }
-            $stack.pop();
-            $stack.pop();
-            true
+            GosValue::Slice(_) => {
+                let v = $slice_iter.as_mut().unwrap().next();
+                if let Some((k, v)) = v {
+                    $stack.push(GosValue::Int(k as isize));
+                    $stack.push(v.clone());
+                    false
+                } else {
+                    $slice_iter.take();
+                    // release the pointer
+                    if let Some(p) = $slice_ptr {
+                        unsafe {
+                            drop(Box::<SliceRef>::from_raw(p));
+                        }
+                        $slice_ptr = None
+                    }
+                    $stack.pop();
+                    $stack.pop();
+                    true
+                }
+            }
+            GosValue::Str(_) => {
+                let v = $str_iter.as_mut().unwrap().next();
+                if let Some((k, v)) = v {
+                    $stack.push(GosValue::Int(k as isize));
+                    $stack.push(GosValue::Int(v as isize));
+                    false
+                } else {
+                    $str_iter.take();
+                    // release the pointer
+                    if let Some(p) = $str_ptr {
+                        unsafe {
+                            drop(Box::<Rc<String>>::from_raw(p));
+                        }
+                        $str_ptr = None
+                    }
+                    $stack.pop();
+                    $stack.pop();
+                    true
+                }
+            }
+            _ => unreachable!(),
         }
     }};
 }
