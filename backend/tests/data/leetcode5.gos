@@ -60,7 +60,7 @@ func longestPalindrome2(s string) string {
 func main() {
     
     s := "ZnVuYyBsb25nZXN0UGFsaW5kcm9tZShzIHN0cmaabbaabbaabbluZykgc3RyaW5nIHsKICAgIGlmIGxlbihzKSA8PSAxIHsKICAgICAgICByZXR1cm4gcwogICAgfQogICAgCiAgICB0YWJsZSA6PaaabbbaaabbbaaaSBtYWtlKFtdW11ib29"
-    for i := 0; i < 5; i++ {
+    for i := 0; i < 0; i++ {
         s = s + s
     }
 	result := longestPalindrome2(s)
