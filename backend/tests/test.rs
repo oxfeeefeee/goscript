@@ -1,5 +1,7 @@
 //use std::cell::RefCell;
 //use std::rc::Rc;
+#[macro_use]
+extern crate time_test;
 extern crate goscript_backend as be;
 
 fn load_parse_gen(path: &str, trace: bool) -> usize {
@@ -106,6 +108,8 @@ fn test_for() {
 
 #[test]
 fn test_leetcode5() {
+    time_test!();
+
     let err_cnt = load_parse_gen("./tests/data/leetcode5.gos", true);
     assert!(err_cnt == 0);
 }

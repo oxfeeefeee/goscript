@@ -314,7 +314,7 @@ impl<'a> SliceVal {
 
     pub fn get(&self, i: usize) -> Option<GosValue> {
         if let Some(val) = self.vec.borrow().get(self.begin + i) {
-            Some(val.clone())
+            Some(*val)
         } else {
             None
         }

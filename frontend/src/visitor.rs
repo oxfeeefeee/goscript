@@ -35,7 +35,7 @@ pub trait Visitor {
 
     fn visit_expr_unary(&mut self, op: &Token);
 
-    fn visit_expr_binary(&mut self, op: &Token);
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr);
 
     fn visit_expr_key_value(&mut self);
 
@@ -149,9 +149,7 @@ pub fn walk_expr(v: &mut dyn Visitor, expr: &Expr) {
         }
         Expr::Binary(e) => {
             let bexp = e.as_ref();
-            v.visit_expr(&bexp.expr_a);
-            v.visit_expr(&bexp.expr_b);
-            v.visit_expr_binary(&bexp.op);
+            v.visit_expr_binary(&bexp.expr_a, &bexp.op, &bexp.expr_b);
         }
         Expr::KeyValue(e) => {
             let kvexp = e.as_ref();

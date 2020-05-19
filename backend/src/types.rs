@@ -73,14 +73,17 @@ pub struct VMObjects {
     pub types: TypeObjs,
     pub basic_types: HashMap<&'static str, GosValue>,
     pub default_closure_type: Option<GosValue>,
+    pub str_zero_val: StringKey,
 }
 
 impl VMObjects {
     pub fn new() -> VMObjects {
+        let mut strings = new_objects!();
+        let str_zero_val = strings.insert(StringVal::with_str("".to_owned()));
         let mut objs = VMObjects {
             interfaces: new_objects!(),
             closures: new_objects!(),
-            strings: new_objects!(),
+            strings: strings,
             slices: new_objects!(),
             maps: new_objects!(),
             structs: new_objects!(),
@@ -91,6 +94,7 @@ impl VMObjects {
             types: new_objects!(),
             basic_types: HashMap::new(),
             default_closure_type: None,
+            str_zero_val: str_zero_val,
         };
         let btype = GosType::new_bool(&mut objs);
         objs.basic_types.insert("bool", btype);
@@ -349,7 +353,7 @@ impl GosType {
 
     pub fn new_str(objs: &mut VMObjects) -> GosValue {
         let typ = GosType {
-            zero_val: GosValue::Str(null_key!()),
+            zero_val: GosValue::Str(objs.str_zero_val),
             data: GosTypeData::None,
         };
         GosValue::Type(objs.types.insert(typ))

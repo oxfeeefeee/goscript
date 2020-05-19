@@ -8,6 +8,7 @@ edition = "2018"
 #generational-arena = "0.2"
 #lazy_static = "1.4.0"
 slotmap = "0.4"
+time-test = "0.2.2"
 
 [dependencies.goscript-frontend]
 path = "../frontend"

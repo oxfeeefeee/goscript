@@ -328,7 +328,8 @@ impl Fiber {
                     stack[len - 1] = match val {
                         GosValue::Slice(skey) => {
                             let slice = &objs.slices[*skey];
-                            if let Some(v) = slice.get(*ind.as_int() as usize) {
+                            let index = *ind.as_int() as usize;
+                            if let Some(v) = slice.get(index) {
                                 v
                             } else {
                                 unimplemented!();
@@ -479,9 +480,7 @@ impl Fiber {
                 Opcode::REF => vm_util::unary_ref(stack, &mut objs.boxed),
                 Opcode::DEREF => vm_util::unary_deref(stack, &objs.boxed),
                 Opcode::ARROW => unimplemented!(),
-                Opcode::LAND => vm_util::logical_and(stack),
-                Opcode::LOR => vm_util::logical_or(stack),
-                Opcode::LNOT => vm_util::logical_not(stack),
+                Opcode::NOT => vm_util::logical_not(stack),
                 Opcode::EQL => vm_util::compare_eql(stack, &objs),
                 Opcode::LSS => vm_util::compare_lss(stack, &objs),
                 Opcode::GTR => vm_util::compare_gtr(stack, &objs),
@@ -520,7 +519,7 @@ impl Fiber {
                     consts = &func.consts;
                     code = &func.code;
                     //dbg!(&consts);
-                    //dbg!(&code);
+                    dbg!(&code);
                     //dbg!(&stack);
 
                     if func.variadic() && *inst != Opcode::CALL_ELLIPSIS {
@@ -623,6 +622,14 @@ impl Fiber {
                 Opcode::JUMP => {
                     let offset = read_index!(code, frame);
                     frame.pc = offset_uint!(frame.pc, offset);
+                }
+                Opcode::JUMP_IF => {
+                    let offset = read_index!(code, frame);
+                    let val = stack.last().unwrap();
+                    if *val.as_bool() {
+                        frame.pc = offset_uint!(frame.pc, offset);
+                    }
+                    stack.pop();
                 }
                 Opcode::JUMP_IF_NOT => {
                     let offset = read_index!(code, frame);
@@ -731,7 +738,6 @@ impl Fiber {
                             objs.slices.insert(objs.slices[sl].slice(begin, end, max)),
                         ),
                         GosValue::Str(s) => {
-                            dbg!(s);
                             GosValue::Str(objs.strings.insert(objs.strings[s].slice(begin, end)))
                         }
                         _ => unreachable!(),
@@ -771,7 +777,7 @@ impl Fiber {
                     let typ = stack[offset_uint!(stack.len(), index - 1)];
                     let type_val = &objs.types[*typ.as_type()];
                     let val = match type_val.data {
-                        GosTypeData::Slice(_) => {
+                        GosTypeData::Slice(vtype) => {
                             let (cap, len) = match index {
                                 -2 => (
                                     *stack.pop().unwrap().as_int() as usize,
@@ -783,7 +789,8 @@ impl Fiber {
                                 }
                                 _ => unreachable!(),
                             };
-                            GosValue::new_slice(len, cap, type_val.zero_val(), &mut objs.slices)
+                            let vtype_val = &objs.types[*vtype.as_type()];
+                            GosValue::new_slice(len, cap, vtype_val.zero_val(), &mut objs.slices)
                         }
                         GosTypeData::Map(k, v) => unimplemented!(),
                         GosTypeData::Channel(st) => unimplemented!(),

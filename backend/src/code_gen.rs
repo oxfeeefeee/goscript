@@ -509,9 +509,6 @@ pub struct CodeGen<'a> {
 
 impl<'a> Visitor for CodeGen<'a> {
     fn visit_expr(&mut self, expr: &Expr) {
-        if let Expr::Ident(i) = expr {
-            dbg!(&self.ast_objs.idents[*i.as_ref()]);
-        }
         walk_expr(self, expr);
     }
 
@@ -640,7 +637,8 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_code(code);
     }
 
-    fn visit_expr_binary(&mut self, op: &Token) {
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) {
+        self.visit_expr(left);
         let code = match op {
             Token::ADD => Opcode::ADD,
             Token::SUB => Opcode::SUB,
@@ -653,9 +651,9 @@ impl<'a> Visitor for CodeGen<'a> {
             Token::SHL => Opcode::SHL,
             Token::SHR => Opcode::SHR,
             Token::AND_NOT => Opcode::AND_NOT,
-            Token::LAND => Opcode::LAND,
-            Token::LOR => Opcode::LOR,
-            Token::NOT => Opcode::LNOT,
+            Token::LAND => Opcode::PUSH_FALSE,
+            Token::LOR => Opcode::PUSH_TRUE,
+            Token::NOT => Opcode::NOT,
             Token::EQL => Opcode::EQL,
             Token::LSS => Opcode::LSS,
             Token::GTR => Opcode::GTR,
@@ -664,7 +662,33 @@ impl<'a> Visitor for CodeGen<'a> {
             Token::GEQ => Opcode::GEQ,
             _ => unreachable!(),
         };
-        current_func_mut!(self).emit_code(code);
+        // handles short circuit
+        let mark_code = match op {
+            Token::LAND => {
+                let func = current_func_mut!(self);
+                func.emit_code(Opcode::JUMP_IF_NOT);
+                func.emit_data(0); // placeholder
+                Some((func.code.len(), code))
+            }
+            Token::LOR => {
+                let func = current_func_mut!(self);
+                func.emit_code(Opcode::JUMP_IF);
+                func.emit_data(0); // placeholder
+                Some((func.code.len(), code))
+            }
+            _ => None,
+        };
+        self.visit_expr(right);
+        if let Some((i, c)) = mark_code {
+            let func = current_func_mut!(self);
+            func.emit_code(Opcode::JUMP);
+            func.emit_data(1);
+            func.emit_code(c);
+            let diff = func.code.len() - i - 1;
+            func.code[i - 1] = CodeData::Data(diff as OpIndex);
+        } else {
+            current_func_mut!(self).emit_code(code);
+        }
     }
 
     fn visit_expr_key_value(&mut self) {
@@ -1446,7 +1470,6 @@ impl<'a> CodeGen<'a> {
     fn get_type_default(&mut self, expr: &Expr) -> GosValue {
         let typ = self.get_or_gen_type(expr);
         let typ_val = &self.objects.types[*typ.as_type()];
-        dbg!(typ_val);
         typ_val.zero_val().clone()
     }
 

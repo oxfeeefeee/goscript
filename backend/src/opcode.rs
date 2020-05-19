@@ -71,9 +71,7 @@ pub enum Opcode {
     REF,       // &
     DEREF,     // *
     ARROW,     // <-
-    LAND,      // &&
-    LOR,       // ||
-    LNOT,      // !
+    NOT,       // !
     EQL,       // ==
     LSS,       // <
     GTR,       // >
@@ -91,8 +89,9 @@ pub enum Opcode {
 
     // jump
     JUMP = 500,
-    LOOP,
+    JUMP_IF,
     JUMP_IF_NOT,
+    LOOP,
     RANGE, // for ... range statement
 
     // built-in functinalities
@@ -205,9 +204,7 @@ impl Opcode {
             Opcode::REF => ("REF", 0),
             Opcode::DEREF => ("DEREF", 0),
             Opcode::ARROW => ("ARROW", 0),
-            Opcode::LAND => ("LAND", -1),
-            Opcode::LOR => ("LOR", -1),
-            Opcode::LNOT => ("LNOT", 0),
+            Opcode::NOT => ("LNOT", 0),
             Opcode::EQL => ("EQL", -1),
             Opcode::LSS => ("LSS", -1),
             Opcode::GTR => ("GTR", -1),
@@ -224,6 +221,7 @@ impl Opcode {
 
             Opcode::JUMP => ("JUMP", 0),
             Opcode::LOOP => ("LOOP", 0),
+            Opcode::JUMP_IF => ("JUMP_IF", -1),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
             Opcode::RANGE => ("RANGE", 1),
 

@@ -31,13 +31,41 @@ func longestPalindrome(s string) string {
 }
 
 
+func longestPalindrome2(s string) string {
+    if len(s) <= 1 {
+        return s
+    }
+    table := make([][]int, len(s))
+    for i := 0; i < len(table); i++ {
+        table[i] = make([]int, len(s))
+    }
+    var res string
+    max := 0
+    for i, _ := range s{
+        for j := i; j > -1; j-- {
+            if s[i] == s[j] && (i - j < 2 || table[i - 1][j + 1] != 0) {
+                table[i][j] = 1
+            }
+
+            if table[i][j] != 0 && (i - j + 1) > max {
+                    max = i - j + 1
+                    res = s[j:i + 1]
+            }
+        }
+    }
+    return res
+}
+
+
 func main() {
+    
     s := "ZnVuYyBsb25nZXN0UGFsaW5kcm9tZShzIHN0cmaabbaabbaabbluZykgc3RyaW5nIHsKICAgIGlmIGxlbihzKSA8PSAxIHsKICAgICAgICByZXR1cm4gcwogICAgfQogICAgCiAgICB0YWJsZSA6PaaabbbaaabbbaaaSBtYWtlKFtdW11ib29"
-    for i := 0; i < 0; i++ {
+    for i := 0; i < 5; i++ {
         s = s + s
     }
-	result := longestPalindrome(s)
+	result := longestPalindrome2(s)
 	assert(result == "aaabbbaaabbbaaa")
+    
 
     //assert(longestPalindrome("aa") == "aa")
 }
