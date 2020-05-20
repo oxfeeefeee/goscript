@@ -112,6 +112,19 @@ macro_rules! set_store_op_val {
     };
 }
 
+macro_rules! set_ref_store_op_val {
+    ($target:expr, $op:ident, $val:ident, $is_xxx_op_set:expr) => {{
+        let mut old_val = $target.get();
+        let new_val = if $is_xxx_op_set {
+            vm_util::store_xxx_op(&mut old_val, $op.unwrap(), &$val);
+            old_val
+        } else {
+            $val
+        };
+        $target.set(new_val);
+    }};
+}
+
 macro_rules! int_float_binary_op {
     ($stack:ident, $op:tt) => {
         let (b, a) = ($stack.pop().unwrap(), $stack.pop().unwrap());
@@ -175,9 +188,9 @@ macro_rules! int_store_xxx_op {
 macro_rules! range_vars {
     ($m_ref:ident, $m_ptr:ident, $m_iter:ident, $l_ref:ident, $l_ptr:ident, $l_iter:ident,
         $s_ref:ident, $s_ptr:ident, $s_iter:ident) => {
-        let mut $m_ref: Option<Rc<RefCell<HashMap<HashKey, GosValue>>>> = None;
-        let mut $m_ptr: Option<*mut Ref<HashMap<HashKey, GosValue>>> = None;
-        let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, GosValue>> = None;
+        let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
+        let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
+        let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, Cell<GosValue>>> = None;
         let mut $l_ref: Option<SliceVal> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
@@ -198,7 +211,7 @@ macro_rules! range_init {
                 let r = $map_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
                 $map_ptr = Some(p);
-                let mapref = unsafe { &*p };
+                let mapref = unsafe { p.as_ref().unwrap() };
                 $map_iter = Some(mapref.iter());
             }
             GosValue::Slice(sl) => {
@@ -207,7 +220,7 @@ macro_rules! range_init {
                 let r = $slice_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
                 $slice_ptr = Some(p);
-                let sliceref = unsafe { &*p };
+                let sliceref = unsafe { p.as_ref().unwrap() };
                 $slice_iter = Some(sliceref.enumerate());
             }
             GosValue::Str(s) => {
@@ -216,7 +229,7 @@ macro_rules! range_init {
                 let r = $str_ref.as_ref().unwrap().clone();
                 let p = Box::into_raw(Box::new(r));
                 $str_ptr = Some(p);
-                let strref = unsafe { &*p };
+                let strref = unsafe { p.as_ref().unwrap() };
                 $str_iter = Some(strref.chars().enumerate());
             }
             _ => unreachable!(),
@@ -234,14 +247,14 @@ macro_rules! range_body {
                 let v = $map_iter.as_mut().unwrap().next();
                 if let Some((k, v)) = v {
                     $stack.push(k.val.clone());
-                    $stack.push(v.clone());
+                    $stack.push(v.clone().into_inner());
                     false
                 } else {
                     $map_iter.take();
                     // release the pointer
                     if let Some(p) = $map_ptr {
                         unsafe {
-                            drop(Box::<Ref<HashMap<HashKey, GosValue>>>::from_raw(p));
+                            drop(Box::<Ref<GosHashMap>>::from_raw(p));
                         }
                         $map_ptr = None
                     }
@@ -254,7 +267,7 @@ macro_rules! range_body {
                 let v = $slice_iter.as_mut().unwrap().next();
                 if let Some((k, v)) = v {
                     $stack.push(GosValue::Int(k as isize));
-                    $stack.push(v.clone());
+                    $stack.push(v.clone().into_inner());
                     false
                 } else {
                     $slice_iter.take();

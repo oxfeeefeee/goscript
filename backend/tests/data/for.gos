@@ -49,12 +49,28 @@ func f3() {
     assert(k2 == k)
 }
 
+func range_set() {
+    s := []int{1, 2}
+    for i, v := range s {
+        s[i] = 5
+    }
+    assert(s[0] == 5)
+
+    var s1 = map[int]int{1:2, 3: 888}
+    for i, v := range s1 {
+        s1[i] = 100
+    }
+    assert(s1[0] == 0)
+    assert(s1[1] == 100)
+}
 
 
 func main() {
    f1()
    f2()
    f3()
+
+   range_set()
 
 /*
     s := []int{1,2,3}

@@ -3,3 +3,8 @@ runtime: when creating closure, mark locals that are used as upvalue, so that wh
 
 
 ideas to share: how +=, -= is supported, fast and secure
+
+
+use a Pin<Box<>> for VMObjects
+
+use Cell for GosValue

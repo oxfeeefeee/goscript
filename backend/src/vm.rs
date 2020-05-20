@@ -2,9 +2,9 @@
 use super::code_gen::ByteCode;
 use super::opcode::*;
 use super::types::*;
-use super::values::{HashKey, SliceEnumIter, SliceRef};
+use super::values::{GosHashMap, HashKey, SliceEnumIter, SliceRef};
 use super::vm_util;
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -389,16 +389,16 @@ impl Fiber {
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
                     match store {
                         GosValue::Slice(s) => {
-                            let target =
-                                &mut objs.slices[*s].borrow_data_mut()[*key.as_int() as usize];
-                            set_store_op_val!(target, op, val, is_op_set);
+                            let target_cell =
+                                &objs.slices[*s].borrow_data()[*key.as_int() as usize];
+                            set_ref_store_op_val!(target_cell, op, val, is_op_set);
                         }
                         GosValue::Map(m) => {
                             let map = &objs.maps[*m];
                             map.touch_key(&key);
-                            let mref = &mut map.borrow_data_mut();
-                            let target = mref.get_mut(&map.hash_key(key)).unwrap();
-                            set_store_op_val!(target, op, val, is_op_set);
+                            let borrowed = map.borrow_data();
+                            let target_cell = borrowed.get(&map.hash_key(key)).unwrap();
+                            set_ref_store_op_val!(target_cell, op, val, is_op_set);
                         }
                         GosValue::Struct(s) => {
                             match key {
@@ -792,8 +792,8 @@ impl Fiber {
                             let vtype_val = &objs.types[*vtype.as_type()];
                             GosValue::new_slice(len, cap, vtype_val.zero_val(), &mut objs.slices)
                         }
-                        GosTypeData::Map(k, v) => unimplemented!(),
-                        GosTypeData::Channel(st) => unimplemented!(),
+                        GosTypeData::Map(_k, _v) => unimplemented!(),
+                        GosTypeData::Channel(_st) => unimplemented!(),
                         _ => unreachable!(),
                     };
                     stack.pop();

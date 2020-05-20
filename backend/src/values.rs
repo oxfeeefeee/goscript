@@ -1,6 +1,6 @@
 use super::opcode::OpIndex;
 use super::types::{GosTypeData, GosValue, TypeKey, VMObjects};
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -95,7 +95,8 @@ impl HashKey {
     fn objs(&self) -> &VMObjects {
         // There is no way around it, if you what the Hash trait implemented
         // because managed data like GosValue::Str needs a ref to VMObjects
-        unsafe { &*self.objs }
+        // todo: technically we should pin 'objs'
+        unsafe { self.objs.as_ref().unwrap() }
     }
 }
 
@@ -136,15 +137,17 @@ impl Hash for HashKey {
     }
 }
 
+pub type GosHashMap = HashMap<HashKey, Cell<GosValue>>;
+
 #[derive(Clone)]
 pub struct MapVal {
     pub dark: bool,
     objs: *const VMObjects,
-    default_val: GosValue,
+    default_val: Cell<GosValue>,
     // Why not Rc or no wrapper at all?
     // - Sometimes we need to copy it out of VMObjects, so we need a wapper
     // - If the underlying data is not read-only, you cannot simply use Rc
-    map: Rc<RefCell<HashMap<HashKey, GosValue>>>,
+    map: Rc<RefCell<GosHashMap>>,
 }
 
 impl fmt::Debug for MapVal {
@@ -162,7 +165,7 @@ impl MapVal {
         MapVal {
             dark: false,
             objs: objs,
-            default_val: default_val,
+            default_val: Cell::new(default_val),
             map: Rc::new(RefCell::new(HashMap::new())),
         }
     }
@@ -172,14 +175,17 @@ impl MapVal {
         MapVal {
             dark: false,
             objs: self.objs,
-            default_val: self.default_val,
+            default_val: self.default_val.clone(),
             map: Rc::new(RefCell::new(self.map.borrow().clone())),
         }
     }
 
     pub fn insert(&mut self, key: GosValue, val: GosValue) -> Option<GosValue> {
         let hk = self.hash_key(key);
-        self.map.borrow_mut().insert(hk, val)
+        self.map
+            .borrow_mut()
+            .insert(hk, Cell::new(val))
+            .map(|x| x.into_inner())
     }
 
     pub fn get(&self, key: &GosValue) -> GosValue {
@@ -187,10 +193,12 @@ impl MapVal {
             val: *key,
             objs: self.objs,
         };
-        match self.map.borrow().get(&hk) {
-            Some(v) => *v,
-            None => self.default_val,
-        }
+        let mref = self.map.borrow();
+        let cell = match mref.get(&hk) {
+            Some(v) => v,
+            None => &self.default_val,
+        };
+        cell.clone().into_inner()
     }
 
     pub fn hash_key(&self, key: GosValue) -> HashKey {
@@ -208,7 +216,7 @@ impl MapVal {
             objs: self.objs,
         };
         if self.map.borrow().get(&hk).is_none() {
-            self.map.borrow_mut().insert(hk, self.default_val);
+            self.map.borrow_mut().insert(hk, self.default_val.clone());
         }
     }
 
@@ -216,15 +224,15 @@ impl MapVal {
         self.map.borrow().len()
     }
 
-    pub fn borrow_data_mut(&self) -> RefMut<HashMap<HashKey, GosValue>> {
+    pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
         self.map.borrow_mut()
     }
 
-    pub fn borrow_data(&self) -> Ref<HashMap<HashKey, GosValue>> {
+    pub fn borrow_data(&self) -> Ref<GosHashMap> {
         self.map.borrow()
     }
 
-    pub fn clone_data(&self) -> Rc<RefCell<HashMap<HashKey, GosValue>>> {
+    pub fn clone_data(&self) -> Rc<RefCell<GosHashMap>> {
         self.map.clone()
     }
 }
@@ -232,13 +240,15 @@ impl MapVal {
 // ----------------------------------------------------------------------------
 // SliceVal
 
+pub type GosVec = Vec<Cell<GosValue>>;
+
 #[derive(Clone, Debug)]
 pub struct SliceVal {
     pub dark: bool,
     begin: usize,
     end: usize,
     soft_cap: usize, // <= self.vec.capacity()
-    vec: Rc<RefCell<Vec<GosValue>>>,
+    vec: Rc<RefCell<GosVec>>,
 }
 
 impl<'a> SliceVal {
@@ -263,7 +273,9 @@ impl<'a> SliceVal {
             begin: 0,
             end: val.len(),
             soft_cap: val.len(),
-            vec: Rc::new(RefCell::new(val)),
+            vec: Rc::new(RefCell::new(
+                val.into_iter().map(|x| Cell::new(x)).collect(),
+            )),
         }
     }
 
@@ -291,21 +303,21 @@ impl<'a> SliceVal {
         SliceRef::new(self)
     }
 
-    pub fn borrow_data_mut(&self) -> std::cell::RefMut<Vec<GosValue>> {
+    pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
         self.vec.borrow_mut()
     }
 
-    pub fn borrow_data(&self) -> std::cell::Ref<Vec<GosValue>> {
+    pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
         self.vec.borrow()
     }
 
     pub fn push(&mut self, val: GosValue) {
         self.try_grow_vec(self.len() + 1);
-        self.vec.borrow_mut().push(val);
+        self.vec.borrow_mut().push(Cell::new(val));
         self.end += 1;
     }
 
-    pub fn append(&mut self, vals: &mut Vec<GosValue>) {
+    pub fn append(&mut self, vals: &mut GosVec) {
         let new_len = self.len() + vals.len();
         self.try_grow_vec(new_len);
         self.vec.borrow_mut().append(vals);
@@ -314,14 +326,14 @@ impl<'a> SliceVal {
 
     pub fn get(&self, i: usize) -> Option<GosValue> {
         if let Some(val) = self.vec.borrow().get(self.begin + i) {
-            Some(*val)
+            Some(val.clone().into_inner())
         } else {
             None
         }
     }
 
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow_mut()[self.begin + i] = val;
+        self.vec.borrow_mut()[self.begin + i] = Cell::new(val);
     }
 
     pub fn slice(&self, begin: Option<usize>, end: Option<usize>, max: Option<usize>) -> SliceVal {
@@ -368,15 +380,15 @@ impl<'a> SliceVal {
 /// SliceRef works like 'Ref', it means to be used as a temporary warpper
 /// to help accessing inner vec
 pub struct SliceRef<'a> {
-    vec_ref: Ref<'a, Vec<GosValue>>,
+    vec_ref: Ref<'a, GosVec>,
     begin: usize,
     end: usize,
 }
 
-pub type SliceIter<'a> = std::iter::Take<std::iter::Skip<std::slice::Iter<'a, GosValue>>>;
+pub type SliceIter<'a> = std::iter::Take<std::iter::Skip<std::slice::Iter<'a, Cell<GosValue>>>>;
 
 pub type SliceEnumIter<'a> =
-    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::slice::Iter<'a, GosValue>>>>;
+    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::slice::Iter<'a, Cell<GosValue>>>>>;
 
 impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceVal) -> SliceRef {
@@ -402,7 +414,7 @@ impl<'a> SliceRef<'a> {
             .enumerate()
     }
 
-    pub fn get(&self, i: usize) -> Option<&GosValue> {
+    pub fn get(&self, i: usize) -> Option<&Cell<GosValue>> {
         self.vec_ref.get(self.begin + i)
     }
 }
@@ -452,6 +464,7 @@ mod test {
         dbg!(mem::size_of::<HashMap<HashKey, GosValue>>());
         dbg!(mem::size_of::<String>());
         dbg!(mem::size_of::<SliceVal>());
+        dbg!(mem::size_of::<RefCell<GosValue>>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);
