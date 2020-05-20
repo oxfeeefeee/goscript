@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 #![macro_use]
 pub use super::code_gen::{Function, Package};
+pub use super::ds::{ChannelVal, InterfaceVal, MapVal, SliceVal, StringVal, StructVal};
 use super::opcode::OpIndex;
-pub use super::values::{ChannelVal, InterfaceVal, MapVal, SliceVal, StringVal, StructVal};
 pub use super::vm::ClosureVal;
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cmp::Ordering;
@@ -128,7 +128,7 @@ pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
 }
 
 pub fn new_map(objs: &mut VMObjects, default_val: GosValue) -> GosValue {
-    let val = MapVal::new(unsafe { std::mem::transmute(&objs) }, default_val);
+    let val = MapVal::new(&objs, default_val);
     GosValue::Map(objs.maps.insert(val))
 }
 

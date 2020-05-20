@@ -5,10 +5,14 @@ extern crate time_test;
 extern crate goscript_backend as be;
 
 fn load_parse_gen(path: &str, trace: bool) -> usize {
-    let bc = be::code_gen::CodeGen::load_parse_gen(path, trace);
-    let mut vm = be::vm::GosVM::new(bc.0);
-    vm.run();
-    bc.1
+    let result = be::code_gen::CodeGen::load_parse_gen(path, trace);
+    if let Ok(bc) = result {
+        let mut vm = be::vm::GosVM::new(bc);
+        vm.run();
+        0
+    } else {
+        result.unwrap_err()
+    }
 }
 #[test]
 fn test_bcase1() {

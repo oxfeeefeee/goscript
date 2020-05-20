@@ -1,11 +1,12 @@
 #![allow(dead_code)]
 use super::code_gen::ByteCode;
+use super::ds::{GosHashMap, HashKey, SliceEnumIter, SliceRef};
 use super::opcode::*;
-use super::types::*;
-use super::values::{GosHashMap, HashKey, SliceEnumIter, SliceRef};
+use super::value::*;
 use super::vm_util;
 use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::rc::Rc;
 
 /// ClosureVal is a variable containing a pinter to a function and
@@ -840,7 +841,7 @@ impl Fiber {
 pub struct GosVM {
     fibers: Vec<Rc<RefCell<Fiber>>>,
     current_fiber: Option<Rc<RefCell<Fiber>>>,
-    objects: VMObjects,
+    objects: Pin<Box<VMObjects>>,
     packages: Vec<PackageKey>,
     entry: FunctionKey,
 }

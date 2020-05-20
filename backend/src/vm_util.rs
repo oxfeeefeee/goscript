@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::opcode::*;
-use super::types::{BoxedObjs, GosValue, StringObjs, VMObjects};
+use super::value::{BoxedObjs, GosValue, StringObjs, VMObjects};
 use std::cmp::Ordering;
 
 macro_rules! offset_uint {

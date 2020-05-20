@@ -1,5 +1,5 @@
 use super::opcode::OpIndex;
-use super::types::{GosTypeData, GosValue, TypeKey, VMObjects};
+use super::value::{GosTypeData, GosValue, TypeKey, VMObjects};
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -95,7 +95,6 @@ impl HashKey {
     fn objs(&self) -> &VMObjects {
         // There is no way around it, if you what the Hash trait implemented
         // because managed data like GosValue::Str needs a ref to VMObjects
-        // todo: technically we should pin 'objs'
         unsafe { self.objs.as_ref().unwrap() }
     }
 }
@@ -465,6 +464,7 @@ mod test {
         dbg!(mem::size_of::<String>());
         dbg!(mem::size_of::<SliceVal>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
+        dbg!(mem::size_of::<GosValue>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

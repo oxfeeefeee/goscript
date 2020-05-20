@@ -1,6 +1,8 @@
 mod opcode;
-pub mod types;
-mod values;
+
+mod ds;
+
+pub mod value;
 
 #[macro_use]
 mod vm_util;
