@@ -19,10 +19,10 @@ Go specs implemented as a scripting language in Rust.
 + The parser is a port of the official Go implementation.
 + The VM is based on that of Lua/Wren.
 
-### Progress
-+ The parser is basically finished, we still need to port the Type Checker.
+### Progress/Roadmap
 + You can take a look at [here](https://github.com/oxfeeefeee/goscript/tree/master/backend/tests/data/leetcode5.gos) to see what it can run for now.
-+ It should be able to run leetcode answers sooooon, with 4 major tasks left to do: TypeChecker, GC, Library, API. If anyone is interested in becoming a co-author, pick one(or more) of those above :)
++ The parser works fine, the core part of the VM is basically working.
++ 4 major components to go: TypeChecker, GC, Library, API. I'm planning to work on the TypeCheker in the next few weeks before go back to the VM.
 
 ### Join us
 + If you like the idea, and would like to help, please contact oxfeeefeee at gmail.
