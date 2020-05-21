@@ -1,6 +1,5 @@
 #![allow(dead_code)]
-use super::code_gen::ByteCode;
-use super::ds::{GosHashMap, HashKey, SliceEnumIter, SliceRef};
+use super::ds::{ClosureVal, GosHashMap, HashKey, SliceEnumIter, SliceRef, UpValue};
 use super::opcode::*;
 use super::value::*;
 use super::vm_util;
@@ -9,41 +8,12 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 
-/// ClosureVal is a variable containing a pinter to a function and
-/// a. a receiver, in which case, it is a bound-method
-/// b. upvalues, in which case, it is a "real" closure
-///
 #[derive(Clone, Debug)]
-pub struct ClosureVal {
-    pub func: FunctionKey,
-    pub receiver: Option<GosValue>,
-    pub upvalues: Vec<UpValue>,
-}
-
-impl ClosureVal {
-    pub fn new(key: FunctionKey, upvalues: Vec<UpValue>) -> ClosureVal {
-        ClosureVal {
-            func: key,
-            receiver: None,
-            upvalues: upvalues,
-        }
-    }
-
-    pub fn close_upvalue(&mut self, func: FunctionKey, index: OpIndex, boxed: BoxedKey) {
-        for i in 0..self.upvalues.len() {
-            if self.upvalues[i] == UpValue::Open(func, index) {
-                self.upvalues[i] = UpValue::Closed(boxed);
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum UpValue {
-    /// Parent CallFrame is still alive, pointing to a local variable
-    Open(FunctionKey, OpIndex), // (what func is the var defined, the index of the var)
-    // Parent CallFrame is released, pointing to a Boxed value in the global pool
-    Closed(BoxedKey),
+pub struct ByteCode {
+    pub objects: Pin<Box<VMObjects>>,
+    pub package_indices: HashMap<String, OpIndex>,
+    pub packages: Vec<PackageKey>,
+    pub entry: FunctionKey,
 }
 
 #[derive(Clone, Debug)]

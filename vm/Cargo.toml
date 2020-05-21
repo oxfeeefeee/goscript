@@ -1,15 +1,13 @@
 [package]
-name = "goscript-backend"
+name = "goscript-vm"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-#generational-arena = "0.2"
-#lazy_static = "1.4.0"
 slotmap = "0.4"
 time-test = "0.2.2"
 
-[dependencies.goscript-frontend]
-path = "../frontend"
+[dependencies.goscript-parser]
+path = "../parser"
 version = "0.1.0"

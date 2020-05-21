@@ -1,4 +1,4 @@
-extern crate goscript_frontend as fe;
+extern crate goscript_parser as fe;
 use std::fs;
 
 fn load_parse(path: &str, trace: bool) -> usize {
@@ -47,7 +47,7 @@ fn parse_dir(s: &str, trace: bool) -> usize {
 
 #[test]
 fn test_parser_dir() {
-    let t = parse_dir("./../../../../go/src/github.com/golang/go/src", false);
+    //let t = parse_dir("./../../../../go/src/github.com/golang/go/src", false);
     //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
-    println!("hohohoh{}", t);
+    //println!("hohohoh{}", t);
 }

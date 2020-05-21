@@ -1,0 +1,32 @@
+package main
+
+/*
+func range_set() {
+    s := []int{1, 2}
+    for i, v := range s {
+        s[i] = 5
+    }
+    assert(s[0] == 5)
+
+    var s1 = map[int]int{1:2, 3: 888}
+    for i, v := range s1 {
+        s1[i] = 100
+    }
+    assert(s1[0] == 0)
+    assert(s1[1] == 100)
+}
+*/
+
+func main() {
+
+    //range_set()
+    //i = 1
+    //s := []int{-4, -1, -1, 0, 1, 2}
+    //s1 := s[0:0]
+    //var i = 2
+    //m := map[int]int{1:1}
+    m := map[string]int{"a":1}
+    //m := make(map[string]string)
+    m["a"] = 3
+    assert(m["a"] == 3)
+}

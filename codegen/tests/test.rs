@@ -2,12 +2,13 @@
 //use std::rc::Rc;
 #[macro_use]
 extern crate time_test;
-extern crate goscript_backend as be;
+extern crate goscript_codegen as cg;
+extern crate goscript_vm as vm;
 
 fn load_parse_gen(path: &str, trace: bool) -> usize {
-    let result = be::code_gen::CodeGen::load_parse_gen(path, trace);
+    let result = cg::codegen::CodeGen::load_parse_gen(path, trace);
     if let Ok(bc) = result {
-        let mut vm = be::vm::GosVM::new(bc);
+        let mut vm = vm::vm::GosVM::new(bc);
         vm.run();
         0
     } else {

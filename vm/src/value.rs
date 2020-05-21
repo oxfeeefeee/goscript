@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 #![macro_use]
-pub use super::code_gen::{Function, Package};
-pub use super::ds::{ChannelVal, InterfaceVal, MapVal, SliceVal, StringVal, StructVal};
+pub use super::ds::{
+    ChannelVal, ClosureVal, FunctionVal, InterfaceVal, MapVal, PackageVal, SliceVal, StringVal,
+    StructVal,
+};
 use super::opcode::OpIndex;
-pub use super::vm::ClosureVal;
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -11,6 +12,7 @@ use std::fmt;
 
 const DEFAULT_CAPACITY: usize = 128;
 
+#[macro_export]
 macro_rules! null_key {
     () => {
         slotmap::Key::null()
@@ -54,8 +56,8 @@ pub type MapObjs = DenseSlotMap<MapKey, MapVal>;
 pub type StructObjs = DenseSlotMap<StructKey, StructVal>;
 pub type ChannelObjs = DenseSlotMap<ChannelKey, ChannelVal>;
 pub type BoxedObjs = DenseSlotMap<BoxedKey, GosValue>;
-pub type FunctionObjs = DenseSlotMap<FunctionKey, Function>;
-pub type PackageObjs = DenseSlotMap<PackageKey, Package>;
+pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
+pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
 pub type TypeObjs = DenseSlotMap<TypeKey, GosType>;
 
 #[derive(Clone, Debug)]
@@ -139,7 +141,7 @@ pub fn new_function(
     variadic: bool,
     ctor: bool,
 ) -> GosValue {
-    let val = Function::new(objs, package, typ, variadic, ctor);
+    let val = FunctionVal::new(objs, package, typ, variadic, ctor);
     GosValue::Function(objs.functions.insert(val))
 }
 

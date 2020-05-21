@@ -1,0 +1,21 @@
+[package]
+name = "goscript-codegen"
+version = "0.1.0"
+authors = ["oxfeeefeee <pb01005051@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+slotmap = "0.4"
+time-test = "0.2.2"
+
+[dependencies.goscript-parser]
+path = "../parser"
+version = "0.1.0"
+
+[dependencies.goscript-vm]
+path = "../vm"
+version = "0.1.0"
+
+[dependencies.goscript-types]
+path = "../types"
+version = "0.1.0"

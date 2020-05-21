@@ -1,6 +1,8 @@
 [workspace]
 
 members = [
-    "./frontend",
-    "./backend",
+    "./parser",
+    "./types",
+    "./vm",
+    "./codegen",
 ]
