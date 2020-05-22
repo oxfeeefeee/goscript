@@ -17,8 +17,6 @@ pub struct Scanner<'a> {
     line_offset: usize, // current line offset
     semi1: bool,        // insert semicolon if current char is \n
     semi2: bool,        // insert semicolon if followed by \n
-
-    error_count: isize,
 }
 
 impl<'a> Scanner<'a> {
@@ -41,13 +39,11 @@ impl<'a> Scanner<'a> {
             line_offset: 0,
             semi1: false,
             semi2: false,
-            error_count: 0,
         }
     }
 
-    fn error(&mut self, pos: usize, msg: &str) {
-        self.error_count += 1;
-        errors::FilePosErrors::new(self.file, self.errors).add_str(pos, msg);
+    fn error(&self, msg: &str) {
+        errors::FilePosErrors::new(self.file, self.errors).add_str(self.offset, msg);
     }
 
     fn position(&self) -> position::Position {
@@ -86,7 +82,7 @@ impl<'a> Scanner<'a> {
             // from skip_whitespace()
             Some('\n') => {
                 self.semi1 = false;
-                Token::SEMICOLON(false)
+                Token::SEMICOLON(false.into())
             }
             Some('"') => {
                 self.semi2 = true;
@@ -117,7 +113,7 @@ impl<'a> Scanner<'a> {
                             }
                             _ => {
                                 self.semi2 = self.semi1; // preserve insert semi info
-                                Token::ILLEGAL("..".to_string())
+                                Token::ILLEGAL("..".to_string().into())
                             }
                         }
                     }
@@ -128,7 +124,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             Some(',') => self.scan_token(Token::COMMA, false),
-            Some(';') => self.scan_token(Token::SEMICOLON(true), false),
+            Some(';') => self.scan_token(Token::SEMICOLON(true.into()), false),
             Some('(') => self.scan_token(Token::LPAREN, false),
             Some(')') => self.scan_token(Token::RPAREN, true),
             Some('[') => self.scan_token(Token::LBRACK, false),
@@ -152,7 +148,7 @@ impl<'a> Scanner<'a> {
                     Some('/') | Some('*') => {
                         if self.semi1 && self.comment_to_end() {
                             self.semi1 = false;
-                            Token::SEMICOLON(false)
+                            Token::SEMICOLON(false.into())
                         } else {
                             self.scan_comment(ch.unwrap())
                         }
@@ -204,12 +200,12 @@ impl<'a> Scanner<'a> {
             Some(&c) => {
                 self.semi2 = self.semi1; // preserve insert semi info
                 self.read_char();
-                Token::ILLEGAL(c.to_string())
+                Token::ILLEGAL(c.to_string().into())
             }
             None => {
                 if self.semi1 {
                     self.semi1 = false;
-                    Token::SEMICOLON(false)
+                    Token::SEMICOLON(false.into())
                 } else {
                     Token::EOF
                 }
@@ -237,7 +233,7 @@ impl<'a> Scanner<'a> {
         match self.peek_char() {
             Some('i') => match tok {
                 Token::INT(mut lit) | Token::FLOAT(mut lit) => {
-                    self.advance_and_push(&mut lit, 'i');
+                    self.advance_and_push(lit.as_mut(), 'i');
                     tok = Token::IMAG(lit);
                 }
                 _ => {}
@@ -251,57 +247,65 @@ impl<'a> Scanner<'a> {
         let mut literal = String::new();
         if ch == '.' {
             //.34
-            self.append_fraction(&mut literal);
-            Token::FLOAT(literal)
+            self.scan_fraction_and_finish(literal)
         } else if ch == '0' {
             self.advance_and_push(&mut literal, '0');
             match self.peek_char() {
                 // hexadecimal int
                 Some('x') | Some('X') => {
-                    self.advance_and_push(&mut literal, 'x');
-                    let count = self.scan_digits(&mut literal, is_hex);
-                    if count == 0 {
-                        self.error(self.offset, "illegal hexadecimal number");
-                        Token::ILLEGAL(literal)
-                    } else {
-                        Token::INT(literal)
-                    }
+                    self.prefixed_int(literal, 'x', "illegal hexadecimal number")
                 }
-                _ => {
-                    // octal int or float
-                    self.scan_digits(&mut literal, is_octal);
-                    match self.peek_char() {
-                        Some(&c) if (c == '8' || c == '9') => {
-                            self.error(self.offset, "illegal octal number");
-                            self.advance_and_push(&mut literal, c);
-                            Token::ILLEGAL(literal)
-                        }
-                        Some('e') | Some('E') => {
-                            self.append_exponent(&mut literal);
-                            Token::FLOAT(literal)
-                        }
-                        Some('.') => {
-                            self.append_fraction(&mut literal);
-                            Token::FLOAT(literal)
-                        }
-                        _ => Token::INT(literal),
-                    }
-                }
+                // octal int
+                Some('o') | Some('O') => self.prefixed_int(literal, 'o', "illegal octal number"),
+                // hexadecimal int
+                Some('b') | Some('B') => self.prefixed_int(literal, 'b', "illegal binary number"),
+                _ => self.decimal_int_or_float(literal),
             }
         } else {
-            // decimal int or float 3 / 3.14
-            self.scan_digits(&mut literal, is_decimal);
-            match self.peek_char() {
-                Some('e') | Some('E') => {
-                    self.append_exponent(&mut literal);
-                    Token::FLOAT(literal)
+            self.decimal_int_or_float(literal)
+        }
+    }
+
+    fn prefixed_int(&mut self, mut literal: String, ch: char, err: &str) -> Token {
+        self.advance_and_push(&mut literal, ch);
+        let valid = match ch {
+            'x' => is_hex,
+            'o' => is_octal,
+            'b' => is_binary,
+            _ => unreachable!(),
+        };
+        let result = self.scan_digits(&mut literal, valid, true);
+        match result {
+            Ok(count) => {
+                if count == 0 {
+                    self.error(err);
+                    return Token::ILLEGAL(literal.into());
                 }
-                Some('.') => {
-                    self.append_fraction(&mut literal);
-                    Token::FLOAT(literal)
-                }
-                _ => Token::INT(literal),
             }
+            Err(e) => {
+                self.error(e);
+                return Token::ILLEGAL(literal.into());
+            }
+        }
+        if let Some(c) = self.peek_char() {
+            if (ch == 'o' || ch == 'b') && is_decimal(*c) {
+                self.error(err);
+                return Token::ILLEGAL(literal.into());
+            }
+        }
+        Token::INT(literal.into())
+    }
+
+    fn decimal_int_or_float(&mut self, mut literal: String) -> Token {
+        // decimal int or float 3 / 3.14
+        if let Err(e) = self.scan_digits(&mut literal, is_decimal, true) {
+            self.error(e);
+            return Token::ILLEGAL(literal.into());
+        }
+        match self.peek_char() {
+            Some('e') | Some('E') => self.scan_exponent_and_finish(literal),
+            Some('.') => self.scan_fraction_and_finish(literal),
+            _ => Token::INT(literal.into()),
         }
     }
 
@@ -313,26 +317,25 @@ impl<'a> Scanner<'a> {
 
     fn scan_char(&mut self) -> Token {
         let mut lit = String::new();
-        let (ok, count) = self.scan_string_char_lit(&mut lit, '\'');
-        if ok && count == 1 {
-            Token::CHAR(lit)
+        if let Some(unquoted) = self.scan_string_char_lit(&mut lit, '\'') {
+            Token::CHAR((lit, unquoted.chars().next().unwrap()).into())
         } else {
-            Token::ILLEGAL(lit)
+            Token::ILLEGAL(lit.into())
         }
     }
 
     fn scan_string(&mut self) -> Token {
         let mut lit = String::new();
-        let (ok, _) = self.scan_string_char_lit(&mut lit, '"');
-        if ok {
-            Token::STRING(lit)
+        if let Some(unquoted) = self.scan_string_char_lit(&mut lit, '"') {
+            Token::STRING((lit, unquoted).into())
         } else {
-            Token::ILLEGAL(lit)
+            Token::ILLEGAL(lit.into())
         }
     }
 
     fn scan_raw_string(&mut self) -> Token {
         let mut lit = self.read_char().unwrap().to_string();
+        let mut unquoted = String::with_capacity(lit.len());
         loop {
             match self.peek_char() {
                 Some('`') => {
@@ -340,17 +343,19 @@ impl<'a> Scanner<'a> {
                     break;
                 }
                 Some('\r') => {
+                    // advance without push
                     self.read_char();
-                } // advance without push
+                }
                 Some(&ch) => {
                     self.advance_and_push(&mut lit, ch);
+                    unquoted.push(ch);
                 }
                 None => {
-                    self.error(self.offset, "raw string literal not terminated");
+                    self.error("raw string literal not terminated");
                 }
             };
         }
-        Token::STRING(lit)
+        Token::STRING((lit, unquoted).into())
     }
 
     fn scan_comment(&mut self, ch: char) -> Token {
@@ -370,7 +375,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             lit.push('\n');
-            Token::COMMENT(lit)
+            Token::COMMENT(lit.into())
         } else {
             // /*
             loop {
@@ -393,13 +398,13 @@ impl<'a> Scanner<'a> {
                     }
                 }
             }
-            Token::COMMENT(lit)
+            Token::COMMENT(lit.into())
         }
     }
 
-    fn scan_string_char_lit(&mut self, lit: &mut String, quote: char) -> (bool, usize) {
+    fn scan_string_char_lit(&mut self, lit: &mut String, quote: char) -> Option<String> {
         lit.push(self.read_char().unwrap());
-        let mut n = 0;
+        let mut unquoted = String::with_capacity(lit.len());
         loop {
             match self.peek_char() {
                 Some(&ch) if ch == quote => {
@@ -407,25 +412,27 @@ impl<'a> Scanner<'a> {
                     break;
                 }
                 Some('\n') | None => {
-                    self.error(self.offset, "string/char literal not terminated");
-                    return (false, 0);
+                    self.error("string/char literal not terminated");
+                    return None;
                 }
                 Some('\\') => {
-                    if !self.scan_escape(lit, quote) {
-                        return (false, 0);
+                    let result = self.scan_escape(lit, quote);
+                    if result.is_none() {
+                        return None;
+                    } else {
+                        unquoted.push(result.unwrap());
                     }
-                    n += 1;
                 }
                 Some(&ch) => {
                     self.advance_and_push(lit, ch);
-                    n += 1;
+                    unquoted.push(ch);
                 }
             }
         }
-        (true, n)
+        Some(unquoted)
     }
 
-    fn scan_escape(&mut self, lit: &mut String, quote: char) -> bool {
+    fn scan_escape(&mut self, lit: &mut String, quote: char) -> Option<char> {
         lit.push(self.read_char().unwrap());
 
         let mut n: isize;
@@ -435,11 +442,11 @@ impl<'a> Scanner<'a> {
             Some(&ch) => match ch {
                 'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' => {
                     self.advance_and_push(lit, ch);
-                    return true;
+                    return Some(ch);
                 }
                 c if c == quote => {
                     self.advance_and_push(lit, c);
-                    return true;
+                    return Some(c);
                 }
                 '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' => {
                     n = 3;
@@ -465,13 +472,13 @@ impl<'a> Scanner<'a> {
                     max = std::char::MAX as u32;
                 }
                 _ => {
-                    self.error(self.offset, "unknown escape sequence");
-                    return false;
+                    self.error("unknown escape sequence");
+                    return None;
                 }
             },
             None => {
-                self.error(self.offset, "escape sequence not terminated");
-                return false;
+                self.error("escape sequence not terminated");
+                return None;
             }
         }
 
@@ -481,24 +488,28 @@ impl<'a> Scanner<'a> {
                 Some(&ch) => {
                     let d = digit_val(ch);
                     if d >= base {
-                        self.error(self.offset, "illegal character in escape sequence");
-                        return false;
+                        self.error("illegal character in escape sequence");
+                        return None;
                     }
                     self.advance_and_push(lit, ch);
                     x = x * base + d;
                 }
                 None => {
-                    self.error(self.offset, "escape sequence not terminated");
-                    return false;
+                    self.error("escape sequence not terminated");
+                    return None;
                 }
             }
             n -= 1;
         }
-        if x > max || 0xD800 <= x && x < 0xE000 {
-            self.error(self.offset, "escape sequence is invalid Unicode code point");
-            return false;
+        if x <= max {
+            let result = std::char::from_u32(x);
+            if result.is_none() {
+                self.error("escape sequence is invalid Unicode code point");
+            }
+            result
+        } else {
+            None
         }
-        true
     }
 
     fn scan_switch2<'b>(&mut self, t1: &'b Token, t2: &'b Token) -> &'b Token {
@@ -561,43 +572,82 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn append_fraction(&mut self, lit: &mut String) {
-        self.advance_and_push(lit, '.');
-        self.scan_digits(lit, is_decimal);
+    fn scan_fraction_and_finish(&mut self, mut lit: String) -> Token {
+        self.advance_and_push(&mut lit, '.');
+        if let Err(e) = self.scan_digits(&mut lit, is_decimal, false) {
+            self.error(e);
+            return Token::ILLEGAL(lit.into());
+        }
         match self.peek_char() {
-            Some('e') | Some('E') => {
-                self.append_exponent(lit);
-            }
-            _ => {}
+            Some('e') | Some('E') => self.scan_exponent_and_finish(lit),
+            _ => Token::FLOAT(lit.into()),
         }
     }
 
-    fn append_exponent(&mut self, lit: &mut String) {
-        self.advance_and_push(lit, 'e');
+    fn scan_exponent_and_finish(&mut self, mut lit: String) -> Token {
+        self.advance_and_push(&mut lit, 'e');
         match self.peek_char() {
             Some(&ch) if ch == '+' || ch == '-' => {
-                self.advance_and_push(lit, ch);
+                self.advance_and_push(&mut lit, ch);
             }
             _ => {}
         }
-        let count = self.scan_digits(lit, is_decimal);
-        if count == 0 {
-            self.error(self.offset, "illegal floating-point exponent")
+        match self.scan_digits(&mut lit, is_decimal, false) {
+            Ok(count) => {
+                if count == 0 {
+                    self.error("illegal floating-point exponent");
+                    Token::ILLEGAL(lit.into())
+                } else {
+                    Token::FLOAT(lit.into())
+                }
+            }
+            Err(e) => {
+                self.error(e);
+                Token::ILLEGAL(lit.into())
+            }
         }
     }
 
-    fn scan_digits(&mut self, digits: &mut String, ch_valid: fn(char) -> bool) -> usize {
+    fn scan_digits<'s, 'r>(
+        &'s mut self,
+        digits: &mut String,
+        ch_valid: fn(char) -> bool,
+        allow_pre_underscore: bool,
+    ) -> Result<usize, &'r str> {
+        let msg = "_ must separate successive digits";
+        if !allow_pre_underscore {
+            if let Some(ch) = self.peek_char() {
+                if *ch == '_' {
+                    return Err(msg);
+                }
+            }
+        }
         let mut count = 0;
+        let mut previous_is_underscore = false;
         loop {
             match self.peek_char() {
                 Some(&ch) if ch_valid(ch) => {
                     self.advance_and_push(digits, ch);
                     count += 1;
+                    previous_is_underscore = false;
+                }
+                Some('_') => {
+                    if !previous_is_underscore {
+                        // accept '_' but do not increase count
+                        self.advance_and_push(digits, '_');
+                        previous_is_underscore = true;
+                    } else {
+                        return Err(msg);
+                    }
                 }
                 _ => break,
             }
         }
-        count
+        if !previous_is_underscore {
+            Ok(count)
+        } else {
+            return Err(msg);
+        }
     }
 
     fn skip_whitespace(&mut self) {
@@ -714,6 +764,10 @@ fn is_octal(ch: char) -> bool {
     ch >= '0' && ch <= '7'
 }
 
+fn is_binary(ch: char) -> bool {
+    ch == '0' || ch == '1'
+}
+
 fn is_hex(ch: char) -> bool {
     (ch >= '0' && ch <= '9') || (ch.to_ascii_lowercase() >= 'a' && ch.to_ascii_lowercase() <= 'f')
 }
@@ -734,6 +788,16 @@ mod test {
 
         //let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
         let src = r#"
+        1234.
+        -1e0+0e0
+        0o010078
+        0o0100_7
+        _333
+        333_
+        3_3
+        3__3
+        0b000111
+        0b000112
         5e+1
         0.5e-1
         07 08 
@@ -742,7 +806,7 @@ mod test {
         \la */
         abc
         123
-        "slkfdskflsd"
+        "slkfdskfl\nsd"
         `d\\n\r\r\r\naaa`
         'a' 'aa' '\t'
         .25
@@ -759,5 +823,6 @@ mod test {
                 break;
             }
         }
+        print!("\n<- {} ->\n", err);
     }
 }

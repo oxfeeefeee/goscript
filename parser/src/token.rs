@@ -9,17 +9,17 @@ pub const HIGHEST_PREC: usize = 7;
 pub enum Token {
 	// Special tokens
 	NONE,
-	ILLEGAL(String),
+	ILLEGAL(TokenData),
 	EOF,
-	COMMENT(String),
+	COMMENT(TokenData),
 
 	// Identifiers and basic type literals
-	IDENT(String),  // main
-	INT(String),    // 12345
-	FLOAT(String),  // 123.45
-	IMAG(String),   // 123.45i
-	CHAR(String),   // 'a'
-	STRING(String), // "abc"
+	IDENT(TokenData),  // main
+	INT(TokenData),    // 12345
+	FLOAT(TokenData),  // 123.45
+	IMAG(TokenData),   // 123.45i
+	CHAR(TokenData),   // 'a'
+	STRING(TokenData), // "abc"
 	// Operator
 	ADD, // +
 	SUB, // -
@@ -71,11 +71,11 @@ pub enum Token {
 	COMMA,  // ,
 	PERIOD, // .
 
-	RPAREN,          // )
-	RBRACK,          // ]
-	RBRACE,          // }
-	SEMICOLON(bool), // ; true if SEMICOLON is NOT inserted by scanner
-	COLON,           // :
+	RPAREN,               // )
+	RBRACK,               // ]
+	RBRACE,               // }
+	SEMICOLON(TokenData), // ; true if SEMICOLON is NOT inserted by scanner
+	COLON,                // :
 
 	// Keywords
 	BREAK,
@@ -231,7 +231,7 @@ impl Token {
 			"switch" => Token::SWITCH,
 			"type" => Token::TYPE,
 			"var" => Token::VAR,
-			_ => Token::IDENT(ident),
+			_ => Token::IDENT(ident.into()),
 		}
 	}
 
@@ -280,11 +280,11 @@ impl Token {
 
 	pub fn get_literal(&self) -> &str {
 		match self {
-			Token::INT(l) => l,
-			Token::FLOAT(l) => l,
-			Token::IMAG(l) => l,
-			Token::CHAR(l) => l,
-			Token::STRING(l) => l,
+			Token::INT(l) => l.as_str(),
+			Token::FLOAT(l) => l.as_str(),
+			Token::IMAG(l) => l.as_str(),
+			Token::CHAR(l) => l.as_str(),
+			Token::STRING(l) => l.as_str(),
 			_ => "",
 		}
 	}
@@ -335,15 +335,109 @@ impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		let text = self.text();
 		match self {
-			Token::IDENT(l) => write!(f, "{} {}", text, l),
-			Token::INT(l) => write!(f, "{} {}", text, l),
-			Token::FLOAT(l) => write!(f, "{} {}", text, l),
-			Token::IMAG(l) => write!(f, "{} {}", text, l),
-			Token::CHAR(l) => write!(f, "{} {}", text, l),
-			Token::STRING(l) => write!(f, "{} {}", text, l),
-			Token::SEMICOLON(real) if !real => write!(f, "\"{}(inserted)\"", text),
+			Token::IDENT(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::INT(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::FLOAT(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::IMAG(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::CHAR(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::STRING(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::SEMICOLON(real) if !*real.as_bool() => write!(f, "\"{}(inserted)\"", text),
 			token if token.is_operator() || token.is_keyword() => write!(f, "\"{}\"", text),
 			_ => write!(f, "{}", text),
+		}
+	}
+}
+
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+enum RawTokenData {
+	Bool(bool),
+	Str(String),
+	StrStr(String, String),
+	StrChar(String, char),
+}
+
+#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+pub struct TokenData(Box<RawTokenData>);
+
+impl From<bool> for TokenData {
+	fn from(b: bool) -> Self {
+		TokenData(Box::new(RawTokenData::Bool(b)))
+	}
+}
+
+impl From<String> for TokenData {
+	fn from(s: String) -> Self {
+		TokenData(Box::new(RawTokenData::Str(s)))
+	}
+}
+
+impl From<(String, String)> for TokenData {
+	fn from(ss: (String, String)) -> Self {
+		TokenData(Box::new(RawTokenData::StrStr(ss.0, ss.1)))
+	}
+}
+
+impl From<(String, char)> for TokenData {
+	fn from(ss: (String, char)) -> Self {
+		TokenData(Box::new(RawTokenData::StrChar(ss.0, ss.1)))
+	}
+}
+
+impl AsRef<bool> for TokenData {
+	fn as_ref(&self) -> &bool {
+		self.as_bool()
+	}
+}
+
+impl AsRef<String> for TokenData {
+	fn as_ref(&self) -> &String {
+		self.as_str()
+	}
+}
+
+impl AsMut<String> for TokenData {
+	fn as_mut(&mut self) -> &mut String {
+		self.as_str_mut()
+	}
+}
+
+impl TokenData {
+	pub fn as_bool(&self) -> &bool {
+		match self.0.as_ref() {
+			RawTokenData::Bool(b) => b,
+			_ => unreachable!(),
+		}
+	}
+
+	pub fn as_str(&self) -> &String {
+		match self.0.as_ref() {
+			RawTokenData::Str(s) => s,
+			RawTokenData::StrStr(s, _) => s,
+			RawTokenData::StrChar(s, _) => s,
+			_ => unreachable!(),
+		}
+	}
+
+	pub fn as_str_mut(&mut self) -> &mut String {
+		match self.0.as_mut() {
+			RawTokenData::Str(s) => s,
+			RawTokenData::StrStr(s, _) => s,
+			RawTokenData::StrChar(s, _) => s,
+			_ => unreachable!(),
+		}
+	}
+
+	pub fn as_str_str(&self) -> (&String, &String) {
+		match self.0.as_ref() {
+			RawTokenData::StrStr(s1, s2) => (s1, s2),
+			_ => unreachable!(),
+		}
+	}
+
+	pub fn as_str_char(&self) -> (&String, &char) {
+		match self.0.as_ref() {
+			RawTokenData::StrChar(s, c) => (s, c),
+			_ => unreachable!(),
 		}
 	}
 }
@@ -356,10 +450,10 @@ mod test {
 	fn token_test() {
 		print!(
 			"testxxxxx \n{}\n{}\n{}\n{}\n. ",
-			Token::ILLEGAL("asd".to_string()),
+			Token::ILLEGAL("asd".to_string().into()),
 			Token::SWITCH,
-			Token::IDENT("some_var".to_string()),
-			Token::FLOAT("3.14".to_string()),
+			Token::IDENT("some_var".to_string().into()),
+			Token::FLOAT("3.14".to_string().into()),
 		);
 	}
 }

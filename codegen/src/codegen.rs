@@ -941,13 +941,16 @@ impl<'a> CodeGen<'a> {
         match typ {
             None => {
                 let val = match &blit.token {
-                    Token::INT(i) => GosValue::Int(i.parse::<isize>().unwrap()),
-                    Token::FLOAT(f) => GosValue::Float64(f.parse::<f64>().unwrap()),
+                    Token::INT(i) => GosValue::Int(i.as_str().parse::<isize>().unwrap()),
+                    Token::FLOAT(f) => GosValue::Float64(f.as_str().parse::<f64>().unwrap()),
                     Token::IMAG(_) => unimplemented!(),
-                    Token::CHAR(c) => GosValue::Int(c.chars().skip(1).next().unwrap() as isize),
-                    Token::STRING(s) => {
-                        GosValue::new_str(s[1..s.len() - 1].to_string(), &mut self.objects.strings)
+                    Token::CHAR(c) => {
+                        GosValue::Int(c.as_str().chars().skip(1).next().unwrap() as isize)
                     }
+                    Token::STRING(s) => GosValue::new_str(
+                        s.as_str()[1..s.as_str().len() - 1].to_string(),
+                        &mut self.objects.strings,
+                    ),
                     _ => unreachable!(),
                 };
                 Ok(val)
@@ -956,42 +959,47 @@ impl<'a> CodeGen<'a> {
                 let type_val = self.get_type_default(t)?;
                 match (type_val, &blit.token) {
                     (GosValue::Int(_), Token::FLOAT(f)) => {
-                        let fval = f.parse::<f64>().unwrap();
+                        let fval = f.as_str().parse::<f64>().unwrap();
                         if fval.fract() != 0.0 {
-                            self.errors
-                                .add(blit.pos, format!("constant {} truncated to integer", f));
+                            self.errors.add(
+                                blit.pos,
+                                format!("constant {} truncated to integer", f.as_str()),
+                            );
                             Err(())
                         } else if (fval.round() as isize) > std::isize::MAX
                             || (fval.round() as isize) < std::isize::MIN
                         {
-                            self.errors.add(blit.pos, format!("{} overflows int", f));
+                            self.errors
+                                .add(blit.pos, format!("{} overflows int", f.as_str()));
                             Err(())
                         } else {
                             Ok(GosValue::Int(fval.round() as isize))
                         }
                     }
-                    (GosValue::Int(_), Token::INT(ilit)) => match ilit.parse::<isize>() {
+                    (GosValue::Int(_), Token::INT(ilit)) => match ilit.as_str().parse::<isize>() {
                         Ok(i) => Ok(GosValue::Int(i)),
                         Err(_) => {
-                            self.errors.add(blit.pos, format!("{} overflows int", ilit));
+                            self.errors
+                                .add(blit.pos, format!("{} overflows int", ilit.as_str()));
                             Err(())
                         }
                     },
-                    (GosValue::Int(_), Token::CHAR(c)) => {
-                        Ok(GosValue::Int(c.chars().skip(1).next().unwrap() as isize))
-                    }
+                    (GosValue::Int(_), Token::CHAR(c)) => Ok(GosValue::Int(
+                        c.as_str().chars().skip(1).next().unwrap() as isize,
+                    )),
                     (GosValue::Float64(_), Token::FLOAT(f)) => {
-                        Ok(GosValue::Float64(f.parse::<f64>().unwrap()))
+                        Ok(GosValue::Float64(f.as_str().parse::<f64>().unwrap()))
                     }
                     (GosValue::Float64(_), Token::INT(i)) => {
-                        Ok(GosValue::Float64(i.parse::<f64>().unwrap()))
+                        Ok(GosValue::Float64(i.as_str().parse::<f64>().unwrap()))
                     }
                     (GosValue::Float64(_), Token::CHAR(c)) => Ok(GosValue::Float64(
-                        c.chars().skip(1).next().unwrap() as isize as f64,
+                        c.as_str().chars().skip(1).next().unwrap() as isize as f64,
                     )),
-                    (GosValue::Str(_), Token::STRING(s)) => {
-                        Ok(GosValue::new_str(s.to_string(), &mut self.objects.strings))
-                    }
+                    (GosValue::Str(_), Token::STRING(s)) => Ok(GosValue::new_str(
+                        s.as_str().to_string(),
+                        &mut self.objects.strings,
+                    )),
                     (_, _) => {
                         self.errors.add_str(blit.pos, "invalid constant literal");
                         Err(())

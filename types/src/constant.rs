@@ -1,62 +1,33 @@
 #![allow(dead_code)]
-/// [FGOSF] constant implements Values representing untyped
+use goscript_parser::token::Token;
+use num_bigint::BigInt;
+use num_traits::cast::FromPrimitive;
+use num_traits::Num;
+use std::borrow::Cow;
+use std::fmt;
+
+/// [FGOSF-] constant implements Values representing untyped
 /// Go constants and their corresponding operations.
 ///
 /// A special Unknown value may be used when a value
 /// is unknown due to an error. Operations on unknown
 /// values produce unknown values unless specified
-/// otherwise.
+/// otherwise. [-FGOSF]
 ///
-/// Because BigFloat is not available at the moment(2020/5)
-/// When BigRational is not able to hold the float value,
-/// a f64 is used, and the returned value will be marked as
-/// nonprecise.
+/// Because BigFloat library is not available at the moment(2020/5)
+/// float numbers arbitrary precision is not supported for now
+/// float numbers is simply represented as f64
+///
 /// todo: This is against the Go specs.
-use super::util::{quote_str, short_quote_str};
-use goscript_parser::token::Token;
-use num_bigint::BigInt;
-use num_rational::BigRational;
-use num_traits::cast::FromPrimitive;
-use std::fmt;
-
-enum IntVal {
-    I64(i64),
-    Big(BigInt),
-}
-
-impl fmt::Display for IntVal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IntVal::I64(i) => i.fmt(f),
-            IntVal::Big(b) => b.fmt(f),
-        }
-    }
-}
-
-enum FloatVal {
-    F64(f64),
-    Big(BigRational),
-    Nonprecise(f64),
-}
-
-impl fmt::Display for FloatVal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FloatVal::F64(fl) => fl.fmt(f),
-            FloatVal::Big(b) => b.fmt(f),
-            FloatVal::Nonprecise(fl) => write!(f, "{}(onprecise)", fl),
-        }
-    }
-}
 
 /// All the values involved in the evaluation
 pub enum Value {
     Unknown,
     Bool(bool),
     Str(String),
-    Int(IntVal),
-    Float(FloatVal),
-    Complex(FloatVal, FloatVal),
+    Int(BigInt),
+    Float(f64),
+    Complex(f64, f64),
 }
 
 impl fmt::Display for Value {
@@ -86,39 +57,102 @@ impl Value {
     }
 
     pub fn with_i64(i: i64) -> Value {
-        Value::Int(IntVal::I64(i))
+        Value::Int(BigInt::from_i64(i).unwrap())
     }
 
     pub fn with_u64(u: u64) -> Value {
-        let ival = if u < 1 << 63 {
-            IntVal::I64(u as i64)
-        } else {
-            IntVal::Big(BigInt::from_u64(u).unwrap())
-        };
-        Value::Int(ival)
+        Value::Int(BigInt::from_u64(u).unwrap())
     }
 
     pub fn with_f64(f: f64) -> Value {
-        if f.is_infinite() || f.is_nan() {
-            Value::Unknown
-        } else if f == 0.0 {
-            // convert -0 to 0
-            Value::with_i64(0)
-        } else {
-            Value::Float(FloatVal::Big(BigRational::from_f64(f).unwrap()))
+        Value::Float(f)
+    }
+
+    pub fn with_literal(tok: &Token) -> Value {
+        match tok {
+            Token::INT(ilit) => int_from_literal(ilit.as_str()),
+            Token::FLOAT(flit) => float_from_literal(flit.as_str()),
+            Token::IMAG(imlit) => {
+                if let Value::Float(f) =
+                    float_from_literal(&imlit.as_str()[..(imlit.as_str().len() - 2)])
+                {
+                    Value::Complex(0.0, f)
+                } else {
+                    Value::Unknown
+                }
+            }
+            Token::CHAR(clit) => {
+                let (_, ch) = clit.as_str_char();
+                Value::with_i64(*ch as i64)
+            }
+            Token::STRING(slit) => {
+                let (_, s) = slit.as_str_str();
+                Value::with_str(s.clone())
+            }
+            _ => Value::Unknown,
         }
     }
 
-    pub fn with_literal(lit: &String, tok: &Token) -> Value {
-        Value::Unknown
-    }
-
-    /// [FGOSF] ExactString returns an exact, quoted (human-readable) form of the value.
-    /// If the Value is of Kind String, use StringVal to obtain the unquoted string.
     fn string(&self) -> String {
         match self {
             Value::Str(s) => quote_str(s),
             _ => self.to_string(),
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// utilities
+
+pub fn quote_str(s: &str) -> String {
+    //todo: really works the same as the Go version? does it matter?
+    s.escape_default().collect()
+}
+
+pub fn short_quote_str(s: &str, max: usize) -> String {
+    let result = s.escape_default().collect();
+    shorten_with_ellipsis(result, max)
+}
+
+pub fn int_from_literal(lit: &str) -> Value {
+    let result = if lit.starts_with("0x") {
+        BigInt::from_str_radix(&lit[2..], 16)
+    } else if lit.starts_with("0o") {
+        BigInt::from_str_radix(&lit[2..], 10)
+    } else if lit.starts_with("0b") {
+        BigInt::from_str_radix(&lit[2..], 2)
+    } else {
+        BigInt::from_str_radix(lit, 10)
+    };
+    match result {
+        Ok(i) => Value::Int(i),
+        Err(_) => Value::Unknown,
+    }
+}
+
+pub fn float_from_literal(lit: &str) -> Value {
+    match lit.parse::<f64>() {
+        Ok(f) => Value::with_f64(f),
+        Err(_) => Value::Unknown,
+    }
+}
+
+fn shorten_with_ellipsis(s: String, max: usize) -> String {
+    if s.len() <= max {
+        s
+    } else {
+        let mut buf: Vec<char> = s.chars().collect();
+        buf = buf[0..(buf.len() - 3)].to_vec();
+        buf.append(&mut "...".to_owned().chars().collect());
+        buf.into_iter().collect()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn test_str_unquote() {
+        let s = "\\111";
+        dbg!(s);
     }
 }

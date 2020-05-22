@@ -303,8 +303,8 @@ impl<'a> Parser<'a> {
         let mut mstr = "expected ".to_string();
         mstr.push_str(msg);
         if pos == self.pos {
-            match self.token {
-                Token::SEMICOLON(real) => if !real {
+            match &self.token {
+                Token::SEMICOLON(real) => if !*real.as_bool() {
                     mstr.push_str(", found newline");
                 },
                 _ => {
@@ -329,7 +329,7 @@ impl<'a> Parser<'a> {
     // Same as expect but with better error message for certain cases
     fn expect_closing(&mut self, token: &Token, context: &str) -> position::Pos {
         if let Token::SEMICOLON(real) = token {
-            if !real {
+            if !*real.as_bool() {
                 let msg = format!("missing ',' before newline in {}", context);
                 self.error_string(self.pos, msg);
                 self.next();
@@ -360,8 +360,8 @@ impl<'a> Parser<'a> {
             true
         } else if self.token != *follow {
             let mut msg =  "missing ','".to_string();
-            if let Token::SEMICOLON(real) = self.token {
-                if !real {msg.push_str(" before newline");}
+            if let Token::SEMICOLON(real) = &self.token {
+                if !*real.as_bool() {msg.push_str(" before newline");}
             }
             msg = format!("{} in {}", msg, context);
             self.error_string(self.pos, msg);
@@ -422,11 +422,11 @@ impl<'a> Parser<'a> {
     fn parse_ident(&mut self) -> IdentKey {
         let pos = self.pos;
         let mut name = "_".to_string();
-        if let Token::IDENT(lit) = self.token.clone() {
-            name = lit;
+        if let Token::IDENT(lit) = &self.token {
+            name = lit.as_str().clone();
             self.next();
         } else {
-            self.expect(&Token::IDENT("".to_string()));
+            self.expect(&Token::IDENT("".to_string().into()));
         }
         self.objects.idents.insert(Ident{ pos: pos, name: name,
             entity: IdentEntity::NoEntity})
@@ -1793,12 +1793,12 @@ impl<'a> Parser<'a> {
         let mut semi_real = false;
         let mut semi_pos = None;
         let cond_stmt = if self.token != Token::LBRACE {
-            if let Token::SEMICOLON(real) = self.token {
-                semi_real = real;
+            if let Token::SEMICOLON(real) = &self.token {
+                semi_real = *real.as_ref();
                 semi_pos = Some(self.pos);
                 self.next();
             } else {
-                self.expect(&Token::SEMICOLON(true));
+                self.expect(&Token::SEMICOLON(true.into()));
             }
             if self.token != Token::LBRACE {
                 Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
@@ -2166,7 +2166,7 @@ impl<'a> Parser<'a> {
     fn parse_stmt(&mut self) -> Stmt {
         self.trace_begin("Statement");
 
-        let ret = match self.token {
+        let ret = match &self.token {
             Token::CONST | Token::TYPE | Token::VAR => 
                 Stmt::Decl(Box::new(self.parse_decl(Token::is_stmt_start))),
             Token::IDENT(_) | Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
@@ -2198,7 +2198,7 @@ impl<'a> Parser<'a> {
                 // producing an empty statement in a valid program?
                 // (handle correctly anyway)
                 let s = Stmt::Empty(Box::new(
-                    EmptyStmt{semi: self.pos, implicit: !real}));
+                    EmptyStmt{semi: self.pos, implicit: !*real.as_bool()}));
                 self.next();
                 s
             }
@@ -2246,8 +2246,9 @@ impl<'a> Parser<'a> {
         let pos = self.pos;
         let path_token = match &self.token {
             Token::STRING(lit) => {
-                if !Parser::is_valid_import(&lit) {
-                    let msg = format!("{}{}", "invalid import path: ", lit); 
+                let litstr: &String = lit.as_ref();
+                if !Parser::is_valid_import(litstr) {
+                    let msg = format!("{}{}", "invalid import path: ", litstr); 
                     self.error_string(pos, msg);
                 }
                 let token = self.token.clone();
@@ -2256,7 +2257,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // use expect() error handling
-                let token = Token::STRING("_".to_string());
+                let token = Token::STRING("_".to_string().into());
                 self.expect(&token); 
                 token
             }
