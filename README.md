@@ -20,7 +20,7 @@ Go specs implemented as a scripting language in Rust.
 + The VM is based on that of Lua/Wren.
 
 ### Progress/Roadmap
-+ You can take a look at [here](https://github.com/oxfeeefeee/goscript/tree/master/backend/tests/data/leetcode5.gos) to see what it can run for now.
++ You can take a look at [here](https://github.com/oxfeeefeee/goscript/blob/master/codegen/tests/data/leetcode5.gos) to see what it can run for now.
 + The parser works fine, the core part of the VM is basically working.
 + 4 major components to go: TypeChecker, GC, Library, API. I'm planning to work on the TypeCheker in the next few weeks before go back to the VM.
 
