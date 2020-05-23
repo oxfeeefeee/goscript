@@ -3,21 +3,19 @@ use goscript_parser::token::Token;
 use num_bigint::BigInt;
 use num_traits::cast::FromPrimitive;
 use num_traits::Num;
-use std::borrow::Cow;
 use std::fmt;
 
-/// [FGOSF-] constant implements Values representing untyped
+/// constant implements Values representing untyped
 /// Go constants and their corresponding operations.
 ///
 /// A special Unknown value may be used when a value
 /// is unknown due to an error. Operations on unknown
 /// values produce unknown values unless specified
-/// otherwise. [-FGOSF]
+/// otherwise.
 ///
 /// Because BigFloat library is not available at the moment(2020/5)
 /// float numbers arbitrary precision is not supported for now
 /// float numbers is simply represented as f64
-///
 /// todo: This is against the Go specs.
 
 /// All the values involved in the evaluation

@@ -1,6 +1,14 @@
 /// Goscirpt's type checker
-/// [FGOSF] means from Go offical source file.
+/// A lot of comments are directly taken from Go source file.
 ///
 mod constant;
+
+mod obj;
+mod package;
+mod scope;
+mod typ;
+
+mod objects;
+mod selection;
 
 mod universe;
