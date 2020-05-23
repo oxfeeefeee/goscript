@@ -6,7 +6,7 @@ use super::scanner;
 use super::errors::{ErrorList, FilePosErrors};
 use super::scope::*;
 use super::ast::*;
-use super::ast_objects::*;
+use super::objects::*;
 
 pub struct Parser<'a> {
     objects: &'a mut Objects,

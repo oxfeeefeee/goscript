@@ -1,5 +1,5 @@
 use super::ast::Node;
-use super::ast_objects::*;
+use super::objects::*;
 use super::position;
 use std::collections::HashMap;
 use std::fmt;

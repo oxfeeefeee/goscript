@@ -14,9 +14,9 @@ use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
 
 use goscript_parser::ast::*;
-use goscript_parser::ast_objects::Objects as AstObjects;
-use goscript_parser::ast_objects::*;
 use goscript_parser::errors::{ErrorList, FilePosErrors};
+use goscript_parser::objects::Objects as AstObjects;
+use goscript_parser::objects::*;
 use goscript_parser::position;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, Visitor};

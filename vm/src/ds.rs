@@ -9,7 +9,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::rc::Rc;
 
-use goscript_parser::ast_objects::EntityKey;
+use goscript_parser::objects::EntityKey;
 
 // ----------------------------------------------------------------------------
 // StringVal

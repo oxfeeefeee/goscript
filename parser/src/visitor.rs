@@ -1,5 +1,5 @@
 use super::ast::*;
-use super::ast_objects::*;
+use super::objects::*;
 use super::token::Token;
 
 pub trait Visitor {

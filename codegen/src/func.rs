@@ -7,8 +7,8 @@ use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
-use goscript_parser::ast_objects::Objects as AstObjects;
 use goscript_parser::errors::FilePosErrors;
+use goscript_parser::objects::Objects as AstObjects;
 
 /// LeftHandSide represents the left hand side of an assign stmt
 /// Primitive stores index of lhs variable

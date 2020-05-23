@@ -1,4 +1,4 @@
-use super::ast_objects::*;
+use super::objects::*;
 use super::position;
 use super::scope;
 use super::token;
