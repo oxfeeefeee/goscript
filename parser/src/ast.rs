@@ -453,6 +453,10 @@ impl IdentEntity {
     }
 }
 
+pub fn is_exported(s: &str) -> bool {
+    s.chars().next().unwrap().is_uppercase()
+}
+
 // An Ident node represents an identifier.
 #[derive(Debug, Clone)]
 pub struct Ident {
@@ -487,6 +491,10 @@ impl Ident {
 
     pub fn is_blank(&self) -> bool {
         &self.name == "_"
+    }
+
+    pub fn is_exported(&self) -> bool {
+        is_exported(&self.name)
     }
 }
 

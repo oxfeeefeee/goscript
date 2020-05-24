@@ -4,7 +4,7 @@ use std::fs;
 fn load_parse(path: &str, trace: bool) -> usize {
     let mut fs = fe::FileSet::new();
     let src = fs::read_to_string(path).expect("read file err: ");
-    let o = &mut fe::ast_objects::Objects::new();
+    let o = &mut fe::objects::Objects::new();
     let el = &mut fe::errors::ErrorList::new();
     let (p, _) = fe::parse_file(o, &mut fs, el, path, &src, trace);
 
