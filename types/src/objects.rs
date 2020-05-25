@@ -7,6 +7,7 @@ use super::scope::Scope;
 use super::typ::Type;
 use super::universe::Universe;
 use goscript_parser::position;
+use std::borrow::Cow;
 
 use slotmap::{new_key_type, DenseSlotMap};
 
@@ -28,12 +29,22 @@ pub type Types = DenseSlotMap<TypeKey, Type>;
 pub type Packages = DenseSlotMap<PackageKey, Package>;
 pub type Scopes = DenseSlotMap<ScopeKey, Scope>;
 
+/// The container of all "managed" objects
+/// also works as a "global" variable holder
 pub struct TCObjects {
     pub lobjs: LangObjs,
     pub types: Types,
     pub pkgs: Packages,
     pub scopes: Scopes,
     pub universe: Universe,
+    // "global" variable
+    pub debug: bool,
+    // "global" variable
+    pub fmt_qualifier: Box<dyn Fn(&Package) -> Cow<str>>,
+}
+
+fn default_fmt_qualifier(p: &Package) -> Cow<str> {
+    p.path().into()
 }
 
 impl TCObjects {
@@ -47,12 +58,15 @@ impl TCObjects {
             "unsafe".to_owned(),
             pkg_skey,
         ));
+        let fmtq = Box::new(default_fmt_qualifier);
         TCObjects {
             lobjs: new_objects!(),
             types: new_objects!(),
             pkgs: pkgs,
             scopes: scopes,
             universe: Universe::new(skey, pkey),
+            debug: true,
+            fmt_qualifier: fmtq,
         }
     }
 

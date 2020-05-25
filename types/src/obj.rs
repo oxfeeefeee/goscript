@@ -1,28 +1,14 @@
 #![allow(dead_code)]
 use super::constant;
-use super::objects::{PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::package::Package;
 use goscript_parser::ast;
 use goscript_parser::position;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt;
 
-/// A LangObj describes a named language entity such as a package,
-/// constant, type, variable, function (incl. methods), or label.
-///
-pub struct LangObj {
-    entity_typ: EntityType,
-    parent: Option<ScopeKey>,
-    pos: position::Pos,
-    pkg: Option<PackageKey>,
-    name: String,
-    typ: Option<TypeKey>,
-    order: u32,
-    color: ObjColor,
-    scope_pos: position::Pos,
-}
-
-/// EntityType defines the types of Object entities
+/// EntityType defines the types of LangObj entities
 pub enum EntityType {
     /// A PkgName represents an imported Go package.
     PkgName(PackageKey, bool),
@@ -47,10 +33,86 @@ pub enum EntityType {
     Nil,
 }
 
+impl EntityType {
+    pub fn is_pkg_name(&self) -> bool {
+        match self {
+            EntityType::PkgName(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_const(&self) -> bool {
+        match self {
+            EntityType::Const(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_type_name(&self) -> bool {
+        match self {
+            EntityType::TypeName => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_var(&self) -> bool {
+        match self {
+            EntityType::Var(_, _, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_func(&self) -> bool {
+        match self {
+            EntityType::Func => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_label(&self) -> bool {
+        match self {
+            EntityType::Label(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        match self {
+            EntityType::Builtin() => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_nil(&self) -> bool {
+        match self {
+            EntityType::Nil => true,
+            _ => false,
+        }
+    }
+}
+
 pub enum ObjColor {
     White,
     Black,
     Gray,
+}
+
+// ----------------------------------------------------------------------------
+// LangObj
+//
+/// A LangObj describes a named language entity such as a package,
+/// constant, type, variable, function (incl. methods), or label.
+///
+pub struct LangObj {
+    entity_type: EntityType,
+    parent: Option<ScopeKey>,
+    pos: position::Pos,
+    pkg: Option<PackageKey>,
+    name: String,
+    typ: Option<TypeKey>,
+    order: u32,
+    color: ObjColor,
+    scope_pos: position::Pos,
 }
 
 impl LangObj {
@@ -131,8 +193,8 @@ impl LangObj {
         LangObj::new(EntityType::Nil, 0, None, "nil".to_owned(), None)
     }
 
-    pub fn entity_typ(&self) -> &EntityType {
-        &self.entity_typ
+    pub fn entity_type(&self) -> &EntityType {
+        &self.entity_type
     }
 
     pub fn parent(&self) -> &Option<ScopeKey> {
@@ -149,6 +211,10 @@ impl LangObj {
 
     pub fn typ(&self) -> &Option<TypeKey> {
         &self.typ
+    }
+
+    pub fn set_type(&mut self, typ: TypeKey) {
+        self.typ = Some(typ)
     }
 
     pub fn exported(&self) -> bool {
@@ -208,14 +274,14 @@ impl LangObj {
     }
 
     pub fn pkg_name_imported(&self) -> &PackageKey {
-        match &self.entity_typ {
+        match &self.entity_type {
             EntityType::PkgName(imported, _) => imported,
             _ => unreachable!(),
         }
     }
 
     pub fn const_val(&self) -> &constant::Value {
-        match &self.entity_typ {
+        match &self.entity_type {
             EntityType::Const(val) => val,
             _ => unreachable!(),
         }
@@ -226,14 +292,14 @@ impl LangObj {
     }
 
     pub fn var_embedded(&self) -> &bool {
-        match &self.entity_typ {
+        match &self.entity_type {
             EntityType::Var(embedded, _, _) => embedded,
             _ => unreachable!(),
         }
     }
 
     pub fn var_is_field(&self) -> &bool {
-        match &self.entity_typ {
+        match &self.entity_type {
             EntityType::Var(_, field, _) => field,
             _ => unreachable!(),
         }
@@ -248,14 +314,14 @@ impl LangObj {
     }
 
     fn new(
-        entity_typ: EntityType,
+        entity_type: EntityType,
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
     ) -> LangObj {
         LangObj {
-            entity_typ: entity_typ,
+            entity_type: entity_type,
             parent: None,
             pos: pos,
             pkg: pkg,
@@ -269,8 +335,26 @@ impl LangObj {
 }
 
 impl fmt::Display for LangObj {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unimplemented!()
+    }
+}
+
+// ----------------------------------------------------------------------------
+// ObjSet
+//
+/// An ObjSet is a set of objects identified by their unique id.
+pub struct ObjSet(HashMap<String, ObjKey>);
+
+impl ObjSet {
+    pub fn new() -> ObjSet {
+        ObjSet(HashMap::new())
+    }
+
+    pub fn insert(&self, okey: ObjKey, objs: &TCObjects) -> Option<&ObjKey> {
+        let obj = &objs.lobjs[okey];
+        let id = obj.id(objs);
+        self.0.get(id.as_ref())
     }
 }
 
