@@ -24,7 +24,7 @@ macro_rules! compare_by_type_name {
         |a, b| {
             let sort_name = |t: &Type| match t {
                 Type::Named(n) => {
-                    let typ = &$objs.lobjs[*n.obj()];
+                    let typ = &$objs.lobjs[n.obj().unwrap()];
                     typ.id($objs)
                 }
                 _ => "".into(),
@@ -94,7 +94,14 @@ impl Type {
     }
 
     pub fn try_as_signature(&self) -> Option<&SignatureDetail> {
-        match &self {
+        match self {
+            Type::Signature(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn try_as_signature_mut(&mut self) -> Option<&mut SignatureDetail> {
+        match self {
             Type::Signature(s) => Some(s),
             _ => None,
         }
@@ -122,7 +129,14 @@ impl Type {
     }
 
     pub fn try_as_named(&self) -> Option<&NamedDetail> {
-        match &self {
+        match self {
+            Type::Named(n) => Some(n),
+            _ => None,
+        }
+    }
+
+    pub fn try_as_named_mut(&mut self) -> Option<&mut NamedDetail> {
+        match self {
             Type::Named(n) => Some(n),
             _ => None,
         }
@@ -136,7 +150,7 @@ impl Type {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BasicType {
     Invalid,
     // predeclared types
@@ -245,6 +259,14 @@ pub struct BasicDetail {
 }
 
 impl BasicDetail {
+    pub fn new(typ: BasicType, info: BasicInfo, name: &'static str) -> BasicDetail {
+        BasicDetail {
+            typ: typ,
+            info: info,
+            name: name,
+        }
+    }
+
     pub fn typ(&self) -> BasicType {
         self.typ
     }
@@ -425,6 +447,10 @@ impl SignatureDetail {
     pub fn variadic(&self) -> &bool {
         &self.variadic
     }
+
+    pub fn set_recv(&mut self, recv: ObjKey) {
+        self.recv = Some(recv)
+    }
 }
 
 /// An InterfaceDetail represents an interface type.
@@ -529,6 +555,7 @@ impl MapDetail {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ChanDir {
     SendRecv,
     SendOnly,
@@ -558,14 +585,14 @@ impl ChanDetail {
 }
 
 pub struct NamedDetail {
-    obj: ObjKey,          // corresponding declared object
+    obj: Option<ObjKey>,  // corresponding declared object
     underlying: TypeKey,  // possibly a Named during setup; never a Named once set up completely
     methods: Vec<ObjKey>, // methods declared for this type (not the method set of this type)
 }
 
 impl NamedDetail {
     pub fn new(
-        obj: ObjKey,
+        obj: Option<ObjKey>,
         underlying: TypeKey,
         methods: Vec<ObjKey>,
         objs: &TCObjects,
@@ -582,8 +609,12 @@ impl NamedDetail {
         }
     }
 
-    pub fn obj(&self) -> &ObjKey {
+    pub fn obj(&self) -> &Option<ObjKey> {
         &self.obj
+    }
+
+    pub fn set_obj(&mut self, obj: ObjKey) {
+        self.obj = Some(obj)
     }
 
     pub fn methods(&self) -> &Vec<ObjKey> {
@@ -599,6 +630,9 @@ impl NamedDetail {
     }
 }
 
+// ----------------------------------------------------------------------------
+// utilities
+
 pub fn underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let typ = &objs.types[t];
     match typ.underlying() {
@@ -607,7 +641,15 @@ pub fn underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
     }
 }
 
-fn fmt_type(
+pub fn fmt_type(t: &Option<TypeKey>, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    fmt_type_impl(t, f, &mut HashSet::new(), objs)
+}
+
+pub fn fmt_signature(t: TypeKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    fmt_signature_impl(t, f, &mut HashSet::new(), objs)
+}
+
+fn fmt_type_impl(
     t: &Option<TypeKey>,
     f: &mut fmt::Formatter<'_>,
     visited: &mut HashSet<TypeKey>,
@@ -633,11 +675,11 @@ fn fmt_type(
                 Some(i) => write!(f, "[{}]", i)?,
                 None => f.write_str("[unknown]")?,
             };
-            fmt_type(&Some(detail.elem), f, visited, objs)?;
+            fmt_type_impl(&Some(detail.elem), f, visited, objs)?;
         }
         Type::Slice(detail) => {
             f.write_str("[]")?;
-            fmt_type(&Some(detail.elem), f, visited, objs)?;
+            fmt_type_impl(&Some(detail.elem), f, visited, objs)?;
         }
         Type::Struct(detail) => {
             f.write_str("struct{{")?;
@@ -649,7 +691,7 @@ fn fmt_type(
                 if !field.var_embedded() {
                     write!(f, "{} ", field.name())?;
                 }
-                fmt_type(field.typ(), f, visited, objs)?;
+                fmt_type_impl(field.typ(), f, visited, objs)?;
                 if let Some(tag) = detail.tag(i) {
                     write!(f, " {}", tag)?;
                 }
@@ -658,14 +700,103 @@ fn fmt_type(
         }
         Type::Pointer(detail) => {
             f.write_char('*')?;
-            fmt_type(&Some(*detail.base()), f, visited, objs)?;
+            fmt_type_impl(&Some(*detail.base()), f, visited, objs)?;
         }
         Type::Tuple(_) => {
             fmt_tuple(t, false, f, visited, objs)?;
         }
-        _ => unimplemented!(),
+        Type::Signature(_) => {
+            f.write_str("func")?;
+            fmt_signature_impl(t.unwrap(), f, visited, objs)?;
+        }
+        Type::Interface(detail) => {
+            f.write_str("interface{{")?;
+            for (i, k) in detail.methods().iter().enumerate() {
+                if i > 0 {
+                    f.write_str("; ")?;
+                }
+                let mobj = &objs.lobjs[*k];
+                f.write_str(mobj.name())?;
+                fmt_signature_impl(mobj.typ().unwrap(), f, visited, objs)?;
+            }
+            for (i, k) in detail.embeddeds().iter().enumerate() {
+                if i > 0 || detail.methods().len() > 0 {
+                    f.write_str("; ")?;
+                }
+                fmt_type_impl(&Some(*k), f, visited, objs)?;
+            }
+            if detail.all_methods().is_none() {
+                f.write_str(" /* incomplete */")?;
+            }
+            f.write_char('}')?;
+        }
+        Type::Map(detail) => {
+            f.write_str("map[")?;
+            fmt_type_impl(&Some(*detail.key()), f, visited, objs)?;
+            f.write_char(']')?;
+            fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
+        }
+        Type::Chan(detail) => {
+            let (s, paren) = match detail.dir() {
+                ChanDir::SendRecv => ("chan ", {
+                    // chan (<-chan T) requires parentheses
+                    let elm = &objs.types[*detail.elem()];
+                    if let Some(c) = elm.try_as_chan() {
+                        *c.dir() == ChanDir::RecvOnly
+                    } else {
+                        false
+                    }
+                }),
+                ChanDir::SendOnly => ("chan<- ", false),
+                ChanDir::RecvOnly => ("<-chan ", false),
+            };
+            f.write_str(s)?;
+            if paren {
+                f.write_char('(')?;
+            }
+            fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
+            if paren {
+                f.write_char(')')?;
+            }
+        }
+        Type::Named(detail) => {
+            if let Some(okey) = detail.obj() {
+                let o = &objs.lobjs[*okey];
+                if let Some(pkg) = o.pkg() {
+                    objs.pkgs[*pkg].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
+                }
+                f.write_str(o.name())?;
+            } else {
+                f.write_str("<Named w/o object>")?;
+            }
+        }
     }
     Ok(())
+}
+
+fn fmt_signature_impl(
+    t: TypeKey,
+    f: &mut fmt::Formatter<'_>,
+    visited: &mut HashSet<TypeKey>,
+    objs: &TCObjects,
+) -> fmt::Result {
+    let sig = &objs.types[t].try_as_signature().unwrap();
+    fmt_tuple(sig.params(), *sig.variadic(), f, visited, &objs)?;
+    if sig.results().is_none() {
+        // no result
+        return Ok(());
+    }
+    f.write_char(' ')?;
+    let results = &objs.types[sig.results().unwrap()].try_as_tuple().unwrap();
+    if results.vars().len() == 1 {
+        let obj = &objs.lobjs[results.vars()[0]];
+        if obj.name().is_empty() {
+            // single unnamed result
+            return fmt_type_impl(obj.typ(), f, visited, objs);
+        }
+    }
+    // multiple or named result(s)
+    fmt_tuple(sig.results(), false, f, visited, objs)
 }
 
 fn fmt_tuple(
@@ -693,19 +824,19 @@ fn fmt_tuple(
                 match typ {
                     Type::Slice(detail) => {
                         f.write_str("...")?;
-                        fmt_type(&Some(*detail.elem()), f, visited, objs)?;
+                        fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
                     }
                     Type::Basic(detail) => {
                         // special case:
                         // append(s, "foo"...) leads to signature func([]byte, string...)
                         assert!(detail.typ() == BasicType::Str);
-                        fmt_type(tkey, f, visited, objs)?;
+                        fmt_type_impl(tkey, f, visited, objs)?;
                         f.write_str("...")?;
                     }
                     _ => unreachable!(),
                 }
             } else {
-                fmt_type(tkey, f, visited, objs)?;
+                fmt_type_impl(tkey, f, visited, objs)?;
             }
         }
     }

@@ -36,7 +36,7 @@ pub struct TCObjects {
     pub types: Types,
     pub pkgs: Packages,
     pub scopes: Scopes,
-    pub universe: Universe,
+    pub universe: Option<Universe>,
     // "global" variable
     pub debug: bool,
     // "global" variable
@@ -49,25 +49,18 @@ fn default_fmt_qualifier(p: &Package) -> Cow<str> {
 
 impl TCObjects {
     pub fn new() -> TCObjects {
-        let mut scopes = new_objects!();
-        let skey = scopes.insert(Scope::new(None, 0, 0, "universe".to_owned()));
-        let mut pkgs = new_objects!();
-        let pkg_skey = scopes.insert(Scope::new(Some(skey), 0, 0, "package unsafe".to_owned()));
-        let pkey = pkgs.insert(Package::new(
-            "unsafe".to_owned(),
-            "unsafe".to_owned(),
-            pkg_skey,
-        ));
         let fmtq = Box::new(default_fmt_qualifier);
-        TCObjects {
+        let mut objs = TCObjects {
             lobjs: new_objects!(),
             types: new_objects!(),
-            pkgs: pkgs,
-            scopes: scopes,
-            universe: Universe::new(skey, pkey),
+            pkgs: new_objects!(),
+            scopes: new_objects!(),
+            universe: None,
             debug: true,
             fmt_qualifier: fmtq,
-        }
+        };
+        objs.universe = Some(Universe::new(&mut objs));
+        objs
     }
 
     pub fn new_scope(
@@ -81,7 +74,7 @@ impl TCObjects {
         let skey = self.scopes.insert(scope);
         if let Some(skey) = parent {
             // don't add children to Universe scope
-            if skey != *self.universe.scope() {
+            if skey != *self.universe().scope() {
                 self.scopes[skey].add_child(skey);
             }
         }
@@ -90,12 +83,16 @@ impl TCObjects {
 
     pub fn new_package(&mut self, path: String, name: String) -> PackageKey {
         let skey = self.new_scope(
-            Some(*self.universe.scope()),
+            Some(*self.universe().scope()),
             0,
             0,
             format!("package {}", path),
         );
         let pkg = Package::new(path, name, skey);
         self.pkgs.insert(pkg)
+    }
+
+    pub fn universe(&self) -> &Universe {
+        self.universe.as_ref().unwrap()
     }
 }

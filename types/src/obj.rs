@@ -2,11 +2,15 @@
 use super::constant;
 use super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::package::Package;
+use super::typ;
+use super::universe;
+use super::universe::Universe;
 use goscript_parser::ast;
 use goscript_parser::position;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::fmt::Write;
 
 /// EntityType defines the types of LangObj entities
 pub enum EntityType {
@@ -28,7 +32,7 @@ pub enum EntityType {
     Label(bool),
     /// A Builtin represents a built-in function.
     /// Builtins don't have a valid type.
-    Builtin(/*todo: builtin id*/),
+    Builtin(universe::Builtin),
     /// Nil represents the predeclared value nil.
     Nil,
 }
@@ -78,7 +82,7 @@ impl EntityType {
 
     pub fn is_builtin(&self) -> bool {
         match self {
-            EntityType::Builtin() => true,
+            EntityType::Builtin(_) => true,
             _ => false,
         }
     }
@@ -91,6 +95,7 @@ impl EntityType {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ObjColor {
     White,
     Black,
@@ -121,8 +126,16 @@ impl LangObj {
         pkg: Option<PackageKey>,
         name: String,
         imported: PackageKey,
+        univ: &Universe,
     ) -> LangObj {
-        LangObj::new(EntityType::PkgName(imported, false), pos, pkg, name, None)
+        let t = univ.types()[&typ::BasicType::Invalid];
+        LangObj::new(
+            EntityType::PkgName(imported, false),
+            pos,
+            pkg,
+            name,
+            Some(t),
+        )
     }
 
     pub fn new_const(
@@ -144,7 +157,7 @@ impl LangObj {
         LangObj::new(EntityType::TypeName, pos, pkg, name, typ)
     }
 
-    fn new_var(
+    pub fn new_var(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,
@@ -153,7 +166,7 @@ impl LangObj {
         LangObj::new(EntityType::Var(false, false, false), pos, pkg, name, typ)
     }
 
-    fn new_param(
+    pub fn new_param(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,
@@ -162,7 +175,7 @@ impl LangObj {
         LangObj::new(EntityType::Var(false, false, true), pos, pkg, name, typ)
     }
 
-    fn new_field(
+    pub fn new_field(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,
@@ -172,7 +185,7 @@ impl LangObj {
         LangObj::new(EntityType::Var(embedded, true, false), pos, pkg, name, typ)
     }
 
-    fn new_func(
+    pub fn new_func(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,
@@ -181,16 +194,22 @@ impl LangObj {
         LangObj::new(EntityType::Func, pos, pkg, name, typ)
     }
 
-    fn new_label(pos: position::Pos, pkg: Option<PackageKey>, name: String) -> LangObj {
-        LangObj::new(EntityType::Label(false), pos, pkg, name, None)
+    fn new_label(
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        univ: &Universe,
+    ) -> LangObj {
+        let t = univ.types()[&typ::BasicType::Invalid];
+        LangObj::new(EntityType::Label(false), pos, pkg, name, Some(t))
     }
 
-    fn new_builtin() -> LangObj {
-        unimplemented!()
+    pub fn new_builtin(f: universe::Builtin, name: String, typ: TypeKey) -> LangObj {
+        LangObj::new(EntityType::Builtin(f), 0, None, name, Some(typ))
     }
 
-    fn new_nil() -> LangObj {
-        LangObj::new(EntityType::Nil, 0, None, "nil".to_owned(), None)
+    pub fn new_nil(typ: TypeKey) -> LangObj {
+        LangObj::new(EntityType::Nil, 0, None, "nil".to_owned(), Some(typ))
     }
 
     pub fn entity_type(&self) -> &EntityType {
@@ -213,8 +232,8 @@ impl LangObj {
         &self.typ
     }
 
-    pub fn set_type(&mut self, typ: TypeKey) {
-        self.typ = Some(typ)
+    pub fn pkg(&self) -> &Option<PackageKey> {
+        &self.pkg
     }
 
     pub fn exported(&self) -> bool {
@@ -232,6 +251,14 @@ impl LangObj {
 
     pub fn color(&self) -> &ObjColor {
         &self.color
+    }
+
+    pub fn set_type(&mut self, typ: TypeKey) {
+        self.typ = Some(typ)
+    }
+
+    pub fn set_pkg(&mut self, pkg: PackageKey) {
+        self.pkg = Some(pkg);
     }
 
     pub fn set_parent(&mut self, parent: ScopeKey) {
@@ -305,8 +332,11 @@ impl LangObj {
         }
     }
 
-    pub fn func_full_name(&self) -> &String {
-        unimplemented!()
+    pub fn func_fmt_name(&self, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+        match &self.entity_type {
+            EntityType::Func => fmt_func_name(self, f, objs),
+            _ => unreachable!(),
+        }
     }
 
     pub fn func_scope(&self) -> &ScopeKey {
@@ -375,6 +405,101 @@ pub fn get_id<'a>(pkg: Option<&Package>, name: &'a str) -> Cow<'a, str> {
         "_"
     };
     Cow::Owned(format!("{}.{}", path, name))
+}
+
+pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    let obj = &objs.lobjs[*okey];
+    match obj.entity_type() {
+        EntityType::PkgName(imported, _) => {
+            write!(f, "package {}", obj.name())?;
+            let path = objs.pkgs[*imported].path();
+            if path != obj.name() {
+                write!(f, " ('{}')", path)?;
+            }
+        }
+        EntityType::Const(_) => {
+            f.write_str("const")?;
+            fmt_obj_name(okey, f, objs)?;
+            fmt_obj_type(obj, f, objs)?;
+        }
+        EntityType::TypeName => {
+            f.write_str("const")?;
+            fmt_obj_name(okey, f, objs)?;
+            fmt_obj_type(obj, f, objs)?;
+        }
+        EntityType::Var(_, field, _) => {
+            f.write_str(if *field { "field" } else { "var" })?;
+            fmt_obj_name(okey, f, objs)?;
+            fmt_obj_type(obj, f, objs)?;
+        }
+        EntityType::Func => {
+            f.write_str("func ")?;
+            fmt_func_name(obj, f, objs)?;
+            if let Some(t) = obj.typ() {
+                typ::fmt_signature(*t, f, objs)?;
+            }
+        }
+        EntityType::Label(_) => {
+            f.write_str("label")?;
+            fmt_obj_name(okey, f, objs)?;
+        }
+        EntityType::Builtin(_) => {
+            f.write_str("builtin")?;
+            fmt_obj_name(okey, f, objs)?;
+        }
+        EntityType::Nil => f.write_str("nil")?,
+    }
+    Ok(())
+}
+
+fn fmt_obj_name(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    f.write_char(' ')?;
+    let obj = &objs.lobjs[*okey];
+    if let Some(p) = obj.pkg {
+        let pkg_val = &objs.pkgs[p];
+        if let Some(k) = objs.scopes[*pkg_val.scope()].lookup(obj.name()) {
+            if k == okey {
+                pkg_val.fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
+            }
+        }
+    }
+    f.write_str(obj.name())
+}
+
+fn fmt_obj_type(obj: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    if obj.typ().is_none() {
+        return Ok(());
+    }
+    let mut obj_typ = obj.typ().unwrap();
+    if obj.entity_type().is_type_name() {
+        let typ_val = &objs.types[obj.typ().unwrap()];
+        if typ_val.try_as_basic().is_some() {
+            return Ok(());
+        }
+        if obj.type_name_is_alias() {
+            f.write_str(" =")?;
+        } else {
+            obj_typ = typ::underlying_type(obj_typ, objs);
+        }
+    }
+    f.write_char(' ')?;
+    typ::fmt_type(&Some(obj_typ), f, objs)
+}
+
+fn fmt_func_name(func: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    if let Some(t) = func.typ() {
+        let sig = objs.types[*t].try_as_signature().unwrap();
+        if let Some(r) = sig.recv() {
+            f.write_char('(')?;
+            typ::fmt_type(objs.lobjs[*r].typ(), f, objs)?;
+            f.write_str(").")?;
+        } else {
+            if let Some(p) = func.pkg() {
+                objs.pkgs[*p].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
+            }
+        }
+    }
+    f.write_str(func.name())
 }
 
 fn color_for_typ(typ: Option<TypeKey>) -> ObjColor {

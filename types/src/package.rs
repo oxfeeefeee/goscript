@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use super::objects::{PackageKey, ScopeKey};
+use std::borrow::Cow;
 use std::fmt;
 
 /// A Package describes a Go package.
@@ -68,6 +69,14 @@ impl Package {
     /// It is the caller's responsibility to make sure list elements are unique.
     pub fn set_imports(&mut self, pkgs: Vec<PackageKey>) {
         self.imports = pkgs
+    }
+
+    pub fn fmt_with_qualifier(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        qf: &dyn Fn(&Package) -> Cow<str>,
+    ) -> fmt::Result {
+        write!(f, "{}.", qf(self))
     }
 }
 

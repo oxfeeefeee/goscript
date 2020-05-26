@@ -147,6 +147,27 @@ impl Scope {
     }
 }
 
+// ----------------------------------------------------------------------------
+// utilities
+
+/// fmt_scope_full formats the scope including it's children.
+pub fn fmt_scope_full(
+    skey: &ScopeKey,
+    f: &mut fmt::Formatter<'_>,
+    n: usize,
+    objs: &TCObjects,
+) -> fmt::Result {
+    let ind = ".  ";
+    let indn = ind.repeat(n);
+    let sval = &objs.scopes[*skey];
+    write!(f, "{}{} scope {:?}\n", indn, sval.comment, skey)?;
+    sval.fmt(f, n)?;
+    for child in sval.children.iter() {
+        fmt_scope_full(child, f, n + 1, objs)?;
+    }
+    Ok(())
+}
+
 impl fmt::Display for Scope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.fmt(f, 0)
@@ -167,15 +188,7 @@ impl<'a> ScopeDebug<'a> {
     }
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>, n: usize) -> fmt::Result {
-        let ind = ".  ";
-        let indn = ind.repeat(n);
-        let val = &self.objs.scopes[*self.scope];
-        write!(f, "{}key: {:?}\n, content:\n", indn, self.scope)?;
-        val.fmt(f, n)?;
-        for child in val.children.iter() {
-            ScopeDebug::new(child, self.objs).fmt(f, n + 1)?;
-        }
-        Ok(())
+        fmt_scope_full(self.scope, f, n, self.objs)
     }
 }
 

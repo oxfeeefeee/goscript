@@ -19,6 +19,7 @@ use std::fmt;
 /// todo: This is against the Go specs.
 
 /// All the values involved in the evaluation
+#[derive(Clone, Debug)]
 pub enum Value {
     Unknown,
     Bool(bool),
