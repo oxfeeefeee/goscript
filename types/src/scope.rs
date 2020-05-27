@@ -125,7 +125,7 @@ impl Scope {
             return Some(obj);
         }
         if lang_obj.parent().is_none() {
-            lang_obj.set_parent(self_key);
+            lang_obj.set_parent(Some(self_key));
         }
         None
     }

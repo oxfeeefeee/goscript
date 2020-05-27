@@ -8,6 +8,7 @@ mod package;
 mod scope;
 mod typ;
 
+mod lookup;
 mod objects;
 mod selection;
 

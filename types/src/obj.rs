@@ -13,6 +13,8 @@ use std::fmt;
 use std::fmt::Write;
 
 /// EntityType defines the types of LangObj entities
+///
+#[derive(Clone, Debug)]
 pub enum EntityType {
     /// A PkgName represents an imported Go package.
     PkgName(PackageKey, bool),
@@ -108,6 +110,7 @@ pub enum ObjColor {
 /// A LangObj describes a named language entity such as a package,
 /// constant, type, variable, function (incl. methods), or label.
 ///
+#[derive(Clone, Debug)]
 pub struct LangObj {
     entity_type: EntityType,
     parent: Option<ScopeKey>,
@@ -253,16 +256,16 @@ impl LangObj {
         &self.color
     }
 
-    pub fn set_type(&mut self, typ: TypeKey) {
-        self.typ = Some(typ)
+    pub fn set_type(&mut self, typ: Option<TypeKey>) {
+        self.typ = typ
     }
 
-    pub fn set_pkg(&mut self, pkg: PackageKey) {
-        self.pkg = Some(pkg);
+    pub fn set_pkg(&mut self, pkg: Option<PackageKey>) {
+        self.pkg = pkg;
     }
 
-    pub fn set_parent(&mut self, parent: ScopeKey) {
-        self.parent = Some(parent)
+    pub fn set_parent(&mut self, parent: Option<ScopeKey>) {
+        self.parent = parent
     }
 
     pub fn scope_pos(&self) -> &position::Pos {
@@ -436,7 +439,7 @@ pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> f
             f.write_str("func ")?;
             fmt_func_name(obj, f, objs)?;
             if let Some(t) = obj.typ() {
-                typ::fmt_signature(*t, f, objs)?;
+                typ::fmt_signature(t, f, objs)?;
             }
         }
         EntityType::Label(_) => {
@@ -479,7 +482,7 @@ fn fmt_obj_type(obj: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> 
         if obj.type_name_is_alias() {
             f.write_str(" =")?;
         } else {
-            obj_typ = typ::underlying_type(obj_typ, objs);
+            obj_typ = *typ::underlying_type(&obj_typ, objs);
         }
     }
     f.write_char(' ')?;

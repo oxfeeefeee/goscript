@@ -51,8 +51,8 @@ pub struct BuiltinInfo {
     pub kind: ExprKind,
 }
 
-/// Universe sets up the universe scope and the unsafe package.
-///
+/// Universe sets up the universe scope, the unsafe package
+/// and all the builtin types and functions
 pub struct Universe {
     scope: ScopeKey,
     unsafe_: PackageKey,
@@ -109,6 +109,18 @@ impl Universe {
         &self.types
     }
 
+    pub fn iota(&self) -> &ObjKey {
+        &self.iota
+    }
+
+    pub fn byte(&self) -> &TypeKey {
+        &self.byte
+    }
+
+    pub fn rune(&self) -> &TypeKey {
+        &self.rune
+    }
+
     fn def_universe_unsafe(objs: &mut TCObjects) -> (ScopeKey, PackageKey) {
         let uskey = objs
             .scopes
@@ -158,7 +170,7 @@ impl Universe {
         objs.types[sig]
             .try_as_signature_mut()
             .unwrap()
-            .set_recv(recv);
+            .set_recv(Some(recv));
         let type_name = objs.lobjs.insert(LangObj::new_type_name(
             0,
             None,
@@ -359,7 +371,9 @@ impl Universe {
 
         let skey = if obj.exported() {
             match obj.entity_type() {
-                EntityType::TypeName | EntityType::Builtin(_) => objs.lobjs[okey].set_pkg(*unsafe_),
+                EntityType::TypeName | EntityType::Builtin(_) => {
+                    objs.lobjs[okey].set_pkg(Some(*unsafe_))
+                }
                 _ => unreachable!(),
             }
             objs.pkgs[*unsafe_].scope()
