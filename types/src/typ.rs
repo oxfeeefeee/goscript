@@ -783,11 +783,10 @@ pub fn comparable(t: &TypeKey, objs: &TCObjects) -> bool {
     match &objs.types[*underlying_type(t, objs)] {
         Type::Basic(b) => b.typ() != BasicType::UntypedNil,
         Type::Pointer(_) | Type::Interface(_) | Type::Chan(_) => true,
-        Type::Struct(s) => s
+        Type::Struct(s) => !s
             .fields()
             .iter()
-            .find(|f| !comparable(objs.lobjs[**f].typ().as_ref().unwrap(), objs))
-            .is_none(),
+            .any(|f| !comparable(objs.lobjs[*f].typ().as_ref().unwrap(), objs)),
         Type::Array(a) => comparable(a.elem(), objs),
         _ => false,
     }
@@ -811,19 +810,23 @@ pub fn untyped_default_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a Type
 
 /// identical reports whether x and y are identical types.
 /// Receivers of Signature types are ignored.
-pub fn identical(x: &Option<TypeKey>, y: &Option<TypeKey>, objs: &TCObjects) -> bool {
+pub fn identical(x: &TypeKey, y: &TypeKey, objs: &TCObjects) -> bool {
     identical_impl(x, y, true, &mut HashSet::new(), objs)
+}
+
+/// identical_option is the same as identical except for the parameters
+pub fn identical_option(x: &Option<TypeKey>, y: &Option<TypeKey>, objs: &TCObjects) -> bool {
+    identical_impl_o(x, y, true, &mut HashSet::new(), objs)
 }
 
 /// identical_ignore_tags reports whether x and y are identical types if tags are ignored.
 /// Receivers of Signature types are ignored.
 pub fn identical_ignore_tags(x: &Option<TypeKey>, y: &Option<TypeKey>, objs: &TCObjects) -> bool {
-    identical_impl(x, y, false, &mut HashSet::new(), objs)
+    identical_impl_o(x, y, false, &mut HashSet::new(), objs)
 }
 
-/// identical_impl implements the logic of identical
-/// 'dup' is used to detect cycles.
-fn identical_impl(
+/// identical_impl_o accepts wrapped TypeKeys
+fn identical_impl_o(
     x: &Option<TypeKey>,
     y: &Option<TypeKey>,
     cmp_tags: bool,
@@ -831,62 +834,74 @@ fn identical_impl(
     objs: &TCObjects,
 ) -> bool {
     if *x == *y {
+        true
+    } else if x.is_none() || y.is_none() {
+        false
+    } else {
+        identical_impl(
+            x.as_ref().unwrap(),
+            y.as_ref().unwrap(),
+            cmp_tags,
+            dup,
+            objs,
+        )
+    }
+}
+
+/// identical_impl implements the logic of identical
+/// 'dup' is used to detect cycles.
+fn identical_impl(
+    x: &TypeKey,
+    y: &TypeKey,
+    cmp_tags: bool,
+    dup: &mut HashSet<(TypeKey, TypeKey)>,
+    objs: &TCObjects,
+) -> bool {
+    if x == y {
         return true;
     }
-    if x.is_none() || y.is_none() {
-        return false;
-    }
-    let tx = &objs.types[x.unwrap()];
-    let ty = &objs.types[y.unwrap()];
+    let tx = &objs.types[*x];
+    let ty = &objs.types[*y];
     match (tx, ty) {
         (Type::Basic(bx), Type::Basic(by)) => bx.typ() == by.typ(),
         (Type::Array(ax), Type::Array(ay)) => {
-            ax.len() == ay.len()
-                && identical_impl(&Some(*ax.elem()), &Some(*ay.elem()), cmp_tags, dup, objs)
+            ax.len() == ay.len() && identical_impl(ax.elem(), ay.elem(), cmp_tags, dup, objs)
         }
         (Type::Slice(sx), Type::Slice(sy)) => {
-            identical_impl(&Some(*sx.elem()), &Some(*sy.elem()), cmp_tags, dup, objs)
+            identical_impl(sx.elem(), sy.elem(), cmp_tags, dup, objs)
         }
         (Type::Struct(sx), Type::Struct(sy)) => {
             if sx.fields().len() == sy.fields().len() {
-                sx.fields()
-                    .iter()
-                    .enumerate()
-                    .find(|(i, f)| {
-                        let of = &objs.lobjs[**f];
-                        let og = &objs.lobjs[sy.fields()[*i]];
-                        (*of.var_embedded() != *og.var_embedded())
-                            || (cmp_tags && sx.tag(*i) != sy.tag(*i))
-                            || (!of.same_id(*og.pkg(), og.name(), objs))
-                            || (!identical_impl(of.typ(), og.typ(), cmp_tags, dup, objs))
-                    })
-                    .is_none()
+                !sx.fields().iter().enumerate().any(|(i, f)| {
+                    let of = &objs.lobjs[*f];
+                    let og = &objs.lobjs[sy.fields()[i]];
+                    (*of.var_embedded() != *og.var_embedded())
+                        || (cmp_tags && sx.tag(i) != sy.tag(i))
+                        || (!of.same_id(og.pkg(), og.name(), objs))
+                        || (!identical_impl_o(of.typ(), og.typ(), cmp_tags, dup, objs))
+                })
             } else {
                 false
             }
         }
         (Type::Pointer(px), Type::Pointer(py)) => {
-            identical_impl(&Some(*px.base()), &Some(*py.base()), cmp_tags, dup, objs)
+            identical_impl(px.base(), py.base(), cmp_tags, dup, objs)
         }
         (Type::Tuple(tx), Type::Tuple(ty)) => {
             if tx.vars().len() == ty.vars().len() {
-                tx.vars()
-                    .iter()
-                    .enumerate()
-                    .find(|(i, v)| {
-                        let ov = &objs.lobjs[**v];
-                        let ow = &objs.lobjs[ty.vars()[*i]];
-                        !identical_impl(ov.typ(), ow.typ(), cmp_tags, dup, objs)
-                    })
-                    .is_none()
+                !tx.vars().iter().enumerate().any(|(i, v)| {
+                    let ov = &objs.lobjs[*v];
+                    let ow = &objs.lobjs[ty.vars()[i]];
+                    !identical_impl_o(ov.typ(), ow.typ(), cmp_tags, dup, objs)
+                })
             } else {
                 false
             }
         }
         (Type::Signature(sx), Type::Signature(sy)) => {
             *sx.variadic() == *sy.variadic()
-                && identical_impl(sx.params(), sy.params(), cmp_tags, dup, objs)
-                && identical_impl(sx.results(), sy.results(), cmp_tags, dup, objs)
+                && identical_impl_o(sx.params(), sy.params(), cmp_tags, dup, objs)
+                && identical_impl_o(sx.results(), sy.results(), cmp_tags, dup, objs)
         }
         (Type::Interface(ix), Type::Interface(iy)) => {
             match (ix.all_methods().as_ref(), iy.all_methods().as_ref()) {
@@ -908,21 +923,18 @@ fn identical_impl(
                         //
                         // If x and y were compared before, they must be equal
                         // (if they were not, the recursion would have stopped);
-                        let pair = (x.unwrap(), y.unwrap());
+                        let pair = (*x, *y);
                         if dup.get(&pair).is_some() {
                             // pair got compared before
                             true
                         } else {
                             dup.insert(pair);
-                            a.iter()
-                                .enumerate()
-                                .find(|(i, k)| {
-                                    let ox = &objs.lobjs[**k];
-                                    let oy = &objs.lobjs[b[*i]];
-                                    ox.id(objs) != oy.id(objs)
-                                        || !identical_impl(ox.typ(), oy.typ(), cmp_tags, dup, objs)
-                                })
-                                .is_none()
+                            !a.iter().enumerate().any(|(i, k)| {
+                                let ox = &objs.lobjs[*k];
+                                let oy = &objs.lobjs[b[i]];
+                                ox.id(objs) != oy.id(objs)
+                                    || !identical_impl_o(ox.typ(), oy.typ(), cmp_tags, dup, objs)
+                            })
                         }
                     } else {
                         false
@@ -932,12 +944,11 @@ fn identical_impl(
             }
         }
         (Type::Map(mx), Type::Map(my)) => {
-            identical_impl(&Some(*mx.key()), &Some(*my.key()), cmp_tags, dup, objs)
-                && identical_impl(&Some(*mx.elem()), &Some(*mx.elem()), cmp_tags, dup, objs)
+            identical_impl(mx.key(), my.key(), cmp_tags, dup, objs)
+                && identical_impl(mx.elem(), mx.elem(), cmp_tags, dup, objs)
         }
         (Type::Chan(cx), Type::Chan(cy)) => {
-            cx.dir() == cy.dir()
-                && identical_impl(&Some(*cx.elem()), &Some(*cy.elem()), cmp_tags, dup, objs)
+            cx.dir() == cy.dir() && identical_impl(cx.elem(), cy.elem(), cmp_tags, dup, objs)
         }
         (Type::Named(nx), Type::Named(ny)) => nx.obj() == ny.obj(),
         _ => false,

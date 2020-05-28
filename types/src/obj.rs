@@ -285,7 +285,7 @@ impl LangObj {
         self.scope_pos = pos
     }
 
-    pub fn same_id(&self, pkg: Option<PackageKey>, name: &str, objs: &TCObjects) -> bool {
+    pub fn same_id(&self, pkg: &Option<PackageKey>, name: &str, objs: &TCObjects) -> bool {
         // spec:
         // "Two identifiers are different if they are spelled differently,
         // or if they appear in different packages and are not exported.
@@ -295,7 +295,7 @@ impl LangObj {
         } else if self.exported() {
             true
         } else if pkg.is_none() || self.pkg.is_none() {
-            pkg == self.pkg
+            pkg == &self.pkg
         } else {
             let a = &objs.pkgs[pkg.unwrap()];
             let b = &objs.pkgs[self.pkg.unwrap()];
