@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::typ::BasicType;
 use goscript_parser::token::Token;
 use num_bigint::BigInt;
 use num_traits::cast::FromPrimitive;
@@ -91,7 +92,11 @@ impl Value {
         }
     }
 
-    fn string(&self) -> String {
+    pub fn representable(&self, _typ: BasicType, _rounded: Option<&Value>) -> bool {
+        unimplemented!()
+    }
+
+    pub fn as_string(&self) -> String {
         match self {
             Value::Str(s) => quote_str(s),
             _ => self.to_string(),

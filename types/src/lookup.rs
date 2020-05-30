@@ -4,6 +4,8 @@ use super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::selection::*;
 use super::typ;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
+use std::fmt::Write;
 
 macro_rules! lookup_on_found {
     ($indices:ident, $i:ident, $target:ident, $et:ident, $indirect:ident, $found:expr) => {
@@ -36,13 +38,156 @@ pub struct MethodSet {
 }
 
 impl MethodSet {
-    /*pub fn new(t: &TypeKey, objs: &TCObjects) -> MethodSet {}
+    pub fn new(t: &TypeKey, objs: &mut TCObjects) -> MethodSet {
+        // method set up to the current depth
+        let mut mset_base: HashMap<String, MethodCollision> = HashMap::new();
+        let (tkey, is_ptr) = try_deref(t, objs);
+        // *typ where typ is an interface has no methods.
+        if is_ptr && objs.types[*tkey].try_as_interface().is_some() {
+            return MethodSet { list: vec![] };
+        }
+
+        // Start with typ as single entry at shallowest depth.
+        let mut current = vec![EmbeddedType::new(*tkey, None, is_ptr, false)];
+
+        // Named types that we have seen already, allocated lazily.
+        // Used to avoid endless searches in case of recursive types.
+        // Since only Named types can be used for recursive types, we
+        // only need to track those.
+        // (If we ever allow type aliases to construct recursive types,
+        // we must use type identity rather than pointer equality for
+        // the map key comparison, as we do in consolidate_multiples.)
+        // seen is lazily initialized
+        let mut seen: Option<HashSet<TypeKey>> = None;
+        while !current.is_empty() {
+            // embedded types found at current depth
+            let mut next = vec![];
+            // field and method sets at current depth
+            let mut fset: HashMap<String, FieldCollision> = HashMap::new();
+            let mut mset: HashMap<String, MethodCollision> = HashMap::new();
+            for et in current.iter() {
+                let mut tobj = &objs.types[et.typ];
+                if let typ::Type::Named(detail) = tobj {
+                    if seen.is_none() {
+                        seen = Some(HashSet::new());
+                    }
+                    let seen_mut = seen.as_mut().unwrap();
+                    if seen_mut.contains(&et.typ) {
+                        // We have seen this type before, at a more shallow depth
+                        // (note that multiples of this type at the current depth
+                        // were consolidated before). The type at that depth shadows
+                        // this same type at the current depth, so we can ignore
+                        // this one.
+                        continue;
+                    }
+                    seen_mut.insert(et.typ);
+                    add_to_method_set(
+                        &mut mset,
+                        detail.methods(),
+                        et.indices.as_ref().unwrap(),
+                        et.indirect,
+                        et.multiples,
+                        objs,
+                    );
+                    // continue with underlying type
+                    tobj = &objs.types[*detail.underlying()];
+                }
+                match tobj {
+                    typ::Type::Struct(detail) => {
+                        for (i, f) in detail.fields().iter().enumerate() {
+                            let fobj = &objs.lobjs[*f];
+                            add_to_field_set(&mut fset, f, et.multiples, objs);
+                            // Embedded fields are always of the form T or *T where
+                            // T is a type name. If typ appeared multiple times at
+                            // this depth, f.Type appears multiple times at the next
+                            // depth.
+                            if *fobj.var_embedded() {
+                                let (tkey, is_ptr) = try_deref(fobj.typ().as_ref().unwrap(), objs);
+                                next.push(EmbeddedType::new(
+                                    *tkey,
+                                    concat_vec(et.indices.clone(), i),
+                                    et.indirect || is_ptr,
+                                    et.multiples,
+                                ))
+                            }
+                        }
+                    }
+                    typ::Type::Interface(detail) => {
+                        add_to_method_set(
+                            &mut mset,
+                            detail.all_methods().as_ref().unwrap(),
+                            et.indices.as_ref().unwrap(),
+                            true,
+                            et.multiples,
+                            objs,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            // Add methods and collisions at this depth to base if no entries with matching
+            // names exist already.
+            for (k, m) in mset.iter() {
+                if !mset_base.contains_key(k) {
+                    mset_base.insert(
+                        k.clone(),
+                        if fset.contains_key(k) {
+                            MethodCollision::Collision
+                        } else {
+                            m.clone()
+                        },
+                    );
+                }
+            }
+            // Multiple fields with matching names collide at this depth and shadow all
+            // entries further down; add them as collisions to base if no entries with
+            // matching names exist already.
+            for (k, f) in fset.iter() {
+                if *f == FieldCollision::Collision {
+                    if !mset_base.contains_key(k) {
+                        mset_base.insert(k.clone(), MethodCollision::Collision);
+                    }
+                }
+            }
+            current = consolidate_multiples(next, objs);
+        }
+        let mut list: Vec<Selection> = mset_base
+            .into_iter()
+            .filter_map(|(_, m)| match m {
+                MethodCollision::Method(mut sel) => {
+                    sel.init(objs);
+                    Some(sel)
+                }
+                MethodCollision::Collision => None,
+            })
+            .collect();
+        list.sort_by(|a, b| a.id().cmp(b.id()));
+        MethodSet { list: list }
+    }
 
     pub fn list(&self) -> &Vec<Selection> {
         &self.list
     }
 
-    pub fn lookup(pkg: &PackageKey, name: &str, objs: &TCObjects) -> Option<&Selection> {}*/
+    pub fn lookup(&self, pkgkey: &PackageKey, name: &str, objs: &TCObjects) -> Option<&Selection> {
+        if self.list.len() == 0 {
+            return None;
+        }
+        let pkg = &objs.pkgs[*pkgkey];
+        let id = obj::get_id(Some(pkg), name).to_string();
+        self.list
+            .binary_search_by_key(&&id, |x| x.id())
+            .ok()
+            .map(|i| &self.list[i])
+    }
+
+    pub fn fmt(&self, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+        f.write_str("MethodSet {")?;
+        for field in self.list.iter() {
+            field.fmt(f, objs)?;
+        }
+        f.write_char('}')
+    }
 }
 
 /// lookup_field_or_method looks up a field or method with given package and name
@@ -148,6 +293,63 @@ pub fn lookup_method<'a>(
     }
 }
 
+/// missing_method returns None if 't' implements 'intf', otherwise it
+/// returns a missing method required by T and whether it is missing or
+/// just has the wrong type.
+///
+/// For non-interface types 't', or if static is set, 't' implements
+/// 'intf' if all methods of 'intf' are present in 't'. Otherwise ('t'
+/// is an interface and static is not set), missing_method only checks
+/// that methods of 'intf' which are also present in 't' have matching
+/// types (e.g., for a type assertion x.(T) where x is of
+/// interface type 't').
+pub fn missing_method(
+    t: &TypeKey,
+    intf: &TypeKey,
+    static_: bool,
+    objs: &TCObjects,
+) -> Option<(ObjKey, bool)> {
+    let ival = &objs.types[*intf].try_as_interface().unwrap();
+    if ival.is_empty() {
+        return None;
+    }
+    let tval = objs.types[*t].underlying_val(objs);
+    if let Some(detail) = tval.try_as_interface() {
+        for fkey in ival.all_methods().as_ref().unwrap().iter() {
+            let fval = &objs.lobjs[*fkey];
+            if let Some((_i, f)) = lookup_method(
+                detail.all_methods().as_ref().unwrap(),
+                fval.pkg(),
+                fval.name(),
+                objs,
+            ) {
+                if !typ::identical_option(fval.typ(), objs.lobjs[*f].typ(), objs) {
+                    return Some((fkey.clone(), true));
+                }
+            } else if static_ {
+                return Some((fkey.clone(), false));
+            }
+        }
+        return None;
+    }
+    // A concrete type implements 'intf' if it implements all methods of 'intf'.
+    for fkey in ival.all_methods().as_ref().unwrap().iter() {
+        let fval = &objs.lobjs[*fkey];
+        match lookup_field_or_method(t, false, fval.pkg(), fval.name(), objs) {
+            LookupResult::Entry(okey, _) => {
+                let result_obj = &objs.lobjs[okey];
+                if !result_obj.entity_type().is_func() {
+                    return Some((fkey.clone(), false));
+                } else if !typ::identical_option(fval.typ(), result_obj.typ(), objs) {
+                    return Some((fkey.clone(), true));
+                }
+            }
+            _ => return Some((fkey.clone(), false)),
+        }
+    }
+    None
+}
+
 fn lookup_field_or_method_impl(
     tkey: &TypeKey,
     addressable: bool,
@@ -179,6 +381,7 @@ fn lookup_field_or_method_impl(
     // seen is lazily initialized
     let mut seen: Option<HashSet<TypeKey>> = None;
     while !current.is_empty() {
+        // embedded types found at current depth
         let mut next = vec![];
         for et in current.iter() {
             let mut tobj = &objs.types[et.typ];
@@ -187,7 +390,7 @@ fn lookup_field_or_method_impl(
                     seen = Some(HashSet::new());
                 }
                 let seen_mut = seen.as_mut().unwrap();
-                if seen_mut.get(&et.typ).is_some() {
+                if seen_mut.contains(&et.typ) {
                     // We have seen this type before, at a more shallow depth
                     // (note that multiples of this type at the current depth
                     // were consolidated before). The type at that depth shadows
@@ -335,4 +538,74 @@ fn consolidate_multiples(list: Vec<EmbeddedType>, objs: &TCObjects) -> Vec<Embed
         }
     }
     result
+}
+
+/// FieldCollision represents either a field or a name collision
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum FieldCollision {
+    Var(ObjKey),
+    Collision,
+}
+
+/// add_to_field_set adds field f to the field set s.
+/// If multiples is set, f appears multiple times
+/// and is treated as a collision.
+fn add_to_field_set(
+    set: &mut HashMap<String, FieldCollision>,
+    f: &ObjKey,
+    multiples: bool,
+    objs: &TCObjects,
+) {
+    let key = objs.lobjs[*f].id(objs);
+    if !multiples {
+        if set
+            .insert(key.to_string(), FieldCollision::Var(*f))
+            .is_none()
+        {
+            // no collision
+            return;
+        }
+    }
+    set.insert(key.to_string(), FieldCollision::Collision);
+}
+
+/// MethodCollision represents either a selection or a name collision
+#[derive(Clone, Debug)]
+enum MethodCollision {
+    Method(Selection),
+    Collision,
+}
+
+// add_to_method_set adds all functions in list to the method set s.
+// If multiples is set, every function in list appears multiple times
+// and is treated as a collision.
+fn add_to_method_set(
+    set: &mut HashMap<String, MethodCollision>,
+    list: &Vec<ObjKey>,
+    indices: &Vec<usize>,
+    indirect: bool,
+    multiples: bool,
+    objs: &TCObjects,
+) {
+    for (i, okey) in list.iter().enumerate() {
+        let mobj = &objs.lobjs[*okey];
+        let key = mobj.id(objs).to_string();
+        if !multiples {
+            // see the original comment of the Go source in case of a problem
+            if !set.contains_key(&key) && (indirect || !ptr_recv(mobj, objs)) {
+                set.insert(
+                    key,
+                    MethodCollision::Method(Selection::new(
+                        SelectionKind::MethodVal,
+                        None,
+                        *okey,
+                        concat_vec(Some(indices.clone()), i).unwrap(),
+                        indirect,
+                    )),
+                );
+                continue;
+            }
+        }
+        set.insert(key, MethodCollision::Collision);
+    }
 }

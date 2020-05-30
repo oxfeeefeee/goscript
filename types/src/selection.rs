@@ -6,6 +6,7 @@ use std::fmt::Write;
 
 /// SelectionKind describes the kind of a selector expression x.f
 /// (excluding qualified identifiers).
+#[derive(Clone, Debug)]
 pub enum SelectionKind {
     FieldVal,   // x.f is a struct field selector
     MethodVal,  // x.f is a method selector
@@ -28,13 +29,15 @@ pub enum SelectionKind {
 ///	p.m         MethodVal     *T      m      func (e *T) m()    {1, 0}    true
 ///	T.m         MethodExpr    T       m      func m(_ T)        {1, 0}    false
 ///
+#[derive(Clone, Debug)]
 pub struct Selection {
     kind: SelectionKind,
     recv: Option<TypeKey>, // type of x
     obj: ObjKey,           // object denoted by x.f
-    index: Vec<isize>,     // path from x to x.f
+    indices: Vec<usize>,   // path from x to x.f
     indirect: bool,        // set if there was any pointer indirection on the path
-    typ: TypeKey,          // lazy evaluated type
+    typ: Option<TypeKey>,  // evaluation delayed
+    id: Option<String>,    // evaluation delayed
 }
 
 impl Selection {
@@ -42,19 +45,23 @@ impl Selection {
         kind: SelectionKind,
         recv: Option<TypeKey>,
         obj: ObjKey,
-        index: Vec<isize>,
+        indices: Vec<usize>,
         indirect: bool,
-        objs: &mut TCObjects,
     ) -> Selection {
-        let typ = Selection::init_type(&obj, &kind, &recv, objs);
         Selection {
             kind: kind,
             recv: recv,
             obj: obj,
-            index: index,
+            indices: indices,
             indirect: indirect,
-            typ: typ,
+            typ: None,
+            id: None,
         }
+    }
+
+    pub fn init(&mut self, objs: &mut TCObjects) {
+        self.typ = Some(self.eval_type(objs));
+        self.id = Some(objs.lobjs[self.obj].id(objs).to_string());
     }
 
     pub fn kind(&self) -> &SelectionKind {
@@ -69,22 +76,28 @@ impl Selection {
         &self.obj
     }
 
+    /// typ must be called after init is called
     pub fn typ(&self) -> &TypeKey {
-        &self.typ
+        self.typ.as_ref().unwrap()
     }
 
-    /// Index describes the path from x to f in x.f.
-    /// The last index entry is the field or method index of the type declaring f;
+    /// id must be called after init is called
+    pub fn id(&self) -> &String {
+        self.id.as_ref().unwrap()
+    }
+
+    /// indices describes the path from x to f in x.f.
+    /// The last indices entry is the field or method indices of the type declaring f;
     /// either:
     ///
     ///	1) the list of declared methods of a named type; or
     ///	2) the list of methods of an interface type; or
     ///	3) the list of fields of a struct type.
     ///
-    /// The earlier index entries are the indices of the embedded fields implicitly
+    /// The earlier indices entries are the indices of the embedded fields implicitly
     /// traversed to get from (the type of) x to f, starting at embedding depth 0.
-    pub fn index(&self) -> &Vec<isize> {
-        &self.index
+    pub fn indices(&self) -> &Vec<usize> {
+        &self.indices
     }
 
     /// Indirect reports whether any pointer indirection was required to get from
@@ -93,45 +106,7 @@ impl Selection {
         &self.indirect
     }
 
-    /// init_type evaluates the type of x.f, which may be different from the type of f.
-    /// See Selection for more information.
-    fn init_type(
-        obj: &ObjKey,
-        kind: &SelectionKind,
-        recv: &Option<TypeKey>,
-        objs: &mut TCObjects,
-    ) -> TypeKey {
-        let obj = &objs.lobjs[*obj];
-        match kind {
-            SelectionKind::FieldVal => obj.typ().unwrap(),
-            SelectionKind::MethodVal => {
-                let t = &objs.types[obj.typ().unwrap()];
-                let mut sig = *t.try_as_signature().unwrap();
-                let mut new_recv = objs.lobjs[sig.recv().unwrap()].clone();
-                new_recv.set_type(*recv);
-                sig.set_recv(Some(objs.lobjs.insert(new_recv)));
-                objs.types.insert(typ::Type::Signature(sig))
-            }
-            SelectionKind::MethodExpr => {
-                let t = &objs.types[obj.typ().unwrap()];
-                let mut sig = *t.try_as_signature().unwrap();
-                let mut arg0 = objs.lobjs[sig.recv().unwrap()].clone();
-                arg0.set_type(*recv);
-                let arg0key = objs.lobjs.insert(arg0);
-                sig.set_recv(None);
-                let mut params = vec![arg0key];
-                if let Some(tkey) = sig.params() {
-                    let tup = &mut objs.types[*tkey].try_as_tuple_mut().unwrap();
-                    params.append(tup.vars_mut())
-                }
-                let params_tuple = typ::TupleDetail::new(params);
-                sig.set_params(Some(objs.types.insert(typ::Type::Tuple(params_tuple))));
-                objs.types.insert(typ::Type::Signature(sig))
-            }
-        }
-    }
-
-    pub fn fmt_selection(&self, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    pub fn fmt(&self, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
         f.write_str(match self.kind {
             SelectionKind::FieldVal => "field (",
             SelectionKind::MethodVal => "method (",
@@ -147,5 +122,38 @@ impl Selection {
             _ => typ::fmt_signature(self.typ(), f, objs)?,
         }
         Ok(())
+    }
+
+    /// eval_type evaluates the type of x.f, which may be different from the type of f.
+    /// See Selection for more information.
+    fn eval_type(&self, objs: &mut TCObjects) -> TypeKey {
+        let obj = &objs.lobjs[self.obj];
+        match self.kind {
+            SelectionKind::FieldVal => obj.typ().unwrap(),
+            SelectionKind::MethodVal => {
+                let t = &objs.types[obj.typ().unwrap()];
+                let mut sig = *t.try_as_signature().unwrap();
+                let mut new_recv = objs.lobjs[sig.recv().unwrap()].clone();
+                new_recv.set_type(self.recv);
+                sig.set_recv(Some(objs.lobjs.insert(new_recv)));
+                objs.types.insert(typ::Type::Signature(sig))
+            }
+            SelectionKind::MethodExpr => {
+                let t = &objs.types[obj.typ().unwrap()];
+                let mut sig = *t.try_as_signature().unwrap();
+                let mut arg0 = objs.lobjs[sig.recv().unwrap()].clone();
+                arg0.set_type(self.recv);
+                let arg0key = objs.lobjs.insert(arg0);
+                sig.set_recv(None);
+                let mut params = vec![arg0key];
+                if let Some(tkey) = sig.params() {
+                    let tup = &mut objs.types[*tkey].try_as_tuple_mut().unwrap();
+                    params.append(tup.vars_mut())
+                }
+                let params_tuple = typ::TupleDetail::new(params);
+                sig.set_params(Some(objs.types.insert(typ::Type::Tuple(params_tuple))));
+                objs.types.insert(typ::Type::Signature(sig))
+            }
+        }
     }
 }

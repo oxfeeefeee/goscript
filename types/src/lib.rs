@@ -12,4 +12,6 @@ mod lookup;
 mod objects;
 mod selection;
 
+mod operand;
+
 mod universe;

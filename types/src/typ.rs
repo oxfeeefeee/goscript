@@ -154,6 +154,131 @@ impl Type {
             _ => None,
         }
     }
+
+    pub fn underlying_val<'a>(&'a self, objs: &'a TCObjects) -> &'a Type {
+        if let Some(k) = self.underlying() {
+            &objs.types[*k]
+        } else {
+            &self
+        }
+    }
+
+    pub fn is_named(&self) -> bool {
+        match self {
+            Type::Basic(_) | Type::Named(_) => true,
+            _ => false,
+        }
+    }
+    pub fn is_boolean(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info() == BasicInfo::IsBoolean,
+            Type::Named(_) => self.underlying_val(objs).is_boolean(objs),
+            _ => false,
+        }
+    }
+    pub fn is_integer(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info() == BasicInfo::IsInteger,
+            Type::Named(_) => self.underlying_val(objs).is_integer(objs),
+            _ => false,
+        }
+    }
+    pub fn is_unsigned(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.typ().is_unsigned(),
+            Type::Named(_) => self.underlying_val(objs).is_unsigned(objs),
+            _ => false,
+        }
+    }
+    pub fn is_float(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info() == BasicInfo::IsFloat,
+            Type::Named(_) => self.underlying_val(objs).is_float(objs),
+            _ => false,
+        }
+    }
+    pub fn is_complex(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info() == BasicInfo::IsComplex,
+            Type::Named(_) => self.underlying_val(objs).is_complex(objs),
+            _ => false,
+        }
+    }
+    pub fn is_numeric(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info().is_numeric(),
+            Type::Named(_) => self.underlying_val(objs).is_numeric(objs),
+            _ => false,
+        }
+    }
+    pub fn is_string(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info() == BasicInfo::IsString,
+            Type::Named(_) => self.underlying_val(objs).is_string(objs),
+            _ => false,
+        }
+    }
+    pub fn is_typed(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => !b.typ().is_untyped(),
+            Type::Named(_) => self.underlying_val(objs).is_typed(objs),
+            _ => false,
+        }
+    }
+    pub fn is_untyped(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.typ().is_untyped(),
+            Type::Named(_) => self.underlying_val(objs).is_untyped(objs),
+            _ => false,
+        }
+    }
+    pub fn is_ordered(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info().is_ordered(),
+            Type::Named(_) => self.underlying_val(objs).is_ordered(objs),
+            _ => false,
+        }
+    }
+    pub fn is_const_type(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Basic(b) => b.info().is_const_type(),
+            Type::Named(_) => self.underlying_val(objs).is_const_type(objs),
+            _ => false,
+        }
+    }
+    pub fn is_interface(&self, objs: &TCObjects) -> bool {
+        match self {
+            Type::Interface(_) => true,
+            Type::Named(_) => self.underlying_val(objs).is_interface(objs),
+            _ => false,
+        }
+    }
+    /// has_nil reports whether a type includes the nil value.
+    pub fn has_nil(&self, objs: &TCObjects) -> bool {
+        match self.underlying_val(objs) {
+            Type::Basic(b) => b.typ() == BasicType::UnsafePointer,
+            Type::Slice(_)
+            | Type::Pointer(_)
+            | Type::Signature(_)
+            | Type::Interface(_)
+            | Type::Map(_)
+            | Type::Chan(_) => true,
+            _ => false,
+        }
+    }
+    /// comparable reports whether values of type T are comparable.
+    pub fn comparable(&self, objs: &TCObjects) -> bool {
+        match self.underlying_val(objs) {
+            Type::Basic(b) => b.typ() != BasicType::UntypedNil,
+            Type::Pointer(_) | Type::Interface(_) | Type::Chan(_) => true,
+            Type::Struct(s) => !s
+                .fields()
+                .iter()
+                .any(|f| !comparable(objs.lobjs[*f].typ().as_ref().unwrap(), objs)),
+            Type::Array(a) => comparable(a.elem(), objs),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -534,6 +659,10 @@ impl InterfaceDetail {
         self.all_methods.borrow()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.all_methods().as_ref().unwrap().len() == 0
+    }
+
     pub fn complete(&self, objs: &TCObjects) {
         if self.all_methods.borrow().is_some() {
             return;
@@ -662,134 +791,65 @@ pub fn underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
 }
 
 pub fn is_named(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(_) | Type::Named(_) => true,
-        _ => false,
-    }
+    objs.types[*t].is_named()
 }
 
 pub fn is_boolean(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info() == BasicInfo::IsBoolean,
-        Type::Named(n) => is_boolean(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_boolean(objs)
 }
 
 pub fn is_integer(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info() == BasicInfo::IsInteger,
-        Type::Named(n) => is_integer(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_integer(objs)
 }
 
 pub fn is_unsigned(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.typ().is_unsigned(),
-        Type::Named(n) => is_unsigned(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_unsigned(objs)
 }
 
 pub fn is_float(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info() == BasicInfo::IsFloat,
-        Type::Named(n) => is_float(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_float(objs)
 }
 
 pub fn is_complex(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info() == BasicInfo::IsComplex,
-        Type::Named(n) => is_complex(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_complex(objs)
 }
 
 pub fn is_numeric(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info().is_numeric(),
-        Type::Named(n) => is_numeric(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_numeric(objs)
 }
 
 pub fn is_string(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info() == BasicInfo::IsString,
-        Type::Named(n) => is_string(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_string(objs)
 }
 
 pub fn is_typed(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => !b.typ().is_untyped(),
-        Type::Named(n) => is_typed(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_typed(objs)
 }
 
 pub fn is_untyped(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.typ().is_untyped(),
-        Type::Named(n) => is_typed(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_untyped(objs)
 }
 
 pub fn is_ordered(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info().is_ordered(),
-        Type::Named(n) => is_ordered(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_ordered(objs)
 }
 
 pub fn is_const_type(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Basic(b) => b.info().is_const_type(),
-        Type::Named(n) => is_const_type(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_const_type(objs)
 }
 
 pub fn is_interface(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*t] {
-        Type::Interface(_) => true,
-        Type::Named(n) => is_interface(n.underlying(), objs),
-        _ => false,
-    }
+    objs.types[*t].is_interface(objs)
 }
 
 /// has_nil reports whether a type includes the nil value.
 pub fn has_nil(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*underlying_type(t, objs)] {
-        Type::Basic(b) => b.typ() == BasicType::UnsafePointer,
-        Type::Slice(_)
-        | Type::Pointer(_)
-        | Type::Signature(_)
-        | Type::Interface(_)
-        | Type::Map(_)
-        | Type::Chan(_) => true,
-        _ => false,
-    }
+    objs.types[*t].has_nil(objs)
 }
 
 /// comparable reports whether values of type T are comparable.
 pub fn comparable(t: &TypeKey, objs: &TCObjects) -> bool {
-    match &objs.types[*underlying_type(t, objs)] {
-        Type::Basic(b) => b.typ() != BasicType::UntypedNil,
-        Type::Pointer(_) | Type::Interface(_) | Type::Chan(_) => true,
-        Type::Struct(s) => !s
-            .fields()
-            .iter()
-            .any(|f| !comparable(objs.lobjs[*f].typ().as_ref().unwrap(), objs)),
-        Type::Array(a) => comparable(a.elem(), objs),
-        _ => false,
-    }
+    objs.types[*t].comparable(objs)
 }
 
 /// untyped_default_type returns the default "typed" type for an "untyped" type;
