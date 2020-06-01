@@ -19,7 +19,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::position;
 use goscript_parser::token::Token;
-use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, Visitor};
+use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_parser::{FileSet, Parser};
 
 macro_rules! current_func_mut {
@@ -67,30 +67,24 @@ pub struct CodeGen<'a> {
     blank_ident: IdentKey,
 }
 
-impl<'a> Visitor for CodeGen<'a> {
-    fn visit_expr(&mut self, expr: &Expr) -> Result<(), ()> {
+impl<'a> ExprVisitor for CodeGen<'a> {
+    type Result = Result<(), ()>;
+
+    fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
         walk_expr(self, expr)
     }
 
-    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<(), ()> {
-        walk_stmt(self, stmt)
-    }
-
-    fn visit_decl(&mut self, decl: &Decl) -> Result<(), ()> {
-        walk_decl(self, decl)
-    }
-
-    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Result<(), ()> {
+    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
         let index = self.resolve_ident(ident)?;
         current_func_mut!(self).emit_load(index);
         Ok(())
     }
 
-    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) -> Result<(), ()> {
+    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) -> Self::Result {
         unreachable!();
     }
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Result<(), ()> {
+    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Self::Result {
         let val = self.get_const_value(None, &blit)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
@@ -99,7 +93,7 @@ impl<'a> Visitor for CodeGen<'a> {
     }
 
     /// Add function as a const and then generate a closure of it
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Result<(), ()> {
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result {
         let fkey = self.gen_func_def(&flit.typ, &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
@@ -108,7 +102,7 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Result<(), ()> {
+    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
         let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
@@ -116,29 +110,33 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_paren(&mut self) -> Result<(), ()> {
-        //unimplemented!();
-        Ok(())
+    fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result {
+        self.visit_expr(expr)
     }
 
-    fn visit_expr_selector(&mut self, ident: &IdentKey) -> Result<(), ()> {
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey) -> Self::Result {
+        self.visit_expr(expr)?;
         // todo: use index instead of string when Type Checker is in place
         self.gen_push_ident_str(ident);
         current_func_mut!(self).emit_load_field();
         Ok(())
     }
 
-    fn visit_expr_index(&mut self) -> Result<(), ()> {
+    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
+        self.visit_expr(expr)?;
+        self.visit_expr(index)?;
         current_func_mut!(self).emit_load_field();
         Ok(())
     }
 
     fn visit_expr_slice(
         &mut self,
+        expr: &Expr,
         low: &Option<Expr>,
         high: &Option<Expr>,
         max: &Option<Expr>,
-    ) -> Result<(), ()> {
+    ) -> Self::Result {
+        self.visit_expr(expr)?;
         match low {
             None => current_func_mut!(self).emit_code(Opcode::PUSH_NIL),
             Some(e) => self.visit_expr(e)?,
@@ -157,16 +155,11 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_type_assert(&mut self, _typ: &Option<Expr>) -> Result<(), ()> {
+    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_expr_call(
-        &mut self,
-        func: &Expr,
-        params: &Vec<Expr>,
-        ellipsis: bool,
-    ) -> Result<(), ()> {
+    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) -> Self::Result {
         // check if this is a built in function first
         if let Expr::Ident(ikey) = func {
             let ident = self.ast_objs.idents[*ikey.as_ref()].clone();
@@ -196,21 +189,23 @@ impl<'a> Visitor for CodeGen<'a> {
         current_func_mut!(self).emit_pre_call();
         let _ = params
             .iter()
-            .map(|e| -> Result<(), ()> { self.visit_expr(e) })
+            .map(|e| -> Self::Result { self.visit_expr(e) })
             .count();
         // do not pack params if there is ellipsis
         current_func_mut!(self).emit_call(ellipsis);
         Ok(())
     }
 
-    fn visit_expr_star(&mut self) -> Result<(), ()> {
+    fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result {
+        self.visit_expr(expr)?;
         //todo: could this be a pointer type?
         let code = Opcode::DEREF;
         current_func_mut!(self).emit_code(code);
         Ok(())
     }
 
-    fn visit_expr_unary(&mut self, op: &Token) -> Result<(), ()> {
+    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
+        self.visit_expr(expr)?;
         let code = match op {
             Token::AND => Opcode::REF,
             Token::ADD => Opcode::UNARY_ADD,
@@ -222,7 +217,7 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Result<(), ()> {
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
         self.visit_expr(left)?;
         let code = match op {
             Token::ADD => Opcode::ADD,
@@ -277,11 +272,11 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_key_value(&mut self) -> Result<(), ()> {
+    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_expr_array_type(&mut self, arr: &Expr) -> Result<(), ()> {
+    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
         let val = self.get_or_gen_type(arr)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
@@ -289,27 +284,43 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_expr_struct_type(&mut self, _s: &StructType) -> Result<(), ()> {
+    fn visit_expr_struct_type(&mut self, _s: &StructType) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_expr_func_type(&mut self, _s: &FuncType) -> Result<(), ()> {
+    fn visit_expr_func_type(&mut self, _s: &FuncType) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) -> Result<(), ()> {
+    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_map_type(&mut self) -> Result<(), ()> {
+    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_chan_type(&mut self, _dir: &ChanDir) -> Result<(), ()> {
+    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) -> Result<(), ()> {
+    fn visit_bad_expr(&mut self, _e: &BadExpr) -> Self::Result {
+        unreachable!();
+    }
+}
+
+impl<'a> StmtVisitor for CodeGen<'a> {
+    type Result = Result<(), ()>;
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Result {
+        walk_stmt(self, stmt)
+    }
+
+    fn visit_decl(&mut self, decl: &Decl) -> Self::Result {
+        walk_decl(self, decl)
+    }
+
+    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) -> Self::Result {
         for s in gdecl.specs.iter() {
             let spec = &self.ast_objs.specs[*s];
             match spec {
@@ -343,7 +354,7 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Result<(), ()> {
+    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
         let decl = &self.ast_objs.decls[*fdecl];
         if decl.body.is_none() {
             unimplemented!()
@@ -377,20 +388,20 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) -> Result<(), ()> {
+    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) -> Result<(), ()> {
+    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) -> Result<(), ()> {
+    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) -> Self::Result {
         self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None)?;
         Ok(())
     }
 
-    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) -> Result<(), ()> {
+    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) -> Self::Result {
         let stmt = &self.ast_objs.a_stmts[*astmt];
         self.gen_assign(
             &stmt.token,
@@ -401,15 +412,15 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) -> Result<(), ()> {
+    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) -> Result<(), ()> {
+    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) -> Result<(), ()> {
+    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) -> Self::Result {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr)?;
             let f = current_func_mut!(self);
@@ -424,18 +435,18 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) -> Result<(), ()> {
+    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) -> Result<(), ()> {
+    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) -> Self::Result {
         for stmt in bstmt.list.iter() {
             self.visit_stmt(stmt)?;
         }
         Ok(())
     }
 
-    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) -> Result<(), ()> {
+    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) -> Self::Result {
         if let Some(init) = &ifstmt.init {
             self.visit_stmt(init)?;
         }
@@ -476,27 +487,27 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_case(&mut self, _cclause: &CaseClause) -> Result<(), ()> {
+    fn visit_stmt_case(&mut self, _cclause: &CaseClause) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) -> Result<(), ()> {
+    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) -> Result<(), ()> {
+    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_comm(&mut self, _cclause: &CommClause) -> Result<(), ()> {
+    fn visit_stmt_comm(&mut self, _cclause: &CommClause) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) -> Result<(), ()> {
+    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) -> Self::Result {
         unimplemented!();
     }
 
-    fn visit_stmt_for(&mut self, fstmt: &ForStmt) -> Result<(), ()> {
+    fn visit_stmt_for(&mut self, fstmt: &ForStmt) -> Self::Result {
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init)?;
         }
@@ -533,7 +544,7 @@ impl<'a> Visitor for CodeGen<'a> {
         Ok(())
     }
 
-    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Result<(), ()> {
+    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Self::Result {
         let blank = Expr::Ident(Box::new(self.blank_ident));
         let lhs = vec![
             rstmt.key.as_ref().unwrap_or(&blank),
@@ -555,6 +566,18 @@ impl<'a> Visitor for CodeGen<'a> {
         let end_offset = i16::try_from(func.code.len() - (marker + 2)).unwrap();
         func.code[marker + 1] = CodeData::Data(end_offset);
         Ok(())
+    }
+
+    fn visit_empty_stmt(&mut self, _e: &EmptyStmt) -> Self::Result {
+        Ok(())
+    }
+
+    fn visit_bad_stmt(&mut self, _b: &BadStmt) -> Self::Result {
+        unreachable!();
+    }
+
+    fn visit_bad_decl(&mut self, _b: &BadDecl) -> Self::Result {
+        unreachable!();
     }
 }
 

@@ -3,14 +3,17 @@ use super::constant;
 use super::lookup::missing_method;
 use super::objects::{TCObjects, TypeKey};
 use super::typ;
-use super::typ::{BasicType, Type};
+use super::typ::{fmt_type, BasicType, Type};
 use super::universe::{Builtin, Universe};
 use goscript_parser::ast;
-use goscript_parser::ast::Node;
-use goscript_parser::objects::Objects as AstObject;
+use goscript_parser::ast::*;
+use goscript_parser::objects::{IdentKey, Objects as AstObject};
 use goscript_parser::position;
 use goscript_parser::token::Token;
+use goscript_parser::visitor::{walk_expr, ExprVisitor};
 use std::fmt;
+use std::fmt::Display;
+use std::fmt::Write;
 
 /// An OperandMode specifies the (addressing) mode of an operand.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -112,7 +115,7 @@ impl Operand {
                         return true;
                     }
                     if self.mode == OperandMode::Constant {
-                        return self.val.representable(detail.typ(), None);
+                        return self.val.representable(detail, None);
                     }
                     // The result of a comparison is an untyped boolean,
                     // but may not be a constant.
@@ -169,5 +172,342 @@ impl Operand {
         }
 
         false
+    }
+
+    /// Operand string formats
+    /// (not all "untyped" cases can appear due to the type system)
+    ///
+    /// mode       format
+    ///
+    /// invalid    <expr> (               <mode>                    )
+    /// novalue    <expr> (               <mode>                    )
+    /// builtin    <expr> (               <mode>                    )
+    /// typexpr    <expr> (               <mode>                    )
+    ///
+    /// constant   <expr> (<untyped kind> <mode>                    )
+    /// constant   <expr> (               <mode>       of type <typ>)
+    /// constant   <expr> (<untyped kind> <mode> <val>              )
+    /// constant   <expr> (               <mode> <val> of type <typ>)
+    ///
+    /// variable   <expr> (<untyped kind> <mode>                    )
+    /// variable   <expr> (               <mode>       of type <typ>)
+    ///
+    /// mapindex   <expr> (<untyped kind> <mode>                    )
+    /// mapindex   <expr> (               <mode>       of type <typ>)
+    ///
+    /// value      <expr> (<untyped kind> <mode>                    )
+    /// value      <expr> (               <mode>       of type <typ>)
+    ///
+    /// commaok    <expr> (<untyped kind> <mode>                    )
+    /// commaok    <expr> (               <mode>       of type <typ>)
+    pub fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        tc_objs: &TCObjects,
+        ast_objs: &AstObject,
+    ) -> fmt::Result {
+        let universe = tc_objs.universe();
+        let mut has_expr = true;
+
+        // <expr> (
+        if let Some(expr) = &self.expr {
+            fmt_expr(&expr, f, ast_objs)?;
+        } else {
+            match self.mode {
+                OperandMode::Builtin => {
+                    f.write_str(universe.builtins()[&self.builtin].name)?;
+                }
+                OperandMode::TypeExpr => {
+                    fmt_type(&Some(self.typ), f, tc_objs)?;
+                }
+                OperandMode::Constant => {
+                    f.write_str(&self.val.as_string())?;
+                }
+                _ => has_expr = false,
+            }
+        }
+        if has_expr {
+            f.write_str(" (")?;
+        }
+
+        // <untyped kind>
+        let has_type = match self.mode {
+            OperandMode::Invalid
+            | OperandMode::NoValue
+            | OperandMode::Builtin
+            | OperandMode::TypeExpr => false,
+            _ => {
+                let tval = &tc_objs.types[self.typ];
+                if tval.is_untyped(tc_objs) {
+                    f.write_str(tval.try_as_basic().unwrap().name())?;
+                    false
+                } else {
+                    true
+                }
+            }
+        };
+
+        // <mode>
+        self.mode.fmt(f)?;
+
+        // <val>
+        if self.mode == OperandMode::Constant && self.expr.is_some() {
+            f.write_char(' ')?;
+            f.write_str(&self.val.as_string())?;
+        }
+
+        // <typ>
+        if has_type {
+            if self.typ != universe.types()[&BasicType::Invalid] {
+                f.write_str(" of type")?;
+                fmt_type(&Some(self.typ), f, tc_objs)?;
+            } else {
+                f.write_str(" with invalid type")?;
+            }
+        }
+
+        // )
+        if has_expr {
+            f.write_char(')')?;
+        }
+        Ok(())
+    }
+}
+
+/// fmt_expr formats the (possibly shortened) string representation for 'expr'.
+/// Shortened representations are suitable for user interfaces but may not
+/// necessarily follow Go syntax.
+pub fn fmt_expr(expr: &Expr, f: &mut fmt::Formatter<'_>, ast_objs: &AstObject) -> fmt::Result {
+    // The AST preserves source-level parentheses so there is
+    // no need to introduce them here to correct for different
+    // operator precedences. (This assumes that the AST was
+    // generated by a Go parser.)
+    ExprFormater {
+        f: f,
+        ast_objs: ast_objs,
+    }
+    .visit_expr(expr)
+}
+
+struct ExprFormater<'a, 'b> {
+    f: &'a mut fmt::Formatter<'b>,
+    ast_objs: &'a AstObject,
+}
+
+impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
+    type Result = fmt::Result;
+
+    fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
+        walk_expr(self, expr)
+    }
+
+    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
+        self.f.write_str(&self.ast_objs.idents[*ident].name)
+    }
+
+    fn visit_expr_ellipsis(&mut self, els: &Option<Expr>) -> Self::Result {
+        self.f.write_str("...")?;
+        if let Some(e) = els {
+            self.visit_expr(e)?;
+        }
+        Ok(())
+    }
+
+    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Self::Result {
+        blit.token.fmt(self.f)
+    }
+
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result {
+        self.f.write_char('(')?;
+        self.visit_expr_func_type(&flit.typ)?;
+        self.f.write_str(" literal)")
+    }
+
+    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
+        self.f.write_char('(')?;
+        self.visit_expr(clit.typ.as_ref().unwrap())?;
+        self.f.write_str(" literal)")
+    }
+
+    fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result {
+        self.f.write_char('(')?;
+        self.visit_expr(expr)?;
+        self.f.write_char(')')
+    }
+
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey) -> Self::Result {
+        self.visit_expr(expr)?;
+        self.f.write_char('.')?;
+        self.visit_expr_ident(ident)
+    }
+
+    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
+        self.visit_expr(expr)?;
+        self.f.write_char('[')?;
+        self.visit_expr(index)?;
+        self.f.write_char(']')
+    }
+
+    fn visit_expr_slice(
+        &mut self,
+        expr: &Expr,
+        low: &Option<Expr>,
+        high: &Option<Expr>,
+        max: &Option<Expr>,
+    ) -> Self::Result {
+        self.visit_expr(expr)?;
+        if let Some(l) = low {
+            self.visit_expr(l)?;
+        }
+        self.f.write_char(':')?;
+        if let Some(h) = high {
+            self.visit_expr(h)?;
+        }
+        if let Some(m) = max {
+            self.f.write_char(':')?;
+            self.visit_expr(m)?;
+        }
+        self.f.write_char(']')
+    }
+
+    fn visit_expr_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>) -> Self::Result {
+        self.visit_expr(expr)?;
+        self.f.write_str(".(")?;
+        self.visit_expr(typ.as_ref().unwrap())?;
+        self.f.write_char(')')
+    }
+
+    fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool) -> Self::Result {
+        self.visit_expr(func)?;
+        for (i, arg) in args.iter().enumerate() {
+            if i > 0 {
+                self.f.write_str(", ")?;
+            }
+            self.visit_expr(arg)?;
+        }
+        if ellipsis {
+            self.f.write_str("...")?;
+        }
+        self.f.write_char(')')
+    }
+
+    fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result {
+        self.f.write_char('*')?;
+        self.visit_expr(expr)
+    }
+
+    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
+        op.fmt(self.f)?;
+        self.visit_expr(expr)
+    }
+
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
+        self.visit_expr(left)?;
+        op.fmt(self.f)?;
+        self.visit_expr(right)
+    }
+
+    fn visit_expr_key_value(&mut self, _: &Expr, _: &Expr) -> Self::Result {
+        self.f.write_str("(bad expr)")
+    }
+
+    fn visit_expr_array_type(&mut self, len: &Option<Expr>, elm: &Expr, _: &Expr) -> Self::Result {
+        self.f.write_char('[')?;
+        if let Some(l) = len {
+            self.visit_expr(l)?;
+        }
+        self.f.write_char(']')?;
+        self.visit_expr(elm)
+    }
+
+    fn visit_expr_struct_type(&mut self, s: &StructType) -> Self::Result {
+        self.f.write_str("struct{")?;
+        self.fmt_fields(&s.fields, "; ", false)?;
+        self.f.write_char('}')
+    }
+
+    fn visit_expr_func_type(&mut self, s: &FuncType) -> Self::Result {
+        self.f.write_str("func")?;
+        self.fmt_sig(s)
+    }
+
+    fn visit_expr_interface_type(&mut self, s: &InterfaceType) -> Self::Result {
+        self.f.write_str("interface{")?;
+        self.fmt_fields(&s.methods, "; ", true)?;
+        self.f.write_char('}')
+    }
+
+    fn visit_map_type(&mut self, key: &Expr, val: &Expr, _: &Expr) -> Self::Result {
+        self.f.write_str("map[")?;
+        self.visit_expr(key)?;
+        self.f.write_char(']')?;
+        self.visit_expr(val)
+    }
+
+    fn visit_chan_type(&mut self, chan: &Expr, dir: &ChanDir) -> Self::Result {
+        let s = match dir {
+            ChanDir::Send => "chan<- ",
+            ChanDir::Recv => "<-chan ",
+            ChanDir::SendRecv => "chan ",
+        };
+        self.f.write_str(s)?;
+        self.visit_expr(chan)
+    }
+
+    fn visit_bad_expr(&mut self, _: &BadExpr) -> Self::Result {
+        self.f.write_str("(bad expr)")
+    }
+}
+
+impl<'a, 'b> ExprFormater<'a, 'b> {
+    fn fmt_sig(&mut self, sig: &FuncType) -> fmt::Result {
+        self.f.write_char('(')?;
+        self.fmt_fields(&sig.params, ", ", false)?;
+        self.f.write_char(')')?;
+        if let Some(re) = &sig.results {
+            self.f.write_char(' ')?;
+            if re.list.len() == 1 {
+                let field = &self.ast_objs.fields[re.list[0]];
+                if field.names.len() == 0 {
+                    self.visit_expr(&field.typ)?;
+                }
+            } else {
+                self.f.write_char('(')?;
+                self.fmt_fields(&re, ", ", false)?;
+                self.f.write_char(')')?;
+            }
+        }
+        Ok(())
+    }
+
+    fn fmt_fields(&mut self, fields: &FieldList, sep: &str, iface: bool) -> fmt::Result {
+        for (i, fkey) in fields.list.iter().enumerate() {
+            if i > 0 {
+                self.f.write_str(sep)?;
+            }
+            let field = &self.ast_objs.fields[*fkey];
+            for (i, name) in field.names.iter().enumerate() {
+                if i > 0 {
+                    self.f.write_str(", ")?;
+                    self.visit_expr_ident(name)?;
+                }
+            }
+            // types of interface methods consist of signatures only
+            if iface {
+                match &field.typ {
+                    Expr::Func(sig) => {
+                        self.fmt_sig(sig.as_ref())?;
+                    }
+                    _ => unreachable!(),
+                }
+            } else {
+                // named fields are separated with a blank from the field type
+                if field.names.len() > 0 {
+                    self.f.write_char(' ')?;
+                }
+                self.visit_expr(&field.typ)?;
+            }
+        }
+        Ok(())
     }
 }

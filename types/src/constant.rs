@@ -1,9 +1,13 @@
 #![allow(dead_code)]
-use super::typ::BasicType;
+use super::typ::{BasicDetail, BasicInfo, BasicType};
 use goscript_parser::token::Token;
 use num_bigint::BigInt;
 use num_traits::cast::FromPrimitive;
+use num_traits::cast::ToPrimitive;
 use num_traits::Num;
+use std::borrow::Borrow;
+use std::borrow::Cow;
+use std::convert::TryFrom;
 use std::fmt;
 
 /// constant implements Values representing untyped
@@ -92,8 +96,124 @@ impl Value {
         }
     }
 
-    pub fn representable(&self, _typ: BasicType, _rounded: Option<&Value>) -> bool {
-        unimplemented!()
+    pub fn representable(&self, base: &BasicDetail, rounded: Option<&mut Value>) -> bool {
+        if let Value::Unknown = self {
+            return true; // avoid follow-up errors
+        }
+        match base.info() {
+            BasicInfo::IsInteger => match self.to_int().borrow() {
+                Value::Int(ival) => {
+                    if let Some(r) = rounded {
+                        *r = Value::Int(ival.clone())
+                    }
+                    match base.typ() {
+                        BasicType::Int => ival.to_isize().is_some(),
+                        BasicType::Int8 => ival.to_i8().is_some(),
+                        BasicType::Int16 => ival.to_i16().is_some(),
+                        BasicType::Int32 => ival.to_i32().is_some(),
+                        BasicType::Int64 => ival.to_i64().is_some(),
+                        BasicType::Uint | BasicType::Uintptr => ival.to_usize().is_some(),
+                        BasicType::Uint8 | BasicType::Byte => ival.to_u8().is_some(),
+                        BasicType::Uint16 => ival.to_u16().is_some(),
+                        BasicType::Uint32 | BasicType::Rune => ival.to_u32().is_some(),
+                        BasicType::Uint64 => ival.to_u64().is_some(),
+                        BasicType::UntypedInt => true,
+                        _ => unreachable!(),
+                    }
+                }
+                _ => false,
+            },
+            BasicInfo::IsFloat => {
+                if let Some(f) = self.to_float() {
+                    match base.typ() {
+                        BasicType::Float64 => true,
+                        BasicType::Float32 => {
+                            if f.to_f32().is_some() {
+                                true
+                            } else {
+                                if let Some(r) = rounded {
+                                    *r = Value::Float((f as f32).into());
+                                }
+                                false
+                            }
+                        }
+                        BasicType::UntypedFloat => true,
+                        _ => unreachable!(),
+                    }
+                } else {
+                    false
+                }
+            }
+            BasicInfo::IsComplex => {
+                if let Some((re, im)) = self.to_complex() {
+                    match base.typ() {
+                        BasicType::Complex128 => true,
+                        BasicType::Complex64 => {
+                            if re.to_f32().is_some() && im.to_f32().is_some() {
+                                true
+                            } else {
+                                if let Some(r) = rounded {
+                                    *r = Value::Complex((re as f32).into(), (im as f32).into());
+                                }
+                                false
+                            }
+                        }
+                        BasicType::UntypedComplex => true,
+                        _ => unreachable!(),
+                    }
+                } else {
+                    false
+                }
+            }
+            BasicInfo::IsBoolean => base.info() == BasicInfo::IsBoolean,
+            BasicInfo::IsString => base.info() == BasicInfo::IsString,
+            _ => false,
+        }
+    }
+
+    fn to_int(&self) -> Cow<Value> {
+        let f64_to_int = |x| -> Cow<Value> {
+            match BigInt::from_f64(x) {
+                Some(v) => Cow::Owned(Value::Int(v)),
+                None => Cow::Owned(Value::Unknown),
+            }
+        };
+        match self {
+            Value::Int(_) => Cow::Borrowed(self),
+            Value::Float(f) => f64_to_int(*f),
+            Value::Complex(r, i) => {
+                if *i == 0.0 {
+                    f64_to_int(*r)
+                } else {
+                    Cow::Owned(Value::Unknown)
+                }
+            }
+            _ => Cow::Owned(Value::Unknown),
+        }
+    }
+
+    fn to_float(&self) -> Option<f64> {
+        match self {
+            Value::Int(i) => i.to_f64(),
+            Value::Float(f) => Some(*f),
+            Value::Complex(r, i) => {
+                if *i == 0.0 {
+                    Some(*r)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn to_complex(&self) -> Option<(f64, f64)> {
+        match self {
+            Value::Int(i) => i.to_f64().map(|x| (x, 0.0)),
+            Value::Float(f) => Some((*f, 0.0)),
+            Value::Complex(r, i) => Some((*r, *i)),
+            _ => None,
+        }
     }
 
     pub fn as_string(&self) -> String {

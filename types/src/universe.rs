@@ -109,6 +109,10 @@ impl Universe {
         &self.types
     }
 
+    pub fn builtins(&self) -> &HashMap<Builtin, BuiltinInfo> {
+        &self.builtins
+    }
+
     pub fn iota(&self) -> &ObjKey {
         &self.iota
     }

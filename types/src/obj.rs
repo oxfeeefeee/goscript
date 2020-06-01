@@ -367,12 +367,6 @@ impl LangObj {
     }
 }
 
-impl fmt::Display for LangObj {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!()
-    }
-}
-
 // ----------------------------------------------------------------------------
 // ObjSet
 //
