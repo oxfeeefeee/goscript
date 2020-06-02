@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
 use std::pin::Pin;
+use std::rc::Rc;
 
 use super::func::*;
 
@@ -545,7 +546,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Self::Result {
-        let blank = Expr::Ident(Box::new(self.blank_ident));
+        let blank = Expr::Ident(Rc::new(self.blank_ident));
         let lhs = vec![
             rstmt.key.as_ref().unwrap_or(&blank),
             rstmt.val.as_ref().unwrap_or(&blank),
@@ -896,7 +897,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> Result<FunctionKey, ()> {
-        let ftype = self.get_or_gen_type(&Expr::Func(Box::new(typ.clone())))?;
+        let ftype = self.get_or_gen_type(&Expr::Func(Rc::new(typ.clone())))?;
         let type_val = ftype.get_type_val(&self.objects);
         let params = type_val.get_closure_params();
         let variadic = params.len() > 0

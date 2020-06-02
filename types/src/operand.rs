@@ -7,7 +7,7 @@ use super::typ::{fmt_type, BasicType, Type};
 use super::universe::{Builtin, Universe};
 use goscript_parser::ast;
 use goscript_parser::ast::*;
-use goscript_parser::objects::{IdentKey, Objects as AstObject};
+use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::position;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_expr, ExprVisitor};
@@ -59,7 +59,7 @@ pub struct Operand {
 }
 
 impl Operand {
-    pub fn pos(&self, ast_objs: &AstObject) -> position::Pos {
+    pub fn pos(&self, ast_objs: &AstObjects) -> position::Pos {
         if let Some(e) = &self.expr {
             e.pos(ast_objs)
         } else {
@@ -204,7 +204,7 @@ impl Operand {
         &self,
         f: &mut fmt::Formatter<'_>,
         tc_objs: &TCObjects,
-        ast_objs: &AstObject,
+        ast_objs: &AstObjects,
     ) -> fmt::Result {
         let universe = tc_objs.universe();
         let mut has_expr = true;
@@ -277,7 +277,7 @@ impl Operand {
 /// fmt_expr formats the (possibly shortened) string representation for 'expr'.
 /// Shortened representations are suitable for user interfaces but may not
 /// necessarily follow Go syntax.
-pub fn fmt_expr(expr: &Expr, f: &mut fmt::Formatter<'_>, ast_objs: &AstObject) -> fmt::Result {
+pub fn fmt_expr(expr: &Expr, f: &mut fmt::Formatter<'_>, ast_objs: &AstObjects) -> fmt::Result {
     // The AST preserves source-level parentheses so there is
     // no need to introduce them here to correct for different
     // operator precedences. (This assumes that the AST was
@@ -291,7 +291,7 @@ pub fn fmt_expr(expr: &Expr, f: &mut fmt::Formatter<'_>, ast_objs: &AstObject) -
 
 struct ExprFormater<'a, 'b> {
     f: &'a mut fmt::Formatter<'b>,
-    ast_objs: &'a AstObject,
+    ast_objs: &'a AstObjects,
 }
 
 impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {

@@ -3,36 +3,39 @@ use super::position;
 use super::scope;
 use super::token;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub trait Node {
     fn pos(&self, arena: &Objects) -> position::Pos;
     fn end(&self, arena: &Objects) -> position::Pos;
 }
 
-#[derive(Debug)]
+pub type ExprId = u64;
+
+#[derive(Clone, Debug)]
 pub enum Expr {
-    Bad(Box<BadExpr>),
-    Ident(Box<IdentKey>),
-    Ellipsis(Box<Ellipsis>),
-    BasicLit(Box<BasicLit>),
-    FuncLit(Box<FuncLit>),
-    CompositeLit(Box<CompositeLit>),
-    Paren(Box<ParenExpr>),
-    Selector(Box<SelectorExpr>),
-    Index(Box<IndexExpr>),
-    Slice(Box<SliceExpr>),
-    TypeAssert(Box<TypeAssertExpr>),
-    Call(Box<CallExpr>),
-    Star(Box<StarExpr>),
-    Unary(Box<UnaryExpr>),
-    Binary(Box<BinaryExpr>),
-    KeyValue(Box<KeyValueExpr>),
-    Array(Box<ArrayType>),
-    Struct(Box<StructType>),
-    Func(Box<FuncType>),
-    Interface(Box<InterfaceType>),
-    Map(Box<MapType>),
-    Chan(Box<ChanType>),
+    Bad(Rc<BadExpr>),
+    Ident(Rc<IdentKey>),
+    Ellipsis(Rc<Ellipsis>),
+    BasicLit(Rc<BasicLit>),
+    FuncLit(Rc<FuncLit>),
+    CompositeLit(Rc<CompositeLit>),
+    Paren(Rc<ParenExpr>),
+    Selector(Rc<SelectorExpr>),
+    Index(Rc<IndexExpr>),
+    Slice(Rc<SliceExpr>),
+    TypeAssert(Rc<TypeAssertExpr>),
+    Call(Rc<CallExpr>),
+    Star(Rc<StarExpr>),
+    Unary(Rc<UnaryExpr>),
+    Binary(Rc<BinaryExpr>),
+    KeyValue(Rc<KeyValueExpr>),
+    Array(Rc<ArrayType>),
+    Struct(Rc<StructType>),
+    Func(Rc<FuncType>),
+    Interface(Rc<InterfaceType>),
+    Map(Rc<MapType>),
+    Chan(Rc<ChanType>),
 }
 
 #[derive(Debug)]
@@ -76,26 +79,26 @@ pub enum Decl {
 
 impl Expr {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Expr {
-        Expr::Bad(Box::new(BadExpr { from: from, to: to }))
+        Expr::Bad(Rc::new(BadExpr { from: from, to: to }))
     }
 
     pub fn new_selector(x: Expr, sel: IdentKey) -> Expr {
-        Expr::Selector(Box::new(SelectorExpr { expr: x, sel: sel }))
+        Expr::Selector(Rc::new(SelectorExpr { expr: x, sel: sel }))
     }
 
     pub fn new_ellipsis(pos: position::Pos, x: Option<Expr>) -> Expr {
-        Expr::Ellipsis(Box::new(Ellipsis { pos: pos, elt: x }))
+        Expr::Ellipsis(Rc::new(Ellipsis { pos: pos, elt: x }))
     }
 
     pub fn new_basic_lit(pos: position::Pos, token: token::Token) -> Expr {
-        Expr::BasicLit(Box::new(BasicLit {
+        Expr::BasicLit(Rc::new(BasicLit {
             pos: pos,
             token: token,
         }))
     }
 
     pub fn new_unary_expr(pos: position::Pos, op: token::Token, expr: Expr) -> Expr {
-        Expr::Unary(Box::new(UnaryExpr {
+        Expr::Unary(Rc::new(UnaryExpr {
             op_pos: pos,
             op: op,
             expr: expr,
@@ -103,7 +106,7 @@ impl Expr {
     }
 
     pub fn box_func_type(ft: FuncType) -> Expr {
-        Expr::Func(Box::new(ft))
+        Expr::Func(Rc::new(ft))
     }
 
     pub fn clone_ident(&self) -> Option<Expr> {
@@ -697,7 +700,7 @@ pub enum ChanDir {
     SendRecv = 3,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ChanType {
     pub begin: position::Pos,
     pub arrow: position::Pos,

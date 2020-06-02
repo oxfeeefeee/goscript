@@ -7,6 +7,7 @@ use super::errors::{ErrorList, FilePosErrors};
 use super::scope::*;
 use super::ast::*;
 use super::objects::*;
+use std::rc::Rc;
 
 pub struct Parser<'a> {
     objects: &'a mut Objects,
@@ -523,7 +524,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("TypeName");
 
         let ident = self.parse_ident();
-        let x_ident = Expr::Ident(Box::new(ident));
+        let x_ident = Expr::Ident(Rc::new(ident));
         // don't resolve ident yet - it may be a parameter or field name
         let ret = if let Token::PERIOD = self.token {
             // ident is a package name
@@ -561,7 +562,7 @@ impl<'a> Parser<'a> {
         let elt = self.parse_type();
 
         self.trace_end();
-        Expr::Array(Box::new(ArrayType{
+        Expr::Array(Rc::new(ArrayType{
             l_brack: lpos, len: len, elt: elt}))
     }
 
@@ -660,7 +661,7 @@ impl<'a> Parser<'a> {
         let rbrace = self.expect(&Token::RBRACE);
 
         self.trace_end();
-        Expr::Struct(Box::new(StructType{
+        Expr::Struct(Rc::new(StructType{
             struct_pos: stru,
             fields: FieldList::new(Some(lbrace), list, Some(rbrace)),
             incomplete: false,
@@ -674,7 +675,7 @@ impl<'a> Parser<'a> {
         let base = self.parse_type();
 
         self.trace_end();
-        Expr::Star(Box::new(StarExpr{star: star, expr: base}))
+        Expr::Star(Rc::new(StarExpr{star: star, expr: base}))
     }
 
     // If the result is an identifier, it is not resolved.
@@ -931,18 +932,18 @@ impl<'a> Parser<'a> {
                 let (typ, _) = self.parse_func_type();
                 Some(Expr::box_func_type(typ))
             },
-            Token::INTERFACE => Some(Expr::Interface(Box::new(
+            Token::INTERFACE => Some(Expr::Interface(Rc::new(
                 self.parse_interface_type()))),
-            Token::MAP => Some(Expr::Map(Box::new(
+            Token::MAP => Some(Expr::Map(Rc::new(
                 self.parse_map_type()))),
-            Token::CHAN | Token::ARROW => Some(Expr::Chan(Box::new(
+            Token::CHAN | Token::ARROW => Some(Expr::Chan(Rc::new(
                 self.parse_chan_type()))),
             Token::LPAREN => {
                 let lparen = self.pos;
                 self.next();
                 let typ = self.parse_type();
                 let rparen = self.expect(&Token::RPAREN);
-                Some(Expr::Paren(Box::new(ParenExpr{
+                Some(Expr::Paren(Rc::new(ParenExpr{
                     l_paren: lparen, expr: typ, r_paren: rparen})))
             }
             _ => None
@@ -1019,7 +1020,7 @@ impl<'a> Parser<'a> {
             self.expr_level += 1;
             let body = self.parse_body(scope);
             self.expr_level -= 1;
-            Expr::FuncLit(Box::new(FuncLit{typ: typ, body: body}))
+            Expr::FuncLit(Rc::new(FuncLit{typ: typ, body: body}))
         }; 
  
         self.trace_end(); 
@@ -1034,7 +1035,7 @@ impl<'a> Parser<'a> {
 
         let ret = match self.token {
             Token::IDENT(_) => {
-                let x = Expr::Ident(Box::new(self.parse_ident()));
+                let x = Expr::Ident(Rc::new(self.parse_ident()));
                 if !lhs {self.resolve(&x);}
                 x
             },
@@ -1052,7 +1053,7 @@ impl<'a> Parser<'a> {
                 let x = self.parse_rhs_or_type(); 
                 self.expr_level -= 1;
                 let rparen = self.expect(&Token::RPAREN);
-                Expr::Paren(Box::new(ParenExpr{
+                Expr::Paren(Rc::new(ParenExpr{
                     l_paren: lparen, expr: x, r_paren: rparen}))
             },
             Token::FUNC => self.parse_func_type_or_lit(),
@@ -1080,7 +1081,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("Selector");
         let sel = self.parse_ident();
         self.trace_end();
-        Expr::Selector(Box::new(SelectorExpr{
+        Expr::Selector(Rc::new(SelectorExpr{
             expr: x, sel: sel}))
     }
 
@@ -1098,7 +1099,7 @@ impl<'a> Parser<'a> {
         let rparen = self.expect(&Token::RPAREN);
         
         self.trace_end();
-        Expr::TypeAssert(Box::new(TypeAssertExpr{
+        Expr::TypeAssert(Rc::new(TypeAssertExpr{
             expr: x, l_paren: lparen, typ: typ, r_paren: rparen}))
     }
 
@@ -1138,7 +1139,7 @@ impl<'a> Parser<'a> {
                 }
             }
             let mut iter = indices.into_iter();
-            Expr::Slice(Box::new(SliceExpr{
+            Expr::Slice(Rc::new(SliceExpr{
                 expr: x,
                 l_brack: lbrack,
                 low: iter.next().unwrap(), // unwrap the first of two Option
@@ -1154,7 +1155,7 @@ impl<'a> Parser<'a> {
                 indices[0] = Some(Expr::new_bad(lbrack + 1, rbrack));
             }
             let index = indices.into_iter().nth(0).unwrap().unwrap();
-            Expr::Index(Box::new(IndexExpr{
+            Expr::Index(Rc::new(IndexExpr{
                 expr: x, l_brack: lbrack, index: index, r_brack: rbrack}))
         };
 
@@ -1186,7 +1187,7 @@ impl<'a> Parser<'a> {
         let rparen = self.expect_closing(&Token::RPAREN, "argument list");
 
         self.trace_end();
-        Expr::Call(Box::new(CallExpr{
+        Expr::Call(Rc::new(CallExpr{
             func: func, l_paren: lparen, args: list, ellipsis: ellipsis, r_paren: rparen}))
     }
 
@@ -1240,7 +1241,7 @@ impl<'a> Parser<'a> {
         let ret = if self.token == Token::COLON {
             let colon = self.pos;
             self.next();
-            Expr::KeyValue(Box::new(KeyValueExpr{
+            Expr::KeyValue(Rc::new(KeyValueExpr{
                 key: x, colon: colon, val: self.parse_value(false) }))
         } else {
             x
@@ -1278,7 +1279,7 @@ impl<'a> Parser<'a> {
         let rbrace = self.expect_closing(&Token::RBRACE, "composite literal");
 
         self.trace_end();
-        Expr::CompositeLit(Box::new(CompositeLit{
+        Expr::CompositeLit(Rc::new(CompositeLit{
             typ: typ, l_brace: lbrace, elts: elts, r_brace: rbrace, incomplete: false}))
     }
 
@@ -1463,7 +1464,7 @@ impl<'a> Parser<'a> {
                 // determine which case we have
                 if let Expr::Chan(c) = &mut x { // (<-type)
                     // re-associate position info and <-
-                    let mut ctype = c.as_mut();
+                    let mut ctype = Rc::get_mut(c).unwrap(); // c is not shared
                     let mut dir = ChanDir::Send;
                     while dir == ChanDir::Send {
                         if ctype.dir == ChanDir::Recv {
@@ -1477,7 +1478,7 @@ impl<'a> Parser<'a> {
                         dir = ctype.dir.clone();
                         ctype.dir = ChanDir::Recv;
                         if let Expr::Chan(c) = &mut ctype.val {
-                            ctype = c.as_mut();
+                            ctype = Rc::get_mut(c).unwrap(); // c is not shared
                         } else {
                             break;
                         }
@@ -1495,7 +1496,7 @@ impl<'a> Parser<'a> {
                 let pos = self.pos;
                 self.next();
                 let x = self.parse_unary_expr(false);
-                Expr::Star(Box::new(StarExpr{
+                Expr::Star(Rc::new(StarExpr{
                     star: pos, expr: self.check_expr_or_type(x)}))
             }
             _ => {
@@ -1531,7 +1532,7 @@ impl<'a> Parser<'a> {
                 self.resolve(&x);
             }
             let y = self.parse_binary_expr(false, prec+1);
-            x = Expr::Binary(Box::new(BinaryExpr{
+            x = Expr::Binary(Rc::new(BinaryExpr{
                 expr_a: x, op_pos: pos, op: op, expr_b: y}))
         }
 
@@ -2139,7 +2140,7 @@ impl<'a> Parser<'a> {
                         val: val,
                         token_pos: ass.token_pos,
                         token: ass.token,
-                        expr: unary.expr,
+                        expr: unary.expr.clone(),
                         body: body,
                     }))
                 } else {

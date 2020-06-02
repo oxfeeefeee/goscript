@@ -1,6 +1,8 @@
 #![allow(dead_code)]
-use super::objects::{PackageKey, ScopeKey};
+use super::objects::{ObjKey, PackageKey, ScopeKey};
+use goscript_parser::ast::{Expr, FuncDecl};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 
 /// A Package describes a Go package.
@@ -83,5 +85,25 @@ impl Package {
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "package {} ({})", &self.name, &self.path)
+    }
+}
+
+/// DeclInfo describes a package-level const, type, var, or func declaration.
+pub struct DeclInfo {
+    file_scope: ScopeKey,     // scope of file containing this declaration
+    lhs: Option<Vec<ObjKey>>, // lhs of n:1 variable declarations, or None
+    typ: Option<Expr>,        // type, or None
+    init: Option<Expr>,       // init/orig expression, or None
+    fdecl: Option<FuncDecl>,  // func declaration, or None
+    deps: HashSet<ObjKey>,    // deps tracks initialization expression dependencies.
+}
+
+impl DeclInfo {
+    pub fn has_initializer(&self) -> bool {
+        self.init.is_some() || self.fdecl.is_some() && self.fdecl.as_ref().unwrap().body.is_some()
+    }
+
+    pub fn add_dep(&mut self, okey: &ObjKey) {
+        self.deps.insert(*okey);
     }
 }

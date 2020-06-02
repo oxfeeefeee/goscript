@@ -2,7 +2,7 @@
 #![allow(unused_macros)]
 #![allow(dead_code)]
 use super::obj::LangObj;
-use super::package::Package;
+use super::package::{DeclInfo, Package};
 use super::scope::Scope;
 use super::typ::Type;
 use super::universe::Universe;
@@ -22,11 +22,13 @@ macro_rules! new_objects {
 new_key_type! { pub struct ObjKey; }
 new_key_type! { pub struct TypeKey; }
 new_key_type! { pub struct PackageKey; }
+new_key_type! { pub struct DeclKey; }
 new_key_type! { pub struct ScopeKey; }
 
 pub type LangObjs = DenseSlotMap<ObjKey, LangObj>;
 pub type Types = DenseSlotMap<TypeKey, Type>;
 pub type Packages = DenseSlotMap<PackageKey, Package>;
+pub type Decls = DenseSlotMap<DeclKey, DeclInfo>;
 pub type Scopes = DenseSlotMap<ScopeKey, Scope>;
 
 /// The container of all "managed" objects
@@ -35,6 +37,7 @@ pub struct TCObjects {
     pub lobjs: LangObjs,
     pub types: Types,
     pub pkgs: Packages,
+    pub decls: Decls,
     pub scopes: Scopes,
     pub universe: Option<Universe>,
     // "global" variable
@@ -54,6 +57,7 @@ impl TCObjects {
             lobjs: new_objects!(),
             types: new_objects!(),
             pkgs: new_objects!(),
+            decls: new_objects!(),
             scopes: new_objects!(),
             universe: None,
             debug: true,

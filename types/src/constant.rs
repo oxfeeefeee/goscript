@@ -7,7 +7,6 @@ use num_traits::cast::ToPrimitive;
 use num_traits::Num;
 use std::borrow::Borrow;
 use std::borrow::Cow;
-use std::convert::TryFrom;
 use std::fmt;
 
 /// constant implements Values representing untyped
