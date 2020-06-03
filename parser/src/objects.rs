@@ -16,6 +16,7 @@ new_key_type! { pub struct LabeledStmtKey; }
 new_key_type! { pub struct AssignStmtKey; }
 new_key_type! { pub struct SpecKey; }
 new_key_type! { pub struct FuncDeclKey; }
+new_key_type! { pub struct FuncTypeKey; }
 new_key_type! { pub struct IdentKey; }
 new_key_type! { pub struct FieldKey; }
 new_key_type! { pub struct EntityKey; }
@@ -25,6 +26,7 @@ pub type LabeledStmts = DenseSlotMap<LabeledStmtKey, ast::LabeledStmt>;
 pub type AssignStmts = DenseSlotMap<AssignStmtKey, ast::AssignStmt>;
 pub type Specs = DenseSlotMap<SpecKey, ast::Spec>;
 pub type FuncDecls = DenseSlotMap<FuncDeclKey, ast::FuncDecl>;
+pub type FuncTypes = DenseSlotMap<FuncTypeKey, ast::FuncType>;
 pub type Idents = DenseSlotMap<IdentKey, ast::Ident>;
 pub type Fields = DenseSlotMap<FieldKey, ast::Field>;
 pub type Entitys = DenseSlotMap<EntityKey, scope::Entity>;
@@ -34,7 +36,8 @@ pub struct Objects {
     pub l_stmts: LabeledStmts,
     pub a_stmts: AssignStmts,
     pub specs: Specs,
-    pub decls: FuncDecls,
+    pub fdecls: FuncDecls,
+    pub ftypes: FuncTypes,
     pub idents: Idents,
     pub fields: Fields,
     pub entities: Entitys,
@@ -47,7 +50,8 @@ impl Objects {
             l_stmts: new_objects!(),
             a_stmts: new_objects!(),
             specs: new_objects!(),
-            decls: new_objects!(),
+            fdecls: new_objects!(),
+            ftypes: new_objects!(),
             idents: new_objects!(),
             fields: new_objects!(),
             entities: new_objects!(),
@@ -121,22 +125,22 @@ macro_rules! spec_mut {
 
 macro_rules! fn_decls {
     ($owner:ident) => {
-        &$owner.objects.decls
+        &$owner.objects.fdecls
     };
 }
 macro_rules! fn_decls_mut {
     ($owner:ident) => {
-        &mut $owner.objects.decls
+        &mut $owner.objects.fdecls
     };
 }
 macro_rules! fn_decl {
     ($owner:ident, $idx:expr) => {
-        &$owner.objects.decls[$idx]
+        &$owner.objects.fdecls[$idx]
     };
 }
 macro_rules! fn_decl_mut {
     ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.decls[$idx]
+        &mut $owner.objects.fdecls[$idx]
     };
 }
 

@@ -3,19 +3,35 @@ use super::position;
 use super::scope;
 use super::token;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::rc::Rc;
+
+/// NodeId can be used as key of HashMaps
+#[derive(PartialEq, Eq, Hash)]
+pub enum NodeId {
+    Address(usize),
+    IdentExpr(IdentKey),
+    FuncTypeExpr(FuncTypeKey),
+    LabeledStmt(LabeledStmtKey),
+    AssignStmt(AssignStmtKey),
+    FuncDecl(FuncDeclKey),
+    FuncType(FuncTypeKey),
+    Field(FieldKey),
+    File(IdentKey),
+}
 
 pub trait Node {
     fn pos(&self, arena: &Objects) -> position::Pos;
-    fn end(&self, arena: &Objects) -> position::Pos;
-}
 
-pub type ExprId = u64;
+    fn end(&self, arena: &Objects) -> position::Pos;
+
+    fn id(&self) -> NodeId;
+}
 
 #[derive(Clone, Debug)]
 pub enum Expr {
     Bad(Rc<BadExpr>),
-    Ident(Rc<IdentKey>),
+    Ident(IdentKey),
     Ellipsis(Rc<Ellipsis>),
     BasicLit(Rc<BasicLit>),
     FuncLit(Rc<FuncLit>),
@@ -32,7 +48,7 @@ pub enum Expr {
     KeyValue(Rc<KeyValueExpr>),
     Array(Rc<ArrayType>),
     Struct(Rc<StructType>),
-    Func(Rc<FuncType>),
+    Func(FuncTypeKey),
     Interface(Rc<InterfaceType>),
     Map(Rc<MapType>),
     Chan(Rc<ChanType>),
@@ -43,11 +59,11 @@ pub enum Stmt {
     Bad(Box<BadStmt>),
     Decl(Box<Decl>),
     Empty(Box<EmptyStmt>),
-    Labeled(Box<LabeledStmtKey>),
+    Labeled(LabeledStmtKey),
     Expr(Box<Expr>),
     Send(Box<SendStmt>),
     IncDec(Box<IncDecStmt>),
-    Assign(Box<AssignStmtKey>),
+    Assign(AssignStmtKey),
     Go(Box<GoStmt>),
     Defer(Box<DeferStmt>),
     Return(Box<ReturnStmt>),
@@ -74,7 +90,7 @@ pub enum Spec {
 pub enum Decl {
     Bad(Box<BadDecl>),
     Gen(Box<GenDecl>),
-    Func(Box<FuncDeclKey>),
+    Func(FuncDeclKey),
 }
 
 impl Expr {
@@ -105,8 +121,8 @@ impl Expr {
         }))
     }
 
-    pub fn box_func_type(ft: FuncType) -> Expr {
-        Expr::Func(Rc::new(ft))
+    pub fn box_func_type(ft: FuncType, objs: &mut Objects) -> Expr {
+        Expr::Func(objs.ftypes.insert(ft))
     }
 
     pub fn clone_ident(&self) -> Option<Expr> {
@@ -146,13 +162,16 @@ impl Node for Expr {
     fn pos(&self, arena: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.from,
-            Expr::Ident(e) => arena.idents[*e.as_ref()].pos,
+            Expr::Ident(e) => arena.idents[*e].pos,
             Expr::Ellipsis(e) => e.pos,
             Expr::BasicLit(e) => e.pos,
-            Expr::FuncLit(e) => match e.typ.func {
-                Some(p) => p,
-                None => e.typ.params.pos(arena),
-            },
+            Expr::FuncLit(e) => {
+                let typ = &arena.ftypes[e.typ];
+                match typ.func {
+                    Some(p) => p,
+                    None => typ.params.pos(arena),
+                }
+            }
             Expr::CompositeLit(e) => match &e.typ {
                 Some(expr) => expr.pos(arena),
                 None => e.l_brace,
@@ -179,7 +198,7 @@ impl Node for Expr {
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.to,
-            Expr::Ident(e) => arena.idents[*e.as_ref()].end(),
+            Expr::Ident(e) => arena.idents[*e].end(),
             Expr::Ellipsis(e) => match &e.elt {
                 Some(expr) => expr.end(arena),
                 None => e.pos + 3,
@@ -205,6 +224,33 @@ impl Node for Expr {
             Expr::Chan(e) => e.val.end(arena),
         }
     }
+
+    fn id(&self) -> NodeId {
+        match &self {
+            Expr::Bad(e) => NodeId::Address(&**e as *const BadExpr as usize),
+            Expr::Ident(e) => NodeId::IdentExpr(*e),
+            Expr::Ellipsis(e) => NodeId::Address(&**e as *const Ellipsis as usize),
+            Expr::BasicLit(e) => NodeId::Address(&**e as *const BasicLit as usize),
+            Expr::FuncLit(e) => NodeId::Address(&**e as *const FuncLit as usize),
+            Expr::CompositeLit(e) => NodeId::Address(&**e as *const CompositeLit as usize),
+            Expr::Paren(e) => NodeId::Address(&**e as *const ParenExpr as usize),
+            Expr::Selector(e) => NodeId::Address(&**e as *const SelectorExpr as usize),
+            Expr::Index(e) => NodeId::Address(&**e as *const IndexExpr as usize),
+            Expr::Slice(e) => NodeId::Address(&**e as *const SliceExpr as usize),
+            Expr::TypeAssert(e) => NodeId::Address(&**e as *const TypeAssertExpr as usize),
+            Expr::Call(e) => NodeId::Address(&**e as *const CallExpr as usize),
+            Expr::Star(e) => NodeId::Address(&**e as *const StarExpr as usize),
+            Expr::Unary(e) => NodeId::Address(&**e as *const UnaryExpr as usize),
+            Expr::Binary(e) => NodeId::Address(&**e as *const BinaryExpr as usize),
+            Expr::KeyValue(e) => NodeId::Address(&**e as *const KeyValueExpr as usize),
+            Expr::Array(e) => NodeId::Address(&**e as *const ArrayType as usize),
+            Expr::Struct(e) => NodeId::Address(&**e as *const StructType as usize),
+            Expr::Func(e) => NodeId::FuncTypeExpr(*e),
+            Expr::Interface(e) => NodeId::Address(&**e as *const InterfaceType as usize),
+            Expr::Map(e) => NodeId::Address(&**e as *const MapType as usize),
+            Expr::Chan(e) => NodeId::Address(&**e as *const ChanType as usize),
+        }
+    }
 }
 
 impl Stmt {
@@ -219,7 +265,7 @@ impl Stmt {
         tok: token::Token,
         rhs: Vec<Expr>,
     ) -> Stmt {
-        Stmt::Assign(Box::new(AssignStmt::arena_new(arena, lhs, tpos, tok, rhs)))
+        Stmt::Assign(AssignStmt::arena_new(arena, lhs, tpos, tok, rhs))
     }
 
     pub fn box_block(block: BlockStmt) -> Stmt {
@@ -234,14 +280,14 @@ impl Node for Stmt {
             Stmt::Decl(d) => d.pos(arena),
             Stmt::Empty(s) => s.semi,
             Stmt::Labeled(s) => {
-                let label = arena.l_stmts[*s.as_ref()].label;
+                let label = arena.l_stmts[*s].label;
                 arena.idents[label].pos
             }
             Stmt::Expr(e) => e.pos(arena),
             Stmt::Send(s) => s.chan.pos(arena),
             Stmt::IncDec(s) => s.expr.pos(arena),
             Stmt::Assign(s) => {
-                let assign = &arena.a_stmts[*s.as_ref()];
+                let assign = &arena.a_stmts[*s];
                 assign.pos(arena)
             }
             Stmt::Go(s) => s.go,
@@ -271,14 +317,14 @@ impl Node for Stmt {
                 }
             }
             Stmt::Labeled(s) => {
-                let ls = &arena.l_stmts[*s.as_ref()];
+                let ls = &arena.l_stmts[*s];
                 ls.stmt.end(arena)
             }
             Stmt::Expr(e) => e.end(arena),
             Stmt::Send(s) => s.val.end(arena),
             Stmt::IncDec(s) => s.token_pos + 2,
             Stmt::Assign(s) => {
-                let assign = &arena.a_stmts[*s.as_ref()];
+                let assign = &arena.a_stmts[*s];
                 assign.rhs[assign.rhs.len() - 1].end(arena)
             }
             Stmt::Go(s) => s.call.end(arena),
@@ -323,6 +369,32 @@ impl Node for Stmt {
             Stmt::Range(s) => s.body.end(),
         }
     }
+
+    fn id(&self) -> NodeId {
+        match &self {
+            Stmt::Bad(s) => NodeId::Address(&**s as *const BadStmt as usize),
+            Stmt::Decl(d) => NodeId::Address(&**d as *const Decl as usize),
+            Stmt::Empty(e) => NodeId::Address(&**e as *const EmptyStmt as usize),
+            Stmt::Labeled(s) => NodeId::LabeledStmt(*s),
+            Stmt::Expr(e) => NodeId::Address(&**e as *const Expr as usize),
+            Stmt::Send(s) => NodeId::Address(&**s as *const SendStmt as usize),
+            Stmt::IncDec(s) => NodeId::Address(&**s as *const IncDecStmt as usize),
+            Stmt::Assign(s) => NodeId::AssignStmt(*s),
+            Stmt::Go(s) => NodeId::Address(&**s as *const GoStmt as usize),
+            Stmt::Defer(s) => NodeId::Address(&**s as *const DeferStmt as usize),
+            Stmt::Return(s) => NodeId::Address(&**s as *const ReturnStmt as usize),
+            Stmt::Branch(s) => NodeId::Address(&**s as *const BranchStmt as usize),
+            Stmt::Block(s) => NodeId::Address(&**s as *const BlockStmt as usize),
+            Stmt::If(s) => NodeId::Address(&**s as *const IfStmt as usize),
+            Stmt::Case(s) => NodeId::Address(&**s as *const CaseClause as usize),
+            Stmt::Switch(s) => NodeId::Address(&**s as *const SwitchStmt as usize),
+            Stmt::TypeSwitch(s) => NodeId::Address(&**s as *const TypeSwitchStmt as usize),
+            Stmt::Comm(s) => NodeId::Address(&**s as *const CommClause as usize),
+            Stmt::Select(s) => NodeId::Address(&**s as *const SelectStmt as usize),
+            Stmt::For(s) => NodeId::Address(&**s as *const ForStmt as usize),
+            Stmt::Range(s) => NodeId::Address(&**s as *const RangeStmt as usize),
+        }
+    }
 }
 
 impl Node for Spec {
@@ -336,6 +408,7 @@ impl Node for Spec {
             Spec::Type(s) => arena.idents[s.name].pos,
         }
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Spec::Import(s) => match s.end_pos {
@@ -356,6 +429,14 @@ impl Node for Spec {
             Spec::Type(t) => t.typ.end(arena),
         }
     }
+
+    fn id(&self) -> NodeId {
+        match &self {
+            Spec::Import(s) => NodeId::Address(&**s as *const ImportSpec as usize),
+            Spec::Value(s) => NodeId::Address(&**s as *const ValueSpec as usize),
+            Spec::Type(s) => NodeId::Address(&**s as *const TypeSpec as usize),
+        }
+    }
 }
 
 impl Node for Decl {
@@ -363,9 +444,10 @@ impl Node for Decl {
         match &self {
             Decl::Bad(d) => d.from,
             Decl::Gen(d) => d.token_pos,
-            Decl::Func(d) => arena.decls[*d.as_ref()].pos(arena),
+            Decl::Func(d) => arena.fdecls[*d].pos(arena),
         }
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.to,
@@ -374,12 +456,20 @@ impl Node for Decl {
                 None => arena.specs[d.specs[0]].end(arena),
             },
             Decl::Func(d) => {
-                let fd = &arena.decls[*d.as_ref()];
+                let fd = &arena.fdecls[*d];
                 match &fd.body {
                     Some(b) => b.end(),
                     None => fd.typ.end(arena),
                 }
             }
+        }
+    }
+
+    fn id(&self) -> NodeId {
+        match self {
+            Decl::Bad(d) => NodeId::Address(&**d as *const BadDecl as usize),
+            Decl::Gen(d) => NodeId::Address(&**d as *const GenDecl as usize),
+            Decl::Func(d) => NodeId::FuncDecl(*d),
         }
     }
 }
@@ -398,6 +488,7 @@ impl Node for File {
     fn pos(&self, _arena: &Objects) -> position::Pos {
         self.package
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
         let n = self.decls.len();
         if n > 0 {
@@ -406,6 +497,10 @@ impl Node for File {
             arena.idents[self.name].end()
         }
     }
+
+    fn id(&self) -> NodeId {
+        NodeId::File(self.name)
+    }
 }
 
 pub struct Package {
@@ -413,15 +508,6 @@ pub struct Package {
     scope: ScopeKey,
     imports: HashMap<String, EntityKey>,
     files: HashMap<String, Box<File>>,
-}
-
-impl Node for Package {
-    fn pos(&self, _arena: &Objects) -> position::Pos {
-        0
-    }
-    fn end(&self, _arena: &Objects) -> position::Pos {
-        0
-    }
 }
 
 // A BadExpr node is a placeholder for expressions containing
@@ -519,7 +605,7 @@ pub struct BasicLit {
 // A FuncLit node represents a function literal.
 #[derive(Debug)]
 pub struct FuncLit {
-    pub typ: FuncType,
+    pub typ: FuncTypeKey,
     pub body: BlockStmt,
 }
 
@@ -661,18 +747,27 @@ impl FuncType {
             results: results,
         }
     }
+}
 
+impl Node for FuncTypeKey {
     fn pos(&self, arena: &Objects) -> position::Pos {
-        match self.func {
+        let self_ = &arena.ftypes[*self];
+        match self_.func {
             Some(p) => p,
-            None => self.params.pos(arena),
+            None => self_.params.pos(arena),
         }
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
-        match &self.results {
+        let self_ = &arena.ftypes[*self];
+        match &self_.results {
             Some(r) => (*r).end(arena),
-            None => self.params.end(arena),
+            None => self_.params.end(arena),
         }
+    }
+
+    fn id(&self) -> NodeId {
+        NodeId::FuncType(*self)
     }
 }
 
@@ -763,7 +858,7 @@ pub struct GenDecl {
 pub struct FuncDecl {
     pub recv: Option<FieldList>,
     pub name: IdentKey,
-    pub typ: FuncType,
+    pub typ: FuncTypeKey,
     pub body: Option<BlockStmt>,
 }
 
@@ -985,19 +1080,26 @@ pub struct Field {
     pub tag: Option<Expr>,
 }
 
-impl Node for Field {
+impl Node for FieldKey {
     fn pos(&self, arena: &Objects) -> position::Pos {
-        if self.names.len() > 0 {
-            arena.idents[self.names[0]].pos
+        let self_ = &arena.fields[*self];
+        if self_.names.len() > 0 {
+            arena.idents[self_.names[0]].pos
         } else {
-            self.typ.pos(arena)
+            self_.typ.pos(arena)
         }
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
-        match &self.tag {
+        let self_ = &arena.fields[*self];
+        match &self_.tag {
             Some(t) => t.end(arena),
-            None => self.typ.end(arena),
+            None => self_.typ.end(arena),
         }
+    }
+
+    fn id(&self) -> NodeId {
+        NodeId::Field(*self)
     }
 }
 
@@ -1020,29 +1122,18 @@ impl FieldList {
             closing: closing,
         }
     }
-}
 
-impl Node for FieldList {
     fn pos(&self, arena: &Objects) -> position::Pos {
         match self.openning {
             Some(o) => o,
-            None => arena.fields[self.list[0]].pos(arena),
+            None => self.list[0].pos(arena),
         }
     }
+
     fn end(&self, arena: &Objects) -> position::Pos {
         match self.closing {
             Some(c) => c,
-            None => arena.fields[self.list[self.list.len() - 1]].pos(arena),
+            None => self.list[self.list.len() - 1].pos(arena),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    //use super::*;
-
-    #[test]
-    fn ast_test() {
-        print!("testxxxxx . ");
     }
 }

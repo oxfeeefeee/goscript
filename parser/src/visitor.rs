@@ -49,7 +49,7 @@ pub trait ExprVisitor {
 
     fn visit_expr_struct_type(&mut self, s: &StructType) -> Self::Result;
 
-    fn visit_expr_func_type(&mut self, s: &FuncType) -> Self::Result;
+    fn visit_expr_func_type(&mut self, s: &FuncTypeKey) -> Self::Result;
 
     fn visit_expr_interface_type(&mut self, s: &InterfaceType) -> Self::Result;
 
@@ -116,7 +116,7 @@ pub trait StmtVisitor {
 pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
     match expr {
         Expr::Bad(e) => v.visit_bad_expr(e.as_ref()),
-        Expr::Ident(e) => v.visit_expr_ident(e.as_ref()),
+        Expr::Ident(e) => v.visit_expr_ident(e),
         Expr::Ellipsis(e) => v.visit_expr_ellipsis(&e.as_ref().elt),
         Expr::BasicLit(e) => v.visit_expr_basic_lit(e.as_ref()),
         Expr::FuncLit(e) => v.visit_expr_func_lit(e.as_ref()),
@@ -157,7 +157,7 @@ pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
         }
         Expr::Array(e) => v.visit_expr_array_type(&e.as_ref().len, &e.as_ref().elt, expr),
         Expr::Struct(e) => v.visit_expr_struct_type(e.as_ref()),
-        Expr::Func(e) => v.visit_expr_func_type(e.as_ref()),
+        Expr::Func(e) => v.visit_expr_func_type(e),
         Expr::Interface(e) => v.visit_expr_interface_type(e.as_ref()),
         Expr::Map(e) => {
             let mexp = e.as_ref();
@@ -182,7 +182,7 @@ pub fn walk_stmt<V: StmtVisitor<Result = R> + ExprVisitor<Result = R>, R>(
         Stmt::Expr(expr) => v.visit_expr(expr),
         Stmt::Send(sstmt) => v.visit_stmt_send(sstmt),
         Stmt::IncDec(idstmt) => v.visit_stmt_incdec(idstmt),
-        Stmt::Assign(astmt) => v.visit_stmt_assign(astmt.as_ref()),
+        Stmt::Assign(astmt) => v.visit_stmt_assign(astmt),
         Stmt::Go(gostmt) => v.visit_stmt_go(gostmt),
         Stmt::Defer(dstmt) => v.visit_stmt_defer(dstmt),
         Stmt::Return(rstmt) => v.visit_stmt_return(rstmt),
@@ -203,6 +203,6 @@ pub fn walk_decl<R>(v: &mut dyn StmtVisitor<Result = R>, decl: &Decl) -> R {
     match decl {
         Decl::Bad(b) => v.visit_bad_decl(b),
         Decl::Gen(gdecl) => v.visit_stmt_decl_gen(gdecl),
-        Decl::Func(fdecl) => v.visit_stmt_decl_func(fdecl.as_ref()),
+        Decl::Func(fdecl) => v.visit_stmt_decl_func(fdecl),
     }
 }

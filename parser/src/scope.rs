@@ -72,9 +72,9 @@ impl Entity {
 
     pub fn pos(&self, arena: &Objects) -> position::Pos {
         match &self.decl {
-            DeclObj::Field(i) => arena.fields[*i].pos(arena),
+            DeclObj::Field(i) => i.pos(arena),
             DeclObj::Spec(i) => arena.specs[*i].pos(arena),
-            DeclObj::FuncDecl(i) => arena.decls[*i].pos(arena),
+            DeclObj::FuncDecl(i) => arena.fdecls[*i].pos(arena),
             DeclObj::LabeledStmt(i) => arena.l_stmts[*i].pos(arena),
             DeclObj::AssignStmt(i) => arena.a_stmts[*i].pos(arena),
             DeclObj::NoDecl => 0,

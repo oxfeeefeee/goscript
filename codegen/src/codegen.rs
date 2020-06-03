@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
 use std::pin::Pin;
-use std::rc::Rc;
 
 use super::func::*;
 
@@ -95,7 +94,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result {
-        let fkey = self.gen_func_def(&flit.typ, &flit.body)?;
+        let fkey = self.gen_func_def(&self.ast_objs.ftypes[flit.typ], &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
         func.emit_load(i);
@@ -163,7 +162,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) -> Self::Result {
         // check if this is a built in function first
         if let Expr::Ident(ikey) = func {
-            let ident = self.ast_objs.idents[*ikey.as_ref()].clone();
+            let ident = self.ast_objs.idents[*ikey].clone();
             if ident.entity.into_key().is_none() {
                 return if let Some(i) = self.built_in_func_index(&ident.name) {
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
@@ -289,7 +288,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_func_type(&mut self, _s: &FuncType) -> Self::Result {
+    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) -> Self::Result {
         unimplemented!();
     }
 
@@ -356,15 +355,16 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
-        let decl = &self.ast_objs.decls[*fdecl];
+        let decl = &self.ast_objs.fdecls[*fdecl];
         if decl.body.is_none() {
             unimplemented!()
         }
         let stmt = decl.body.as_ref().unwrap();
+        let func = &self.ast_objs.ftypes[decl.typ];
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             // insert receiver at be beginning of the params
-            let mut ftype = decl.typ.clone();
+            let mut ftype = func.clone();
             let mut fields = self_ident.clone();
             fields.list.append(&mut ftype.params.list);
             ftype.params = fields;
@@ -378,7 +378,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             }
             typ.add_struct_member(name.clone(), fval);
         } else {
-            let fval = GosValue::Function(self.gen_func_def(&decl.typ, stmt)?);
+            let fval = GosValue::Function(self.gen_func_def(func, stmt)?);
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.current_pkg];
             let index = pkg.add_member(ident.entity_key().unwrap(), fval);
@@ -546,7 +546,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Self::Result {
-        let blank = Expr::Ident(Rc::new(self.blank_ident));
+        let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
             rstmt.key.as_ref().unwrap_or(&blank),
             rstmt.val.as_ref().unwrap_or(&blank),
@@ -723,7 +723,7 @@ impl<'a> CodeGen<'a> {
             .iter()
             .map(|expr| match expr {
                 Expr::Ident(ident) => {
-                    let idx = self.add_local_or_resolve_ident(ident.as_ref(), is_def)?;
+                    let idx = self.add_local_or_resolve_ident(ident, is_def)?;
                     Ok(LeftHandSide::Primitive(idx))
                 }
                 Expr::Index(ind_expr) => {
@@ -897,7 +897,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> Result<FunctionKey, ()> {
-        let ftype = self.get_or_gen_type(&Expr::Func(Rc::new(typ.clone())))?;
+        let ftype = self.get_or_gen_type_func(typ)?;
         let type_val = ftype.get_type_val(&self.objects);
         let params = type_val.get_closure_params();
         let variadic = params.len() > 0
@@ -1036,7 +1036,7 @@ impl<'a> CodeGen<'a> {
     fn get_or_gen_type(&mut self, expr: &Expr) -> Result<GosValue, ()> {
         match expr {
             Expr::Ident(ikey) => {
-                let ident = &self.ast_objs.idents[*ikey.as_ref()];
+                let ident = &self.ast_objs.idents[*ikey];
                 match self.objects.basic_type(&ident.name) {
                     Some(val) => Ok(val.clone()),
                     None => {
@@ -1091,28 +1091,9 @@ impl<'a> CodeGen<'a> {
                     .collect::<Result<Vec<GosValue>, ()>>()?;
                 Ok(GosType::new_interface(methods, &mut self.objects))
             }
-            Expr::Func(ftype) => {
-                let params = ftype
-                    .params
-                    .list
-                    .iter()
-                    .map(|x| {
-                        let field = &self.ast_objs.fields[*x];
-                        self.get_or_gen_type(&field.typ)
-                    })
-                    .collect::<Result<Vec<GosValue>, ()>>()?;
-                let results = match &ftype.results {
-                    Some(re) => re
-                        .list
-                        .iter()
-                        .map(|x| {
-                            let field = &self.ast_objs.fields[*x];
-                            self.get_or_gen_type(&field.typ)
-                        })
-                        .collect::<Result<Vec<GosValue>, ()>>()?,
-                    None => Vec::new(),
-                };
-                Ok(GosType::new_closure(params, results, &mut self.objects))
+            Expr::Func(ftype_key) => {
+                let ftype = &self.ast_objs.ftypes[*ftype_key];
+                self.get_or_gen_type_func(ftype)
             }
             Expr::Star(sexpr) => {
                 let inner = self.get_or_gen_type(&sexpr.expr)?;
@@ -1125,6 +1106,30 @@ impl<'a> CodeGen<'a> {
             Expr::Chan(_ctype) => unimplemented!(),
             _ => unreachable!(),
         }
+    }
+
+    fn get_or_gen_type_func(&mut self, ftype: &FuncType) -> Result<GosValue, ()> {
+        let params = ftype
+            .params
+            .list
+            .iter()
+            .map(|x| {
+                let field = &self.ast_objs.fields[*x];
+                self.get_or_gen_type(&field.typ)
+            })
+            .collect::<Result<Vec<GosValue>, ()>>()?;
+        let results = match &ftype.results {
+            Some(re) => re
+                .list
+                .iter()
+                .map(|x| {
+                    let field = &self.ast_objs.fields[*x];
+                    self.get_or_gen_type(&field.typ)
+                })
+                .collect::<Result<Vec<GosValue>, ()>>()?,
+            None => Vec::new(),
+        };
+        Ok(GosType::new_closure(params, results, &mut self.objects))
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {

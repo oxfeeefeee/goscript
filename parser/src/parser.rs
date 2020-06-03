@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         // provided they were originally declared in the same block with
         // the same type, and at least one of the non-blank variables is new.
         let assign = if let Stmt::Assign(idx) = stmt {
-            *idx.as_ref()
+            *idx
         } else {
             unreachable!();
         };
@@ -170,7 +170,7 @@ impl<'a> Parser<'a> {
         for expr in list {
             match expr { 
                 Expr::Ident(id) => {
-                    let ident = ident_mut!(self, *id.as_ref());
+                    let ident = ident_mut!(self, *id);
                     let entity = new_entity!(self, EntityKind::Var, 
                         ident.name.clone(), DeclObj::AssignStmt(assign), 
                         EntityData::NoData);
@@ -201,7 +201,7 @@ impl<'a> Parser<'a> {
     // identifiers.
     fn try_resolve(&mut self, x: &Expr, collect_unresolved: bool) {
         if let Expr::Ident(i) = x {
-            let ident = ident_mut!(self, *i.as_ref());
+            let ident = ident_mut!(self, *i);
             assert!(ident.entity.is_none(), 
                 "identifier already declared or resolved");
             if ident.name == "_" {
@@ -228,7 +228,7 @@ impl<'a> Parser<'a> {
             // them so that they can be resolved later
             if collect_unresolved {
                 ident.entity = IdentEntity::Sentinel;
-                self.unresolved.push(*i.as_ref());
+                self.unresolved.push(*i);
             }
         }
     }
@@ -524,7 +524,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("TypeName");
 
         let ident = self.parse_ident();
-        let x_ident = Expr::Ident(Rc::new(ident));
+        let x_ident = Expr::Ident(ident);
         // don't resolve ident yet - it may be a parameter or field name
         let ret = if let Token::PERIOD = self.token {
             // ident is a package name
@@ -569,7 +569,7 @@ impl<'a> Parser<'a> {
     fn make_ident_list(&mut self, exprs: &mut Vec<Expr>) -> Vec<IdentKey> {
         exprs.iter().map(|x| {
             match x {
-                Expr::Ident(ident) => *ident.as_ref(),
+                Expr::Ident(ident) => *ident,
                 _ => {
                     let pos = x.pos(&self.objects);
                     if let Expr::Bad(_) = x {
@@ -842,7 +842,7 @@ impl<'a> Parser<'a> {
             idents = vec![*ident.unwrap()];
             let scope = new_scope!(self, self.top_scope);
             let (params, results) = self.parse_signature(scope);
-            typ = Expr::box_func_type(FuncType::new(None, params, Some(results)));
+            typ = Expr::box_func_type(FuncType::new(None, params, Some(results)), &mut self.objects);
         } else {
             // embedded interface
             self.resolve(&typ);
@@ -930,7 +930,7 @@ impl<'a> Parser<'a> {
             Token::MUL => Some(self.parse_pointer_type()),
             Token::FUNC => {
                 let (typ, _) = self.parse_func_type();
-                Some(Expr::box_func_type(typ))
+                Some(Expr::box_func_type(typ, &mut self.objects))
             },
             Token::INTERFACE => Some(Expr::Interface(Rc::new(
                 self.parse_interface_type()))),
@@ -1014,13 +1014,14 @@ impl<'a> Parser<'a> {
         self.trace_begin("BlockStmt");
 
         let (typ, scope) = self.parse_func_type();
+        let typ_key = self.objects.ftypes.insert(typ);
         let ret = if self.token != Token::LBRACE {
-            Expr::box_func_type(typ)
+            Expr::Func(typ_key)
         } else {
             self.expr_level += 1;
             let body = self.parse_body(scope);
             self.expr_level -= 1;
-            Expr::FuncLit(Rc::new(FuncLit{typ: typ, body: body}))
+            Expr::FuncLit(Rc::new(FuncLit{typ: typ_key, body: body}))
         }; 
  
         self.trace_end(); 
@@ -1035,7 +1036,7 @@ impl<'a> Parser<'a> {
 
         let ret = match self.token {
             Token::IDENT(_) => {
-                let x = Expr::Ident(Rc::new(self.parse_ident()));
+                let x = Expr::Ident(self.parse_ident());
                 if !lhs {self.resolve(&x);}
                 x
             },
@@ -1624,11 +1625,11 @@ impl<'a> Parser<'a> {
                                 // body of any nested function.
                                 let s = self.parse_stmt();
                                 let ls = LabeledStmt::arena_new(
-                                    &mut self.objects, *ident.as_ref(), colon, s);
+                                    &mut self.objects, ident, colon, s);
                                 self.declare(
                                     DeclObj::LabeledStmt(ls), EntityData::NoData,
                                     EntityKind::Lbl, &self.label_scope.unwrap());
-                                Stmt::Labeled(Box::new(ls.clone()))
+                                Stmt::Labeled(ls.clone())
                             } else {
                                 self.error(colon, "illegal label declaration");
                                 Stmt::new_bad(x0.pos(&self.objects), colon + 1)
@@ -1906,7 +1907,7 @@ impl<'a> Parser<'a> {
             Some(stmt) => match stmt {
                 Stmt::Expr(x) => x.is_type_switch_assert(),
                 Stmt::Assign(idx) => {
-                    let ass = &ass_stmt!(self, *idx.as_ref());
+                    let ass = &ass_stmt!(self, *idx);
                     if ass.lhs.len() == 1 && ass.rhs.len() == 1 &&
                         ass.rhs[0].is_type_switch_assert() {
                         match ass.token {
@@ -2116,7 +2117,7 @@ impl<'a> Parser<'a> {
             if let Stmt::Assign(idx) = s2.unwrap() {
                 // move AssignStmt out of arena
                 // and tear it apart for the components
-                let mut ass = self.objects.a_stmts.remove(*idx.as_ref()).unwrap();
+                let mut ass = self.objects.a_stmts.remove(idx).unwrap();
                 let (key, val) = match ass.lhs.len() {
                     0 => (None, None),
                     1 => (Some(ass.lhs.remove(0)), None),
@@ -2403,14 +2404,15 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         let recv_is_none = recv.is_none();
-        let decl = self.objects.decls.insert(FuncDecl{
+        let typ = self.objects.ftypes.insert(FuncType{
+            func: Some(pos),
+            params: params,
+            results: Some(results),
+        });
+        let decl = self.objects.fdecls.insert(FuncDecl{
             recv: recv,
             name: ident,
-            typ: FuncType{
-                func: Some(pos),
-                params: params,
-                results: Some(results),
-            },
+            typ: typ,
             body: body,
         });
         if recv_is_none {
@@ -2431,7 +2433,7 @@ impl<'a> Parser<'a> {
         }
 
         self.trace_end();
-        Decl::Func(Box::new(decl))
+        Decl::Func(decl)
     }
 
     fn parse_decl(&mut self, sync: fn(&Token) -> bool) -> Decl {

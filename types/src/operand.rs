@@ -7,7 +7,7 @@ use super::typ::{fmt_type, BasicType, Type};
 use super::universe::{Builtin, Universe};
 use goscript_parser::ast;
 use goscript_parser::ast::*;
-use goscript_parser::objects::{IdentKey, Objects as AstObjects};
+use goscript_parser::objects::{FuncTypeKey, IdentKey, Objects as AstObjects};
 use goscript_parser::position;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_expr, ExprVisitor};
@@ -426,9 +426,9 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_char('}')
     }
 
-    fn visit_expr_func_type(&mut self, s: &FuncType) -> Self::Result {
+    fn visit_expr_func_type(&mut self, s: &FuncTypeKey) -> Self::Result {
         self.f.write_str("func")?;
-        self.fmt_sig(s)
+        self.fmt_sig(&self.ast_objs.ftypes[*s])
     }
 
     fn visit_expr_interface_type(&mut self, s: &InterfaceType) -> Self::Result {
@@ -496,7 +496,7 @@ impl<'a, 'b> ExprFormater<'a, 'b> {
             if iface {
                 match &field.typ {
                     Expr::Func(sig) => {
-                        self.fmt_sig(sig.as_ref())?;
+                        self.fmt_sig(&self.ast_objs.ftypes[*sig])?;
                     }
                     _ => unreachable!(),
                 }
