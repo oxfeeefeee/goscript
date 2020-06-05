@@ -103,7 +103,7 @@ impl DeclInfo {
         self.init.is_some() || self.fdecl.is_some() && self.fdecl.as_ref().unwrap().body.is_some()
     }
 
-    pub fn add_dep(&mut self, okey: &ObjKey) {
-        self.deps.insert(*okey);
+    pub fn add_dep(&mut self, okey: ObjKey) {
+        self.deps.insert(okey);
     }
 }

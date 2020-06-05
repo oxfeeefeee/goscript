@@ -14,3 +14,13 @@ pub struct DeclInfo {
     alias: bool,
     deps: HashSet<ObjKey>,
 }
+
+impl DeclInfo {
+    pub fn has_initializer(&self) -> bool {
+        self.init.is_some()
+    }
+
+    pub fn add_dep(&mut self, obj: ObjKey) {
+        self.deps.insert(obj);
+    }
+}
