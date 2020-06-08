@@ -17,7 +17,8 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn new(path: String, name: String, scope: ScopeKey) -> Package {
+    pub fn new(path: String, scope: ScopeKey) -> Package {
+        let name = format!("package {}", path);
         Package {
             path: path,
             name: name,

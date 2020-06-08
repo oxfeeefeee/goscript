@@ -132,7 +132,7 @@ impl Universe {
         let pkg_skey =
             objs.scopes
                 .insert(Scope::new(Some(uskey), 0, 0, "package unsafe".to_owned()));
-        let mut pkg = Package::new("unsafe".to_owned(), "unsafe".to_owned(), pkg_skey);
+        let mut pkg = Package::new("unsafe".to_owned(), pkg_skey);
         pkg.mark_complete();
         (uskey, objs.pkgs.insert(pkg))
     }

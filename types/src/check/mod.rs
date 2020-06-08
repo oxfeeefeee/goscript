@@ -1,4 +1,4 @@
-mod check;
+pub mod check;
 mod errors;
 mod interface;
 mod resolver;

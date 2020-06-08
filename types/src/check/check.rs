@@ -8,6 +8,7 @@ use super::super::selection::Selection;
 use super::super::typ;
 use super::interface::IfaceInfo;
 use super::resolver::DeclInfo;
+use goscript_parser::ast;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::errors::{ErrorList, FilePosErrors};
@@ -142,11 +143,11 @@ pub struct ObjContext {
 
 type DelayedAction = fn(&Checker);
 
-/// FilesContext contains information collected during type-checking
+/// PkgContext contains information collected during type-checking
 /// of a set of package files
-pub struct FilesContext<'a> {
+pub struct PkgContext<'a> {
     // package files
-    files: Vec<&'a File>,
+    files: Vec<&'a ast::File>,
     // positions of unused dot-imported packages for each file scope
     unused_dot_imports: HashMap<ScopeKey, HashMap<PackageKey, Pos>>,
     // maps package scope type names(LangObj::TypeName) to associated
@@ -167,11 +168,13 @@ pub struct Checker<'a> {
     // object container for type checker
     tc_objs: &'a mut TCObjects,
     // object container for AST
-    ast_objs: &'a AstObjects,
+    ast_objs: &'a mut AstObjects,
     // errors
     errors: &'a ErrorList,
     // files in this package
-    fset: &'a FileSet,
+    fset: &'a mut FileSet,
+    // all packages checked so far
+    all_pkgs: &'a mut HashMap<String, PackageKey>,
     // this package
     pkg: PackageKey,
     // maps package-level object to declaration info
@@ -199,7 +202,7 @@ impl ObjContext {
     }
 }
 
-impl FilesContext<'_> {
+impl PkgContext<'_> {
     pub fn add_unused_dot_import(&mut self, scope: &ScopeKey, pkg: &PackageKey, pos: Pos) {
         *self
             .unused_dot_imports
@@ -311,6 +314,31 @@ impl TypeInfo {
 }
 
 impl<'a> Checker<'a> {
+    pub fn new(
+        tc_objs: &'a mut TCObjects,
+        ast_objs: &'a mut AstObjects,
+        fset: &'a mut FileSet,
+        errors: &'a ErrorList,
+        pkgs: &'a mut HashMap<String, PackageKey>,
+        pkg: PackageKey,
+    ) -> Checker<'a> {
+        Checker {
+            tc_objs: tc_objs,
+            ast_objs: ast_objs,
+            fset: fset,
+            errors: errors,
+            all_pkgs: pkgs,
+            pkg: pkg,
+            obj_map: HashMap::new(),
+            imp_map: HashMap::new(),
+            indent: 0,
+        }
+    }
+
+    pub fn check(&self, files: &Vec<ast::File>) -> Result<ObjKey, ()> {
+        Err(())
+    }
+
     pub fn tc_objs(&self) -> &TCObjects {
         self.tc_objs
     }
