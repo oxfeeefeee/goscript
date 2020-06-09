@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 use super::check::check::Checker;
-use super::objects::{DeclKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::objects::{ObjKey, PackageKey, TCObjects};
 use goscript_parser::ast;
 use goscript_parser::errors::{ErrorList, FilePosErrors};
-use goscript_parser::objects::{FuncTypeKey, IdentKey, Objects as AstObjects};
+use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::position;
 use goscript_parser::{FileSet, Parser};
 use std::collections::HashMap;
@@ -91,7 +91,7 @@ impl<'a> Importer<'a> {
             self.pkgs,
             pkg,
         )
-        .check(&files)
+        .check(files)
     }
 
     fn validate_path(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {

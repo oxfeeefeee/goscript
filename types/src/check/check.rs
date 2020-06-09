@@ -7,13 +7,13 @@ use super::super::operand::OperandMode;
 use super::super::selection::Selection;
 use super::super::typ;
 use super::interface::IfaceInfo;
-use super::resolver::DeclInfo;
+use super::resolver::{self, DeclInfo};
 use goscript_parser::ast;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
-use goscript_parser::position::{File, Pos};
+use goscript_parser::position::{File, Pos, Position};
 use goscript_parser::FileSet;
 use std::collections::HashMap;
 
@@ -143,11 +143,11 @@ pub struct ObjContext {
 
 type DelayedAction = fn(&Checker);
 
-/// PkgContext contains information collected during type-checking
+/// FilesContext contains information collected during type-checking
 /// of a set of package files
-pub struct PkgContext<'a> {
+pub struct FilesContext<'a> {
     // package files
-    files: Vec<&'a ast::File>,
+    files: &'a Vec<ast::File>,
     // positions of unused dot-imported packages for each file scope
     unused_dot_imports: HashMap<ScopeKey, HashMap<PackageKey, Pos>>,
     // maps package scope type names(LangObj::TypeName) to associated
@@ -202,7 +202,19 @@ impl ObjContext {
     }
 }
 
-impl PkgContext<'_> {
+impl FilesContext<'_> {
+    pub fn new(files: &Vec<ast::File>) -> FilesContext<'_> {
+        FilesContext {
+            files: files,
+            unused_dot_imports: HashMap::new(),
+            methods: HashMap::new(),
+            ifaces: HashMap::new(),
+            untyped: HashMap::new(),
+            delayed: Vec::new(),
+            obj_path: Vec::new(),
+        }
+    }
+
     pub fn add_unused_dot_import(&mut self, scope: &ScopeKey, pkg: &PackageKey, pos: Pos) {
         *self
             .unused_dot_imports
@@ -335,7 +347,10 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn check(&self, files: &Vec<ast::File>) -> Result<ObjKey, ()> {
+    pub fn check(&mut self, files: Vec<ast::File>) -> Result<ObjKey, ()> {
+        let files = self.init_files_pkg_name(files)?;
+        let mut fctx = FilesContext::new(&files);
+        self.collect_objects(&mut fctx);
         Err(())
     }
 
@@ -398,5 +413,50 @@ impl<'a> Checker<'a> {
         self.tc_objs
             .types
             .insert(typ::Type::Tuple(typ::TupleDetail::new(vars)))
+    }
+
+    /// init files and package name
+    fn init_files_pkg_name(&mut self, files: Vec<ast::File>) -> Result<Vec<ast::File>, ()> {
+        let mut result = Vec::with_capacity(files.len());
+        //let pkg_val = &mut self.tc_objs.pkgs[self.pkg];
+        let mut pkg_name: Option<String> = None;
+        for f in files.into_iter() {
+            let ident = &self.ast_objs.idents[f.name];
+            if pkg_name.is_none() {
+                if ident.name == "_" {
+                    self.error(ident.pos, "invalid package name _".to_string());
+                    return Err(());
+                } else {
+                    pkg_name = Some(ident.name.clone());
+                    result.push(f);
+                }
+            } else if &ident.name == pkg_name.as_ref().unwrap() {
+                result.push(f);
+            } else {
+                self.error(
+                    f.package,
+                    format!(
+                        "package {}; expected {}",
+                        ident.name,
+                        pkg_name.as_ref().unwrap()
+                    ),
+                );
+                return Err(());
+            }
+        }
+        Ok(result)
+    }
+
+    pub fn error(&self, pos: Pos, err: String) {
+        let file = self.fset.file(pos).unwrap();
+        FilePosErrors::new(file, self.errors()).add(pos, err);
+    }
+
+    pub fn ident(&self, key: IdentKey) -> &ast::Ident {
+        &self.ast_objs.idents[key]
+    }
+
+    pub fn position(&self, pos: Pos) -> Position {
+        self.fset.file(pos).unwrap().position(pos)
     }
 }

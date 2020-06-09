@@ -18,4 +18,5 @@ mod universe;
 
 mod check;
 
+mod display;
 mod importer;

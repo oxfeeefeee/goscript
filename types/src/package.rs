@@ -8,7 +8,7 @@ use std::fmt;
 /// A Package describes a Go package.
 pub struct Package {
     path: String,
-    name: String,
+    name: Option<String>,
     scope: ScopeKey,
     complete: bool,
     imports: Vec<PackageKey>,
@@ -18,10 +18,9 @@ pub struct Package {
 
 impl Package {
     pub fn new(path: String, scope: ScopeKey) -> Package {
-        let name = format!("package {}", path);
         Package {
             path: path,
-            name: name,
+            name: None,
             scope: scope,
             complete: false,
             imports: Vec::new(),
@@ -33,12 +32,12 @@ impl Package {
         &self.path
     }
 
-    pub fn name(&self) -> &String {
+    pub fn name(&self) -> &Option<String> {
         &self.name
     }
 
     pub fn set_name(&mut self, name: String) {
-        self.name = name
+        self.name = Some(name)
     }
 
     /// Scope returns the (complete or incomplete) package scope
@@ -85,7 +84,16 @@ impl Package {
 
 impl fmt::Display for Package {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "package {} ({})", &self.name, &self.path)
+        if self.name.is_none() {
+            write!(f, "uninitialized package, path: {}", &self.path)
+        } else {
+            write!(
+                f,
+                "package {} ({})",
+                &self.name.as_ref().unwrap(),
+                &self.path
+            )
+        }
     }
 }
 
