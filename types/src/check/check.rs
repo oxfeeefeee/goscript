@@ -1,19 +1,19 @@
 #![allow(dead_code)]
 use super::super::constant::Value;
-use super::super::importer::ImportKey;
+use super::super::importer::{Config, ImportKey, Importer};
 use super::super::obj;
-use super::super::objects::{DeclKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::OperandMode;
+use super::super::package::Package;
 use super::super::selection::Selection;
 use super::super::typ;
 use super::interface::IfaceInfo;
-use super::resolver::{self, DeclInfo};
 use goscript_parser::ast;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
-use goscript_parser::position::{File, Pos, Position};
+use goscript_parser::position::{Pos, Position};
 use goscript_parser::FileSet;
 use std::collections::HashMap;
 
@@ -112,6 +112,20 @@ pub struct TypeInfo {
     init_order: Vec<Initializer>,
 }
 
+impl TypeInfo {
+    pub fn new() -> TypeInfo {
+        TypeInfo {
+            types: HashMap::new(),
+            defs: HashMap::new(),
+            uses: HashMap::new(),
+            implicits: HashMap::new(),
+            selections: HashMap::new(),
+            scopes: HashMap::new(),
+            init_order: Vec::new(),
+        }
+    }
+}
+
 /// ExprInfo stores information about an untyped expression.
 pub struct ExprInfo {
     is_lhs: bool,
@@ -124,7 +138,7 @@ pub struct ExprInfo {
 // (valid only for the duration of type-checking a specific object)
 pub struct ObjContext {
     // package-level declaration whose init expression/function body is checked
-    decl: Option<DeclKey>,
+    decl: Option<DeclInfoKey>,
     // top-most scope for lookups
     scope: ScopeKey,
     // if valid, identifiers are looked up as if at position pos (used by Eval)
@@ -178,9 +192,13 @@ pub struct Checker<'a> {
     // this package
     pkg: PackageKey,
     // maps package-level object to declaration info
-    obj_map: HashMap<ObjKey, DeclInfo>,
+    obj_map: HashMap<ObjKey, DeclInfoKey>,
     // maps (import path, source directory) to (complete or fake) package
     imp_map: HashMap<ImportKey, PackageKey>,
+    // import config
+    imp_config: &'a Config,
+    // result of type checking
+    type_info: TypeInfo,
     // for debug
     indent: isize,
 }
@@ -212,6 +230,17 @@ impl FilesContext<'_> {
             untyped: HashMap::new(),
             delayed: Vec::new(),
             obj_path: Vec::new(),
+        }
+    }
+
+    /// file_name returns a filename suitable for debugging output.
+    pub fn file_name(&self, index: usize, checker: &Checker) -> String {
+        let file = &self.files[index];
+        let pos = file.pos(checker.ast_objs());
+        if pos > 0 {
+            checker.fset().file(pos).unwrap().name().to_owned()
+        } else {
+            format!("file[{}]", index)
         }
     }
 
@@ -333,6 +362,7 @@ impl<'a> Checker<'a> {
         errors: &'a ErrorList,
         pkgs: &'a mut HashMap<String, PackageKey>,
         pkg: PackageKey,
+        cfg: &'a Config,
     ) -> Checker<'a> {
         Checker {
             tc_objs: tc_objs,
@@ -343,11 +373,13 @@ impl<'a> Checker<'a> {
             pkg: pkg,
             obj_map: HashMap::new(),
             imp_map: HashMap::new(),
+            imp_config: cfg,
+            type_info: TypeInfo::new(),
             indent: 0,
         }
     }
 
-    pub fn check(&mut self, files: Vec<ast::File>) -> Result<ObjKey, ()> {
+    pub fn check(&mut self, files: Vec<ast::File>) -> Result<PackageKey, ()> {
         let files = self.init_files_pkg_name(files)?;
         let mut fctx = FilesContext::new(&files);
         self.collect_objects(&mut fctx);
@@ -373,16 +405,27 @@ impl<'a> Checker<'a> {
     pub fn fset(&self) -> &FileSet {
         self.fset
     }
+    pub fn all_pkgs(&self) -> &HashMap<String, PackageKey> {
+        &self.all_pkgs
+    }
 
     pub fn pkg(&self) -> &PackageKey {
         &self.pkg
     }
 
-    pub fn obj_map(&self) -> &HashMap<ObjKey, DeclInfo> {
+    pub fn pkg_val(&self) -> &Package {
+        &self.tc_objs.pkgs[self.pkg]
+    }
+
+    pub fn pkg_val_mut(&mut self) -> &mut Package {
+        &mut self.tc_objs.pkgs[self.pkg]
+    }
+
+    pub fn obj_map(&self) -> &HashMap<ObjKey, DeclInfoKey> {
         &self.obj_map
     }
 
-    pub fn obj_map_mut(&mut self) -> &mut HashMap<ObjKey, DeclInfo> {
+    pub fn obj_map_mut(&mut self) -> &mut HashMap<ObjKey, DeclInfoKey> {
         &mut self.obj_map
     }
 
@@ -392,6 +435,30 @@ impl<'a> Checker<'a> {
 
     pub fn imp_map_mut(&mut self) -> &mut HashMap<ImportKey, PackageKey> {
         &mut self.imp_map
+    }
+
+    pub fn imp_config(&self) -> &Config {
+        &self.imp_config
+    }
+
+    pub fn type_info(&self) -> &TypeInfo {
+        &self.type_info
+    }
+
+    pub fn type_info_mut(&mut self) -> &mut TypeInfo {
+        &mut self.type_info
+    }
+
+    pub fn new_importer(&mut self, pos: Pos) -> Importer {
+        Importer::new(
+            self.imp_config,
+            self.fset,
+            self.all_pkgs,
+            self.ast_objs,
+            self.tc_objs,
+            self.errors,
+            pos,
+        )
     }
 
     pub fn comma_ok_type(&mut self, e: &Expr, t: &[TypeKey; 2]) -> TypeKey {
@@ -454,6 +521,18 @@ impl<'a> Checker<'a> {
 
     pub fn ident(&self, key: IdentKey) -> &ast::Ident {
         &self.ast_objs.idents[key]
+    }
+
+    pub fn lobj(&self, key: ObjKey) -> &obj::LangObj {
+        &self.tc_objs.lobjs[key]
+    }
+
+    pub fn lobj_mut(&mut self, key: ObjKey) -> &mut obj::LangObj {
+        &mut self.tc_objs.lobjs[key]
+    }
+
+    pub fn package(&self, key: PackageKey) -> &Package {
+        &self.tc_objs.pkgs[key]
     }
 
     pub fn position(&self, pos: Pos) -> Position {

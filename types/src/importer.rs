@@ -45,6 +45,15 @@ pub struct ImportKey {
     pub dir: String,
 }
 
+impl ImportKey {
+    pub fn new(path: String, dir: String) -> ImportKey {
+        ImportKey {
+            path: path,
+            dir: dir,
+        }
+    }
+}
+
 pub struct Importer<'a> {
     config: &'a Config,
     fset: &'a mut FileSet,
@@ -76,7 +85,7 @@ impl<'a> Importer<'a> {
         }
     }
 
-    pub fn import(&mut self, key: &'a ImportKey) -> Result<ObjKey, ()> {
+    pub fn import(&mut self, key: &'a ImportKey) -> Result<PackageKey, ()> {
         let pb = self.validate_path(key)?;
         let path = pb.0.as_path();
         let import_path = pb.1;
@@ -90,6 +99,7 @@ impl<'a> Importer<'a> {
             self.errors,
             self.pkgs,
             pkg,
+            self.config,
         )
         .check(files)
     }

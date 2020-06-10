@@ -22,13 +22,13 @@ macro_rules! new_objects {
 new_key_type! { pub struct ObjKey; }
 new_key_type! { pub struct TypeKey; }
 new_key_type! { pub struct PackageKey; }
-new_key_type! { pub struct DeclKey; }
+new_key_type! { pub struct DeclInfoKey; }
 new_key_type! { pub struct ScopeKey; }
 
 pub type LangObjs = DenseSlotMap<ObjKey, LangObj>;
 pub type Types = DenseSlotMap<TypeKey, Type>;
 pub type Packages = DenseSlotMap<PackageKey, Package>;
-pub type Decls = DenseSlotMap<DeclKey, DeclInfo>;
+pub type Decls = DenseSlotMap<DeclInfoKey, DeclInfo>;
 pub type Scopes = DenseSlotMap<ScopeKey, Scope>;
 
 /// The container of all "managed" objects

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 #![allow(dead_code)]
-use super::super::objects::{DeclKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use goscript_parser::objects::FieldKey;
 
 /// MethodInfo represents an interface method.
