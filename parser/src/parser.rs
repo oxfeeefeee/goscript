@@ -2265,7 +2265,7 @@ impl<'a> Parser<'a> {
             }
         };
         self.expect_semi();
-        let index = specs_mut!(self).insert(Spec::Import(Box::new(ImportSpec{
+        let index = specs_mut!(self).insert(Spec::Import(Rc::new(ImportSpec{
             name: ident, 
             path: BasicLit{pos: pos, token: path_token},
             end_pos: None})));
@@ -2308,7 +2308,7 @@ impl<'a> Parser<'a> {
 	    // a function begins at the end of the ConstSpec or VarSpec and ends at
 	    // the end of the innermost containing block.
 	    // (Global identifiers are resolved in a separate phase after parsing.)
-        let spec =  specs_mut!(self_).insert(Spec::Value(Box::new(ValueSpec{
+        let spec =  specs_mut!(self_).insert(Spec::Value(Rc::new(ValueSpec{
             names: idents, typ: typ, values: values})));
         let kind = if let Token::VAR = keyword {
                 EntityKind::Var
@@ -2332,7 +2332,7 @@ impl<'a> Parser<'a> {
 	    // containing block.
 	    // (Global identifiers are resolved in a separate phase after parsing.)
         let placeholder = Expr::new_bad(0, 0);
-        let spec_val = Spec::Type(Box::new(TypeSpec{
+        let spec_val = Spec::Type(Rc::new(TypeSpec{
             name: ident, assign: 0, typ: placeholder
         }));
         let index = specs_mut!(self).insert(spec_val);
@@ -2344,7 +2344,7 @@ impl<'a> Parser<'a> {
             } else {0};
         let typ = self.parse_type();
         let spec = if let Spec::Type(boxts) = spec_mut!(self, index) {
-            boxts.as_mut()} else {unreachable!()};
+            Rc::get_mut(boxts).unwrap()} else {unreachable!()};
         spec.assign = assign;
         spec.typ = typ;
         self.expect_semi();
@@ -2375,7 +2375,7 @@ impl<'a> Parser<'a> {
         };
 
         self.trace_end();
-        Decl::Gen(Box::new(GenDecl{
+        Decl::Gen(Rc::new(GenDecl{
             token_pos: pos,
             token: keyword.clone(),
             l_paran: lparen,
@@ -2459,7 +2459,7 @@ impl<'a> Parser<'a> {
                 let pos = self.pos;
                 self.error_expected(pos, "declaration");
                 self.advance(sync);
-                Decl::Bad(Box::new(BadDecl{from: pos, to: self.pos}))
+                Decl::Bad(Rc::new(BadDecl{from: pos, to: self.pos}))
             }
         };
 

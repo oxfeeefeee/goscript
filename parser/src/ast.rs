@@ -79,17 +79,17 @@ pub enum Stmt {
     Range(Box<RangeStmt>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Spec {
-    Import(Box<ImportSpec>),
-    Value(Box<ValueSpec>),
-    Type(Box<TypeSpec>),
+    Import(Rc<ImportSpec>),
+    Value(Rc<ValueSpec>),
+    Type(Rc<TypeSpec>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Decl {
-    Bad(Box<BadDecl>),
-    Gen(Box<GenDecl>),
+    Bad(Rc<BadDecl>),
+    Gen(Rc<GenDecl>),
     Func(FuncDeclKey),
 }
 

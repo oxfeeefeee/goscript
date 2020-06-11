@@ -5,6 +5,7 @@ use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::OperandMode;
 use super::super::package::Package;
+use super::super::scope::Scope;
 use super::super::selection::Selection;
 use super::super::typ;
 use super::interface::IfaceInfo;
@@ -161,17 +162,17 @@ type DelayedAction = fn(&Checker);
 /// of a set of package files
 pub struct FilesContext<'a> {
     // package files
-    files: &'a Vec<ast::File>,
+    pub files: &'a Vec<ast::File>,
     // positions of unused dot-imported packages for each file scope
-    unused_dot_imports: HashMap<ScopeKey, HashMap<PackageKey, Pos>>,
+    pub unused_dot_imports: HashMap<ScopeKey, HashMap<PackageKey, Pos>>,
     // maps package scope type names(LangObj::TypeName) to associated
     // non-blank, non-interface methods(LangObj::Func)
-    methods: HashMap<ObjKey, Vec<ObjKey>>,
+    pub methods: HashMap<ObjKey, Vec<ObjKey>>,
     // maps interface(LangObj::TypeName) type names to corresponding
     // interface infos
-    ifaces: HashMap<ObjKey, IfaceInfo>,
+    pub ifaces: HashMap<ObjKey, IfaceInfo>,
     // map of expressions(ast::Expr) without final type
-    untyped: HashMap<NodeId, ExprInfo>,
+    pub untyped: HashMap<NodeId, ExprInfo>,
     // stack of delayed actions
     delayed: Vec<DelayedAction>,
     // path of object dependencies during type inference (for cycle reporting)
@@ -180,15 +181,15 @@ pub struct FilesContext<'a> {
 
 pub struct Checker<'a> {
     // object container for type checker
-    tc_objs: &'a mut TCObjects,
+    pub tc_objs: &'a mut TCObjects,
     // object container for AST
-    ast_objs: &'a mut AstObjects,
+    pub ast_objs: &'a mut AstObjects,
     // errors
     errors: &'a ErrorList,
     // files in this package
-    fset: &'a mut FileSet,
+    pub fset: &'a mut FileSet,
     // all packages checked so far
-    all_pkgs: &'a mut HashMap<String, PackageKey>,
+    pub all_pkgs: &'a mut HashMap<String, PackageKey>,
     // this package
     pkg: PackageKey,
     // maps package-level object to declaration info
@@ -198,7 +199,7 @@ pub struct Checker<'a> {
     // import config
     imp_config: &'a Config,
     // result of type checking
-    type_info: TypeInfo,
+    pub result: TypeInfo,
     // for debug
     indent: isize,
 }
@@ -216,7 +217,7 @@ impl ObjContext {
         if !checker.obj_map().contains_key(&to) {
             return;
         }
-        checker.tc_objs_mut().decls[self.decl.unwrap()].add_dep(to);
+        checker.tc_objs.decls[self.decl.unwrap()].add_dep(to);
     }
 }
 
@@ -236,7 +237,7 @@ impl FilesContext<'_> {
     /// file_name returns a filename suitable for debugging output.
     pub fn file_name(&self, index: usize, checker: &Checker) -> String {
         let file = &self.files[index];
-        let pos = file.pos(checker.ast_objs());
+        let pos = file.pos(checker.ast_objs);
         if pos > 0 {
             checker.fset().file(pos).unwrap().name().to_owned()
         } else {
@@ -245,12 +246,13 @@ impl FilesContext<'_> {
     }
 
     pub fn add_unused_dot_import(&mut self, scope: &ScopeKey, pkg: &PackageKey, pos: Pos) {
-        *self
-            .unused_dot_imports
+        if !self.unused_dot_imports.contains_key(scope) {
+            self.unused_dot_imports.insert(*scope, HashMap::new());
+        }
+        self.unused_dot_imports
             .get_mut(scope)
             .unwrap()
-            .get_mut(pkg)
-            .unwrap() = pos;
+            .insert(*pkg, pos);
     }
 
     pub fn remember_untyped(&mut self, e: &Expr, ex_info: ExprInfo) {
@@ -374,7 +376,7 @@ impl<'a> Checker<'a> {
             obj_map: HashMap::new(),
             imp_map: HashMap::new(),
             imp_config: cfg,
-            type_info: TypeInfo::new(),
+            result: TypeInfo::new(),
             indent: 0,
         }
     }
@@ -384,18 +386,6 @@ impl<'a> Checker<'a> {
         let mut fctx = FilesContext::new(&files);
         self.collect_objects(&mut fctx);
         Err(())
-    }
-
-    pub fn tc_objs(&self) -> &TCObjects {
-        self.tc_objs
-    }
-
-    pub fn tc_objs_mut(&mut self) -> &mut TCObjects {
-        self.tc_objs
-    }
-
-    pub fn ast_objs(&self) -> &AstObjects {
-        self.ast_objs
     }
 
     pub fn errors(&self) -> &ErrorList {
@@ -439,14 +429,6 @@ impl<'a> Checker<'a> {
 
     pub fn imp_config(&self) -> &Config {
         &self.imp_config
-    }
-
-    pub fn type_info(&self) -> &TypeInfo {
-        &self.type_info
-    }
-
-    pub fn type_info_mut(&mut self) -> &mut TypeInfo {
-        &mut self.type_info
     }
 
     pub fn new_importer(&mut self, pos: Pos) -> Importer {
@@ -514,11 +496,6 @@ impl<'a> Checker<'a> {
         Ok(result)
     }
 
-    pub fn error(&self, pos: Pos, err: String) {
-        let file = self.fset.file(pos).unwrap();
-        FilePosErrors::new(file, self.errors()).add(pos, err);
-    }
-
     pub fn ident(&self, key: IdentKey) -> &ast::Ident {
         &self.ast_objs.idents[key]
     }
@@ -535,7 +512,24 @@ impl<'a> Checker<'a> {
         &self.tc_objs.pkgs[key]
     }
 
+    pub fn package_mut(&mut self, key: PackageKey) -> &mut Package {
+        &mut self.tc_objs.pkgs[key]
+    }
+
+    pub fn scope(&self, key: ScopeKey) -> &Scope {
+        &self.tc_objs.scopes[key]
+    }
+
     pub fn position(&self, pos: Pos) -> Position {
         self.fset.file(pos).unwrap().position(pos)
+    }
+
+    pub fn error(&self, pos: Pos, err: String) {
+        let file = self.fset.file(pos).unwrap();
+        FilePosErrors::new(file, self.errors()).add(pos, err);
+    }
+
+    pub fn invalid_ast(&self, pos: Pos, err: &str) {
+        self.error(pos, format!("invalid AST: {}", err));
     }
 }

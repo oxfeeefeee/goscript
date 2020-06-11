@@ -22,7 +22,7 @@ impl<'a> Checker<'a> {
         // identifier but the declaration does not introduce a new
         // binding."
         if self.lobj(okey).name() != "_" {
-            let alt = Scope::insert(skey, okey, self.tc_objs_mut()).map(|x| x.clone());
+            let alt = Scope::insert(skey, okey, self.tc_objs).map(|x| x.clone());
             if let Some(o) = alt {
                 let lobj = self.lobj(okey);
                 self.error(
@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
             self.lobj_mut(okey).set_scope_pos(pos);
         }
         if ikey.is_some() {
-            self.type_info_mut().record_def(ikey.unwrap(), okey);
+            self.result.record_def(ikey.unwrap(), okey);
         }
     }
 }

@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::check::check::Checker;
-use super::objects::{ObjKey, PackageKey, TCObjects};
+use super::objects::{PackageKey, TCObjects};
 use goscript_parser::ast;
 use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::Objects as AstObjects;

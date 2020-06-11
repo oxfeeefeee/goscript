@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 use super::objects::{ObjKey, PackageKey, ScopeKey};
+use goscript_parser::ast::{Expr, FuncDecl};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fmt;
 
 /// A Package describes a Go package.
@@ -55,6 +57,15 @@ impl Package {
         self.complete = true
     }
 
+    pub fn fake(&self) -> &bool {
+        &self.fake
+    }
+
+    pub fn mark_fake_with_name(&mut self, name: String) {
+        self.fake = true;
+        self.name = Some(name);
+    }
+
     /// Imports returns the list of packages directly imported by
     /// pkg; the list is in source order.
     ///
@@ -63,6 +74,14 @@ impl Package {
     /// less than the set of packages directly imported by pkg's source code.
     pub fn imports(&self) -> &Vec<PackageKey> {
         &self.imports
+    }
+
+    pub fn imports_mut(&mut self) -> &mut Vec<PackageKey> {
+        &mut self.imports
+    }
+
+    pub fn add_import(&mut self, pkey: PackageKey) {
+        self.imports.push(pkey);
     }
 
     /// SetImports sets the list of explicitly imported packages to list.
@@ -92,5 +111,42 @@ impl fmt::Display for Package {
                 &self.path
             )
         }
+    }
+}
+
+/// DeclInfo describes a package-level const, type, var, or func declaration.
+pub struct DeclInfo {
+    file_scope: ScopeKey,     // scope of file containing this declaration
+    lhs: Option<Vec<ObjKey>>, // lhs of n:1 variable declarations, or None
+    typ: Option<Expr>,        // type, or None
+    init: Option<Expr>,       // init/orig expression, or None
+    fdecl: Option<FuncDecl>,  // func declaration, or None
+    deps: HashSet<ObjKey>,    // deps tracks initialization expression dependencies.
+}
+
+impl DeclInfo {
+    pub fn new(
+        file_scope: ScopeKey,
+        lhs: Option<Vec<ObjKey>>,
+        typ: Option<Expr>,
+        init: Option<Expr>,
+        fdecl: Option<FuncDecl>,
+    ) -> DeclInfo {
+        DeclInfo {
+            file_scope: file_scope,
+            lhs: lhs,
+            typ: typ,
+            init: init,
+            fdecl: fdecl,
+            deps: HashSet::new(),
+        }
+    }
+
+    pub fn has_initializer(&self) -> bool {
+        self.init.is_some() || self.fdecl.is_some() && self.fdecl.as_ref().unwrap().body.is_some()
+    }
+
+    pub fn add_dep(&mut self, okey: ObjKey) {
+        self.deps.insert(okey);
     }
 }

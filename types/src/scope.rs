@@ -47,6 +47,10 @@ impl Scope {
         &self.children
     }
 
+    pub fn elems(&self) -> &HashMap<String, ObjKey> {
+        &self.elems
+    }
+
     /// len returns the number of scope elements.
     pub fn len(&self) -> usize {
         self.elems.len()

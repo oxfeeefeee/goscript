@@ -1,6 +1,7 @@
 #![macro_use]
 #![allow(unused_macros)]
 #![allow(dead_code)]
+use super::constant;
 use super::obj::LangObj;
 use super::package::{DeclInfo, Package};
 use super::scope::Scope;
@@ -94,6 +95,29 @@ impl TCObjects {
         );
         let pkg = Package::new(path, skey);
         self.pkgs.insert(pkg)
+    }
+
+    pub fn new_pkg_name(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        imported: PackageKey,
+    ) -> ObjKey {
+        let lobj = LangObj::new_pkg_name(pos, pkg, name, imported, self.universe());
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_const(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+        val: constant::Value,
+    ) -> ObjKey {
+        let lobj = LangObj::new_const(pos, pkg, name, typ, val);
+        self.lobjs.insert(lobj)
     }
 
     pub fn universe(&self) -> &Universe {
