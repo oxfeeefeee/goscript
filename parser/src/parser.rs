@@ -1339,11 +1339,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn deref(x: &Expr) -> &Expr {
+    pub fn deref(x: &Expr) -> &Expr {
         if let Expr::Star(s) = x {&s.expr} else {x}
     }
 
-    fn unparen(x: &Expr) -> &Expr {
+    pub fn unparen(x: &Expr) -> &Expr {
         if let Expr::Paren(p) = x {Parser::unparen(&p.expr)} else {x}
     }
 

@@ -17,7 +17,7 @@ use std::fmt::Write;
 #[derive(Clone, Debug)]
 pub enum EntityType {
     /// A PkgName represents an imported Go package.
-    PkgName(PackageKey, bool),
+    PkgName(PackageKey, bool), // the bool is for used
     /// A Const represents a declared constant.
     Const(constant::Value),
     /// A TypeName represents a name for a (defined or alias) type.

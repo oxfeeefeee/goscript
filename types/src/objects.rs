@@ -7,6 +7,8 @@ use super::package::{DeclInfo, Package};
 use super::scope::Scope;
 use super::typ::Type;
 use super::universe::Universe;
+use goscript_parser::ast::Expr;
+use goscript_parser::objects::FuncDeclKey;
 use goscript_parser::position;
 use std::borrow::Cow;
 
@@ -97,6 +99,19 @@ impl TCObjects {
         self.pkgs.insert(pkg)
     }
 
+    pub fn new_decl_info(
+        &mut self,
+        file_scope: ScopeKey,
+        lhs: Option<Vec<ObjKey>>,
+        typ: Option<Expr>,
+        init: Option<Expr>,
+        fdecl: Option<FuncDeclKey>,
+        alias: bool,
+    ) -> DeclInfoKey {
+        let di = DeclInfo::new(file_scope, lhs, typ, init, fdecl, alias);
+        self.decls.insert(di)
+    }
+
     pub fn new_pkg_name(
         &mut self,
         pos: position::Pos,
@@ -117,6 +132,39 @@ impl TCObjects {
         val: constant::Value,
     ) -> ObjKey {
         let lobj = LangObj::new_const(pos, pkg, name, typ, val);
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_type_name(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+    ) -> ObjKey {
+        let lobj = LangObj::new_type_name(pos, pkg, name, typ);
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_var(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+    ) -> ObjKey {
+        let lobj = LangObj::new_var(pos, pkg, name, typ);
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_func(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+    ) -> ObjKey {
+        let lobj = LangObj::new_func(pos, pkg, name, typ);
         self.lobjs.insert(lobj)
     }
 

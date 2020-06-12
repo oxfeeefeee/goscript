@@ -8,7 +8,7 @@ use goscript_parser::objects::IdentKey;
 use goscript_parser::position::Pos;
 
 impl<'a> Checker<'a> {
-    fn report_alt_decl(&self, okey: &ObjKey) {
+    pub fn report_alt_decl(&self, okey: &ObjKey) {
         let lobj = self.lobj(*okey);
         let pos = *lobj.pos();
         if pos > 0 {

@@ -191,11 +191,11 @@ pub struct Checker<'a> {
     // all packages checked so far
     pub all_pkgs: &'a mut HashMap<String, PackageKey>,
     // this package
-    pkg: PackageKey,
+    pub pkg: PackageKey,
     // maps package-level object to declaration info
-    obj_map: HashMap<ObjKey, DeclInfoKey>,
+    pub obj_map: HashMap<ObjKey, DeclInfoKey>,
     // maps (import path, source directory) to (complete or fake) package
-    imp_map: HashMap<ImportKey, PackageKey>,
+    pub imp_map: HashMap<ImportKey, PackageKey>,
     // import config
     imp_config: &'a Config,
     // result of type checking
@@ -214,7 +214,7 @@ impl ObjContext {
             // not in a package-level init expression
             return;
         }
-        if !checker.obj_map().contains_key(&to) {
+        if !checker.obj_map.contains_key(&to) {
             return;
         }
         checker.tc_objs.decls[self.decl.unwrap()].add_dep(to);
@@ -239,7 +239,7 @@ impl FilesContext<'_> {
         let file = &self.files[index];
         let pos = file.pos(checker.ast_objs);
         if pos > 0 {
-            checker.fset().file(pos).unwrap().name().to_owned()
+            checker.fset.file(pos).unwrap().name().to_owned()
         } else {
             format!("file[{}]", index)
         }
@@ -390,41 +390,6 @@ impl<'a> Checker<'a> {
 
     pub fn errors(&self) -> &ErrorList {
         self.errors
-    }
-
-    pub fn fset(&self) -> &FileSet {
-        self.fset
-    }
-    pub fn all_pkgs(&self) -> &HashMap<String, PackageKey> {
-        &self.all_pkgs
-    }
-
-    pub fn pkg(&self) -> &PackageKey {
-        &self.pkg
-    }
-
-    pub fn pkg_val(&self) -> &Package {
-        &self.tc_objs.pkgs[self.pkg]
-    }
-
-    pub fn pkg_val_mut(&mut self) -> &mut Package {
-        &mut self.tc_objs.pkgs[self.pkg]
-    }
-
-    pub fn obj_map(&self) -> &HashMap<ObjKey, DeclInfoKey> {
-        &self.obj_map
-    }
-
-    pub fn obj_map_mut(&mut self) -> &mut HashMap<ObjKey, DeclInfoKey> {
-        &mut self.obj_map
-    }
-
-    pub fn imp_map(&self) -> &HashMap<ImportKey, PackageKey> {
-        &self.imp_map
-    }
-
-    pub fn imp_map_mut(&mut self) -> &mut HashMap<ImportKey, PackageKey> {
-        &mut self.imp_map
     }
 
     pub fn imp_config(&self) -> &Config {
