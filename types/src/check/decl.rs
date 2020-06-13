@@ -38,4 +38,12 @@ impl<'a> Checker<'a> {
             self.result.record_def(ikey.unwrap(), okey);
         }
     }
+
+    pub fn add_method_decls(&mut self, _okey: ObjKey) {
+        unimplemented!()
+    }
+
+    pub fn obj_decl(&mut self, _okey: ObjKey, _def: Option<ObjKey>) {
+        unimplemented!()
+    }
 }

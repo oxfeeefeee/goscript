@@ -9,6 +9,7 @@ use super::super::scope::Scope;
 use super::super::selection::Selection;
 use super::super::typ;
 use super::interface::IfaceInfo;
+use super::resolver::DeclInfo;
 use goscript_parser::ast;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
@@ -485,6 +486,10 @@ impl<'a> Checker<'a> {
         &self.tc_objs.scopes[key]
     }
 
+    pub fn decl_info(&self, key: DeclInfoKey) -> &DeclInfo {
+        &self.tc_objs.decls[key]
+    }
+
     pub fn position(&self, pos: Pos) -> Position {
         self.fset.file(pos).unwrap().position(pos)
     }
@@ -492,9 +497,5 @@ impl<'a> Checker<'a> {
     pub fn error(&self, pos: Pos, err: String) {
         let file = self.fset.file(pos).unwrap();
         FilePosErrors::new(file, self.errors()).add(pos, err);
-    }
-
-    pub fn invalid_ast(&self, pos: Pos, err: &str) {
-        self.error(pos, format!("invalid AST: {}", err));
     }
 }

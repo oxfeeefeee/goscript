@@ -1,14 +1,13 @@
 #![macro_use]
 #![allow(unused_macros)]
 #![allow(dead_code)]
+use super::check::DeclInfo;
 use super::constant;
 use super::obj::LangObj;
-use super::package::{DeclInfo, Package};
+use super::package::Package;
 use super::scope::Scope;
 use super::typ::Type;
 use super::universe::Universe;
-use goscript_parser::ast::Expr;
-use goscript_parser::objects::FuncDeclKey;
 use goscript_parser::position;
 use std::borrow::Cow;
 
@@ -97,19 +96,6 @@ impl TCObjects {
         );
         let pkg = Package::new(path, skey);
         self.pkgs.insert(pkg)
-    }
-
-    pub fn new_decl_info(
-        &mut self,
-        file_scope: ScopeKey,
-        lhs: Option<Vec<ObjKey>>,
-        typ: Option<Expr>,
-        init: Option<Expr>,
-        fdecl: Option<FuncDeclKey>,
-        alias: bool,
-    ) -> DeclInfoKey {
-        let di = DeclInfo::new(file_scope, lhs, typ, init, fdecl, alias);
-        self.decls.insert(di)
     }
 
     pub fn new_pkg_name(

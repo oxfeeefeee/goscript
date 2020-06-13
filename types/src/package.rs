@@ -1,9 +1,6 @@
 #![allow(dead_code)]
-use super::objects::{ObjKey, PackageKey, ScopeKey};
-use goscript_parser::ast::Expr;
-use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
+use super::objects::{PackageKey, ScopeKey};
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::fmt;
 
 /// A Package describes a Go package.
@@ -112,46 +109,5 @@ impl fmt::Display for Package {
                 &self.path
             )
         }
-    }
-}
-
-/// DeclInfo describes a package-level const, type, var, or func declaration.
-pub struct DeclInfo {
-    pub file_scope: ScopeKey,       // scope of file containing this declaration
-    pub lhs: Option<Vec<ObjKey>>,   // lhs of n:1 variable declarations, or None
-    pub typ: Option<Expr>,          // type, or None
-    pub init: Option<Expr>,         // init/orig expression, or None
-    pub fdecl: Option<FuncDeclKey>, // func declaration, or None
-    pub alias: bool,                // type alias declaration
-    pub deps: HashSet<ObjKey>,      // deps tracks initialization expression dependencies.
-}
-
-impl DeclInfo {
-    pub fn new(
-        file_scope: ScopeKey,
-        lhs: Option<Vec<ObjKey>>,
-        typ: Option<Expr>,
-        init: Option<Expr>,
-        fdecl: Option<FuncDeclKey>,
-        alias: bool,
-    ) -> DeclInfo {
-        DeclInfo {
-            file_scope: file_scope,
-            lhs: lhs,
-            typ: typ,
-            init: init,
-            fdecl: fdecl,
-            alias: alias,
-            deps: HashSet::new(),
-        }
-    }
-
-    pub fn has_initializer(&self, objs: &AstObjects) -> bool {
-        self.init.is_some()
-            || self.fdecl.is_some() && objs.fdecls[self.fdecl.unwrap()].body.is_some()
-    }
-
-    pub fn add_dep(&mut self, okey: ObjKey) {
-        self.deps.insert(okey);
     }
 }

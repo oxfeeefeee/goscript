@@ -4,16 +4,138 @@ use super::super::display::ExprDisplay;
 use super::super::importer::{ImportKey, Importer};
 use super::super::obj::{EntityType, LangObj};
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
-use super::super::package::DeclInfo;
 use super::check::{Checker, FilesContext};
 use super::decl;
+use super::util;
 use goscript_parser::ast;
 use goscript_parser::ast::{Expr, Node};
 use goscript_parser::objects::IdentKey;
+use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
 use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::Parser;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+
+pub struct DeclInfoConst {
+    pub file_scope: ScopeKey,  // scope of file containing this declaration
+    pub typ: Option<Expr>,     // type, or None
+    pub init: Option<Expr>,    // init/orig expression, or None
+    pub deps: HashSet<ObjKey>, // deps tracks initialization expression dependencies.
+}
+
+pub struct DeclInfoVar {
+    pub file_scope: ScopeKey,     // scope of file containing this declaration
+    pub lhs: Option<Vec<ObjKey>>, // lhs of n:1 variable declarations, or None
+    pub typ: Option<Expr>,        // type, or None
+    pub init: Option<Expr>,       // init/orig expression, or None
+    pub deps: HashSet<ObjKey>,    // deps tracks initialization expression dependencies.
+}
+
+pub struct DeclInfoType {
+    pub file_scope: ScopeKey, // scope of file containing this declaration
+    pub typ: Expr,            // type
+    pub alias: bool,          // type alias declaration
+}
+
+pub struct DeclInfoFunc {
+    pub file_scope: ScopeKey, // scope of file containing this declaration
+    pub fdecl: FuncDeclKey,   // func declaration, or None
+}
+
+/// DeclInfo describes a package-level const, type, var, or func declaration.
+pub enum DeclInfo {
+    Const(DeclInfoConst),
+    Var(DeclInfoVar),
+    Type(DeclInfoType),
+    Func(DeclInfoFunc),
+}
+
+impl DeclInfo {
+    pub fn new_const(file_scope: ScopeKey, typ: Option<Expr>, init: Option<Expr>) -> DeclInfo {
+        DeclInfo::Const(DeclInfoConst {
+            file_scope: file_scope,
+            typ: typ,
+            init: init,
+            deps: HashSet::new(),
+        })
+    }
+
+    pub fn new_var(
+        file_scope: ScopeKey,
+        lhs: Option<Vec<ObjKey>>,
+        typ: Option<Expr>,
+        init: Option<Expr>,
+    ) -> DeclInfo {
+        DeclInfo::Var(DeclInfoVar {
+            file_scope: file_scope,
+            lhs: lhs,
+            typ: typ,
+            init: init,
+            deps: HashSet::new(),
+        })
+    }
+
+    pub fn new_type(file_scope: ScopeKey, typ: Expr, alias: bool) -> DeclInfo {
+        DeclInfo::Type(DeclInfoType {
+            file_scope: file_scope,
+            typ: typ,
+            alias: alias,
+        })
+    }
+
+    pub fn new_func(file_scope: ScopeKey, fdecl: FuncDeclKey) -> DeclInfo {
+        DeclInfo::Func(DeclInfoFunc {
+            file_scope: file_scope,
+            fdecl: fdecl,
+        })
+    }
+
+    pub fn as_const(&self) -> &DeclInfoConst {
+        match self {
+            DeclInfo::Const(c) => c,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_var(&self) -> &DeclInfoVar {
+        match self {
+            DeclInfo::Var(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_type(&self) -> &DeclInfoType {
+        match self {
+            DeclInfo::Type(t) => t,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_func(&self) -> &DeclInfoFunc {
+        match self {
+            DeclInfo::Func(f) => f,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn has_initializer(&self, objs: &AstObjects) -> bool {
+        match self {
+            DeclInfo::Const(c) => c.init.is_some(),
+            DeclInfo::Var(v) => v.init.is_some(),
+            DeclInfo::Func(f) => objs.fdecls[f.fdecl].body.is_some(),
+            _ => false,
+        }
+    }
+
+    pub fn add_dep(&mut self, okey: ObjKey) {
+        match self {
+            DeclInfo::Const(c) => &mut c.deps,
+            DeclInfo::Var(v) => &mut v.deps,
+            _ => unreachable!(),
+        }
+        .insert(okey);
+    }
+}
 
 impl<'a> Checker<'a> {
     pub fn collect_objects(&mut self, fctx: &mut FilesContext) {
@@ -169,8 +291,8 @@ impl<'a> Checker<'a> {
                                                 };
                                                 let typ =
                                                     current_vspec.map(|x| x.typ.clone()).flatten();
-                                                let d = self.tc_objs.new_decl_info(
-                                                    file_scope, None, typ, init, None, false,
+                                                let d = self.tc_objs.decls.insert(
+                                                    DeclInfo::new_const(file_scope, typ, init),
                                                 );
                                                 let _ = self.declare_pkg_obj(name, lobj, d);
                                             }
@@ -192,14 +314,12 @@ impl<'a> Checker<'a> {
                                                 .collect();
                                             let n_to_1 = vspec.values.len() == 1;
                                             let n_to_1_di = if n_to_1 {
-                                                Some(self.tc_objs.new_decl_info(
+                                                Some(self.tc_objs.decls.insert(DeclInfo::new_var(
                                                     file_scope,
                                                     Some(lhs.clone()),
                                                     vspec.typ.clone(),
                                                     Some(vspec.values[0].clone()),
-                                                    None,
-                                                    false,
-                                                ))
+                                                )))
                                             } else {
                                                 None
                                             };
@@ -207,14 +327,12 @@ impl<'a> Checker<'a> {
                                                 let di = if n_to_1 {
                                                     n_to_1_di.unwrap()
                                                 } else {
-                                                    self.tc_objs.new_decl_info(
+                                                    self.tc_objs.decls.insert(DeclInfo::new_var(
                                                         file_scope,
                                                         None,
                                                         vspec.typ.clone(),
                                                         vspec.values.get(i).map(|x| x.clone()),
-                                                        None,
-                                                        false,
-                                                    )
+                                                    ))
                                                 };
                                                 let _ = self.declare_pkg_obj(*name, lhs[i], di);
                                             }
@@ -234,14 +352,11 @@ impl<'a> Checker<'a> {
                                         ident.name.clone(),
                                         None,
                                     );
-                                    let di = self.tc_objs.new_decl_info(
+                                    let di = self.tc_objs.decls.insert(DeclInfo::new_type(
                                         file_scope,
-                                        None,
-                                        Some(tspec.typ.clone()),
-                                        None,
-                                        None,
+                                        tspec.typ.clone(),
                                         tspec.assign > 0,
-                                    );
+                                    ));
                                     let _ = self.declare_pkg_obj(tspec.name, lobj, di);
                                 }
                             }
@@ -279,14 +394,10 @@ impl<'a> Checker<'a> {
                             }
                             self.result.record_def(ident_key, lobj);
                         }
-                        let di = self.tc_objs.new_decl_info(
-                            file_scope,
-                            None,
-                            None,
-                            None,
-                            Some(*fdkey),
-                            false,
-                        );
+                        let di = self
+                            .tc_objs
+                            .decls
+                            .insert(DeclInfo::new_func(file_scope, *fdkey));
                         self.obj_map.insert(lobj, di);
                         let order = self.obj_map.len() as u32;
                         self.lobj_mut(lobj).set_order(order);
@@ -334,8 +445,8 @@ impl<'a> Checker<'a> {
         // Ignore methods that have an invalid receiver. They will be
         // type-checked later, with regular functions.
         for f in methods.into_iter() {
-            let fdkey = &self.tc_objs.decls[self.obj_map[&f]].fdecl.unwrap();
-            let fdecl = &self.ast_objs.fdecls[*fdkey];
+            let fdkey = self.tc_objs.decls[self.obj_map[&f]].as_func().fdecl;
+            let fdecl = &self.ast_objs.fdecls[fdkey];
             if let Some(fl) = &fdecl.recv {
                 // f is a method
                 // receiver may be of the form T or *T, possibly with parentheses
@@ -351,6 +462,42 @@ impl<'a> Checker<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// package_objects typechecks all package objects, but not function bodies.
+    pub fn package_objects(&mut self) {
+        // process package objects in source order for reproducible results
+        let mut obj_list: Vec<ObjKey> = self.obj_map.iter().map(|(o, _)| *o).collect();
+        obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(self.lobj(*b).order()));
+
+        for o in obj_list.iter() {
+            self.add_method_decls(*o);
+        }
+
+        // We process non-alias declarations first, in order to avoid situations where
+        // the type of an alias declaration is needed before it is available. In general
+        // this is still not enough, as it is possible to create sufficiently convoluted
+        // recursive type definitions that will cause a type alias to be needed before it
+        // is available (see Golang issue #25838 for examples).
+        // As an aside, the cmd/compiler suffers from the same problem (Golang #25838).
+        let alias_list: Vec<ObjKey> = obj_list
+            .into_iter()
+            .filter(|&o| {
+                if self.lobj(o).entity_type().is_type_name()
+                    && self.decl_info(self.obj_map[&o]).as_type().alias
+                {
+                    true
+                } else {
+                    // phase 1
+                    self.obj_decl(o, None);
+                    false
+                }
+            })
+            .collect();
+        for o in alias_list.into_iter() {
+            // phase 2
+            self.obj_decl(o, None);
         }
     }
 
@@ -406,8 +553,45 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
+    // resolve_base_type_name returns the non-alias receiver base type name,
+    // explicitly declared in the package scope, for the given receiver
+    // type name
     fn resolve_base_type_name(&self, ikey: &IdentKey) -> Option<ObjKey> {
-        unimplemented!()
+        let scope = self.scope(*self.package(self.pkg).scope());
+        let mut ident = &self.ast_objs.idents[*ikey];
+        let mut path = Vec::new();
+        loop {
+            // name must denote an object found in the current package scope
+            // (note that dot-imported objects are not in the package scope!)
+            if let Some(okey) = scope.lookup(&ident.name) {
+                let lobj = self.lobj(*okey);
+                // the object must be a type name...
+                if lobj.entity_type().is_type_name() {
+                    // ... which we have not seen before
+                    if !self.has_cycle(lobj, &path, false) {
+                        if let DeclInfo::Type(t) = &self.tc_objs.decls[self.obj_map[okey]] {
+                            if !t.alias {
+                                // we're done if tdecl defined tname as a new type
+                                // (rather than an alias)
+                                return Some(*okey);
+                            } else {
+                                // Otherwise, if tdecl defined an alias for a (possibly parenthesized)
+                                // type which is not an (unqualified) named type, we're done because
+                                // receiver base types must be named types declared in this package.
+                                let typ = Parser::unparen(&t.typ);
+                                if let Expr::Ident(i) = typ {
+                                    ident = &self.ast_objs.idents[*i];
+                                    path.push(lobj);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        None
     }
 
     fn valid_import_path(&self, blit: &'a ast::BasicLit) -> Result<&'a str, ()> {
