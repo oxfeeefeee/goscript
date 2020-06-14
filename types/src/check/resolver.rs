@@ -1,12 +1,10 @@
 #![allow(dead_code)]
 use super::super::constant;
 use super::super::display::ExprDisplay;
-use super::super::importer::{ImportKey, Importer};
-use super::super::obj::{EntityType, LangObj};
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::importer::ImportKey;
+use super::super::obj::EntityType;
+use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey};
 use super::check::{Checker, FilesContext};
-use super::decl;
-use super::util;
 use goscript_parser::ast;
 use goscript_parser::ast::{Expr, Node};
 use goscript_parser::objects::IdentKey;
@@ -466,7 +464,7 @@ impl<'a> Checker<'a> {
     }
 
     /// package_objects typechecks all package objects, but not function bodies.
-    pub fn package_objects(&mut self) {
+    pub fn package_objects(&mut self, fctx: &mut FilesContext) {
         // process package objects in source order for reproducible results
         let mut obj_list: Vec<ObjKey> = self.obj_map.iter().map(|(o, _)| *o).collect();
         obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(self.lobj(*b).order()));
@@ -498,6 +496,51 @@ impl<'a> Checker<'a> {
         for o in alias_list.into_iter() {
             // phase 2
             self.obj_decl(o, None);
+        }
+
+        // At this point we may have a non-empty FilesContext.methods map; this means that
+        // not all entries were deleted at the end of type_decl because the respective
+        // receiver base types were not found. In that case, an error was reported when
+        // declaring those methods. We can now safely discard this map.
+        fctx.methods.clear();
+    }
+
+    /// unused_imports checks for unused imports.
+    pub fn unused_imports(&mut self, fctx: &mut FilesContext) {
+        // check use of regular imported packages
+        let pkg_scope = self.scope(*self.package(self.pkg).scope());
+        for s in pkg_scope.children().iter() {
+            for (_, okey) in self.scope(*s).elems() {
+                let obj_val = self.lobj(*okey);
+                match obj_val.entity_type() {
+                    EntityType::PkgName(pkey, used) => {
+                        if *used {
+                            let (path, base) = self.pkg_path_and_name(*pkey);
+                            if obj_val.name() == base {
+                                self.soft_error(
+                                    *obj_val.pos(),
+                                    format!("{} imported but not used", path),
+                                );
+                            } else {
+                                self.soft_error(
+                                    *obj_val.pos(),
+                                    format!("{} imported but not used as {}", path, base),
+                                );
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // check use of dot-imported packages
+        for (_, imports) in fctx.unused_dot_imports.iter() {
+            for (pkey, pos) in imports.iter() {
+                self.soft_error(
+                    *pos,
+                    format!("{} imported but not used", self.package(*pkey).path()),
+                );
+            }
         }
     }
 
@@ -563,17 +606,17 @@ impl<'a> Checker<'a> {
         loop {
             // name must denote an object found in the current package scope
             // (note that dot-imported objects are not in the package scope!)
-            if let Some(okey) = scope.lookup(&ident.name) {
-                let lobj = self.lobj(*okey);
+            if let Some(&okey) = scope.lookup(&ident.name) {
+                let lobj = self.lobj(okey);
                 // the object must be a type name...
                 if lobj.entity_type().is_type_name() {
                     // ... which we have not seen before
-                    if !self.has_cycle(lobj, &path, false) {
-                        if let DeclInfo::Type(t) = &self.tc_objs.decls[self.obj_map[okey]] {
+                    if !self.has_cycle(okey, &path, false) {
+                        if let DeclInfo::Type(t) = &self.tc_objs.decls[self.obj_map[&okey]] {
                             if !t.alias {
                                 // we're done if tdecl defined tname as a new type
                                 // (rather than an alias)
-                                return Some(*okey);
+                                return Some(okey);
                             } else {
                                 // Otherwise, if tdecl defined an alias for a (possibly parenthesized)
                                 // type which is not an (unqualified) named type, we're done because
@@ -581,7 +624,7 @@ impl<'a> Checker<'a> {
                                 let typ = Parser::unparen(&t.typ);
                                 if let Expr::Ident(i) = typ {
                                     ident = &self.ast_objs.idents[*i];
-                                    path.push(lobj);
+                                    path.push(okey);
                                     continue;
                                 }
                             }
@@ -676,6 +719,20 @@ impl<'a> Checker<'a> {
         imported.unwrap()
     }
 
+    // pkg_name returns the package's path and name (last element) of a PkgName obj.
+    fn pkg_path_and_name(&self, pkey: PackageKey) -> (&str, &str) {
+        let pkg_val = self.package(pkey);
+        let path = pkg_val.path();
+        if let Some((i, _)) = path.match_indices('/').next() {
+            if i > 0 {
+                return (&path, &path[0..i]);
+            }
+        }
+        (&path, &path)
+    }
+
+    /// dir makes a good-faith attempt to return the directory
+    /// portion of path. If path is empty, the result is ".".
     fn file_dir(&self, file: &ast::File) -> String {
         let path = self.fset.file(self.ident(file.name).pos).unwrap().name();
         if let Some((i, _)) = path.rmatch_indices(&['/', '\\'][..]).next() {
