@@ -446,18 +446,14 @@ impl<'a> Checker<'a> {
             let fdkey = self.tc_objs.decls[self.obj_map[&f]].as_func().fdecl;
             let fdecl = &self.ast_objs.fdecls[fdkey];
             if let Some(fl) = &fdecl.recv {
-                // f is a method
-                // receiver may be of the form T or *T, possibly with parentheses
-                let mut typ = Parser::unparen(&self.ast_objs.fields[fl.list[0]].typ);
-                if let Expr::Star(t) = typ {
-                    typ = Parser::unparen(&t.expr);
-                }
-                if let Expr::Ident(ident) = typ {
-                    // base is a potential base type name; determine
-                    // "underlying" defined type and associate f with it
-                    if let Some(tname) = self.resolve_base_type_name(ident) {
-                        fctx.methods.entry(tname).or_default().push(f);
-                    }
+                // f is a method.
+                // determine the receiver base type and associate f with it.
+                let typ = &self.ast_objs.fields[fl.list[0]].typ;
+                if let Some((ptr, base)) = self.resolve_base_type_name(typ) {
+                    self.lobj_mut(f)
+                        .entity_type_mut()
+                        .func_set_has_ptr_recv(ptr);
+                    fctx.methods.entry(base).or_default().push(f);
                 }
             }
         }
@@ -596,38 +592,56 @@ impl<'a> Checker<'a> {
         Ok(())
     }
 
-    // resolve_base_type_name returns the non-alias receiver base type name,
-    // explicitly declared in the package scope, for the given receiver
-    // type name
-    fn resolve_base_type_name(&self, ikey: &IdentKey) -> Option<ObjKey> {
+    // resolve_base_type_name returns the non-alias base type name for typ, and whether
+    // there was a pointer indirection to get to it. The base type name must be declared
+    // in package scope, and there can be at most one pointer indirection. If no such type
+    // name exists, the returned base is nil.
+    // Algorithm: Starting from a type expression, which may be a name,
+    // we follow that type through alias declarations until we reach a
+    // non-alias type name. If we encounter anything but pointer types or
+    // parentheses we're done. If we encounter more than one pointer type
+    // we're done.
+    fn resolve_base_type_name(&self, expr: &Expr) -> Option<(bool, ObjKey)> {
         let scope = self.scope(*self.package(self.pkg).scope());
-        let mut ident = &self.ast_objs.idents[*ikey];
+        let mut typ = expr;
         let mut path = Vec::new();
+        let mut ptr = false;
         loop {
-            // name must denote an object found in the current package scope
-            // (note that dot-imported objects are not in the package scope!)
-            if let Some(&okey) = scope.lookup(&ident.name) {
-                let lobj = self.lobj(okey);
-                // the object must be a type name...
-                if lobj.entity_type().is_type_name() {
+            typ = Parser::unparen(typ);
+            if let Expr::Star(t) = typ {
+                // if we've already seen a pointer, we're done
+                if ptr {
+                    break;
+                }
+                ptr = true;
+                typ = Parser::unparen(&t.expr);
+            }
+
+            // typ must be the name
+            if let Expr::Ident(i) = typ {
+                // name must denote an object found in the current package scope
+                // (note that dot-imported objects are not in the package scope!)
+                let ident = &self.ast_objs.idents[*i];
+                if let Some(&okey) = scope.lookup(&ident.name) {
+                    let lobj = self.lobj(okey);
+                    // the object must be a type name...
+                    if !lobj.entity_type().is_type_name() {
+                        break;
+                    }
                     // ... which we have not seen before
-                    if !self.has_cycle(okey, &path, false) {
-                        if let DeclInfo::Type(t) = &self.tc_objs.decls[self.obj_map[&okey]] {
-                            if !t.alias {
-                                // we're done if tdecl defined tname as a new type
-                                // (rather than an alias)
-                                return Some(okey);
-                            } else {
-                                // Otherwise, if tdecl defined an alias for a (possibly parenthesized)
-                                // type which is not an (unqualified) named type, we're done because
-                                // receiver base types must be named types declared in this package.
-                                let typ = Parser::unparen(&t.typ);
-                                if let Expr::Ident(i) = typ {
-                                    ident = &self.ast_objs.idents[*i];
-                                    path.push(okey);
-                                    continue;
-                                }
-                            }
+                    if self.has_cycle(okey, &path, false) {
+                        break;
+                    }
+                    if let DeclInfo::Type(t) = &self.tc_objs.decls[self.obj_map[&okey]] {
+                        if !t.alias {
+                            // we're done if tdecl defined tname as a new type
+                            // (rather than an alias)
+                            return Some((ptr, okey));
+                        } else {
+                            // otherwise, continue resolving
+                            typ = &t.typ;
+                            path.push(okey);
+                            continue;
                         }
                     }
                 }

@@ -28,7 +28,7 @@ pub enum EntityType {
     /// A Func represents a declared function, concrete method, or abstract
     /// (interface) method. Its Type() is always a *Signature.
     /// An abstract method may belong to many interfaces due to embedding.
-    Func,
+    Func(bool), // has_ptr_recv, only valid for methods that don't have a type yet
     /// A Label represents a declared label.
     /// Labels don't have a type.
     Label(bool),
@@ -70,7 +70,7 @@ impl EntityType {
 
     pub fn is_func(&self) -> bool {
         match self {
-            EntityType::Func => true,
+            EntityType::Func(_) => true,
             _ => false,
         }
     }
@@ -93,6 +93,15 @@ impl EntityType {
         match self {
             EntityType::Nil => true,
             _ => false,
+        }
+    }
+
+    pub fn func_set_has_ptr_recv(&mut self, has: bool) {
+        match self {
+            EntityType::Func(h) => {
+                *h = has;
+            }
+            _ => unreachable!(),
         }
     }
 }
@@ -194,7 +203,7 @@ impl LangObj {
         name: String,
         typ: Option<TypeKey>,
     ) -> LangObj {
-        LangObj::new(EntityType::Func, pos, pkg, name, typ)
+        LangObj::new(EntityType::Func(false), pos, pkg, name, typ)
     }
 
     fn new_label(
@@ -217,6 +226,10 @@ impl LangObj {
 
     pub fn entity_type(&self) -> &EntityType {
         &self.entity_type
+    }
+
+    pub fn entity_type_mut(&mut self) -> &mut EntityType {
+        &mut self.entity_type
     }
 
     pub fn parent(&self) -> &Option<ScopeKey> {
@@ -337,7 +350,7 @@ impl LangObj {
 
     pub fn func_fmt_name(&self, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
         match &self.entity_type {
-            EntityType::Func => fmt_func_name(self, f, objs),
+            EntityType::Func(_) => fmt_func_name(self, f, objs),
             _ => unreachable!(),
         }
     }
@@ -429,7 +442,7 @@ pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> f
             fmt_obj_name(okey, f, objs)?;
             fmt_obj_type(obj, f, objs)?;
         }
-        EntityType::Func => {
+        EntityType::Func(_) => {
             f.write_str("func ")?;
             fmt_func_name(obj, f, objs)?;
             if let Some(t) = obj.typ() {

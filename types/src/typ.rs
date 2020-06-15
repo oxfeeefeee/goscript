@@ -673,6 +673,7 @@ impl InterfaceDetail {
             embeded.complete(objs);
             all.append(&mut embeded.all_methods().as_ref().unwrap().clone());
         }
+        all.sort_by(compare_by_method_name!(&objs));
         *self.all_methods.borrow_mut() = Some(all);
     }
 }
@@ -731,7 +732,7 @@ impl ChanDetail {
 pub struct NamedDetail {
     obj: Option<ObjKey>,  // corresponding declared object
     underlying: TypeKey,  // possibly a Named during setup; never a Named once set up completely
-    methods: Vec<ObjKey>, // methods declared for this type (not the method set of this type)
+    methods: Vec<ObjKey>, // methods declared for this type (not the method set of this type); signatures are type-checked lazily
 }
 
 impl NamedDetail {

@@ -195,7 +195,7 @@ pub struct Checker<'a> {
     pub all_pkgs: &'a mut HashMap<String, PackageKey>,
     // this package
     pub pkg: PackageKey,
-    // maps package-level object to declaration info
+    // maps package-level objects and (non-interface) methods to declaration info
     pub obj_map: HashMap<ObjKey, DeclInfoKey>,
     // maps (import path, source directory) to (complete or fake) package
     pub imp_map: HashMap<ImportKey, PackageKey>,
