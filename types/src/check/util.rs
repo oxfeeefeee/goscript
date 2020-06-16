@@ -10,6 +10,27 @@ impl<'a> Checker<'a> {
         self.error(pos, format!("invalid AST: {}", err));
     }
 
+    pub fn obj_path_str(&self, path: &Vec<ObjKey>) -> String {
+        let names: Vec<&str> = path.iter().map(|p| self.lobj(*p).name().as_str()).collect();
+        names[..].join("->")
+    }
+
+    pub fn print_trace(&self, pos: Pos, msg: &str) {
+        let file = self.fset.file(pos).unwrap();
+        let p = file.position(pos);
+        print!("{}:\t{}{}\n", p, ".  ".repeat(self.indent), msg);
+    }
+
+    pub fn trace_begin(&mut self, pos: Pos, msg: &str) {
+        self.print_trace(pos, msg);
+        self.indent += 1;
+    }
+
+    pub fn trace_end(&mut self, pos: Pos, msg: &str) {
+        self.indent -= 1;
+        self.print_trace(pos, msg);
+    }
+
     // has_cycle reports whether obj appears in path or not.
     // If it does, and report is set, it also reports a cycle error.
     pub fn has_cycle(&self, okey: ObjKey, path: &Vec<ObjKey>, report: bool) -> bool {

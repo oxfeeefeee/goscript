@@ -484,14 +484,14 @@ impl<'a> Checker<'a> {
                     true
                 } else {
                     // phase 1
-                    self.obj_decl(o, None);
+                    self.obj_decl(o, None, fctx);
                     false
                 }
             })
             .collect();
         for o in alias_list.into_iter() {
             // phase 2
-            self.obj_decl(o, None);
+            self.obj_decl(o, None, fctx);
         }
 
         // At this point we may have a non-empty FilesContext.methods map; this means that

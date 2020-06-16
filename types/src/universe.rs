@@ -59,6 +59,12 @@ pub struct Universe {
     iota: ObjKey,
     byte: TypeKey,
     rune: TypeKey,
+    // indir is a sentinel type name that is pushed onto the object path
+    // to indicate an "indirection" in the dependency from one type name
+    // to the next. For instance, for "type p *p" the object path contains
+    // p followed by indir, indicating that there's an indirection *p.
+    // Indirections are used to break type cycles.
+    indir: ObjKey,
     types: HashMap<BasicType, TypeKey>,
     builtins: HashMap<Builtin, BuiltinInfo>,
 }
@@ -86,12 +92,14 @@ impl Universe {
         Universe::def_builtins(&builtins, ftype, &uskey, &unsafe_, objs);
         // iota byte rune
         let (iota, byte, rune) = Universe::iota_byte_rune(&uskey, objs);
+        let indir = objs.new_type_name(0, None, "*".to_string(), None);
         Universe {
             scope: uskey,
             unsafe_: unsafe_,
             iota: iota,
             byte: byte,
             rune: rune,
+            indir: indir,
             types: types,
             builtins: builtins,
         }
@@ -123,6 +131,10 @@ impl Universe {
 
     pub fn rune(&self) -> &TypeKey {
         &self.rune
+    }
+
+    pub fn indir(&self) -> &ObjKey {
+        &self.indir
     }
 
     fn def_universe_unsafe(objs: &mut TCObjects) -> (ScopeKey, PackageKey) {

@@ -14,11 +14,13 @@ use std::path::{Path, PathBuf};
 
 pub struct Config {
     // working directory
-    work_dir: Option<String>,
+    pub work_dir: Option<String>,
     // base path for non-local imports
-    base_path: Option<String>,
+    pub base_path: Option<String>,
     // print debug info in parser
-    trace_parser: bool,
+    pub trace_parser: bool,
+    // print debug info in parser
+    pub trace_checker: bool,
 }
 
 impl Config {

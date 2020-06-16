@@ -465,16 +465,25 @@ fn lookup_field_or_method_impl(
     LookupResult::NotFound
 }
 
-/// ptr_recv reports whether the receiver is of the form *T.
-/// The receiver must exist.
+/// ptr_recv returns true if the receiver is of the form *T.
 fn ptr_recv(lo: &obj::LangObj, objs: &TCObjects) -> bool {
-    let recv = objs.types[lo.typ().unwrap()]
-        .try_as_signature()
-        .unwrap()
-        .recv();
-    let t = objs.lobjs[recv.unwrap()].typ().as_ref().unwrap();
-    let (_, is_ptr) = try_deref(t, objs);
-    is_ptr
+    // If a method's receiver type is set, use that as the source of truth for the receiver.
+    // Caution: Checker.func_decl (decl.rs) marks a function by setting its type to an empty
+    // signature. We may reach here before the signature is fully set up: we must explicitly
+    // check if the receiver is set (we cannot just look for non-nil f.typ).
+    if let Some(sig) = objs.types[lo.typ().unwrap()].try_as_signature() {
+        if let Some(re) = sig.recv() {
+            let t = objs.lobjs[*re].typ().as_ref().unwrap();
+            let (_, is_ptr) = try_deref(t, objs);
+            return is_ptr;
+        }
+    }
+    // If a method's type is not set it may be a method/function that is:
+    // 1) client-supplied (via NewFunc with no signature), or
+    // 2) internally created but not yet type-checked.
+    // For case 1) we can't do anything; the client must know what they are doing.
+    // For case 2) we can use the information gathered by the resolver.
+    lo.entity_type().func_has_ptr_recv()
 }
 
 /// concat_vec returns the result of concatenating list and i.

@@ -96,6 +96,13 @@ impl EntityType {
         }
     }
 
+    pub fn func_has_ptr_recv(&self) -> bool {
+        match self {
+            EntityType::Func(h) => *h,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn func_set_has_ptr_recv(&mut self, has: bool) {
         match self {
             EntityType::Func(h) => {
@@ -110,7 +117,17 @@ impl EntityType {
 pub enum ObjColor {
     White,
     Black,
-    Gray,
+    Gray(usize),
+}
+
+impl fmt::Display for ObjColor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ObjColor::White => f.write_str("while"),
+            ObjColor::Black => f.write_str("black"),
+            ObjColor::Gray(_) => f.write_str("gray"),
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -326,6 +343,13 @@ impl LangObj {
     pub fn const_val(&self) -> &constant::Value {
         match &self.entity_type {
             EntityType::Const(val) => val,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn set_const_val(&mut self, v: constant::Value) {
+        match &mut self.entity_type {
+            EntityType::Const(val) => *val = v,
             _ => unreachable!(),
         }
     }

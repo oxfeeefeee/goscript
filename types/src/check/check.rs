@@ -140,21 +140,21 @@ pub struct ExprInfo {
 // (valid only for the duration of type-checking a specific object)
 pub struct ObjContext {
     // package-level declaration whose init expression/function body is checked
-    decl: Option<DeclInfoKey>,
+    pub decl: Option<DeclInfoKey>,
     // top-most scope for lookups
-    scope: ScopeKey,
+    pub scope: Option<ScopeKey>,
     // if valid, identifiers are looked up as if at position pos (used by Eval)
-    pos: Pos,
+    pub pos: Pos,
     // value of iota in a constant declaration; None otherwise
-    iota: Option<Value>,
+    pub iota: Option<Value>,
     // function signature if inside a function; None otherwise
-    sig: Option<ObjKey>,
+    pub sig: Option<ObjKey>,
     // set of panic call ids (used for termination check)
-    panics: Option<Vec<Expr>>,
+    pub panics: Option<Vec<Expr>>,
     // set if a function makes use of labels (only ~1% of functions); unused outside functions
-    has_label: bool,
+    pub has_label: bool,
     // set if an expression contains a function call or channel receive operation
-    has_call_or_recv: bool,
+    pub has_call_or_recv: bool,
 }
 
 type DelayedAction = fn(&Checker);
@@ -175,9 +175,9 @@ pub struct FilesContext<'a> {
     // map of expressions(ast::Expr) without final type
     pub untyped: HashMap<NodeId, ExprInfo>,
     // stack of delayed actions
-    delayed: Vec<DelayedAction>,
+    pub delayed: Vec<DelayedAction>,
     // path of object dependencies during type inference (for cycle reporting)
-    obj_path: Vec<ObjKey>,
+    pub obj_path: Vec<ObjKey>,
 }
 
 pub struct Checker<'a> {
@@ -199,17 +199,32 @@ pub struct Checker<'a> {
     pub obj_map: HashMap<ObjKey, DeclInfoKey>,
     // maps (import path, source directory) to (complete or fake) package
     pub imp_map: HashMap<ImportKey, PackageKey>,
+    // object context
+    pub octx: ObjContext,
     // import config
-    imp_config: &'a Config,
+    config: &'a Config,
     // result of type checking
     pub result: TypeInfo,
     // for debug
-    indent: isize,
+    pub indent: usize,
 }
 
 impl ObjContext {
+    pub fn new() -> ObjContext {
+        ObjContext {
+            decl: None,
+            scope: None,
+            pos: 0,
+            iota: None,
+            sig: None,
+            panics: None,
+            has_label: false,
+            has_call_or_recv: false,
+        }
+    }
+
     pub fn lookup<'a>(&self, name: &str, tc_objs: &'a TCObjects) -> Option<&'a ObjKey> {
-        tc_objs.scopes[self.scope].lookup(name)
+        tc_objs.scopes[self.scope.unwrap()].lookup(name)
     }
 
     pub fn add_decl_dep(&mut self, to: ObjKey, checker: &mut Checker) {
@@ -298,20 +313,20 @@ impl TypeInfo {
         val: Option<Value>,
     ) {
         assert!(val.is_some());
-        if mode == OperandMode::Invalid {
+        if let OperandMode::Invalid = mode {
             return;
         }
         self.types.insert(e.id(), TypeAndValue::new(mode, typ, val));
     }
 
-    pub fn record_builtin_type(&mut self, e: &Expr, sig: TypeKey) {
+    pub fn record_builtin_type(&mut self, mode: &OperandMode, e: &Expr, sig: TypeKey) {
         let mut expr = e;
         // expr must be a (possibly parenthesized) identifier denoting a built-in
         // (built-ins in package unsafe always produce a constant result and
         // we don't record their signatures, so we don't see qualified idents
         // here): record the signature for f and possible children.
         loop {
-            self.record_type_and_value(expr, OperandMode::Builtin, sig, None);
+            self.record_type_and_value(expr, mode.clone(), sig, None);
             match expr {
                 Expr::Ident(_) => break,
                 Expr::Paren(p) => expr = &(*p).expr,
@@ -380,7 +395,8 @@ impl<'a> Checker<'a> {
             pkg: pkg,
             obj_map: HashMap::new(),
             imp_map: HashMap::new(),
-            imp_config: cfg,
+            octx: ObjContext::new(),
+            config: cfg,
             result: TypeInfo::new(),
             indent: 0,
         }
@@ -397,13 +413,13 @@ impl<'a> Checker<'a> {
         self.errors
     }
 
-    pub fn imp_config(&self) -> &Config {
-        &self.imp_config
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn new_importer(&mut self, pos: Pos) -> Importer {
         Importer::new(
-            self.imp_config,
+            self.config,
             self.fset,
             self.all_pkgs,
             self.ast_objs,

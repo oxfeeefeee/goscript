@@ -16,14 +16,14 @@ use std::fmt::Display;
 use std::fmt::Write;
 
 /// An OperandMode specifies the (addressing) mode of an operand.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum OperandMode {
-    Invalid,  // operand is invalid
-    NoValue,  // operand represents no value (result of a function call w/o result)
-    Builtin,  // operand is a built-in function
-    TypeExpr, // operand is a type
-    Constant, // operand is a constant; the operand's typ is a Basic type
-    Variable, // operand is an addressable variable
+    Invalid,                   // operand is invalid
+    NoValue,                   // operand represents no value (result of a function call w/o result)
+    Builtin(Builtin),          // operand is a built-in function
+    TypeExpr,                  // operand is a type
+    Constant(constant::Value), // operand is a constant; the operand's typ is a Basic type
+    Variable,                  // operand is an addressable variable
     MapIndex, // operand is a map index expression (acts like a variable on lhs, commaok on rhs of an assignment)
     Value,    // operand is a computed value
     CommaOk,  // like value, but operand may be used in a comma,ok expression
@@ -34,9 +34,9 @@ impl fmt::Display for OperandMode {
         f.write_str(match self {
             OperandMode::Invalid => "invalid operand",
             OperandMode::NoValue => "no value",
-            OperandMode::Builtin => "built-in",
+            OperandMode::Builtin(_) => "built-in",
             OperandMode::TypeExpr => "type",
-            OperandMode::Constant => "constant",
+            OperandMode::Constant(_) => "constant",
             OperandMode::Variable => "variable",
             OperandMode::MapIndex => "map index expression",
             OperandMode::Value => "value",
@@ -49,16 +49,21 @@ impl fmt::Display for OperandMode {
 /// Operands have an (addressing) mode, the expression evaluating to
 /// the operand, the operand's type, a value for constants, and an id
 /// for built-in functions.
-/// The zero value of operand is a ready to use invalid operand.
 pub struct Operand {
     mode: OperandMode,
     expr: Option<ast::Expr>,
-    typ: TypeKey,
-    val: constant::Value,
-    builtin: Builtin,
+    typ: Option<TypeKey>,
 }
 
 impl Operand {
+    pub fn new() -> Operand {
+        Operand {
+            mode: OperandMode::Invalid,
+            expr: None,
+            typ: None,
+        }
+    }
+
     pub fn pos(&self, ast_objs: &AstObjects) -> position::Pos {
         if let Some(e) = &self.expr {
             e.pos(ast_objs)
@@ -76,13 +81,15 @@ impl Operand {
             Token::STRING(_) => BasicType::UntypedString,
             _ => unreachable!(),
         };
-        self.mode = OperandMode::Constant;
-        self.typ = u.types()[&bt];
-        self.val = constant::Value::with_literal(t);
+        self.mode = OperandMode::Constant(constant::Value::with_literal(t));
+        self.typ = Some(u.types()[&bt]);
     }
 
     pub fn is_nil(&self, u: &Universe) -> bool {
-        self.mode == OperandMode::Value && self.typ == u.types()[&BasicType::UntypedNil]
+        match self.mode {
+            OperandMode::Value => self.typ == Some(u.types()[&BasicType::UntypedNil]),
+            _ => false,
+        }
     }
 
     /// assignable_to reports whether self is assignable to a variable of type 't'.
@@ -90,21 +97,30 @@ impl Operand {
     /// to a more detailed explanation of the failure.
     pub fn assignable_to(
         &self,
-        t: &TypeKey,
+        t: &Option<TypeKey>,
         reason: Option<&mut String>,
         objs: &TCObjects,
     ) -> bool {
         let u = objs.universe();
-        if self.mode == OperandMode::Invalid || *t == u.types()[&BasicType::Invalid] {
+        if let OperandMode::Invalid = self.mode {
             return true; // avoid spurious errors
         }
-        if typ::identical(&self.typ, t, objs) {
+        if *t == Some(u.types()[&BasicType::Invalid]) {
+            return true; // avoid spurious errors
+        }
+
+        if typ::identical_option(&self.typ, t, objs) {
             return true;
         }
-        let t_left = &objs.types[*t];
-        let t_right = &objs.types[self.typ];
-        let ut_key_left = typ::underlying_type(t, objs);
-        let ut_key_right = typ::underlying_type(&self.typ, objs);
+        if self.typ.is_none() || t.is_none() {
+            return false;
+        }
+
+        let (k_left, k_right) = (t.unwrap(), self.typ.unwrap());
+        let t_left = &objs.types[k_left];
+        let t_right = &objs.types[k_right];
+        let ut_key_left = typ::underlying_type(&k_left, objs);
+        let ut_key_right = typ::underlying_type(&k_right, objs);
         let ut_left = &objs.types[*ut_key_left];
         let ut_right = &objs.types[*ut_key_right];
 
@@ -114,8 +130,8 @@ impl Operand {
                     if self.is_nil(u) && detail.typ() == BasicType::UnsafePointer {
                         return true;
                     }
-                    if self.mode == OperandMode::Constant {
-                        return self.val.representable(detail, None);
+                    if let OperandMode::Constant(val) = &self.mode {
+                        return val.representable(detail, None);
                     }
                     // The result of a comparison is an untyped boolean,
                     // but may not be a constant.
@@ -213,15 +229,15 @@ impl Operand {
         if let Some(expr) = &self.expr {
             fmt_expr(&expr, f, ast_objs)?;
         } else {
-            match self.mode {
-                OperandMode::Builtin => {
-                    f.write_str(universe.builtins()[&self.builtin].name)?;
+            match &self.mode {
+                OperandMode::Builtin(bi) => {
+                    f.write_str(universe.builtins()[bi].name)?;
                 }
                 OperandMode::TypeExpr => {
-                    fmt_type(&Some(self.typ), f, tc_objs)?;
+                    fmt_type(&self.typ, f, tc_objs)?;
                 }
-                OperandMode::Constant => {
-                    f.write_str(&self.val.as_string())?;
+                OperandMode::Constant(val) => {
+                    f.write_str(&val.as_string())?;
                 }
                 _ => has_expr = false,
             }
@@ -234,10 +250,10 @@ impl Operand {
         let has_type = match self.mode {
             OperandMode::Invalid
             | OperandMode::NoValue
-            | OperandMode::Builtin
+            | OperandMode::Builtin(_)
             | OperandMode::TypeExpr => false,
             _ => {
-                let tval = &tc_objs.types[self.typ];
+                let tval = &tc_objs.types[self.typ.unwrap()];
                 if tval.is_untyped(tc_objs) {
                     f.write_str(tval.try_as_basic().unwrap().name())?;
                     false
@@ -251,16 +267,18 @@ impl Operand {
         self.mode.fmt(f)?;
 
         // <val>
-        if self.mode == OperandMode::Constant && self.expr.is_some() {
-            f.write_char(' ')?;
-            f.write_str(&self.val.as_string())?;
+        if let OperandMode::Constant(val) = &self.mode {
+            if self.expr.is_some() {
+                f.write_char(' ')?;
+                f.write_str(&val.as_string())?;
+            }
         }
 
         // <typ>
         if has_type {
-            if self.typ != universe.types()[&BasicType::Invalid] {
+            if self.typ != Some(universe.types()[&BasicType::Invalid]) {
                 f.write_str(" of type")?;
-                fmt_type(&Some(self.typ), f, tc_objs)?;
+                fmt_type(&self.typ, f, tc_objs)?;
             } else {
                 f.write_str(" with invalid type")?;
             }
