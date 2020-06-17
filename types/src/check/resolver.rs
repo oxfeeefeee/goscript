@@ -116,6 +116,15 @@ impl DeclInfo {
         }
     }
 
+    pub fn file_scope(&self) -> &ScopeKey {
+        match self {
+            DeclInfo::Const(c) => &c.file_scope,
+            DeclInfo::Var(v) => &v.file_scope,
+            DeclInfo::Type(t) => &t.file_scope,
+            DeclInfo::Func(f) => &f.file_scope,
+        }
+    }
+
     pub fn has_initializer(&self, objs: &AstObjects) -> bool {
         match self {
             DeclInfo::Const(c) => c.init.is_some(),

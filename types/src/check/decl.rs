@@ -2,15 +2,13 @@
 
 use super::super::constant;
 use super::super::display::{LangObjDisplay, TypeDisplay};
-use super::super::obj::*;
+use super::super::obj::{EntityType, LangObj, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
-use super::super::typ::BasicType;
-use super::assignment;
-use super::check::{Checker, FilesContext, TypeInfo};
-use super::expr;
-use super::typexpr;
+use super::super::typ::{self, NamedDetail, Type};
+
+use super::check::{Checker, FilesContext, ObjContext, TypeInfo};
 use goscript_parser::ast::Expr;
 use goscript_parser::ast::Node;
 use goscript_parser::objects::IdentKey;
@@ -48,7 +46,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn obj_decl(&mut self, okey: ObjKey, def: Option<ObjKey>, fctx: &mut FilesContext) {
+    pub fn obj_decl(&mut self, okey: ObjKey, def: Option<TypeKey>, fctx: &mut FilesContext) {
         let trace_end_data = if self.config().trace_checker {
             let lobj = self.lobj(okey);
             let pos = *lobj.pos();
@@ -94,19 +92,98 @@ impl<'a> Checker<'a> {
         // variables. Update the colors of those objects here (rather than
         // everywhere where we set the type) to satisfy the color invariants.
 
-        // not really a loop, just to make sure trace_end gets called
-        loop {
-            let lobj = &mut self.tc_objs.lobjs[okey];
-            if *lobj.color() == ObjColor::White && lobj.typ().is_some() {
-                lobj.set_color(ObjColor::Black);
-                break;
+        let lobj = &mut self.tc_objs.lobjs[okey];
+        if *lobj.color() == ObjColor::White && lobj.typ().is_some() {
+            lobj.set_color(ObjColor::Black);
+
+            if let Some((p, m)) = &trace_end_data {
+                self.trace_end(*p, m);
             }
-            match lobj.color() {
-                ObjColor::White => {}
-                ObjColor::Gray(_) => {}
-                ObjColor::Black => {}
+            return;
+        }
+
+        match lobj.color() {
+            ObjColor::White => {
+                assert!(lobj.typ().is_none());
+                let index = fctx.push(okey);
+                lobj.set_color(ObjColor::Gray(index));
+
+                let dkey = self.obj_map[&okey];
+                let d = &self.tc_objs.decls[dkey];
+                // create a new octx for the checker
+                let mut octx = ObjContext::new();
+                octx.scope = Some(*d.file_scope());
+                std::mem::swap(&mut self.octx, &mut octx);
+
+                let lobj = &self.tc_objs.lobjs[okey];
+                match lobj.entity_type() {
+                    EntityType::Const(_) => {
+                        self.octx.decl = Some(dkey);
+                        let cd = d.as_const();
+                        let (typ, init) = (cd.typ.clone(), cd.init.clone());
+                        self.const_decl(okey, &typ, &init);
+                    }
+                    EntityType::Var(_, _, _) => {
+                        self.octx.decl = Some(dkey);
+                        let cd = d.as_var();
+                        let (lhs, typ, init) = (cd.lhs.clone(), cd.typ.clone(), cd.init.clone());
+                        self.var_decl(okey, &lhs, &typ, &init);
+                    }
+                    EntityType::TypeName => {
+                        let cd = d.as_type();
+                        let (typ, alias) = (cd.typ.clone(), cd.alias);
+                        self.type_decl(okey, &typ, def, alias);
+                    }
+                    EntityType::Func(_) => {
+                        self.func_decl(okey, dkey, fctx);
+                    }
+                    _ => unreachable!(),
+                }
+
+                // handled defered actions:
+                std::mem::swap(&mut self.octx, &mut octx); // restore octx
+                self.lobj_mut(fctx.pop()).set_color(ObjColor::Black);
             }
-            break;
+            ObjColor::Black => {
+                assert!(lobj.typ().is_some());
+            }
+            ObjColor::Gray(_) => {
+                // We have a cycle.
+                // In the existing code, this is marked by a non-nil type
+                // for the object except for constants and variables whose
+                // type may be non-nil (known), or nil if it depends on the
+                // not-yet known initialization value.
+                // In the former case, set the type to Typ[Invalid] because
+                // we have an initialization cycle. The cycle error will be
+                // reported later, when determining initialization order.
+                let lobj = &self.tc_objs.lobjs[okey];
+                let invalid_type = self.invalid_type();
+                match lobj.entity_type() {
+                    EntityType::Const(_) | EntityType::Var(_, _, _) => {
+                        if self.invalid_type_cycle(okey, fctx) || lobj.typ().is_none() {
+                            self.tc_objs.lobjs[okey].set_type(Some(invalid_type));
+                        }
+                    }
+                    EntityType::TypeName => {
+                        if self.invalid_type_cycle(okey, fctx) {
+                            self.tc_objs.lobjs[okey].set_type(Some(invalid_type));
+                        }
+                    }
+                    EntityType::Func(_) => {
+                        if self.invalid_type_cycle(okey, fctx) {
+                            // Don't set obj.typ to Typ[Invalid] here
+                            // because plenty of code type-asserts that
+                            // functions have a *Signature type. Grey
+                            // functions have their type set to an empty
+                            // signature which makes it impossible to
+                            // initialize a variable with the function.
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                let lobj = self.lobj(okey); // make the borrow checker happy
+                assert!(lobj.typ().is_some());
+            }
         }
 
         if let Some((p, m)) = &trace_end_data {
@@ -212,39 +289,148 @@ impl<'a> Checker<'a> {
         assert!(lobj.typ().is_none());
         self.octx.iota = Some(lobj.const_val().clone());
 
-        loop {
-            // provide valid constant value under all circumstances
-            self.lobj_mut(okey).set_const_val(constant::Value::Unknown);
-            // determine type, if any
-            if let Some(e) = typ {
-                let t = self.type_expr(e);
-                let tval = &self.tc_objs.types[t];
-                if !tval.is_const_type(self.tc_objs) {
-                    let invalid_type = self.tc_objs.universe().types()[&BasicType::Invalid];
-                    if tval.underlying().unwrap_or(&t) == &invalid_type {
-                        self.error(
-                            e.pos(self.ast_objs),
-                            format!(
-                                "invalid constant type {}",
-                                TypeDisplay::new(&t, self.tc_objs)
-                            ),
-                        );
-                    }
-                    self.lobj_mut(okey).set_type(Some(invalid_type));
-                    break;
+        // provide valid constant value under all circumstances
+        self.lobj_mut(okey).set_const_val(constant::Value::Unknown);
+        // determine type, if any
+        if let Some(e) = typ {
+            let t = self.type_expr(e);
+            let tval = &self.tc_objs.types[t];
+            if !tval.is_const_type(self.tc_objs) {
+                let invalid_type = self.invalid_type();
+                if tval.underlying().unwrap_or(&t) == &invalid_type {
+                    self.error(
+                        e.pos(self.ast_objs),
+                        format!(
+                            "invalid constant type {}",
+                            TypeDisplay::new(&t, self.tc_objs)
+                        ),
+                    );
                 }
-            }
+                self.lobj_mut(okey).set_type(Some(invalid_type));
 
-            let mut x = Operand::new();
-            if let Some(expr) = init {
-                self.expr(&mut x, expr);
+                // clear iota
+                self.octx.iota = None;
+                return;
             }
-            self.init_const(okey, &mut x);
-
-            break;
         }
 
+        let mut x = Operand::new();
+        if let Some(expr) = init {
+            self.expr(&mut x, expr);
+        }
+        self.init_const(okey, &mut x);
+
+        // clear iota
         self.octx.iota = None;
+    }
+
+    pub fn var_decl(
+        &mut self,
+        okey: ObjKey,
+        lhs: &Option<Vec<ObjKey>>,
+        typ: &Option<Expr>,
+        init: &Option<Expr>,
+    ) {
+        debug_assert!(self.lobj(okey).typ().is_none());
+
+        // determine type, if any
+        if let Some(texpr) = typ {
+            let t = self.type_expr(texpr);
+            self.lobj_mut(okey).set_type(Some(t));
+            // We cannot spread the type to all lhs variables if there
+            // are more than one since that would mark them as checked
+            // (see Checker::obj_decl) and the assignment of init exprs,
+            // if any, would not be checked.
+        }
+
+        // check initialization
+        if init.is_none() {
+            if typ.is_none() {
+                // error reported before by arityMatch
+                let invalid = self.invalid_type();
+                self.lobj_mut(okey).set_type(Some(invalid));
+            }
+            return;
+        }
+
+        if lhs.is_none() || lhs.as_ref().unwrap().len() == 1 {
+            assert!(lhs.is_none() || lhs.as_ref().unwrap()[0] == okey);
+            let mut x = Operand::new();
+            self.expr(&mut x, init.as_ref().unwrap());
+            self.init_var(okey, &mut x, "variable declaration");
+            return;
+        }
+
+        debug_assert!(lhs.as_ref().unwrap().iter().find(|&&x| x == okey).is_some());
+
+        // We have multiple variables on the lhs and one init expr.
+        // Make sure all variables have been given the same type if
+        // one was specified, otherwise they assume the type of the
+        // init expression values
+        if typ.is_some() {
+            let t = *self.lobj(okey).typ();
+            for o in lhs.as_ref().unwrap().iter() {
+                self.lobj_mut(*o).set_type(t);
+            }
+        }
+
+        self.init_vars(lhs.as_ref().unwrap(), &vec![init.clone().unwrap()], 0);
+    }
+
+    pub fn type_decl(&mut self, okey: ObjKey, typ: &Expr, def: Option<TypeKey>, alias: bool) {
+        debug_assert!(self.lobj(okey).typ().is_none());
+
+        if alias {
+            let invalid = self.invalid_type();
+            self.lobj_mut(okey).set_type(Some(invalid));
+            let t = self.type_expr(typ);
+            self.lobj_mut(okey).set_type(Some(t));
+        } else {
+            let named = Type::Named(NamedDetail::new(Some(okey), None, vec![], self.tc_objs));
+            let named_key = self.tc_objs.types.insert(named);
+            if let Some(d) = def {
+                self.tc_objs.types[d]
+                    .try_as_named_mut()
+                    .unwrap()
+                    .set_underlying(named_key);
+            }
+            // make sure recursive type declarations terminate
+            self.lobj_mut(okey).set_type(Some(named_key));
+
+            // determine underlying type of named
+            self.defined_type(typ, named_key);
+
+            // The underlying type of named may be itself a named type that is
+            // incomplete:
+            //
+            //	type (
+            //		A B
+            //		B *C
+            //		C A
+            //	)
+            //
+            // The type of C is the (named) type of A which is incomplete,
+            // and which has as its underlying type the named type B.
+            // Determine the (final, unnamed) underlying type by resolving
+            // any forward chain (they always end in an unnamed type).
+            let underlying = *typ::deep_underlying_type(&named_key, self.tc_objs);
+            self.tc_objs.types[named_key]
+                .try_as_named_mut()
+                .unwrap()
+                .set_underlying(underlying);
+        }
+        self.add_method_decls(okey);
+    }
+
+    pub fn func_decl(&mut self, okey: ObjKey, dkey: DeclInfoKey, fctx: &mut FilesContext) {
+        /*
+        let f = move |checker: &mut Checker| {
+            checker.add_method_decls(okey);
+        };
+        fctx.later(Box::new(f));
+        let lobj = self.lobj(okey);
+        */
+        unimplemented!()
     }
 
     pub fn add_method_decls(&mut self, _okey: ObjKey) {

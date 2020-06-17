@@ -8,6 +8,7 @@ use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::selection::Selection;
 use super::super::typ;
+use super::super::typ::BasicType;
 use super::interface::IfaceInfo;
 use super::resolver::DeclInfo;
 use goscript_parser::ast;
@@ -157,7 +158,7 @@ pub struct ObjContext {
     pub has_call_or_recv: bool,
 }
 
-type DelayedAction = fn(&Checker);
+type DelayedAction = Box<dyn Fn(&mut Checker)>;
 
 /// FilesContext contains information collected during type-checking
 /// of a set of package files
@@ -285,8 +286,10 @@ impl FilesContext<'_> {
         self.delayed.push(action);
     }
 
-    pub fn push(&mut self, obj: ObjKey) {
-        self.obj_path.push(obj)
+    /// push pushes obj to obj_path and returns it's index
+    pub fn push(&mut self, obj: ObjKey) -> usize {
+        self.obj_path.push(obj);
+        self.obj_path.len() - 1
     }
 
     pub fn pop(&mut self) -> ObjKey {
@@ -513,6 +516,10 @@ impl<'a> Checker<'a> {
 
     pub fn position(&self, pos: Pos) -> Position {
         self.fset.file(pos).unwrap().position(pos)
+    }
+
+    pub fn invalid_type(&self) -> TypeKey {
+        self.tc_objs.universe().types()[&BasicType::Invalid]
     }
 
     pub fn error(&self, pos: Pos, err: String) {

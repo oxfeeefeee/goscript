@@ -150,7 +150,7 @@ impl Type {
 
     pub fn underlying(&self) -> Option<&TypeKey> {
         match self {
-            Type::Named(detail) => Some(&detail.underlying),
+            Type::Named(detail) => detail.underlying.as_ref(),
             _ => None,
         }
     }
@@ -730,20 +730,20 @@ impl ChanDetail {
 }
 
 pub struct NamedDetail {
-    obj: Option<ObjKey>,  // corresponding declared object
-    underlying: TypeKey,  // possibly a Named during setup; never a Named once set up completely
+    obj: Option<ObjKey>,         // corresponding declared object
+    underlying: Option<TypeKey>, // possibly a Named during setup; never a Named once set up completely
     methods: Vec<ObjKey>, // methods declared for this type (not the method set of this type); signatures are type-checked lazily
 }
 
 impl NamedDetail {
     pub fn new(
         obj: Option<ObjKey>,
-        underlying: TypeKey,
+        underlying: Option<TypeKey>,
         methods: Vec<ObjKey>,
         objs: &TCObjects,
     ) -> NamedDetail {
-        if objs.debug {
-            let t = &objs.types[underlying];
+        if objs.debug && underlying.is_some() {
+            let t = &objs.types[underlying.clone().unwrap()];
             assert!(t.try_as_named().is_some());
         }
         //todo: where to set obj's typ to self?
@@ -767,15 +767,11 @@ impl NamedDetail {
     }
 
     pub fn underlying(&self) -> &TypeKey {
-        &self.underlying
+        self.underlying.as_ref().unwrap()
     }
 
-    pub fn set_underlying(&mut self, t: TypeKey, objs: &TCObjects) {
-        if objs.debug {
-            let t = &objs.types[t];
-            assert!(t.try_as_named().is_some());
-        }
-        self.underlying = t;
+    pub fn set_underlying(&mut self, t: TypeKey) {
+        self.underlying = Some(t);
     }
 }
 
@@ -788,6 +784,21 @@ pub fn underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
     match typ.underlying() {
         Some(ut) => ut,
         None => t,
+    }
+}
+
+/// deep_underlying_type returns the 'deep' underlying type of type 't'
+/// chains only exist while named types are incomplete.
+pub fn deep_underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
+    let mut typ = &objs.types[*t];
+    loop {
+        match typ.underlying() {
+            Some(ut) => {
+                typ = &objs.types[*ut];
+                continue;
+            }
+            None => return t,
+        }
     }
 }
 

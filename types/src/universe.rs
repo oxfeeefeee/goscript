@@ -176,7 +176,7 @@ impl Universe {
         let underlying = objs.types.insert(Type::Interface(inter_detail));
         let typ = objs.types.insert(Type::Named(NamedDetail::new(
             None,
-            underlying,
+            Some(underlying),
             vec![],
             objs,
         )));
