@@ -7,8 +7,7 @@ use super::super::operand::OperandMode;
 use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::selection::Selection;
-use super::super::typ;
-use super::super::typ::BasicType;
+use super::super::typ::{self, BasicType, Type};
 use super::interface::IfaceInfo;
 use super::resolver::DeclInfo;
 use goscript_parser::ast;
@@ -286,6 +285,16 @@ impl FilesContext<'_> {
         self.delayed.push(action);
     }
 
+    pub fn delayed_count(&self) -> usize {
+        self.delayed.len()
+    }
+
+    pub fn process_delayed(&mut self, top: usize, checker: &mut Checker) {
+        for f in self.delayed.drain(top..).into_iter() {
+            f(checker);
+        }
+    }
+
     /// push pushes obj to obj_path and returns it's index
     pub fn push(&mut self, obj: ObjKey) -> usize {
         self.obj_path.push(obj);
@@ -496,6 +505,10 @@ impl<'a> Checker<'a> {
 
     pub fn lobj_mut(&mut self, key: ObjKey) -> &mut obj::LangObj {
         &mut self.tc_objs.lobjs[key]
+    }
+
+    pub fn otype(&self, key: TypeKey) -> &Type {
+        &self.tc_objs.types[key]
     }
 
     pub fn package(&self, key: PackageKey) -> &Package {

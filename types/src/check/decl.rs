@@ -6,13 +6,13 @@ use super::super::obj::{EntityType, LangObj, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
-use super::super::typ::{self, NamedDetail, Type};
-
+use super::super::typ::{self, NamedDetail, SignatureDetail, Type};
 use super::check::{Checker, FilesContext, ObjContext, TypeInfo};
-use goscript_parser::ast::Expr;
-use goscript_parser::ast::Node;
+use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
 use goscript_parser::position::Pos;
+use goscript_parser::Token;
+use std::collections::HashSet;
 
 impl<'a> Checker<'a> {
     pub fn report_alt_decl(&self, okey: &ObjKey) {
@@ -105,8 +105,7 @@ impl<'a> Checker<'a> {
         match lobj.color() {
             ObjColor::White => {
                 assert!(lobj.typ().is_none());
-                let index = fctx.push(okey);
-                lobj.set_color(ObjColor::Gray(index));
+                lobj.set_color(ObjColor::Gray(fctx.push(okey)));
 
                 let dkey = self.obj_map[&okey];
                 let d = &self.tc_objs.decls[dkey];
@@ -132,7 +131,7 @@ impl<'a> Checker<'a> {
                     EntityType::TypeName => {
                         let cd = d.as_type();
                         let (typ, alias) = (cd.typ.clone(), cd.alias);
-                        self.type_decl(okey, &typ, def, alias);
+                        self.type_decl(okey, &typ, def, alias, fctx);
                     }
                     EntityType::Func(_) => {
                         self.func_decl(okey, dkey, fctx);
@@ -377,7 +376,14 @@ impl<'a> Checker<'a> {
         self.init_vars(lhs.as_ref().unwrap(), &vec![init.clone().unwrap()], 0);
     }
 
-    pub fn type_decl(&mut self, okey: ObjKey, typ: &Expr, def: Option<TypeKey>, alias: bool) {
+    pub fn type_decl(
+        &mut self,
+        okey: ObjKey,
+        typ: &Expr,
+        def: Option<TypeKey>,
+        alias: bool,
+        fctx: &mut FilesContext,
+    ) {
         debug_assert!(self.lobj(okey).typ().is_none());
 
         if alias {
@@ -419,21 +425,264 @@ impl<'a> Checker<'a> {
                 .unwrap()
                 .set_underlying(underlying);
         }
-        self.add_method_decls(okey);
+        self.add_method_decls(okey, fctx);
     }
 
     pub fn func_decl(&mut self, okey: ObjKey, dkey: DeclInfoKey, fctx: &mut FilesContext) {
-        /*
-        let f = move |checker: &mut Checker| {
-            checker.add_method_decls(okey);
-        };
-        fctx.later(Box::new(f));
-        let lobj = self.lobj(okey);
-        */
-        unimplemented!()
+        debug_assert!(self.lobj(okey).typ().is_none());
+        // func declarations cannot use iota
+        debug_assert!(self.octx.iota.is_none());
+
+        let sig = Type::Signature(SignatureDetail::new(None, None, None, false, self.tc_objs));
+        let sig_key = self.tc_objs.types.insert(sig);
+        let d = &self.tc_objs.decls[dkey].as_func();
+        let fdecl_key = d.fdecl;
+        let fdecl = &self.ast_objs.fdecls[fdecl_key];
+        let (recv, typ) = (fdecl.recv.clone(), fdecl.typ);
+        self.func_type(sig_key, recv, typ);
+
+        // check for 'init' func
+        let fdecl = &self.ast_objs.fdecls[fdecl_key];
+        let sig = &self.tc_objs.types[sig_key].try_as_signature().unwrap();
+        let lobj = &self.tc_objs.lobjs[okey];
+        if sig.recv().is_none()
+            && lobj.name() == "init"
+            && (sig.params().is_some() || sig.results().is_some())
+        {
+            self.error(
+                fdecl.pos(self.ast_objs),
+                "func init must have no arguments and no return values".to_string(),
+            );
+            // ok to continue
+        }
+
+        if let Some(_) = &fdecl.body {
+            let name = lobj.name().clone();
+            let f = move |checker: &mut Checker| {
+                checker.func_body(dkey, &name, sig_key, fdecl_key, None);
+            };
+            fctx.later(Box::new(f));
+        }
     }
 
-    pub fn add_method_decls(&mut self, _okey: ObjKey) {
-        unimplemented!()
+    pub fn add_method_decls(&mut self, okey: ObjKey, fctx: &mut FilesContext) {
+        // get associated methods
+        // (Checker.collect_objects only collects methods with non-blank names;
+        // Checker.resolve_base_type_name ensures that obj is not an alias name
+        // if it has attached methods.)
+        if !fctx.methods.contains_key(&okey) {
+            return;
+        }
+        let methods = fctx.methods.remove(&okey).unwrap();
+        // don't use TypeName.is_alias (requires fully set up object)
+        debug_assert!(!self.decl_info(self.obj_map[&okey]).as_type().alias);
+
+        let mut mset: HashSet<ObjKey> = HashSet::new();
+        // LangObj.typ() can only be Some(Type::Named)?
+        // see original go code
+        let type_key = self.lobj(okey).typ().unwrap();
+        let named = self.otype(type_key).try_as_named().unwrap();
+        if let Some(struc) = self.otype(*named.underlying()).try_as_struct() {
+            for f in struc.fields().iter() {
+                if self.lobj(*f).name() != "_" {
+                    assert!(mset.insert(*f));
+                }
+            }
+        }
+        // if we allow Check.check be called multiple times; additional package files
+        // may add methods to already type-checked types. Add pre-existing methods
+        // so that we can detect redeclarations.
+        for m in named.methods().iter() {
+            let lobj = self.lobj(*m);
+            assert!(lobj.name() != "_");
+            assert!(mset.insert(*m));
+        }
+
+        // get valid methods
+        let mut valids: Vec<ObjKey> = methods
+            .into_iter()
+            .filter(|m| {
+                // spec: "For a base type, the non-blank names of methods bound
+                // to it must be unique."
+                let mobj = self.lobj(*m);
+                assert!(mobj.name() != "_");
+                if mset.insert(*m) {
+                    match mobj.entity_type() {
+                        EntityType::Var(_, _, _) => self.error(
+                            *mobj.pos(),
+                            format!("field and method with the same name {}", mobj.name()),
+                        ),
+                        EntityType::Func(_) => {
+                            self.error(
+                                *mobj.pos(),
+                                format!(
+                                    "method {} already declared for {}",
+                                    mobj.name(),
+                                    LangObjDisplay::new(m, self.tc_objs)
+                                ),
+                            );
+                        }
+                        _ => unreachable!(),
+                    }
+                    self.report_alt_decl(m);
+                    false
+                } else {
+                    true
+                }
+            })
+            .collect();
+        // append valid methods
+        self.tc_objs.types[type_key]
+            .try_as_named_mut()
+            .unwrap()
+            .methods_mut()
+            .append(&mut valids);
+    }
+
+    pub fn decl_stmt(&mut self, decl: ast::Decl, fctx: &mut FilesContext) {
+        match decl {
+            ast::Decl::Bad(_) => { /*ignore*/ }
+            ast::Decl::Func(_) => {
+                self.invalid_ast(decl.pos(self.ast_objs), "unknown ast.FuncDecl node")
+            }
+            ast::Decl::Gen(gdecl) => {
+                let mut last_full_const_spec: Option<ast::Spec> = None;
+                let specs = &(*gdecl).specs;
+                for (iota, spec_key) in specs.iter().enumerate() {
+                    let spec = &self.ast_objs.specs[*spec_key].clone();
+                    let spec_pos = spec.pos(self.ast_objs);
+                    let spec_end = spec.end(self.ast_objs);
+                    match spec {
+                        ast::Spec::Value(vs) => {
+                            let vspec = &**vs;
+                            match gdecl.token {
+                                Token::CONST => {
+                                    let top = fctx.delayed_count();
+
+                                    let mut current_vspec = None;
+                                    if vspec.typ.is_some() || vspec.values.len() > 0 {
+                                        last_full_const_spec = Some(spec.clone());
+                                        current_vspec = Some(vspec);
+                                    } else {
+                                        // no ValueSpec with type or init exprs,
+                                        // try get the last one
+                                        if let Some(spec) = &last_full_const_spec {
+                                            match spec {
+                                                ast::Spec::Value(v) => {
+                                                    current_vspec = Some(&*v);
+                                                }
+                                                _ => unreachable!(),
+                                            }
+                                        }
+                                    }
+
+                                    // declare all constants
+                                    let lhs: Vec<ObjKey> = vspec
+                                        .names
+                                        .clone()
+                                        .into_iter()
+                                        .enumerate()
+                                        .map(|(i, name)| {
+                                            let ident = &self.ast_objs.idents[name];
+                                            let okey = self.tc_objs.new_const(
+                                                ident.pos,
+                                                Some(self.pkg),
+                                                ident.name.clone(),
+                                                None,
+                                                constant::Value::with_i64(iota as i64),
+                                            );
+                                            let init = if current_vspec.is_some()
+                                                && i < current_vspec.unwrap().values.len()
+                                            {
+                                                Some(current_vspec.unwrap().values[i].clone())
+                                            } else {
+                                                None
+                                            };
+                                            let typ =
+                                                current_vspec.map(|x| x.typ.clone()).flatten();
+                                            self.const_decl(okey, &typ, &init);
+                                            okey
+                                        })
+                                        .collect();
+
+                                    let _ = self.arity_match(vspec, true, current_vspec);
+
+                                    // process function literals in init expressions before scope changes
+                                    fctx.process_delayed(top, self);
+
+                                    // spec: "The scope of a constant or variable identifier declared
+                                    // inside a function begins at the end of the ConstSpec or VarSpec
+                                    // (ShortVarDecl for short variable declarations) and ends at the
+                                    // end of the innermost containing block."
+                                    for (i, name) in vspec.names.iter().enumerate() {
+                                        self.declare(
+                                            self.octx.scope.unwrap(),
+                                            Some(*name),
+                                            lhs[i],
+                                            spec_end,
+                                        );
+                                    }
+                                }
+                                Token::VAR => {
+                                    let lhs: Vec<ObjKey> = vspec
+                                        .names
+                                        .iter()
+                                        .map(|x| {
+                                            let ident = &self.ast_objs.idents[*x];
+                                            self.tc_objs.new_var(
+                                                ident.pos,
+                                                Some(self.pkg),
+                                                ident.name.clone(),
+                                                None,
+                                            )
+                                        })
+                                        .collect();
+                                    let n_to_1 = vspec.values.len() == 1 && vspec.names.len() > 1;
+                                    if n_to_1 {
+                                        self.var_decl(
+                                            lhs[0],
+                                            &Some(lhs),
+                                            &vspec.typ.clone(),
+                                            &Some(vspec.values[0].clone()),
+                                        );
+                                    } else {
+                                        for (i, okey) in lhs.iter().enumerate() {
+                                            self.var_decl(
+                                                *okey,
+                                                &None,
+                                                &vspec.typ.clone(),
+                                                &vspec.values.get(i).map(|x| x.clone()),
+                                            );
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    self.invalid_ast(
+                                        spec_pos,
+                                        &format!("invalid token {}", gdecl.token),
+                                    );
+                                }
+                            }
+                        }
+                        ast::Spec::Type(ts) => {
+                            let ident = self.ident(ts.name);
+                            let (pos, name) = (ident.pos, ident.name.clone());
+                            let okey = self.tc_objs.new_type_name(pos, Some(self.pkg), name, None);
+                            // spec: "The scope of a type identifier declared inside a function
+                            // begins at the identifier in the TypeSpec and ends at the end of
+                            // the innermost containing block."
+                            self.declare(self.octx.scope.unwrap(), Some(ts.name), okey, pos);
+                            // mark and unmark type before calling Checker.type_decl;
+                            // its type is still nil (see Checker.obj_decl)
+                            self.lobj_mut(okey)
+                                .set_color(ObjColor::Gray(fctx.push(okey)));
+                            self.type_decl(okey, &ts.typ.clone(), None, ts.assign > 0, fctx);
+                            self.lobj_mut(fctx.pop()).set_color(ObjColor::Black);
+                        }
+                        _ => self.invalid_ast(spec_pos, "const, type, or var declaration expected"),
+                    }
+                }
+            }
+        }
     }
 }

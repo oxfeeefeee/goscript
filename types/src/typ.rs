@@ -766,6 +766,10 @@ impl NamedDetail {
         &self.methods
     }
 
+    pub fn methods_mut(&mut self) -> &mut Vec<ObjKey> {
+        &mut self.methods
+    }
+
     pub fn underlying(&self) -> &TypeKey {
         self.underlying.as_ref().unwrap()
     }

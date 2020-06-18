@@ -271,7 +271,7 @@ impl<'a> Checker<'a> {
                                                 if let Some(spec) = &last_full_const_spec {
                                                     match spec {
                                                         ast::Spec::Value(v) => {
-                                                            current_vspec = Some(&*v)
+                                                            current_vspec = Some(&*v);
                                                         }
                                                         _ => unreachable!(),
                                                     }
@@ -282,7 +282,7 @@ impl<'a> Checker<'a> {
                                                 vspec.names.clone().into_iter().enumerate()
                                             {
                                                 let ident = &self.ast_objs.idents[name];
-                                                let lobj = self.tc_objs.new_const(
+                                                let okey = self.tc_objs.new_const(
                                                     ident.pos,
                                                     Some(self.pkg),
                                                     ident.name.clone(),
@@ -301,7 +301,7 @@ impl<'a> Checker<'a> {
                                                 let d = self.tc_objs.decls.insert(
                                                     DeclInfo::new_const(file_scope, typ, init),
                                                 );
-                                                let _ = self.declare_pkg_obj(name, lobj, d);
+                                                let _ = self.declare_pkg_obj(name, okey, d);
                                             }
                                             let _ = self.arity_match(vspec, true, current_vspec);
                                         }
@@ -319,7 +319,8 @@ impl<'a> Checker<'a> {
                                                     )
                                                 })
                                                 .collect();
-                                            let n_to_1 = vspec.values.len() == 1;
+                                            let n_to_1 =
+                                                vspec.values.len() == 1 && vspec.names.len() > 1;
                                             let n_to_1_di = if n_to_1 {
                                                 Some(self.tc_objs.decls.insert(DeclInfo::new_var(
                                                     file_scope,
@@ -353,7 +354,7 @@ impl<'a> Checker<'a> {
                                 ast::Spec::Type(ts) => {
                                     let tspec = &**ts;
                                     let ident = &self.ast_objs.idents[tspec.name];
-                                    let lobj = self.tc_objs.new_type_name(
+                                    let okey = self.tc_objs.new_type_name(
                                         ident.pos,
                                         Some(self.pkg),
                                         ident.name.clone(),
@@ -364,7 +365,7 @@ impl<'a> Checker<'a> {
                                         tspec.typ.clone(),
                                         tspec.assign > 0,
                                     ));
-                                    let _ = self.declare_pkg_obj(tspec.name, lobj, di);
+                                    let _ = self.declare_pkg_obj(tspec.name, okey, di);
                                 }
                             }
                         }
@@ -475,7 +476,7 @@ impl<'a> Checker<'a> {
         obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(self.lobj(*b).order()));
 
         for o in obj_list.iter() {
-            self.add_method_decls(*o);
+            self.add_method_decls(*o, fctx);
         }
 
         // We process non-alias declarations first, in order to avoid situations where
