@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::obj::fmt_obj;
 use super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
-use super::operand::fmt_expr;
+use super::operand::{fmt_expr, Operand};
 use super::typ::fmt_type;
 use goscript_parser::ast::Expr;
 use goscript_parser::objects::Objects as AstObjects;
@@ -64,5 +64,27 @@ impl<'a> TypeDisplay<'a> {
 impl<'a> fmt::Display for TypeDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt_type(&Some(*self.key), f, self.objs)
+    }
+}
+
+pub struct OperandDisplay<'a> {
+    op: &'a Operand,
+    ast_objs: &'a AstObjects,
+    tc_objs: &'a TCObjects,
+}
+
+impl<'a> OperandDisplay<'a> {
+    pub fn new(op: &'a Operand, aobjs: &'a AstObjects, tobjs: &'a TCObjects) -> OperandDisplay<'a> {
+        OperandDisplay {
+            op: op,
+            ast_objs: aobjs,
+            tc_objs: tobjs,
+        }
+    }
+}
+
+impl<'a> fmt::Display for OperandDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.op.fmt(f, self.tc_objs, self.ast_objs)
     }
 }

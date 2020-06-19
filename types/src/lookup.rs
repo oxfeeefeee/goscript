@@ -101,7 +101,7 @@ impl MethodSet {
                             // T is a type name. If typ appeared multiple times at
                             // this depth, f.Type appears multiple times at the next
                             // depth.
-                            if *fobj.var_embedded() {
+                            if fobj.var_embedded() {
                                 let (tkey, is_ptr) = try_deref(fobj.typ().as_ref().unwrap(), objs);
                                 next.push(EmbeddedType::new(
                                     *tkey,
@@ -424,7 +424,7 @@ fn lookup_field_or_method_impl(
                         // T is a type name. If e.typ appeared multiple times at
                         // this depth, f.typ appears multiple times at the next
                         // depth.
-                        if target.is_none() && *fobj.var_embedded() {
+                        if target.is_none() && fobj.var_embedded() {
                             let (tkey, is_ptr) = try_deref(fobj.typ().as_ref().unwrap(), objs);
                             match &objs.types[*tkey] {
                                 typ::Type::Named(_)

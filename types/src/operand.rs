@@ -16,7 +16,7 @@ use std::fmt::Display;
 use std::fmt::Write;
 
 /// An OperandMode specifies the (addressing) mode of an operand.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OperandMode {
     Invalid,                   // operand is invalid
     NoValue,                   // operand represents no value (result of a function call w/o result)
@@ -27,6 +27,22 @@ pub enum OperandMode {
     MapIndex, // operand is a map index expression (acts like a variable on lhs, commaok on rhs of an assignment)
     Value,    // operand is a computed value
     CommaOk,  // like value, but operand may be used in a comma,ok expression
+}
+
+impl OperandMode {
+    pub fn constant_val(&self) -> &constant::Value {
+        match self {
+            OperandMode::Constant(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn builtin_id(&self) -> Builtin {
+        match self {
+            OperandMode::Builtin(id) => *id,
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl fmt::Display for OperandMode {
@@ -50,9 +66,9 @@ impl fmt::Display for OperandMode {
 /// the operand, the operand's type, a value for constants, and an id
 /// for built-in functions.
 pub struct Operand {
-    mode: OperandMode,
-    expr: Option<ast::Expr>,
-    typ: Option<TypeKey>,
+    pub mode: OperandMode,
+    pub expr: Option<ast::Expr>,
+    pub typ: Option<TypeKey>,
 }
 
 impl Operand {

@@ -951,7 +951,7 @@ fn identical_impl(
                 !sx.fields().iter().enumerate().any(|(i, f)| {
                     let of = &objs.lobjs[*f];
                     let og = &objs.lobjs[sy.fields()[i]];
-                    (*of.var_embedded() != *og.var_embedded())
+                    (of.var_embedded() != og.var_embedded())
                         || (cmp_tags && sx.tag(i) != sy.tag(i))
                         || (!of.same_id(og.pkg(), og.name(), objs))
                         || (!identical_impl_o(of.typ(), og.typ(), cmp_tags, dup, objs))

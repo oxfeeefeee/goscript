@@ -42,7 +42,7 @@ impl<'a> Checker<'a> {
             self.lobj_mut(okey).set_scope_pos(pos);
         }
         if ikey.is_some() {
-            self.result.record_def(ikey.unwrap(), okey);
+            self.result.record_def(ikey.unwrap(), Some(okey));
         }
     }
 
@@ -122,7 +122,7 @@ impl<'a> Checker<'a> {
                         let (typ, init) = (cd.typ.clone(), cd.init.clone());
                         self.const_decl(okey, &typ, &init);
                     }
-                    EntityType::Var(_, _, _) => {
+                    EntityType::Var(_) => {
                         self.octx.decl = Some(dkey);
                         let cd = d.as_var();
                         let (lhs, typ, init) = (cd.lhs.clone(), cd.typ.clone(), cd.init.clone());
@@ -158,7 +158,7 @@ impl<'a> Checker<'a> {
                 let lobj = &self.tc_objs.lobjs[okey];
                 let invalid_type = self.invalid_type();
                 match lobj.entity_type() {
-                    EntityType::Const(_) | EntityType::Var(_, _, _) => {
+                    EntityType::Const(_) | EntityType::Var(_) => {
                         if self.invalid_type_cycle(okey, fctx) || lobj.typ().is_none() {
                             self.tc_objs.lobjs[okey].set_type(Some(invalid_type));
                         }
@@ -219,7 +219,7 @@ impl<'a> Checker<'a> {
         for o in cycle {
             let oval = self.lobj(*o);
             match oval.entity_type() {
-                EntityType::Const(_) | EntityType::Var(_, _, _) => {
+                EntityType::Const(_) | EntityType::Var(_) => {
                     nval += 1;
                 }
                 EntityType::TypeName => {
@@ -373,7 +373,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.init_vars(lhs.as_ref().unwrap(), &vec![init.clone().unwrap()], 0);
+        self.init_vars(lhs.as_ref().unwrap(), &vec![init.clone().unwrap()], None);
     }
 
     pub fn type_decl(
@@ -508,7 +508,7 @@ impl<'a> Checker<'a> {
                 assert!(mobj.name() != "_");
                 if mset.insert(*m) {
                     match mobj.entity_type() {
-                        EntityType::Var(_, _, _) => self.error(
+                        EntityType::Var(_) => self.error(
                             *mobj.pos(),
                             format!("field and method with the same name {}", mobj.name()),
                         ),

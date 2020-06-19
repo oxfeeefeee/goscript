@@ -64,7 +64,7 @@ pub struct TypeInfo {
     /// For an embedded field, Defs returns the field it defines.
     ///
     /// Invariant: defs[id] == None || defs[id].pos() == id.pos()
-    defs: HashMap<IdentKey, ObjKey>,
+    defs: HashMap<IdentKey, Option<ObjKey>>,
     /// 'uses' maps identifiers to the objects they denote.
     ///
     /// For an embedded field, 'uses' returns the TypeName it denotes.
@@ -360,7 +360,7 @@ impl TypeInfo {
         }
     }
 
-    pub fn record_def(&mut self, id: IdentKey, obj: ObjKey) {
+    pub fn record_def(&mut self, id: IdentKey, obj: Option<ObjKey>) {
         self.defs.insert(id, obj);
     }
 

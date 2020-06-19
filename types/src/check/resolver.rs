@@ -225,7 +225,8 @@ impl<'a> Checker<'a> {
                                     );
                                     if ispec.name.is_some() {
                                         // in a dot-import, the dot represents the package
-                                        self.result.record_def(ispec.name.unwrap(), pkg_name_obj);
+                                        self.result
+                                            .record_def(ispec.name.unwrap(), Some(pkg_name_obj));
                                     } else {
                                         self.result.record_implicit(spec, pkg_name_obj);
                                     }
@@ -385,7 +386,7 @@ impl<'a> Checker<'a> {
                             let scope = *self.package(self.pkg).scope();
                             if ident.name == "init" {
                                 self.tc_objs.lobjs[lobj].set_parent(Some(scope));
-                                self.result.record_def(ident_key, lobj);
+                                self.result.record_def(ident_key, Some(lobj));
                                 if fdecl.body.is_none() {
                                     self.error(ident.pos, "missing function body".to_owned());
                                 }
@@ -400,7 +401,7 @@ impl<'a> Checker<'a> {
                             if ident.name != "_" {
                                 methods.push(lobj);
                             }
-                            self.result.record_def(ident_key, lobj);
+                            self.result.record_def(ident_key, Some(lobj));
                         }
                         let di = self
                             .tc_objs

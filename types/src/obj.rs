@@ -12,6 +12,23 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
 
+#[derive(Clone, Debug)]
+pub struct VarProperty {
+    pub embedded: bool,
+    pub is_field: bool,
+    pub used: bool,
+}
+
+impl VarProperty {
+    pub fn new(embedded: bool, field: bool, used: bool) -> VarProperty {
+        VarProperty {
+            embedded: embedded,
+            is_field: field,
+            used: used,
+        }
+    }
+}
+
 /// EntityType defines the types of LangObj entities
 ///
 #[derive(Clone, Debug)]
@@ -24,7 +41,7 @@ pub enum EntityType {
     TypeName,
     /// A Variable represents a declared variable (including function
     /// parameters and results, and struct fields).
-    Var(bool, bool, bool), // embedded, field, used
+    Var(VarProperty),
     /// A Func represents a declared function, concrete method, or abstract
     /// (interface) method. Its Type() is always a *Signature.
     /// An abstract method may belong to many interfaces due to embedding.
@@ -63,7 +80,7 @@ impl EntityType {
 
     pub fn is_var(&self) -> bool {
         match self {
-            EntityType::Var(_, _, _) => true,
+            EntityType::Var(_) => true,
             _ => false,
         }
     }
@@ -108,6 +125,13 @@ impl EntityType {
             EntityType::Func(h) => {
                 *h = has;
             }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn var_property_mut(&mut self) -> &mut VarProperty {
+        match self {
+            EntityType::Var(prop) => prop,
             _ => unreachable!(),
         }
     }
@@ -192,7 +216,13 @@ impl LangObj {
         name: String,
         typ: Option<TypeKey>,
     ) -> LangObj {
-        LangObj::new(EntityType::Var(false, false, false), pos, pkg, name, typ)
+        LangObj::new(
+            EntityType::Var(VarProperty::new(false, false, false)),
+            pos,
+            pkg,
+            name,
+            typ,
+        )
     }
 
     pub fn new_param(
@@ -201,7 +231,13 @@ impl LangObj {
         name: String,
         typ: Option<TypeKey>,
     ) -> LangObj {
-        LangObj::new(EntityType::Var(false, false, true), pos, pkg, name, typ)
+        LangObj::new(
+            EntityType::Var(VarProperty::new(false, false, true)),
+            pos,
+            pkg,
+            name,
+            typ,
+        )
     }
 
     pub fn new_field(
@@ -211,7 +247,13 @@ impl LangObj {
         typ: Option<TypeKey>,
         embedded: bool,
     ) -> LangObj {
-        LangObj::new(EntityType::Var(embedded, true, false), pos, pkg, name, typ)
+        LangObj::new(
+            EntityType::Var(VarProperty::new(embedded, true, false)),
+            pos,
+            pkg,
+            name,
+            typ,
+        )
     }
 
     pub fn new_func(
@@ -358,16 +400,16 @@ impl LangObj {
         unimplemented!()
     }
 
-    pub fn var_embedded(&self) -> &bool {
+    pub fn var_embedded(&self) -> bool {
         match &self.entity_type {
-            EntityType::Var(embedded, _, _) => embedded,
+            EntityType::Var(prop) => prop.embedded,
             _ => unreachable!(),
         }
     }
 
-    pub fn var_is_field(&self) -> &bool {
+    pub fn var_is_field(&self) -> bool {
         match &self.entity_type {
-            EntityType::Var(_, field, _) => field,
+            EntityType::Var(prop) => prop.is_field,
             _ => unreachable!(),
         }
     }
@@ -461,8 +503,8 @@ pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> f
             fmt_obj_name(okey, f, objs)?;
             fmt_obj_type(obj, f, objs)?;
         }
-        EntityType::Var(_, field, _) => {
-            f.write_str(if *field { "field" } else { "var" })?;
+        EntityType::Var(prop) => {
+            f.write_str(if prop.is_field { "field" } else { "var" })?;
             fmt_obj_name(okey, f, objs)?;
             fmt_obj_type(obj, f, objs)?;
         }
