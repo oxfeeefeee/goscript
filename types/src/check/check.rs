@@ -531,8 +531,12 @@ impl<'a> Checker<'a> {
         self.fset.file(pos).unwrap().position(pos)
     }
 
+    pub fn basic_type(&self, t: BasicType) -> TypeKey {
+        self.tc_objs.universe().types()[&t]
+    }
+
     pub fn invalid_type(&self) -> TypeKey {
-        self.tc_objs.universe().types()[&BasicType::Invalid]
+        self.basic_type(BasicType::Invalid)
     }
 
     pub fn error(&self, pos: Pos, err: String) {

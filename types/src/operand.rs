@@ -65,6 +65,7 @@ impl fmt::Display for OperandMode {
 /// Operands have an (addressing) mode, the expression evaluating to
 /// the operand, the operand's type, a value for constants, and an id
 /// for built-in functions.
+#[derive(Clone, Debug)]
 pub struct Operand {
     pub mode: OperandMode,
     pub expr: Option<ast::Expr>,
