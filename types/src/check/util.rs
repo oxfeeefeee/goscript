@@ -1,36 +1,29 @@
 #![allow(dead_code)]
 
-use super::super::objects::{ObjKey, TypeKey};
+use super::super::obj;
+use super::super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
-use super::super::typ::BasicType;
+use super::super::typ::{self, BasicType};
 use super::check::Checker;
-use goscript_parser::{ast::Expr, position::Pos};
+use goscript_parser::ast::Node;
+use goscript_parser::{ast::Expr, objects::Objects as AstObjects, position::Pos};
 
 pub enum UnpackResult<'a> {
-    Tuple(Option<Expr>, Vec<TypeKey>),   // rhs is a tuple
-    CommaOk(Option<Expr>, Vec<TypeKey>), // rhs returns comma_ok
-    Mutliple(&'a Vec<Expr>),             // M to N
-    Single(Operand),                     // 1 to 1
-    Error,                               // errors when trying to unpack
+    Tuple(Option<Expr>, Vec<Option<TypeKey>>), // rhs is a tuple
+    CommaOk(Option<Expr>, [TypeKey; 2]),       // rhs returns comma_ok
+    Mutliple(&'a Vec<Expr>),                   // N to N
+    Single(Operand),                           // 1 to 1
+    Mismatch(&'a Vec<Expr>),                   // M to N (M != N)
+    Error,                                     // errors when trying to unpack
 }
 
 impl<'a> UnpackResult<'a> {
-    pub fn len(&self) -> usize {
-        match self {
-            UnpackResult::Tuple(_, types) => types.len(),
-            UnpackResult::CommaOk(_, types) => types.len(),
-            UnpackResult::Mutliple(exprs) => exprs.len(),
-            UnpackResult::Single(_) => 1,
-            UnpackResult::Error => 0,
-        }
-    }
-
     pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize) {
         match self {
             UnpackResult::Tuple(expr, types) => {
                 x.mode = OperandMode::Value;
                 x.expr = expr.clone();
-                x.typ = Some(types[i]);
+                x.typ = types[i];
             }
             UnpackResult::CommaOk(expr, types) => {
                 x.mode = OperandMode::Value;
@@ -45,6 +38,7 @@ impl<'a> UnpackResult<'a> {
                 x.expr = sx.expr.clone();
                 x.typ = sx.typ;
             }
+            UnpackResult::Mismatch(_) => unreachable!(),
             UnpackResult::Error => unreachable!(),
         }
     }
@@ -99,9 +93,43 @@ impl<'a> Checker<'a> {
         false
     }
 
-    pub fn unpack<'b>(&mut self, rhs: &'b Vec<Expr>, allow_comma_ok: bool) -> UnpackResult<'b> {
+    pub fn comma_ok_type(
+        tc_objs: &mut TCObjects,
+        pos: usize,
+        pkg: PackageKey,
+        t: &[TypeKey; 2],
+    ) -> TypeKey {
+        let vars = vec![
+            tc_objs.lobjs.insert(obj::LangObj::new_var(
+                pos,
+                Some(pkg),
+                String::new(),
+                Some(t[0]),
+            )),
+            tc_objs.lobjs.insert(obj::LangObj::new_var(
+                pos,
+                Some(pkg),
+                String::new(),
+                Some(t[1]),
+            )),
+        ];
+        tc_objs
+            .types
+            .insert(typ::Type::Tuple(typ::TupleDetail::new(vars)))
+    }
+
+    pub fn unpack<'b>(
+        &mut self,
+        rhs: &'b Vec<Expr>,
+        lhs_len: usize,
+        allow_comma_ok: bool,
+    ) -> UnpackResult<'b> {
         if rhs.len() != 1 {
-            return UnpackResult::Mutliple(rhs);
+            return if lhs_len != rhs.len() {
+                UnpackResult::Mismatch(rhs)
+            } else {
+                UnpackResult::Mutliple(rhs)
+            };
         }
 
         let mut x = Operand::new();
@@ -111,20 +139,38 @@ impl<'a> Checker<'a> {
         }
 
         if let Some(t) = self.otype(x.typ.unwrap()).try_as_tuple() {
-            let types = t
-                .vars()
-                .iter()
-                .map(|x| self.lobj(*x).typ().unwrap())
-                .collect();
+            let types = t.vars().iter().map(|x| *self.lobj(*x).typ()).collect();
             return UnpackResult::Tuple(x.expr.clone(), types);
         } else if x.mode == OperandMode::MapIndex || x.mode == OperandMode::CommaOk {
             if allow_comma_ok {
-                let types = vec![x.typ.unwrap(), self.basic_type(BasicType::UntypedBool)];
+                let types = [x.typ.unwrap(), self.basic_type(BasicType::UntypedBool)];
                 return UnpackResult::CommaOk(x.expr.clone(), types);
             }
             x.mode = OperandMode::Value;
         }
 
         UnpackResult::Single(x)
+    }
+
+    pub fn use_exprs(&mut self, exprs: &Vec<Expr>) {
+        for e in exprs.iter() {
+            let mut x = Operand::new();
+            self.multi_expr(&mut x, &e);
+        }
+    }
+
+    pub fn use_lhs(&mut self, _lhs: &Vec<Expr>) {
+        unimplemented!()
+    }
+
+    pub fn add_decl_dep(&mut self, to: ObjKey) {
+        if self.octx.decl.is_none() {
+            // not in a package-level init expression
+            return;
+        }
+        if !self.obj_map.contains_key(&to) {
+            return;
+        }
+        self.tc_objs.decls[self.octx.decl.unwrap()].add_dep(to);
     }
 }

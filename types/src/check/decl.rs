@@ -2,12 +2,12 @@
 
 use super::super::constant;
 use super::super::display::{LangObjDisplay, TypeDisplay};
-use super::super::obj::{EntityType, LangObj, ObjColor};
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::obj::{EntityType, ObjColor};
+use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
 use super::super::typ::{self, NamedDetail, SignatureDetail, Type};
-use super::check::{Checker, FilesContext, ObjContext, TypeInfo};
+use super::check::{Checker, FilesContext, ObjContext};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
 use goscript_parser::position::Pos;
@@ -665,7 +665,7 @@ impl<'a> Checker<'a> {
                             }
                         }
                         ast::Spec::Type(ts) => {
-                            let ident = self.ident(ts.name);
+                            let ident = self.ast_ident(ts.name);
                             let (pos, name) = (ident.pos, ident.name.clone());
                             let okey = self.tc_objs.new_type_name(pos, Some(self.pkg), name, None);
                             // spec: "The scope of a type identifier declared inside a function

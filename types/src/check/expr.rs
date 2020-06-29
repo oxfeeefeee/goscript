@@ -16,4 +16,12 @@ impl<'a> Checker<'a> {
     pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr) {
         unimplemented!()
     }
+
+    pub fn single_value(&mut self, x: &mut Operand) {
+        unimplemented!()
+    }
+
+    pub fn convert_untyped(&mut self, x: &mut Operand, target: TypeKey) {
+        unimplemented!()
+    }
 }

@@ -207,7 +207,7 @@ impl<'a> Checker<'a> {
                                     let name = if ispec.name.is_some() {
                                         self.package(imp).name().clone().unwrap()
                                     } else {
-                                        let ident = &self.ident(ispec.name.unwrap());
+                                        let ident = &self.ast_ident(ispec.name.unwrap());
                                         if ident.name == "init" {
                                             self.error(
                                                 ident.pos,
@@ -574,7 +574,7 @@ impl<'a> Checker<'a> {
             // var decl w/o init expr
             if s.typ.is_none() {
                 self.error(
-                    self.ident(s.names[0]).pos,
+                    self.ast_ident(s.names[0]).pos,
                     "missing type or init expr".to_string(),
                 );
                 return Err(());
@@ -588,15 +588,15 @@ impl<'a> Checker<'a> {
                 );
                 return Err(());
             } else {
-                let pos = self.ident(init.unwrap().names[0]).pos;
+                let pos = self.ast_ident(init.unwrap().names[0]).pos;
                 self.error(
-                    self.ident(s.names[0]).pos,
+                    self.ast_ident(s.names[0]).pos,
                     format!("extra init expr at {}", self.position(pos)),
                 );
                 return Err(());
             }
         } else if l > r && (cst || r != 1) {
-            let ident = self.ident(s.names[r]);
+            let ident = self.ast_ident(s.names[r]);
             self.error(ident.pos, format!("missing init expr for {}", ident.name));
             return Err(());
         }
@@ -690,7 +690,7 @@ impl<'a> Checker<'a> {
         okey: ObjKey,
         dkey: DeclInfoKey,
     ) -> Result<(), ()> {
-        let ident = self.ident(ikey);
+        let ident = self.ast_ident(ikey);
         let lobj = self.lobj(okey);
         assert_eq!(&ident.name, lobj.name());
         // spec: "A package-scope or file-scope identifier with name init
@@ -759,7 +759,11 @@ impl<'a> Checker<'a> {
     /// dir makes a good-faith attempt to return the directory
     /// portion of path. If path is empty, the result is ".".
     fn file_dir(&self, file: &ast::File) -> String {
-        let path = self.fset.file(self.ident(file.name).pos).unwrap().name();
+        let path = self
+            .fset
+            .file(self.ast_ident(file.name).pos)
+            .unwrap()
+            .name();
         if let Some((i, _)) = path.rmatch_indices(&['/', '\\'][..]).next() {
             if i > 0 {
                 return path[0..i].to_owned();

@@ -7,7 +7,7 @@ use super::super::operand::OperandMode;
 use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::selection::Selection;
-use super::super::typ::{self, BasicType, Type};
+use super::super::typ::{BasicType, Type};
 use super::interface::IfaceInfo;
 use super::resolver::DeclInfo;
 use goscript_parser::ast;
@@ -226,17 +226,6 @@ impl ObjContext {
     pub fn lookup<'a>(&self, name: &str, tc_objs: &'a TCObjects) -> Option<&'a ObjKey> {
         tc_objs.scopes[self.scope.unwrap()].lookup(name)
     }
-
-    pub fn add_decl_dep(&mut self, to: ObjKey, checker: &mut Checker) {
-        if self.decl.is_none() {
-            // not in a package-level init expression
-            return;
-        }
-        if !checker.obj_map.contains_key(&to) {
-            return;
-        }
-        checker.tc_objs.decls[self.decl.unwrap()].add_dep(to);
-    }
 }
 
 impl FilesContext<'_> {
@@ -347,12 +336,20 @@ impl TypeInfo {
         }
     }
 
-    pub fn record_comma_ok_types(&mut self, e: &Expr, t: &[TypeKey; 2], checker: &mut Checker) {
+    pub fn record_comma_ok_types(
+        &mut self,
+        e: &Expr,
+        t: &[TypeKey; 2],
+        tc_objs: &mut TCObjects,
+        ast_objs: &AstObjects,
+        pkg: PackageKey,
+    ) {
+        let pos = e.pos(ast_objs);
         let mut expr = e;
         loop {
             let tv = self.types.get_mut(&expr.id()).unwrap();
             assert!(tv.val.is_some());
-            tv.typ = checker.comma_ok_type(expr, t);
+            tv.typ = Checker::comma_ok_type(tc_objs, pos, pkg, t);
             match expr {
                 Expr::Paren(p) => expr = &(*p).expr,
                 _ => break,
@@ -442,27 +439,6 @@ impl<'a> Checker<'a> {
         )
     }
 
-    pub fn comma_ok_type(&mut self, e: &Expr, t: &[TypeKey; 2]) -> TypeKey {
-        let pos = e.pos(self.ast_objs);
-        let vars = vec![
-            self.tc_objs.lobjs.insert(obj::LangObj::new_var(
-                pos,
-                Some(self.pkg),
-                String::new(),
-                Some(t[0]),
-            )),
-            self.tc_objs.lobjs.insert(obj::LangObj::new_var(
-                pos,
-                Some(self.pkg),
-                String::new(),
-                Some(t[1]),
-            )),
-        ];
-        self.tc_objs
-            .types
-            .insert(typ::Type::Tuple(typ::TupleDetail::new(vars)))
-    }
-
     /// init files and package name
     fn init_files_pkg_name(&mut self, files: Vec<ast::File>) -> Result<Vec<ast::File>, ()> {
         let mut result = Vec::with_capacity(files.len());
@@ -495,7 +471,7 @@ impl<'a> Checker<'a> {
         Ok(result)
     }
 
-    pub fn ident(&self, key: IdentKey) -> &ast::Ident {
+    pub fn ast_ident(&self, key: IdentKey) -> &ast::Ident {
         &self.ast_objs.idents[key]
     }
 

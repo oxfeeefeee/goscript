@@ -1,16 +1,88 @@
 #![allow(dead_code)]
-use super::super::display::{ExprDisplay, OperandDisplay};
-use super::super::obj::{EntityType, LangObj};
+use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
+use super::super::obj::EntityType;
 use super::super::objects::{ObjKey, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ;
-use super::check::Checker;
+use super::check::{Checker, FilesContext};
+use super::util::UnpackResult;
+use goscript_parser::ast::Node;
 use goscript_parser::position::Pos;
 use goscript_parser::{ast::Expr, Parser};
 
 impl<'a> Checker<'a> {
-    pub fn assignment(&mut self, x: &mut Operand, tkey: Option<TypeKey>, note: &str) {
-        unimplemented!()
+    /// assignment reports whether x can be assigned to a variable of type t,
+    /// if necessary by attempting to convert untyped values to the appropriate
+    /// type. context describes the context in which the assignment takes place.
+    /// Use t == None to indicate assignment to an untyped blank identifier.
+    /// x.mode is set to invalid if the assignment failed.
+    pub fn assignment(&mut self, x: &mut Operand, t: Option<TypeKey>, note: &str) {
+        self.single_value(x);
+        if x.mode == OperandMode::Invalid {
+            return;
+        }
+
+        match x.mode {
+            OperandMode::Constant(_)
+            | OperandMode::Variable
+            | OperandMode::MapIndex
+            | OperandMode::Value
+            | OperandMode::CommaOk => {}
+            _ => unreachable!(),
+        }
+
+        let xt = x.typ.unwrap();
+        if typ::is_untyped(&xt, self.tc_objs) {
+            if t.is_none() && xt == self.basic_type(typ::BasicType::UntypedNil) {
+                self.error(
+                    x.pos(self.ast_objs),
+                    format!("use of untyped nil in {}", note),
+                );
+                x.mode = OperandMode::Invalid;
+                return;
+            }
+            // spec: "If an untyped constant is assigned to a variable of interface
+            // type or the blank identifier, the constant is first converted to type
+            // bool, rune, int, float64, complex128 or string respectively, depending
+            // on whether the value is a boolean, rune, integer, floating-point, complex,
+            // or string constant."
+            let target = if t.is_none() || typ::is_interface(t.as_ref().unwrap(), self.tc_objs) {
+                *typ::untyped_default_type(&xt, self.tc_objs)
+            } else {
+                t.unwrap()
+            };
+            self.convert_untyped(x, target);
+            if x.mode == OperandMode::Invalid {
+                return;
+            }
+        }
+        // x.typ is typed
+
+        // spec: "If a left-hand side is the blank identifier, any typed or
+        // non-constant value except for the predeclared identifier nil may
+        // be assigned to it."
+        if t.is_none() {
+            return;
+        }
+
+        let mut reason = String::new();
+        if !x.assignable_to(&t, Some(&mut reason), self.tc_objs) {
+            let pos = x.pos(self.ast_objs);
+            let dx = OperandDisplay::new(x, self.ast_objs, self.tc_objs);
+            let dt = TypeDisplay::new(t.as_ref().unwrap(), self.tc_objs);
+            if reason.is_empty() {
+                self.error(
+                    pos,
+                    format!("cannot use {} as {} value in {}", dx, dt, note),
+                );
+            } else {
+                self.error(
+                    pos,
+                    format!("cannot use {} as {} value in {}: {}", dx, dt, note, reason),
+                );
+            }
+            x.mode = OperandMode::Invalid;
+        }
     }
 
     pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand) {
@@ -93,7 +165,7 @@ impl<'a> Checker<'a> {
         let mut v_used = false;
         // determine if the lhs is a (possibly parenthesized) identifier.
         if let Expr::Ident(ikey) = Parser::unparen(lhs) {
-            let name = &self.ident(*ikey).name;
+            let name = &self.ast_ident(*ikey).name;
             if name == "_" {
                 self.result.record_def(*ikey, None);
                 self.assignment(x, None, "assignment to _ identifier");
@@ -170,6 +242,161 @@ impl<'a> Checker<'a> {
     /// If return_pos is_some, init_vars is called to type-check the assignment of
     /// return expressions, and return_pos is the position of the return statement.
     pub fn init_vars(&mut self, lhs: &Vec<ObjKey>, rhs: &Vec<Expr>, return_pos: Option<Pos>) {
-        unimplemented!()
+        let invalid_type = self.invalid_type();
+        let ll = lhs.len();
+        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_some());
+
+        let mut invalidate_lhs = || {
+            for okey in lhs.iter() {
+                self.lobj_mut(*okey).set_type(Some(invalid_type));
+            }
+        };
+        match result {
+            UnpackResult::Error => invalidate_lhs(),
+            UnpackResult::Mismatch(exprs) => {
+                invalidate_lhs();
+                self.use_exprs(exprs);
+                let rl = exprs.len();
+                if let Some(p) = return_pos {
+                    self.error(
+                        p,
+                        format!("wrong number of return values (want {}, got {})", ll, rl),
+                    )
+                } else {
+                    self.error(
+                        exprs[0].pos(self.ast_objs),
+                        format!("cannot initialize {} variables with {} values", ll, rl),
+                    )
+                }
+            }
+            UnpackResult::Tuple(_, _)
+            | UnpackResult::CommaOk(_, _)
+            | UnpackResult::Mutliple(_)
+            | UnpackResult::Single(_) => {
+                let context = if return_pos.is_some() {
+                    "return statement"
+                } else {
+                    "assignment"
+                };
+                for (i, l) in lhs.iter().enumerate() {
+                    let mut x = Operand::new();
+                    result.get(self, &mut x, i);
+                    self.init_var(*l, &mut x, context);
+                }
+            }
+        }
+        if let UnpackResult::CommaOk(e, types) = result {
+            self.result.record_comma_ok_types(
+                e.as_ref().unwrap(),
+                &types,
+                self.tc_objs,
+                self.ast_objs,
+                self.pkg,
+            );
+        }
+    }
+
+    pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>) {
+        let ll = lhs.len();
+        let result = self.unpack(rhs, ll, ll == 2);
+        match result {
+            UnpackResult::Error => self.use_lhs(lhs),
+            UnpackResult::Mismatch(exprs) => self.use_exprs(exprs),
+            UnpackResult::Tuple(_, _)
+            | UnpackResult::CommaOk(_, _)
+            | UnpackResult::Mutliple(_)
+            | UnpackResult::Single(_) => {
+                for (i, l) in lhs.iter().enumerate() {
+                    let mut x = Operand::new();
+                    result.get(self, &mut x, i);
+                    self.assign_var(l, &mut x);
+                }
+            }
+        }
+        if let UnpackResult::CommaOk(e, types) = result {
+            self.result.record_comma_ok_types(
+                e.as_ref().unwrap(),
+                &types,
+                self.tc_objs,
+                self.ast_objs,
+                self.pkg,
+            );
+        }
+    }
+
+    pub fn short_var_decl(
+        &mut self,
+        lhs: &Vec<Expr>,
+        rhs: &Vec<Expr>,
+        pos: Pos,
+        fctx: &mut FilesContext,
+    ) {
+        let top = fctx.delayed_count();
+        let scope_key = self.octx.scope.unwrap();
+        let mut new_vars = Vec::new();
+        let lhs_vars = lhs
+            .iter()
+            .map(|x| {
+                if let Expr::Ident(ikey) = x {
+                    // Use the correct obj if the ident is redeclared. The
+                    // variable's scope starts after the declaration; so we
+                    // must use Scope.lookup here and call Scope.Insert
+                    // (via Check.declare) later.
+                    let ident = self.ast_ident(*ikey);
+                    if let Some(okey) = self.tc_objs.scopes[scope_key].lookup(&ident.name) {
+                        self.result.record_use(*ikey, *okey);
+                        if self.lobj(*okey).entity_type().is_var() {
+                            *okey
+                        } else {
+                            let pos = x.pos(self.ast_objs);
+                            self.error(
+                                pos,
+                                format!("cannot assign to {}", ExprDisplay::new(x, self.ast_objs)),
+                            );
+                            // dummy variable
+                            self.tc_objs
+                                .new_var(pos, Some(self.pkg), "_".to_string(), None)
+                        }
+                    } else {
+                        // declare new variable, possibly a blank (_) variable
+                        let (pos, pkg, name) = (ident.pos, Some(self.pkg), ident.name.clone());
+                        let okey = self.tc_objs.new_var(pos, pkg, name.clone(), None);
+                        if name == "_" {
+                            new_vars.push(okey);
+                        }
+                        okey
+                    }
+                } else {
+                    self.use_lhs(&vec![x.clone()]);
+                    let pos = x.pos(self.ast_objs);
+                    self.error(
+                        pos,
+                        format!("cannot declare {}", ExprDisplay::new(x, self.ast_objs)),
+                    );
+                    // dummy variable
+                    self.tc_objs
+                        .new_var(pos, Some(self.pkg), "_".to_string(), None)
+                }
+            })
+            .collect();
+
+        self.init_vars(&lhs_vars, rhs, None);
+
+        // process function literals in rhs expressions before scope changes
+        fctx.process_delayed(top, self);
+
+        // declare new variables
+        if new_vars.len() > 0 {
+            // spec: "The scope of a constant or variable identifier declared inside
+            // a function begins at the end of the ConstSpec or VarSpec (ShortVarDecl
+            // for short variable declarations) and ends at the end of the innermost
+            // containing block."
+            let scope_pos = rhs[rhs.len() - 1].end(self.ast_objs);
+            for okey in new_vars.iter() {
+                self.declare(scope_key, None, *okey, scope_pos);
+            }
+        } else {
+            self.soft_error(pos, "no new variables on left side of :=".to_string());
+        }
     }
 }
