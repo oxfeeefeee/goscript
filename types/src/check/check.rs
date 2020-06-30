@@ -17,14 +17,15 @@ use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::position::{Pos, Position};
 use goscript_parser::FileSet;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-/// TypeAndValue reports the type and value (for constants)
+/// TypeAndValue reports the type and value (for constants, stored in 'mode')
 /// of the corresponding expression.
 pub struct TypeAndValue {
     mode: OperandMode,
     typ: TypeKey,
-    val: Option<Value>,
 }
 
 /// An Initializer describes a package-level variable, or a list of variables in case
@@ -206,7 +207,7 @@ pub struct Checker<'a> {
     // result of type checking
     pub result: TypeInfo,
     // for debug
-    pub indent: usize,
+    pub indent: Rc<RefCell<usize>>,
 }
 
 impl ObjContext {
@@ -296,28 +297,20 @@ impl FilesContext<'_> {
 }
 
 impl TypeAndValue {
-    fn new(mode: OperandMode, typ: TypeKey, val: Option<Value>) -> TypeAndValue {
+    fn new(mode: OperandMode, typ: TypeKey) -> TypeAndValue {
         TypeAndValue {
             mode: mode,
             typ: typ,
-            val: val,
         }
     }
 }
 
 impl TypeInfo {
-    pub fn record_type_and_value(
-        &mut self,
-        e: &Expr,
-        mode: OperandMode,
-        typ: TypeKey,
-        val: Option<Value>,
-    ) {
-        assert!(val.is_some());
+    pub fn record_type_and_value(&mut self, e: &Expr, mode: OperandMode, typ: TypeKey) {
         if let OperandMode::Invalid = mode {
             return;
         }
-        self.types.insert(e.id(), TypeAndValue::new(mode, typ, val));
+        self.types.insert(e.id(), TypeAndValue::new(mode, typ));
     }
 
     pub fn record_builtin_type(&mut self, mode: &OperandMode, e: &Expr, sig: TypeKey) {
@@ -327,7 +320,7 @@ impl TypeInfo {
         // we don't record their signatures, so we don't see qualified idents
         // here): record the signature for f and possible children.
         loop {
-            self.record_type_and_value(expr, mode.clone(), sig, None);
+            self.record_type_and_value(expr, mode.clone(), sig);
             match expr {
                 Expr::Ident(_) => break,
                 Expr::Paren(p) => expr = &(*p).expr,
@@ -348,7 +341,6 @@ impl TypeInfo {
         let mut expr = e;
         loop {
             let tv = self.types.get_mut(&expr.id()).unwrap();
-            assert!(tv.val.is_some());
             tv.typ = Checker::comma_ok_type(tc_objs, pos, pkg, t);
             match expr {
                 Expr::Paren(p) => expr = &(*p).expr,
@@ -407,7 +399,7 @@ impl<'a> Checker<'a> {
             octx: ObjContext::new(),
             config: cfg,
             result: TypeInfo::new(),
-            indent: 0,
+            indent: Rc::new(RefCell::new(0)),
         }
     }
 

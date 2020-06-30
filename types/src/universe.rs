@@ -140,10 +140,14 @@ impl Universe {
     fn def_universe_unsafe(objs: &mut TCObjects) -> (ScopeKey, PackageKey) {
         let uskey = objs
             .scopes
-            .insert(Scope::new(None, 0, 0, "universe".to_owned()));
-        let pkg_skey =
-            objs.scopes
-                .insert(Scope::new(Some(uskey), 0, 0, "package unsafe".to_owned()));
+            .insert(Scope::new(None, 0, 0, "universe".to_owned(), false));
+        let pkg_skey = objs.scopes.insert(Scope::new(
+            Some(uskey),
+            0,
+            0,
+            "package unsafe".to_owned(),
+            false,
+        ));
         let mut pkg = Package::new("unsafe".to_owned(), pkg_skey);
         pkg.mark_complete();
         (uskey, objs.pkgs.insert(pkg))
@@ -165,8 +169,9 @@ impl Universe {
             "".to_owned(),
             Some(types[&BasicType::Str]),
         ));
-        let tuple = objs.types.insert(Type::Tuple(TupleDetail::new(vec![res])));
-        let sig_detail = SignatureDetail::new(None, None, Some(tuple), false, objs);
+        let params = objs.types.insert(Type::Tuple(TupleDetail::new(vec![])));
+        let results = objs.types.insert(Type::Tuple(TupleDetail::new(vec![res])));
+        let sig_detail = SignatureDetail::new(None, params, results, false, objs);
         let sig = objs.types.insert(Type::Signature(sig_detail));
         let err = objs
             .lobjs

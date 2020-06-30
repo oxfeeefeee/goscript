@@ -12,6 +12,13 @@ impl<'a> Checker<'a> {
         unimplemented!()
     }
 
+    /// raw_expr typechecks expression e and initializes x with the expression
+    /// value or type. If an error occurred, x.mode is set to invalid.
+    /// If hint is_some(), it is the type of a composite literal element.
+    pub fn raw_expr(&mut self, x: &mut Operand, e: &Expr, hint: Option<TypeKey>) {
+        unimplemented!()
+    }
+
     /// multi_expr is like expr but the result may be a multi-value.
     pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr) {
         unimplemented!()

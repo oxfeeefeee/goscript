@@ -1123,14 +1123,14 @@ impl FieldList {
         }
     }
 
-    fn pos(&self, arena: &Objects) -> position::Pos {
+    pub fn pos(&self, arena: &Objects) -> position::Pos {
         match self.openning {
             Some(o) => o,
             None => self.list[0].pos(arena),
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
+    pub fn end(&self, arena: &Objects) -> position::Pos {
         match self.closing {
             Some(c) => c,
             None => self.list[self.list.len() - 1].pos(arena),

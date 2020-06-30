@@ -171,7 +171,7 @@ impl<'a> Checker<'a> {
             let scope_comment = fctx.file_name(file_num, self);
             let file_scope = self
                 .tc_objs
-                .new_scope(parent_scope, pos, end, scope_comment);
+                .new_scope(parent_scope, pos, end, scope_comment, false);
             self.result.record_scope(file, file_scope);
 
             for decl in file.decls.iter() {

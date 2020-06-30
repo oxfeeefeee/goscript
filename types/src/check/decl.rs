@@ -120,13 +120,13 @@ impl<'a> Checker<'a> {
                         self.octx.decl = Some(dkey);
                         let cd = d.as_const();
                         let (typ, init) = (cd.typ.clone(), cd.init.clone());
-                        self.const_decl(okey, &typ, &init);
+                        self.const_decl(okey, &typ, &init, fctx);
                     }
                     EntityType::Var(_) => {
                         self.octx.decl = Some(dkey);
                         let cd = d.as_var();
                         let (lhs, typ, init) = (cd.lhs.clone(), cd.typ.clone(), cd.init.clone());
-                        self.var_decl(okey, &lhs, &typ, &init);
+                        self.var_decl(okey, &lhs, &typ, &init, fctx);
                     }
                     EntityType::TypeName => {
                         let cd = d.as_type();
@@ -283,7 +283,13 @@ impl<'a> Checker<'a> {
         true
     }
 
-    pub fn const_decl(&mut self, okey: ObjKey, typ: &Option<Expr>, init: &Option<Expr>) {
+    pub fn const_decl(
+        &mut self,
+        okey: ObjKey,
+        typ: &Option<Expr>,
+        init: &Option<Expr>,
+        fctx: &mut FilesContext,
+    ) {
         let lobj = self.lobj(okey);
         assert!(lobj.typ().is_none());
         self.octx.iota = Some(lobj.const_val().clone());
@@ -292,7 +298,7 @@ impl<'a> Checker<'a> {
         self.lobj_mut(okey).set_const_val(constant::Value::Unknown);
         // determine type, if any
         if let Some(e) = typ {
-            let t = self.type_expr(e);
+            let t = self.type_expr(e, fctx);
             let tval = &self.tc_objs.types[t];
             if !tval.is_const_type(self.tc_objs) {
                 let invalid_type = self.invalid_type();
@@ -329,12 +335,13 @@ impl<'a> Checker<'a> {
         lhs: &Option<Vec<ObjKey>>,
         typ: &Option<Expr>,
         init: &Option<Expr>,
+        fctx: &mut FilesContext,
     ) {
         debug_assert!(self.lobj(okey).typ().is_none());
 
         // determine type, if any
         if let Some(texpr) = typ {
-            let t = self.type_expr(texpr);
+            let t = self.type_expr(texpr, fctx);
             self.lobj_mut(okey).set_type(Some(t));
             // We cannot spread the type to all lhs variables if there
             // are more than one since that would mark them as checked
@@ -389,7 +396,7 @@ impl<'a> Checker<'a> {
         if alias {
             let invalid = self.invalid_type();
             self.lobj_mut(okey).set_type(Some(invalid));
-            let t = self.type_expr(typ);
+            let t = self.type_expr(typ, fctx);
             self.lobj_mut(okey).set_type(Some(t));
         } else {
             let named = Type::Named(NamedDetail::new(Some(okey), None, vec![], self.tc_objs));
@@ -404,7 +411,7 @@ impl<'a> Checker<'a> {
             self.lobj_mut(okey).set_type(Some(named_key));
 
             // determine underlying type of named
-            self.defined_type(typ, named_key);
+            self.defined_type(typ, Some(named_key), fctx);
 
             // The underlying type of named may be itself a named type that is
             // incomplete:
@@ -433,13 +440,11 @@ impl<'a> Checker<'a> {
         // func declarations cannot use iota
         debug_assert!(self.octx.iota.is_none());
 
-        let sig = Type::Signature(SignatureDetail::new(None, None, None, false, self.tc_objs));
-        let sig_key = self.tc_objs.types.insert(sig);
         let d = &self.tc_objs.decls[dkey].as_func();
         let fdecl_key = d.fdecl;
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
         let (recv, typ) = (fdecl.recv.clone(), fdecl.typ);
-        self.func_type(sig_key, recv, typ);
+        let sig_key = self.func_type(recv.as_ref(), typ);
 
         // check for 'init' func
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
@@ -447,7 +452,7 @@ impl<'a> Checker<'a> {
         let lobj = &self.tc_objs.lobjs[okey];
         if sig.recv().is_none()
             && lobj.name() == "init"
-            && (sig.params().is_some() || sig.results().is_some())
+            && (sig.params_count(self.tc_objs) > 0 || sig.results_count(self.tc_objs) > 0)
         {
             self.error(
                 fdecl.pos(self.ast_objs),
@@ -600,7 +605,7 @@ impl<'a> Checker<'a> {
                                             };
                                             let typ =
                                                 current_vspec.map(|x| x.typ.clone()).flatten();
-                                            self.const_decl(okey, &typ, &init);
+                                            self.const_decl(okey, &typ, &init, fctx);
                                             okey
                                         })
                                         .collect();
@@ -644,6 +649,7 @@ impl<'a> Checker<'a> {
                                             &Some(lhs),
                                             &vspec.typ.clone(),
                                             &Some(vspec.values[0].clone()),
+                                            fctx,
                                         );
                                     } else {
                                         for (i, okey) in lhs.iter().enumerate() {
@@ -652,6 +658,7 @@ impl<'a> Checker<'a> {
                                                 &None,
                                                 &vspec.typ.clone(),
                                                 &vspec.values.get(i).map(|x| x.clone()),
+                                                fctx,
                                             );
                                         }
                                     }

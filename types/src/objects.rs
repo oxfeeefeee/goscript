@@ -75,8 +75,9 @@ impl TCObjects {
         pos: position::Pos,
         end: position::Pos,
         comment: String,
+        is_func: bool,
     ) -> ScopeKey {
-        let scope = Scope::new(parent, pos, end, comment);
+        let scope = Scope::new(parent, pos, end, comment, is_func);
         let skey = self.scopes.insert(scope);
         if let Some(skey) = parent {
             // don't add children to Universe scope
@@ -93,6 +94,7 @@ impl TCObjects {
             0,
             0,
             format!("package {}", path),
+            false,
         );
         let pkg = Package::new(path, skey);
         self.pkgs.insert(pkg)
@@ -140,6 +142,17 @@ impl TCObjects {
         typ: Option<TypeKey>,
     ) -> ObjKey {
         let lobj = LangObj::new_var(pos, pkg, name, typ);
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_param_var(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+    ) -> ObjKey {
+        let lobj = LangObj::new_param_var(pos, pkg, name, typ);
         self.lobjs.insert(lobj)
     }
 

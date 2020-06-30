@@ -234,8 +234,8 @@ pub fn lookup_field_or_method(
     lookup_field_or_method_impl(tkey, addressable, pkg, name, objs)
 }
 
-/// deref dereferences typ if it is a *Pointer and returns its base.
-/// Otherwise it returns None.
+/// deref dereferences t if it is a *Pointer and returns its base.
+/// Otherwise it returns t.
 pub fn try_deref<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> (&'a TypeKey, bool) {
     match &objs.types[*t] {
         typ::Type::Pointer(detail) => (detail.base(), true),

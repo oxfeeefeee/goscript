@@ -23,6 +23,7 @@ impl Scope {
         pos: position::Pos,
         end: position::Pos,
         comment: String,
+        is_func: bool,
     ) -> Scope {
         Scope {
             parent: parent,
@@ -31,7 +32,7 @@ impl Scope {
             pos: pos,
             end: end,
             comment: comment,
-            is_func: false,
+            is_func: is_func,
         }
     }
 

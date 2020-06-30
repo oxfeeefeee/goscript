@@ -146,12 +146,10 @@ impl Selection {
                 let arg0key = objs.lobjs.insert(arg0);
                 sig.set_recv(None);
                 let mut params = vec![arg0key];
-                if let Some(tkey) = sig.params() {
-                    let tup = &mut objs.types[*tkey].try_as_tuple_mut().unwrap();
-                    params.append(tup.vars_mut())
-                }
+                let tup = &mut objs.types[*sig.params()].try_as_tuple_mut().unwrap();
+                params.append(&mut tup.vars().clone());
                 let params_tuple = typ::TupleDetail::new(params);
-                sig.set_params(Some(objs.types.insert(typ::Type::Tuple(params_tuple))));
+                sig.set_params(objs.types.insert(typ::Type::Tuple(params_tuple)));
                 objs.types.insert(typ::Type::Signature(sig))
             }
         }

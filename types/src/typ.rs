@@ -493,6 +493,10 @@ pub struct PointerDetail {
 }
 
 impl PointerDetail {
+    pub fn new(base: TypeKey) -> PointerDetail {
+        PointerDetail { base: base }
+    }
+
     pub fn base(&self) -> &TypeKey {
         &self.base
     }
@@ -525,8 +529,8 @@ impl TupleDetail {
 pub struct SignatureDetail {
     scope: Option<ScopeKey>, // function scope, present for package-local signatures
     recv: Option<ObjKey>,    // None if not a method
-    params: Option<TypeKey>,
-    results: Option<TypeKey>,
+    params: TypeKey,
+    results: TypeKey,
     variadic: bool,
 }
 
@@ -534,14 +538,14 @@ impl SignatureDetail {
     // pass in 'objs' for sanity checks
     pub fn new(
         recv: Option<ObjKey>,
-        params: Option<TypeKey>,
-        results: Option<TypeKey>,
+        params: TypeKey,
+        results: TypeKey,
         variadic: bool,
         objs: &TCObjects,
     ) -> SignatureDetail {
         if objs.debug {
             if variadic {
-                let typ = &objs.types[params.unwrap()];
+                let typ = &objs.types[params];
                 match typ {
                     Type::Tuple(t) => {
                         assert!(t.vars.len() > 1);
@@ -572,15 +576,19 @@ impl SignatureDetail {
         &self.recv
     }
 
-    pub fn params(&self) -> &Option<TypeKey> {
+    pub fn set_recv(&mut self, r: Option<ObjKey>) {
+        self.recv = r
+    }
+
+    pub fn params(&self) -> &TypeKey {
         &self.params
     }
 
-    pub fn set_params(&mut self, params: Option<TypeKey>) {
-        self.params = params
+    pub fn set_params(&mut self, p: TypeKey) {
+        self.params = p;
     }
 
-    pub fn results(&self) -> &Option<TypeKey> {
+    pub fn results(&self) -> &TypeKey {
         &self.results
     }
 
@@ -588,8 +596,16 @@ impl SignatureDetail {
         &self.variadic
     }
 
-    pub fn set_recv(&mut self, recv: Option<ObjKey>) {
-        self.recv = recv
+    pub fn params_count(&self, objs: &TCObjects) -> usize {
+        objs.types[self.params].try_as_tuple().unwrap().vars().len()
+    }
+
+    pub fn results_count(&self, objs: &TCObjects) -> usize {
+        objs.types[self.results]
+            .try_as_tuple()
+            .unwrap()
+            .vars()
+            .len()
     }
 }
 
@@ -976,8 +992,8 @@ fn identical_impl(
         }
         (Type::Signature(sx), Type::Signature(sy)) => {
             *sx.variadic() == *sy.variadic()
-                && identical_impl_o(sx.params(), sy.params(), cmp_tags, dup, objs)
-                && identical_impl_o(sx.results(), sy.results(), cmp_tags, dup, objs)
+                && identical_impl(sx.params(), sy.params(), cmp_tags, dup, objs)
+                && identical_impl(sx.results(), sy.results(), cmp_tags, dup, objs)
         }
         (Type::Interface(ix), Type::Interface(iy)) => {
             match (ix.all_methods().as_ref(), iy.all_methods().as_ref()) {
@@ -1094,7 +1110,7 @@ fn fmt_type_impl(
             fmt_type_impl(&Some(*detail.base()), f, visited, objs)?;
         }
         Type::Tuple(_) => {
-            fmt_tuple(t, false, f, visited, objs)?;
+            fmt_tuple(&tkey, false, f, visited, objs)?;
         }
         Type::Signature(_) => {
             f.write_str("func")?;
@@ -1173,12 +1189,8 @@ fn fmt_signature_impl(
 ) -> fmt::Result {
     let sig = &objs.types[*t].try_as_signature().unwrap();
     fmt_tuple(sig.params(), *sig.variadic(), f, visited, &objs)?;
-    if sig.results().is_none() {
-        // no result
-        return Ok(());
-    }
     f.write_char(' ')?;
-    let results = &objs.types[sig.results().unwrap()].try_as_tuple().unwrap();
+    let results = &objs.types[*sig.results()].try_as_tuple().unwrap();
     if results.vars().len() == 1 {
         let obj = &objs.lobjs[results.vars()[0]];
         if obj.name().is_empty() {
@@ -1191,44 +1203,42 @@ fn fmt_signature_impl(
 }
 
 fn fmt_tuple(
-    t: &Option<TypeKey>,
+    tkey: &TypeKey,
     variadic: bool,
     f: &mut fmt::Formatter<'_>,
     visited: &mut HashSet<TypeKey>,
     objs: &TCObjects,
 ) -> fmt::Result {
     f.write_char('(')?;
-    if let Some(tkey) = t {
-        let tuple = &objs.types[*tkey].try_as_tuple().unwrap();
-        for (i, v) in tuple.vars().iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-            let obj = &objs.lobjs[*v];
-            if !obj.name().is_empty() {
-                write!(f, "{} ", obj.name())?;
-            }
-            let tkey = obj.typ();
-            if variadic && i == tuple.vars().len() - 1 {
-                let utype = underlying_type(tkey.as_ref().unwrap(), &objs);
-                let typ = &objs.types[*utype];
-                match typ {
-                    Type::Slice(detail) => {
-                        f.write_str("...")?;
-                        fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
-                    }
-                    Type::Basic(detail) => {
-                        // special case:
-                        // append(s, "foo"...) leads to signature func([]byte, string...)
-                        assert!(detail.typ() == BasicType::Str);
-                        fmt_type_impl(tkey, f, visited, objs)?;
-                        f.write_str("...")?;
-                    }
-                    _ => unreachable!(),
+    let tuple = &objs.types[*tkey].try_as_tuple().unwrap();
+    for (i, v) in tuple.vars().iter().enumerate() {
+        if i > 0 {
+            f.write_str(", ")?;
+        }
+        let obj = &objs.lobjs[*v];
+        if !obj.name().is_empty() {
+            write!(f, "{} ", obj.name())?;
+        }
+        let tkey = obj.typ();
+        if variadic && i == tuple.vars().len() - 1 {
+            let utype = underlying_type(tkey.as_ref().unwrap(), &objs);
+            let typ = &objs.types[*utype];
+            match typ {
+                Type::Slice(detail) => {
+                    f.write_str("...")?;
+                    fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
                 }
-            } else {
-                fmt_type_impl(tkey, f, visited, objs)?;
+                Type::Basic(detail) => {
+                    // special case:
+                    // append(s, "foo"...) leads to signature func([]byte, string...)
+                    assert!(detail.typ() == BasicType::Str);
+                    fmt_type_impl(tkey, f, visited, objs)?;
+                    f.write_str("...")?;
+                }
+                _ => unreachable!(),
             }
+        } else {
+            fmt_type_impl(tkey, f, visited, objs)?;
         }
     }
     f.write_char(')')?;

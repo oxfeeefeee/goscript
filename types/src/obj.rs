@@ -225,7 +225,7 @@ impl LangObj {
         )
     }
 
-    pub fn new_param(
+    pub fn new_param_var(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,

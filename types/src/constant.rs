@@ -122,55 +122,49 @@ impl Value {
                 }
                 _ => false,
             },
-            BasicInfo::IsFloat => {
-                if let Some(f) = self.to_float() {
-                    match base.typ() {
-                        BasicType::Float64 => true,
-                        BasicType::Float32 => {
-                            if f.to_f32().is_some() {
-                                true
-                            } else {
-                                if let Some(r) = rounded {
-                                    *r = Value::Float((f as f32).into());
-                                }
-                                false
+            BasicInfo::IsFloat => match self.to_float() {
+                Value::Float(f) => match base.typ() {
+                    BasicType::Float64 => true,
+                    BasicType::Float32 => {
+                        if f.to_f32().is_some() {
+                            true
+                        } else {
+                            if let Some(r) = rounded {
+                                *r = Value::Float((f as f32).into());
                             }
+                            false
                         }
-                        BasicType::UntypedFloat => true,
-                        _ => unreachable!(),
                     }
-                } else {
-                    false
-                }
-            }
-            BasicInfo::IsComplex => {
-                if let Some((re, im)) = self.to_complex() {
-                    match base.typ() {
-                        BasicType::Complex128 => true,
-                        BasicType::Complex64 => {
-                            if re.to_f32().is_some() && im.to_f32().is_some() {
-                                true
-                            } else {
-                                if let Some(r) = rounded {
-                                    *r = Value::Complex((re as f32).into(), (im as f32).into());
-                                }
-                                false
+                    BasicType::UntypedFloat => true,
+                    _ => unreachable!(),
+                },
+                _ => false,
+            },
+            BasicInfo::IsComplex => match self.to_complex() {
+                Value::Complex(re, im) => match base.typ() {
+                    BasicType::Complex128 => true,
+                    BasicType::Complex64 => {
+                        if re.to_f32().is_some() && im.to_f32().is_some() {
+                            true
+                        } else {
+                            if let Some(r) = rounded {
+                                *r = Value::Complex((re as f32).into(), (im as f32).into());
                             }
+                            false
                         }
-                        BasicType::UntypedComplex => true,
-                        _ => unreachable!(),
                     }
-                } else {
-                    false
-                }
-            }
+                    BasicType::UntypedComplex => true,
+                    _ => unreachable!(),
+                },
+                _ => false,
+            },
             BasicInfo::IsBoolean => base.info() == BasicInfo::IsBoolean,
             BasicInfo::IsString => base.info() == BasicInfo::IsString,
             _ => false,
         }
     }
 
-    fn to_int(&self) -> Cow<Value> {
+    pub fn to_int(&self) -> Cow<Value> {
         let f64_to_int = |x| -> Cow<Value> {
             match BigInt::from_f64(x) {
                 Some(v) => Cow::Owned(Value::Int(v)),
@@ -191,8 +185,8 @@ impl Value {
         }
     }
 
-    fn to_float(&self) -> Option<f64> {
-        match self {
+    pub fn to_float(&self) -> Value {
+        let v = match self {
             Value::Int(i) => i.to_f64(),
             Value::Float(f) => Some(*f),
             Value::Complex(r, i) => {
@@ -203,16 +197,18 @@ impl Value {
                 }
             }
             _ => None,
-        }
+        };
+        v.map_or(Value::Unknown, |x| Value::Float(x))
     }
 
-    fn to_complex(&self) -> Option<(f64, f64)> {
-        match self {
+    pub fn to_complex(&self) -> Value {
+        let v = match self {
             Value::Int(i) => i.to_f64().map(|x| (x, 0.0)),
             Value::Float(f) => Some((*f, 0.0)),
             Value::Complex(r, i) => Some((*r, *i)),
             _ => None,
-        }
+        };
+        v.map_or(Value::Unknown, |(r, i)| Value::Complex(r, i))
     }
 
     pub fn as_string(&self) -> String {
@@ -220,6 +216,11 @@ impl Value {
             Value::Str(s) => quote_str(s),
             _ => self.to_string(),
         }
+    }
+
+    // int_as_u64 returns the Go uint64 value and whether the result is exact;
+    pub fn int_as_u64(&self) -> (u64, bool) {
+        unimplemented!()
     }
 }
 

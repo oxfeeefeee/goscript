@@ -1,12 +1,19 @@
 #![allow(dead_code)]
 
+use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::obj;
 use super::super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ::{self, BasicType};
 use super::check::Checker;
-use goscript_parser::ast::Node;
-use goscript_parser::{ast::Expr, objects::Objects as AstObjects, position::Pos};
+use goscript_parser::{ast::Expr, position::Pos};
+
+macro_rules! error_operand {
+    ($x:ident, $fmt:expr, $checker:ident) => {
+        let xd = OperandDisplay::new(&$x, $checker.ast_objs, $checker.tc_objs);
+        $checker.error($x.pos($checker.ast_objs), format!($fmt, xd));
+    };
+}
 
 pub enum UnpackResult<'a> {
     Tuple(Option<Expr>, Vec<Option<TypeKey>>), // rhs is a tuple
@@ -58,16 +65,16 @@ impl<'a> Checker<'a> {
     pub fn print_trace(&self, pos: Pos, msg: &str) {
         let file = self.fset.file(pos).unwrap();
         let p = file.position(pos);
-        print!("{}:\t{}{}\n", p, ".  ".repeat(self.indent), msg);
+        print!("{}:\t{}{}\n", p, ".  ".repeat(*self.indent.borrow()), msg);
     }
 
-    pub fn trace_begin(&mut self, pos: Pos, msg: &str) {
+    pub fn trace_begin(&self, pos: Pos, msg: &str) {
         self.print_trace(pos, msg);
-        self.indent += 1;
+        *self.indent.borrow_mut() += 1;
     }
 
-    pub fn trace_end(&mut self, pos: Pos, msg: &str) {
-        self.indent -= 1;
+    pub fn trace_end(&self, pos: Pos, msg: &str) {
+        *self.indent.borrow_mut() -= 1;
         self.print_trace(pos, msg);
     }
 
