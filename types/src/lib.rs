@@ -6,6 +6,8 @@ mod constant;
 mod obj;
 mod package;
 mod scope;
+
+#[macro_use]
 mod typ;
 
 mod lookup;

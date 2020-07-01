@@ -11,4 +11,5 @@ mod resolver;
 mod stmt;
 mod typexpr;
 
+pub use interface::IfaceInfo;
 pub use resolver::DeclInfo;

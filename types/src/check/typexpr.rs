@@ -6,8 +6,9 @@ use super::super::obj::EntityType;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::scope::Scope;
-use super::super::typ;
+use super::super::typ::{self, Type};
 use super::check::{Checker, FilesContext};
+use super::interface::MethodInfo;
 use goscript_parser::ast::{self, Expr, FieldList, Node};
 use goscript_parser::objects::{FuncTypeKey, IdentKey};
 use std::borrow::Borrow;
@@ -159,7 +160,7 @@ impl<'a> Checker<'a> {
         if self.config().trace_checker {
             let pos = e.pos(self.ast_objs);
             let td = TypeDisplay::new(&t, self.tc_objs);
-            self.trace_begin(pos, &format!("=> {}", td));
+            self.trace_end(pos, &format!("=> {}", td));
         }
         t
     }
@@ -176,17 +177,22 @@ impl<'a> Checker<'a> {
     }
 
     /// func_type type-checks a function or method type.
-    pub fn func_type(&mut self, recv: Option<&FieldList>, ftype: FuncTypeKey) -> TypeKey {
+    pub fn func_type(
+        &mut self,
+        recv: Option<&FieldList>,
+        ftype: FuncTypeKey,
+        fctx: &mut FilesContext,
+    ) -> TypeKey {
         let skey = self
             .tc_objs
             .new_scope(self.octx.scope, 0, 0, "function".to_string(), true);
         self.result.record_scope(&ftype, skey);
 
-        let (recv_list, _) = self.collect_params(skey, recv, false);
+        let (recv_list, _) = self.collect_params(skey, recv, false, fctx);
         let ftype_val = &self.ast_objs.ftypes[ftype];
         let (p, r) = (ftype_val.params.clone(), ftype_val.results.clone());
-        let (params, variadic) = self.collect_params(skey, Some(&p), true);
-        let (results, _) = self.collect_params(skey, r.as_ref(), false);
+        let (params, variadic) = self.collect_params(skey, Some(&p), true, fctx);
+        let (results, _) = self.collect_params(skey, r.as_ref(), false, fctx);
 
         let mut recv_okey = None;
         if recv.is_some() {
@@ -361,12 +367,12 @@ impl<'a> Checker<'a> {
                 Some(t)
             }
             Expr::Func(f) => {
-                let t = self.func_type(None, *f);
+                let t = self.func_type(None, *f, fctx);
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
-            Expr::Interface(iface) => {
-                let t = self.interface_type(iface, def);
+            Expr::Interface(_) => {
+                let t = self.interface_type(e, def, fctx);
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
@@ -380,7 +386,7 @@ impl<'a> Checker<'a> {
                 set_underlying(Some(t), self.tc_objs);
 
                 let pos = m.key.pos(self.ast_objs);
-                let f = move |checker: &mut Checker| {
+                let f = move |checker: &mut Checker, _: &mut FilesContext| {
                     if !typ::comparable(&k, checker.tc_objs) {
                         let td = TypeDisplay::new(&k, checker.tc_objs);
                         checker.error(pos, format!("invalid map key type {}", td));
@@ -482,15 +488,220 @@ impl<'a> Checker<'a> {
         skey: ScopeKey,
         fl: Option<&FieldList>,
         variadic_ok: bool,
+        fctx: &mut FilesContext,
     ) -> (Vec<ObjKey>, bool) {
+        if let Some(l) = fl {
+            let (mut named, mut anonymous, mut variadic) = (false, false, false);
+            let mut params = Vec::new();
+            for (i, fkey) in l.list.iter().enumerate() {
+                let field = &self.ast_objs.fields[*fkey];
+                let mut ftype = &field.typ;
+                let field_names = field.names.clone();
+                if let Expr::Ellipsis(elli) = ftype {
+                    ftype = elli.elt.as_ref().unwrap();
+                    if variadic_ok && i == l.list.len() - 1 && field_names.len() <= 1 {
+                        variadic = true
+                    } else {
+                        self.soft_error(
+                            elli.pos,
+                            "can only use ... with final parameter in list".to_string(),
+                        )
+                        // ignore ... and continue
+                    }
+                }
+                let ftype = &ftype.clone();
+                let ty = self.indirect_type(ftype, fctx);
+                // The parser ensures that f.Tag is nil and we don't
+                // care if a constructed AST contains a non-nil tag.
+                if field_names.len() > 0 {
+                    for name in field_names.iter() {
+                        let ident = &self.ast_objs.idents[*name];
+                        if ident.name == "" {
+                            self.invalid_ast(ident.pos, "anonymous parameter");
+                            // ok to continue
+                        }
+                        let par_name = ident.name.clone();
+                        let par = self.tc_objs.new_param_var(
+                            ident.pos,
+                            Some(self.pkg),
+                            par_name,
+                            Some(ty),
+                        );
+                        let scope_pos = *self.scope(skey).pos();
+                        self.declare(skey, Some(*name), par, scope_pos);
+                        params.push(par);
+                    }
+                    named = true;
+                } else {
+                    // anonymous parameter
+                    let par = self.tc_objs.new_param_var(
+                        ftype.pos(self.ast_objs),
+                        Some(self.pkg),
+                        "".to_string(),
+                        Some(ty),
+                    );
+                    self.result.record_implicit(fkey, par);
+                    params.push(par);
+                    anonymous = true;
+                }
+            }
+            if named && anonymous {
+                self.invalid_ast(
+                    l.pos(self.ast_objs),
+                    "list contains both named and anonymous parameters",
+                )
+                // ok to continue
+            }
+            // For a variadic function, change the last parameter's type from T to []T.
+            // Since we type-checked T rather than ...T, we also need to retro-actively
+            // record the type for ...T.
+            if variadic {
+                let last = params[params.len() - 1];
+                let t = self
+                    .tc_objs
+                    .types
+                    .insert(typ::Type::Slice(typ::SliceDetail::new(
+                        self.lobj(last).typ().unwrap(),
+                    )));
+                self.lobj_mut(last).set_type(Some(t));
+                let e = &self.ast_objs.fields[l.list[l.list.len() - 1]].typ;
+                self.result
+                    .record_type_and_value(e, OperandMode::TypeExpr, t);
+            }
+            (params, variadic)
+        } else {
+            (vec![], false)
+        }
+    }
+
+    fn interface_type(
+        &mut self,
+        expr: &ast::Expr,
+        def: Option<TypeKey>,
+        fctx: &mut FilesContext,
+    ) -> TypeKey {
+        let iface = match expr {
+            Expr::Interface(i) => i,
+            _ => unreachable!(),
+        };
+        if iface.methods.list.len() == 0 {
+            return self
+                .tc_objs
+                .types
+                .insert(typ::Type::Interface(typ::InterfaceDetail::new_empty()));
+        }
+
+        let itype = self
+            .tc_objs
+            .types
+            .insert(typ::Type::Interface(typ::InterfaceDetail::new(
+                vec![],
+                vec![],
+                self.tc_objs,
+            )));
+        // collect embedded interfaces
+        // Only needed for printing and API. Delay collection
+        // to end of type-checking (for package-global interfaces)
+        // when all types are complete. Local interfaces are handled
+        // after each statement (as each statement processes delayed
+        // functions).
+        let context_clone = self.octx.clone();
+        let expr_clone = expr.clone();
+        let iface_clone = iface.clone();
+        let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+            if checker.config().trace_checker {
+                let ed = ExprDisplay::new(&expr_clone, checker.ast_objs);
+                let msg = format!("-- delayed checking embedded interfaces of {}", ed);
+                checker.trace_begin(iface_clone.interface, &msg);
+            }
+            //replace checker's ctx with context_clone
+            let ctx_backup = std::mem::replace(&mut checker.octx, context_clone);
+
+            let mut embeds = vec![];
+            for f in iface_clone.methods.list.iter() {
+                let field = &checker.ast_objs.fields[*f];
+                if field.names.len() == 0 {
+                    let texpr = field.typ.clone();
+                    let ty = checker.indirect_type(&texpr, fctx);
+                    // typ should be a named type denoting an interface
+                    // (the parser will make sure it's a named type but
+                    // constructed ASTs may be wrong).
+                    if ty == checker.invalid_type() {
+                        continue; // error reported before
+                    }
+                    match checker.otype(*typ::underlying_type(&ty, checker.tc_objs)) {
+                        typ::Type::Interface(embed) => {
+                            // Correct embedded interfaces must be complete
+                            assert!(embed.all_methods().is_some());
+                        }
+                        _ => {
+                            let pos = texpr.pos(checker.ast_objs);
+                            let td = TypeDisplay::new(&ty, checker.tc_objs);
+                            checker.error(pos, format!("{} is not an interface", td));
+                            continue;
+                        }
+                    }
+                    // collect interface
+                    embeds.push(ty);
+                }
+            }
+            embeds.sort_by(compare_by_type_name!(checker.tc_objs));
+            *checker.otype_interface_mut(itype).embeddeds_mut() = embeds;
+
+            // restore ctx
+            checker.octx = ctx_backup;
+            // trace_end
+            if checker.config().trace_checker {
+                checker.trace_end(
+                    iface_clone.interface,
+                    "-- end of delayed checking embedded interfaces",
+                )
+            }
+        };
+        fctx.later(Box::new(f));
+
+        // compute method set
+        let (tname, path) = if let Some(d) = def {
+            let t = *self.otype(d).try_as_named().unwrap().obj();
+            (t, vec![t.unwrap()])
+        } else {
+            (None, vec![])
+        };
+        let info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, path);
+        if info.is_none() || info.as_ref().unwrap().is_empty() {
+            // we got an error or the empty interface - exit early
+            self.otype_interface_mut(itype).set_empty_complete();
+            return itype;
+        }
+
+        // use named receiver type if available (for better error messages)
+        let recv_type = if let Some(d) = def { d } else { itype };
+
+        // Correct receiver type for all methods explicitly declared
+        // by this interface after we're done with type-checking at
+        // this level. See comment below for details.
+        let f = move |checker: &mut Checker, _: &mut FilesContext| {
+            for m in checker.otype_interface(itype).methods().clone().iter() {
+                let t = checker.lobj(*m).typ().unwrap();
+                let o = checker.otype_signature(t).recv().unwrap();
+                checker.lobj_mut(o).set_type(Some(recv_type));
+            }
+        };
+        fctx.later(Box::new(f));
+
+        // collect methods
+        let sig_fix: Vec<MethodInfo> = vec![];
+        for (i, minfo) in info.unwrap().methods.iter().enumerate() {
+            let fun = if minfo.fun.is_none() {
+            } else {
+                //minfo.fun.unwrap()
+            };
+        }
+
         unimplemented!()
     }
 
     fn struct_type(&mut self, st: &ast::StructType) -> TypeKey {
-        unimplemented!()
-    }
-
-    fn interface_type(&mut self, iface: &ast::InterfaceType, def: Option<TypeKey>) -> TypeKey {
         unimplemented!()
     }
 }

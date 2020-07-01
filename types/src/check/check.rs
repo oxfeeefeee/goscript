@@ -7,7 +7,7 @@ use super::super::operand::OperandMode;
 use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::selection::Selection;
-use super::super::typ::{BasicType, Type};
+use super::super::typ::{self, Type};
 use super::interface::IfaceInfo;
 use super::resolver::DeclInfo;
 use goscript_parser::ast;
@@ -74,9 +74,7 @@ pub struct TypeInfo {
     uses: HashMap<IdentKey, ObjKey>,
     /// 'implicits' maps nodes to their implicitly declared objects, if any.
     /// The following node and object types may appear:
-    ///
     ///     node               declared object
-    ///
     ///     ImportSpec    PkgName for imports without renames
     ///     CaseClause    type-specific Object::Var for each type switch case clause (incl. default)
     ///     Field         anonymous parameter Object::Var
@@ -95,7 +93,6 @@ pub struct TypeInfo {
     /// containing the function declaration.
     ///
     /// The following node types may appear in Scopes:
-    ///
     ///     File
     ///     FuncType
     ///     BlockStmt
@@ -139,6 +136,7 @@ pub struct ExprInfo {
 
 // ObjContext is context within which the current object is type-checked
 // (valid only for the duration of type-checking a specific object)
+#[derive(Clone)]
 pub struct ObjContext {
     // package-level declaration whose init expression/function body is checked
     pub decl: Option<DeclInfoKey>,
@@ -158,7 +156,7 @@ pub struct ObjContext {
     pub has_call_or_recv: bool,
 }
 
-type DelayedAction = Box<dyn Fn(&mut Checker)>;
+type DelayedAction = Box<dyn FnOnce(&mut Checker, &mut FilesContext)>;
 
 /// FilesContext contains information collected during type-checking
 /// of a set of package files
@@ -280,8 +278,9 @@ impl FilesContext<'_> {
     }
 
     pub fn process_delayed(&mut self, top: usize, checker: &mut Checker) {
-        for f in self.delayed.drain(top..).into_iter() {
-            f(checker);
+        let fs: Vec<DelayedAction> = self.delayed.drain(top..).into_iter().collect();
+        for f in fs {
+            f(checker, self);
         }
     }
 
@@ -479,6 +478,26 @@ impl<'a> Checker<'a> {
         &self.tc_objs.types[key]
     }
 
+    pub fn otype_mut(&mut self, key: TypeKey) -> &mut Type {
+        &mut self.tc_objs.types[key]
+    }
+
+    pub fn otype_interface(&self, key: TypeKey) -> &typ::InterfaceDetail {
+        self.otype(key).try_as_interface().unwrap()
+    }
+
+    pub fn otype_signature(&self, key: TypeKey) -> &typ::SignatureDetail {
+        self.otype(key).try_as_signature().unwrap()
+    }
+
+    pub fn otype_interface_mut(&mut self, key: TypeKey) -> &mut typ::InterfaceDetail {
+        self.otype_mut(key).try_as_interface_mut().unwrap()
+    }
+
+    pub fn otype_signature_mut(&mut self, key: TypeKey) -> &mut typ::SignatureDetail {
+        self.otype_mut(key).try_as_signature_mut().unwrap()
+    }
+
     pub fn package(&self, key: PackageKey) -> &Package {
         &self.tc_objs.pkgs[key]
     }
@@ -499,12 +518,12 @@ impl<'a> Checker<'a> {
         self.fset.file(pos).unwrap().position(pos)
     }
 
-    pub fn basic_type(&self, t: BasicType) -> TypeKey {
+    pub fn basic_type(&self, t: typ::BasicType) -> TypeKey {
         self.tc_objs.universe().types()[&t]
     }
 
     pub fn invalid_type(&self) -> TypeKey {
-        self.basic_type(BasicType::Invalid)
+        self.basic_type(typ::BasicType::Invalid)
     }
 
     pub fn error(&self, pos: Pos, err: String) {

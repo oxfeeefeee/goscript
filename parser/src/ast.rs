@@ -592,7 +592,7 @@ impl Ident {
 #[derive(Debug)]
 pub struct Ellipsis {
     pub pos: position::Pos,
-    pub elt: Option<Expr>,
+    pub elt: Option<Expr>, // ellipsis element type (parameter lists only)
 }
 
 // A BasicLit node represents a literal of basic type.
@@ -772,7 +772,7 @@ impl Node for FuncTypeKey {
 }
 
 // An InterfaceType node represents an interface type.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct InterfaceType {
     pub interface: position::Pos,
     pub methods: FieldList,

@@ -444,7 +444,7 @@ impl<'a> Checker<'a> {
         let fdecl_key = d.fdecl;
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
         let (recv, typ) = (fdecl.recv.clone(), fdecl.typ);
-        let sig_key = self.func_type(recv.as_ref(), typ);
+        let sig_key = self.func_type(recv.as_ref(), typ, fctx);
 
         // check for 'init' func
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
@@ -463,7 +463,7 @@ impl<'a> Checker<'a> {
 
         if let Some(_) = &fdecl.body {
             let name = lobj.name().clone();
-            let f = move |checker: &mut Checker| {
+            let f = move |checker: &mut Checker, _: &mut FilesContext| {
                 checker.func_body(dkey, &name, sig_key, fdecl_key, None);
             };
             fctx.later(Box::new(f));

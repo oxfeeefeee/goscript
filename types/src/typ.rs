@@ -120,6 +120,13 @@ impl Type {
         }
     }
 
+    pub fn try_as_interface_mut(&mut self) -> Option<&mut InterfaceDetail> {
+        match self {
+            Type::Interface(i) => Some(i),
+            _ => None,
+        }
+    }
+
     pub fn try_as_map(&self) -> Option<&MapDetail> {
         match &self {
             Type::Map(m) => Some(m),
@@ -667,8 +674,16 @@ impl InterfaceDetail {
         &self.methods
     }
 
+    pub fn methods_mut(&mut self) -> &mut Vec<ObjKey> {
+        &mut self.methods
+    }
+
     pub fn embeddeds(&self) -> &Vec<TypeKey> {
         &self.embeddeds
+    }
+
+    pub fn embeddeds_mut(&mut self) -> &mut Vec<TypeKey> {
+        &mut self.embeddeds
     }
 
     pub fn all_methods(&self) -> Ref<Option<Vec<ObjKey>>> {
@@ -677,6 +692,10 @@ impl InterfaceDetail {
 
     pub fn is_empty(&self) -> bool {
         self.all_methods().as_ref().unwrap().len() == 0
+    }
+
+    pub fn set_empty_complete(&mut self) {
+        *self.all_methods.borrow_mut() = Some(vec![]);
     }
 
     pub fn complete(&self, objs: &TCObjects) {
