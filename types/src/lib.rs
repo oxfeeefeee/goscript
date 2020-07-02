@@ -8,13 +8,14 @@ mod package;
 mod scope;
 
 #[macro_use]
+mod objects;
+
+#[macro_use]
 mod typ;
 
 mod lookup;
-mod objects;
-mod selection;
-
 mod operand;
+mod selection;
 
 mod universe;
 

@@ -3,15 +3,17 @@ use super::super::constant;
 use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::lookup;
 use super::super::obj::EntityType;
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::{ObjKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::scope::Scope;
 use super::super::typ::{self, Type};
-use super::check::{Checker, FilesContext};
+use super::check::{Checker, FilesContext, ObjContext};
 use super::interface::MethodInfo;
 use goscript_parser::ast::{self, Expr, FieldList, Node};
 use goscript_parser::objects::{FuncTypeKey, IdentKey};
+use goscript_parser::{Pos, Token};
 use std::borrow::Borrow;
+use std::collections::HashMap;
 
 impl<'a> Checker<'a> {
     /// ident type-checks identifier ikey and initializes x with the value or type of ikey.
@@ -86,8 +88,7 @@ impl<'a> Checker<'a> {
                     if okey == *self.tc_objs.universe().iota() {
                         if self.octx.iota.is_none() {
                             let pos = self.ast_ident(ikey).pos;
-                            let msg = "cannot use iota outside constant declaration".to_string();
-                            self.error(pos, msg);
+                            self.error_str(pos, "cannot use iota outside constant declaration");
                             return;
                         }
                         x.mode = OperandMode::Constant(self.octx.iota.clone().unwrap());
@@ -203,13 +204,13 @@ impl<'a> Checker<'a> {
             let recv_var = match recv_list.len() {
                 x if x == 0 => {
                     let pos = recv.unwrap().pos(self.ast_objs);
-                    self.error(pos, "method is missing receiver".to_string());
+                    self.error_str(pos, "method is missing receiver");
                     self.tc_objs
                         .new_param_var(0, None, "".to_string(), Some(invalid_type))
                 }
                 x if x > 1 => {
                     let pos = *self.lobj(recv_list[recv_list.len() - 1]).pos();
-                    self.error(pos, "method must have exactly one receiver".to_string());
+                    self.error_str(pos, "method must have exactly one receiver");
                     recv_list[0] // continue with first receiver
                 }
                 x if x == 1 => recv_list[0],
@@ -256,14 +257,8 @@ impl<'a> Checker<'a> {
             }
         }
 
-        let params_tuple = self
-            .tc_objs
-            .types
-            .insert(typ::Type::Tuple(typ::TupleDetail::new(params)));
-        let results_tuple = self
-            .tc_objs
-            .types
-            .insert(typ::Type::Tuple(typ::TupleDetail::new(results)));
+        let params_tuple = self.insert_otype(typ::Type::Tuple(typ::TupleDetail::new(params)));
+        let results_tuple = self.insert_otype(typ::Type::Tuple(typ::TupleDetail::new(results)));
         let sig = typ::Type::Signature(typ::SignatureDetail::new(
             recv_okey,
             params_tuple,
@@ -271,7 +266,7 @@ impl<'a> Checker<'a> {
             variadic,
             self.tc_objs,
         ));
-        self.tc_objs.types.insert(sig)
+        self.insert_otype(sig)
     }
 
     /// type_internal drives type checking of types.
@@ -336,33 +331,24 @@ impl<'a> Checker<'a> {
                 if let Some(l) = &a.len {
                     let len = self.array_len(&l);
                     let elem = self.type_expr(&a.elt, fctx);
-                    let t = self
-                        .tc_objs
-                        .types
-                        .insert(typ::Type::Array(typ::ArrayDetail::new(elem, len)));
+                    let t = self.insert_otype(typ::Type::Array(typ::ArrayDetail::new(elem, len)));
                     set_underlying(Some(t), self.tc_objs);
                     Some(t)
                 } else {
                     let elem = self.indirect_type(&a.elt, fctx);
-                    let t = self
-                        .tc_objs
-                        .types
-                        .insert(typ::Type::Slice(typ::SliceDetail::new(elem)));
+                    let t = self.insert_otype(typ::Type::Slice(typ::SliceDetail::new(elem)));
                     set_underlying(Some(t), self.tc_objs);
                     Some(t)
                 }
             }
             Expr::Struct(s) => {
-                let t = self.struct_type(s);
+                let t = self.struct_type(s, fctx);
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
             Expr::Star(s) => {
                 let base = self.indirect_type(&s.expr, fctx);
-                let t = self
-                    .tc_objs
-                    .types
-                    .insert(typ::Type::Pointer(typ::PointerDetail::new(base)));
+                let t = self.insert_otype(typ::Type::Pointer(typ::PointerDetail::new(base)));
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
@@ -379,10 +365,7 @@ impl<'a> Checker<'a> {
             Expr::Map(m) => {
                 let k = self.indirect_type(&m.key, fctx);
                 let v = self.indirect_type(&m.val, fctx);
-                let t = self
-                    .tc_objs
-                    .types
-                    .insert(typ::Type::Map(typ::MapDetail::new(k, v)));
+                let t = self.insert_otype(typ::Type::Map(typ::MapDetail::new(k, v)));
                 set_underlying(Some(t), self.tc_objs);
 
                 let pos = m.key.pos(self.ast_objs);
@@ -403,10 +386,7 @@ impl<'a> Checker<'a> {
                     ast::ChanDir::SendRecv => typ::ChanDir::SendRecv,
                 };
                 let elem = self.indirect_type(&chan.val, fctx);
-                let t = self
-                    .tc_objs
-                    .types
-                    .insert(typ::Type::Chan(typ::ChanDetail::new(dir, elem)));
+                let t = self.insert_otype(typ::Type::Chan(typ::ChanDetail::new(dir, elem)));
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
@@ -557,12 +537,9 @@ impl<'a> Checker<'a> {
             // record the type for ...T.
             if variadic {
                 let last = params[params.len() - 1];
-                let t = self
-                    .tc_objs
-                    .types
-                    .insert(typ::Type::Slice(typ::SliceDetail::new(
-                        self.lobj(last).typ().unwrap(),
-                    )));
+                let t = self.insert_otype(typ::Type::Slice(typ::SliceDetail::new(
+                    self.lobj(last).typ().unwrap(),
+                )));
                 self.lobj_mut(last).set_type(Some(t));
                 let e = &self.ast_objs.fields[l.list[l.list.len() - 1]].typ;
                 self.result
@@ -585,20 +562,14 @@ impl<'a> Checker<'a> {
             _ => unreachable!(),
         };
         if iface.methods.list.len() == 0 {
-            return self
-                .tc_objs
-                .types
-                .insert(typ::Type::Interface(typ::InterfaceDetail::new_empty()));
+            return self.insert_otype(typ::Type::Interface(typ::InterfaceDetail::new_empty()));
         }
 
-        let itype = self
-            .tc_objs
-            .types
-            .insert(typ::Type::Interface(typ::InterfaceDetail::new(
-                vec![],
-                vec![],
-                self.tc_objs,
-            )));
+        let itype = self.insert_otype(typ::Type::Interface(typ::InterfaceDetail::new(
+            vec![],
+            vec![],
+            self.tc_objs,
+        )));
         // collect embedded interfaces
         // Only needed for printing and API. Delay collection
         // to end of type-checking (for package-global interfaces)
@@ -667,7 +638,7 @@ impl<'a> Checker<'a> {
         } else {
             (None, vec![])
         };
-        let info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, path);
+        let mut info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, path);
         if info.is_none() || info.as_ref().unwrap().is_empty() {
             // we got an error or the empty interface - exit early
             self.otype_interface_mut(itype).set_empty_complete();
@@ -690,18 +661,283 @@ impl<'a> Checker<'a> {
         fctx.later(Box::new(f));
 
         // collect methods
-        let sig_fix: Vec<MethodInfo> = vec![];
-        for (i, minfo) in info.unwrap().methods.iter().enumerate() {
+        let info_mut = info.as_mut().unwrap();
+        let mut sig_fix: Vec<&mut MethodInfo> = vec![];
+        for (i, mut minfo) in info_mut.methods.iter_mut().enumerate() {
             let fun = if minfo.fun.is_none() {
+                let name_key = self.ast_objs.fields[minfo.src.unwrap()].names[0];
+                let ident = self.ast_ident(name_key);
+                let name = ident.name.clone();
+                let pos = ident.pos;
+                // Don't type-check signature yet - use an
+                // empty signature now and update it later.
+                // But set up receiver since we know it and
+                // its position, and because interface method
+                // signatures don't get a receiver via regular
+                // type-checking (there isn't a receiver in the
+                // method's AST). Setting the receiver type is
+                // also important for ptrRecv() (see methodset.go).
+                //
+                // Note: For embedded methods, the receiver type
+                // should be the type of the interface that declared
+                // the methods in the first place. Since we get the
+                // methods here via methodInfo, which may be computed
+                // before we have all relevant interface types, we use
+                // the current interface's type (recvType). This may be
+                // the type of the interface embedding the interface that
+                // declared the methods. This doesn't matter for type-
+                // checking (we only care about the receiver type for
+                // the ptrRecv predicate, and it's never a pointer recv
+                // for interfaces), but it matters for go/types clients
+                // and for printing. We correct the receiver after type-
+                // checking.
+
+                let recv_key =
+                    self.tc_objs
+                        .new_var(pos, Some(self.pkg), "".to_string(), Some(recv_type));
+                let sig_key = self.insert_otype(typ::Type::Signature(typ::SignatureDetail::new(
+                    Some(recv_key),
+                    null_key!(),
+                    null_key!(),
+                    false,
+                    self.tc_objs,
+                )));
+                let fun_key = self
+                    .tc_objs
+                    .new_func(pos, Some(self.pkg), name, Some(sig_key));
+                minfo.fun = Some(fun_key);
+                self.result.record_def(name_key, Some(fun_key));
+                sig_fix.push(minfo);
+                fun_key
             } else {
-                //minfo.fun.unwrap()
+                minfo.fun.unwrap()
             };
+            let itype_val = self.otype_interface_mut(itype);
+            if i < info_mut.explicits {
+                itype_val.methods_mut().push(fun);
+            }
+            itype_val.all_methods_push(fun);
         }
 
-        unimplemented!()
+        // fix signatures now that we have collected all methods
+        let invalid_type = self.invalid_type();
+        let saved_context = self.octx.clone();
+        for minfo in sig_fix {
+            // (possibly embedded) methods must be type-checked within their scope and
+            // type-checking them must not affect the current context
+            self.octx = ObjContext::new();
+            self.octx.scope = minfo.scope;
+            let ftype = self.ast_objs.fields[minfo.src.unwrap()].typ.clone();
+            let ty = self.indirect_type(&ftype, fctx);
+            if let Some(sig) = self.otype(ty).try_as_signature() {
+                let sig_copy = *sig;
+                // update signature, but keep recv that was set up before
+                let old = self.otype_signature_mut(self.lobj(minfo.fun.unwrap()).typ().unwrap());
+                let recv = *old.recv(); // save recv
+                *old = sig_copy;
+                old.set_recv(recv); // restore recv
+            } else {
+                if ty != invalid_type {
+                    let pos = ftype.pos(self.ast_objs);
+                    let td = TypeDisplay::new(&ty, self.tc_objs);
+                    self.invalid_ast(pos, &format!("{} is not a method signature", td));
+                }
+            }
+        }
+        self.octx = saved_context;
+
+        // sort methods
+        let itype_val = self.otype_interface(itype);
+        let mut methods = itype_val.methods().clone();
+        methods.sort_by(compare_by_method_name!(self.tc_objs));
+        *self.otype_interface_mut(itype).methods_mut() = methods;
+        // sort all_methods
+        let itype_val = self.otype_interface(itype);
+        if itype_val.all_methods().is_none() {
+            itype_val.set_empty_complete();
+        } else {
+            itype_val
+                .all_methods_mut()
+                .as_mut()
+                .unwrap()
+                .sort_by(compare_by_method_name!(self.tc_objs));
+        }
+
+        itype
     }
 
-    fn struct_type(&mut self, st: &ast::StructType) -> TypeKey {
-        unimplemented!()
+    fn tag(&self, t: &Option<Expr>) -> Option<String> {
+        if let Some(e) = t {
+            if let Expr::BasicLit(bl) = e {
+                if let Token::STRING(data) = &bl.token {
+                    return Some(data.as_str_str().1.clone());
+                }
+                self.invalid_ast(
+                    e.pos(self.ast_objs),
+                    &format!("incorrect tag syntax: {}", bl.token),
+                )
+            } else {
+                unreachable!()
+            }
+        }
+        None
+    }
+
+    fn declare_in_set(&self, set: &mut HashMap<String, ObjKey>, fld: ObjKey, pos: Pos) -> bool {
+        if let Some(okey) = self.insert_obj_to_set(set, fld) {
+            self.error(pos, format!("{} redeclared", self.lobj(fld).name()));
+            self.report_alt_decl(&okey);
+            false
+        } else {
+            true
+        }
+    }
+
+    fn add_field(
+        &mut self,
+        fields: &mut Vec<ObjKey>,
+        tags: &mut Option<Vec<Option<String>>>,
+        oset: &mut HashMap<String, ObjKey>,
+        ty: TypeKey,
+        tag: Option<String>,
+        ikey: IdentKey,
+        embedded: bool,
+        pos: Pos,
+    ) {
+        if tag.is_some() && tags.is_none() {
+            *tags = Some(vec![]);
+        }
+        if tags.is_some() {
+            tags.as_mut().unwrap().push(tag);
+        }
+        let name = &self.ast_ident(ikey).name.clone();
+        let fld = self
+            .tc_objs
+            .new_field(pos, Some(self.pkg), name.clone(), Some(ty), embedded);
+        if name == "_" || self.declare_in_set(oset, fld, pos) {
+            fields.push(fld);
+            self.result.record_def(ikey, Some(fld));
+        }
+    }
+
+    fn embedded_field_ident(e: &Expr) -> Option<IdentKey> {
+        match e {
+            Expr::Ident(i) => Some(*i),
+            Expr::Star(s) => match s.expr {
+                // *T is valid, but **T is not
+                Expr::Star(_) => None,
+                _ => Checker::embedded_field_ident(&s.expr),
+            },
+            Expr::Selector(s) => match s.expr {
+                Expr::Ident(i) => Some(i),
+                _ => unreachable!(),
+            },
+            _ => None,
+        }
+    }
+
+    fn struct_type(&mut self, st: &ast::StructType, fctx: &mut FilesContext) -> TypeKey {
+        let fields = &st.fields.list;
+        if fields.len() == 0 {
+            return self.insert_otype(typ::Type::Struct(typ::StructDetail::new(
+                vec![],
+                None,
+                self.tc_objs,
+            )));
+        }
+
+        let mut field_objs: Vec<ObjKey> = vec![];
+        let mut tags: Option<Vec<Option<String>>> = None;
+        let mut oset: HashMap<String, ObjKey> = HashMap::new();
+        for f in fields {
+            let field = &self.ast_objs.fields[*f];
+            let fnames = field.names.clone();
+            let ftag = self.tag(&field.tag);
+            let ftype = field.typ.clone();
+            let ty = self.type_expr(&ftype, fctx);
+            if fnames.len() > 0 {
+                // named fields
+                for name in fnames.iter() {
+                    self.add_field(
+                        &mut field_objs,
+                        &mut tags,
+                        &mut oset,
+                        ty,
+                        ftag.clone(),
+                        *name,
+                        false,
+                        self.ast_ident(*name).pos,
+                    );
+                }
+            } else {
+                // embedded field
+                // spec: "An embedded type must be specified as a type name T or as a pointer
+                // to a non-interface type name *T, and T itself may not be a pointer type."
+                let field = &self.ast_objs.fields[*f];
+                let pos = field.typ.pos(self.ast_objs);
+                let invalid_type = self.invalid_type();
+                let mut add_invalid = |c: &mut Checker, ident: IdentKey| {
+                    c.add_field(
+                        &mut field_objs,
+                        &mut tags,
+                        &mut oset,
+                        invalid_type,
+                        None,
+                        ident,
+                        false,
+                        pos,
+                    );
+                };
+                if let Some(ident) = Checker::embedded_field_ident(&field.typ) {
+                    let (t, is_ptr) = lookup::try_deref(&ty, self.tc_objs);
+                    // Because we have a name, typ must be of the form T or *T, where T is the name
+                    // of a (named or alias) type, and t (= deref(typ)) must be the type of T.
+                    let t = *typ::underlying_type(&t, self.tc_objs);
+                    let type_val = self.otype(t);
+                    match type_val {
+                        typ::Type::Basic(_) if t == invalid_type => {
+                            // error was reported before
+                            add_invalid(self, ident);
+                        }
+                        typ::Type::Basic(b) if b.typ() == typ::BasicType::UnsafePointer => {
+                            self.error_str(pos, "embedded field type cannot be unsafe.Pointer");
+                            add_invalid(self, ident);
+                        }
+                        typ::Type::Pointer(_) => {
+                            self.error_str(pos, "embedded field type cannot be a pointer");
+                            add_invalid(self, ident);
+                        }
+                        typ::Type::Interface(_) if is_ptr => {
+                            self.error_str(
+                                pos,
+                                "embedded field type cannot be a pointer to an interface",
+                            );
+                            add_invalid(self, ident);
+                        }
+                        _ => self.add_field(
+                            &mut field_objs,
+                            &mut tags,
+                            &mut oset,
+                            ty,
+                            ftag.clone(),
+                            ident,
+                            true,
+                            pos,
+                        ),
+                    }
+                } else {
+                    let ed = ExprDisplay::new(&field.typ, self.ast_objs);
+                    self.invalid_ast(pos, &format!("embedded field type {} has no name", ed));
+                    let ident = self.ast_objs.idents.insert(ast::Ident::blank(pos));
+                    add_invalid(self, ident);
+                }
+            }
+        }
+
+        self.insert_otype(typ::Type::Struct(typ::StructDetail::new(
+            field_objs,
+            tags,
+            self.tc_objs,
+        )))
     }
 }

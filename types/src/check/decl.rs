@@ -6,13 +6,13 @@ use super::super::obj::{EntityType, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
-use super::super::typ::{self, NamedDetail, SignatureDetail, Type};
+use super::super::typ::{self, NamedDetail, Type};
 use super::check::{Checker, FilesContext, ObjContext};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
 use goscript_parser::position::Pos;
 use goscript_parser::Token;
-use std::collections::HashSet;
+use std::collections::HashMap;
 
 impl<'a> Checker<'a> {
     pub fn report_alt_decl(&self, okey: &ObjKey) {
@@ -482,7 +482,7 @@ impl<'a> Checker<'a> {
         // don't use TypeName.is_alias (requires fully set up object)
         debug_assert!(!self.decl_info(self.obj_map[&okey]).as_type().alias);
 
-        let mut mset: HashSet<ObjKey> = HashSet::new();
+        let mut mset: HashMap<String, ObjKey> = HashMap::new();
         // LangObj.typ() can only be Some(Type::Named)?
         // see original go code
         let type_key = self.lobj(okey).typ().unwrap();
@@ -490,7 +490,7 @@ impl<'a> Checker<'a> {
         if let Some(struc) = self.otype(*named.underlying()).try_as_struct() {
             for f in struc.fields().iter() {
                 if self.lobj(*f).name() != "_" {
-                    assert!(mset.insert(*f));
+                    assert!(self.insert_obj_to_set(&mut mset, *f).is_none());
                 }
             }
         }
@@ -500,7 +500,7 @@ impl<'a> Checker<'a> {
         for m in named.methods().iter() {
             let lobj = self.lobj(*m);
             assert!(lobj.name() != "_");
-            assert!(mset.insert(*m));
+            assert!(self.insert_obj_to_set(&mut mset, *m).is_none());
         }
 
         // get valid methods
@@ -511,7 +511,7 @@ impl<'a> Checker<'a> {
                 // to it must be unique."
                 let mobj = self.lobj(*m);
                 assert!(mobj.name() != "_");
-                if mset.insert(*m) {
+                if self.insert_obj_to_set(&mut mset, *m).is_some() {
                     match mobj.entity_type() {
                         EntityType::Var(_) => self.error(
                             *mobj.pos(),

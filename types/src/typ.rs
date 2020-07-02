@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::obj::ObjSet;
 use super::objects::{ObjKey, ScopeKey, TCObjects, TypeKey};
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
@@ -458,12 +458,16 @@ impl SliceDetail {
 
 /// A StructDetail represents a struct type
 pub struct StructDetail {
-    fields: Vec<ObjKey>, // objects ofr type LangObj::Var
-    tags: Vec<String>,
+    fields: Vec<ObjKey>,               // objects ofr type LangObj::Var
+    tags: Option<Vec<Option<String>>>, // None if there are no tags
 }
 
 impl StructDetail {
-    pub fn new(fields: Vec<ObjKey>, tags: Vec<String>, objs: &TCObjects) -> StructDetail {
+    pub fn new(
+        fields: Vec<ObjKey>,
+        tags: Option<Vec<Option<String>>>,
+        objs: &TCObjects,
+    ) -> StructDetail {
         // sanity checks
         if objs.debug {
             let set = ObjSet::new();
@@ -477,7 +481,7 @@ impl StructDetail {
                 }
             });
             assert!(result.is_ok());
-            assert!(fields.len() >= tags.len());
+            assert!(tags.is_none() || fields.len() >= tags.as_ref().unwrap().len());
         }
         StructDetail {
             fields: fields,
@@ -490,7 +494,7 @@ impl StructDetail {
     }
 
     pub fn tag(&self, i: usize) -> Option<&String> {
-        self.tags.get(i)
+        self.tags.as_ref().unwrap()[i].as_ref()
     }
 }
 
@@ -690,11 +694,23 @@ impl InterfaceDetail {
         self.all_methods.borrow()
     }
 
+    pub fn all_methods_mut(&self) -> RefMut<Option<Vec<ObjKey>>> {
+        self.all_methods.borrow_mut()
+    }
+
+    pub fn all_methods_push(&self, t: ObjKey) {
+        if self.all_methods.borrow_mut().is_none() {
+            *self.all_methods.borrow_mut() = Some(vec![t]);
+        } else {
+            self.all_methods.borrow_mut().as_mut().unwrap().push(t);
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.all_methods().as_ref().unwrap().len() == 0
     }
 
-    pub fn set_empty_complete(&mut self) {
+    pub fn set_empty_complete(&self) {
         *self.all_methods.borrow_mut() = Some(vec![]);
     }
 

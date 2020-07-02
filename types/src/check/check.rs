@@ -1,21 +1,16 @@
 #![allow(dead_code)]
 use super::super::constant::Value;
 use super::super::importer::{Config, ImportKey, Importer};
-use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::OperandMode;
-use super::super::package::Package;
-use super::super::scope::Scope;
 use super::super::selection::Selection;
-use super::super::typ::{self, Type};
 use super::interface::IfaceInfo;
-use super::resolver::DeclInfo;
 use goscript_parser::ast;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
-use goscript_parser::position::{Pos, Position};
+use goscript_parser::position::Pos;
 use goscript_parser::FileSet;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -462,76 +457,20 @@ impl<'a> Checker<'a> {
         Ok(result)
     }
 
-    pub fn ast_ident(&self, key: IdentKey) -> &ast::Ident {
-        &self.ast_objs.idents[key]
-    }
-
-    pub fn lobj(&self, key: ObjKey) -> &obj::LangObj {
-        &self.tc_objs.lobjs[key]
-    }
-
-    pub fn lobj_mut(&mut self, key: ObjKey) -> &mut obj::LangObj {
-        &mut self.tc_objs.lobjs[key]
-    }
-
-    pub fn otype(&self, key: TypeKey) -> &Type {
-        &self.tc_objs.types[key]
-    }
-
-    pub fn otype_mut(&mut self, key: TypeKey) -> &mut Type {
-        &mut self.tc_objs.types[key]
-    }
-
-    pub fn otype_interface(&self, key: TypeKey) -> &typ::InterfaceDetail {
-        self.otype(key).try_as_interface().unwrap()
-    }
-
-    pub fn otype_signature(&self, key: TypeKey) -> &typ::SignatureDetail {
-        self.otype(key).try_as_signature().unwrap()
-    }
-
-    pub fn otype_interface_mut(&mut self, key: TypeKey) -> &mut typ::InterfaceDetail {
-        self.otype_mut(key).try_as_interface_mut().unwrap()
-    }
-
-    pub fn otype_signature_mut(&mut self, key: TypeKey) -> &mut typ::SignatureDetail {
-        self.otype_mut(key).try_as_signature_mut().unwrap()
-    }
-
-    pub fn package(&self, key: PackageKey) -> &Package {
-        &self.tc_objs.pkgs[key]
-    }
-
-    pub fn package_mut(&mut self, key: PackageKey) -> &mut Package {
-        &mut self.tc_objs.pkgs[key]
-    }
-
-    pub fn scope(&self, key: ScopeKey) -> &Scope {
-        &self.tc_objs.scopes[key]
-    }
-
-    pub fn decl_info(&self, key: DeclInfoKey) -> &DeclInfo {
-        &self.tc_objs.decls[key]
-    }
-
-    pub fn position(&self, pos: Pos) -> Position {
-        self.fset.file(pos).unwrap().position(pos)
-    }
-
-    pub fn basic_type(&self, t: typ::BasicType) -> TypeKey {
-        self.tc_objs.universe().types()[&t]
-    }
-
-    pub fn invalid_type(&self) -> TypeKey {
-        self.basic_type(typ::BasicType::Invalid)
-    }
-
     pub fn error(&self, pos: Pos, err: String) {
         self.error_impl(self.errors, pos, err);
     }
 
+    pub fn error_str(&self, pos: Pos, err: &str) {
+        self.error_impl(self.errors, pos, err.to_string());
+    }
+
     pub fn soft_error(&self, pos: Pos, err: String) {
         self.error_impl(self.soft_errors, pos, err);
+    }
+
+    pub fn soft_error_str(&self, pos: Pos, err: &str) {
+        self.error_impl(self.soft_errors, pos, err.to_string());
     }
 
     fn error_impl(&self, errs: &ErrorList, pos: Pos, err: String) {

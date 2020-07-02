@@ -10,7 +10,7 @@ pub mod token;
 pub mod visitor;
 
 pub use parser::Parser;
-pub use position::FileSet;
+pub use position::{FileSet, Pos, Position};
 pub use token::Token;
 
 pub fn parse_file<'a>(

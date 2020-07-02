@@ -5,10 +5,10 @@ use goscript_parser::ast::{self};
 use goscript_parser::objects::FieldKey;
 
 /// MethodInfo represents an interface method.
-/// At least one of src or fun must be non-nil.
-/// (Methods declared in the current package have a non-nil scope
-/// and src, and eventually a non-nil fun field; imported and pre-
-/// declared methods have a nil scope and src, and only a non-nil
+/// At least one of src or fun must be non-None.
+/// (Methods declared in the current package have a non-None scope
+/// and src, and eventually a non-None fun field; imported and pre-
+/// declared methods have a None scope and src, and only a non-None
 /// fun field.)
 pub struct MethodInfo {
     // scope of interface method; or None

@@ -15,6 +15,12 @@ use slotmap::{new_key_type, DenseSlotMap};
 
 const DEFAULT_CAPACITY: usize = 16;
 
+macro_rules! null_key {
+    () => {
+        slotmap::Key::null()
+    };
+}
+
 macro_rules! new_objects {
     () => {
         DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
@@ -153,6 +159,18 @@ impl TCObjects {
         typ: Option<TypeKey>,
     ) -> ObjKey {
         let lobj = LangObj::new_param_var(pos, pkg, name, typ);
+        self.lobjs.insert(lobj)
+    }
+
+    pub fn new_field(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+        typ: Option<TypeKey>,
+        embedded: bool,
+    ) -> ObjKey {
+        let lobj = LangObj::new_field(pos, pkg, name, typ, embedded);
         self.lobjs.insert(lobj)
     }
 
