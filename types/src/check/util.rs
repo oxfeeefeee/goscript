@@ -83,7 +83,7 @@ impl<'a> Checker<'a> {
 
     // has_cycle reports whether obj appears in path or not.
     // If it does, and report is set, it also reports a cycle error.
-    pub fn has_cycle(&self, okey: ObjKey, path: &Vec<ObjKey>, report: bool) -> bool {
+    pub fn has_cycle(&self, okey: ObjKey, path: &[ObjKey], report: bool) -> bool {
         if let Some((i, _)) = path.iter().enumerate().find(|(_, &x)| x == okey) {
             if report {
                 let obj_val = self.lobj(okey);

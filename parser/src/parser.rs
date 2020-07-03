@@ -837,7 +837,7 @@ impl<'a> Parser<'a> {
 
         let mut idents = vec![];
         let mut typ = self.parse_type_name();
-        let ident = typ.get_ident();
+        let ident = typ.try_as_ident();
         if ident.is_some() && self.token == Token::LPAREN {
             idents = vec![*ident.unwrap()];
             let scope = new_scope!(self, self.top_scope);

@@ -133,7 +133,7 @@ impl Expr {
         }
     }
 
-    pub fn get_ident(&self) -> Option<&IdentKey> {
+    pub fn try_as_ident(&self) -> Option<&IdentKey> {
         if let Expr::Ident(ident) = self {
             Some(ident)
         } else {

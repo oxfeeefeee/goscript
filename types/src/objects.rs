@@ -1,4 +1,3 @@
-#![macro_use]
 #![allow(unused_macros)]
 #![allow(dead_code)]
 use super::check::DeclInfo;

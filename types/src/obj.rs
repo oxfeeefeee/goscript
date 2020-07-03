@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct VarProperty {
     pub embedded: bool,
     pub is_field: bool,
@@ -31,7 +31,7 @@ impl VarProperty {
 
 /// EntityType defines the types of LangObj entities
 ///
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EntityType {
     /// A PkgName represents an imported Go package.
     PkgName(PackageKey, bool), // the bool is for used
