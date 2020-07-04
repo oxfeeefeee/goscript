@@ -35,6 +35,7 @@ use std::fmt::Write;
 /// and src, and eventually a non-None fun field; imported and pre-
 /// declared methods have a None scope and src, and only a non-None
 /// fun field.)
+#[derive(Clone)]
 pub struct MethodInfo {
     // scope of interface method; or None
     pub scope: Option<ScopeKey>,
@@ -50,6 +51,14 @@ impl MethodInfo {
             scope: None,
             src: None,
             fun: Some(fun),
+        }
+    }
+
+    pub fn with_src(fkey: FieldKey) -> MethodInfo {
+        MethodInfo {
+            scope: None,
+            src: Some(fkey),
+            fun: None,
         }
     }
 
@@ -92,6 +101,7 @@ impl MethodInfo {
 }
 
 /// IfaceInfo describes the method set for an interface.
+#[derive(Clone)]
 pub struct IfaceInfo {
     pub explicits: usize,
     pub methods: Vec<MethodInfo>,
@@ -159,11 +169,117 @@ impl<'a> Checker<'a> {
             self.trace_begin(iface.interface, &msg);
         }
 
-        if self.config().trace_checker {
-            let ed = ExprIfaceDisplay::new(iface, self.ast_objs);
-            self.trace_end(iface.interface, &format!("=> {}", ed));
+        let end = |ret: Option<IfaceInfo>| {
+            if self.config().trace_checker {
+                let ed = ExprIfaceDisplay::new(iface, self.ast_objs);
+                self.trace_end(iface.interface, &format!("=> {}", ed));
+            }
+            ret
+        };
+
+        // If the interface is named, check if we computed info already.
+        //
+        // This is not simply an optimization; we may run into stack
+        // overflow with recursive interface declarations. Example:
+        //
+        //      type T interface {
+        //              m() interface { T }
+        //      }
+        //
+        // (Since recursive definitions can only be expressed via names,
+        // it is sufficient to track named interfaces here.)
+        //
+        // While at it, use the same mechanism to detect cycles. (We still
+        // have the path-based cycle check because we want to report the
+        // entire cycle if present.)
+        if let Some(okey) = tname {
+            debug_assert!(path[path.len() - 1] == okey);
+            if let Some(info) = fctx.ifaces.get(&okey) {
+                if info.is_some() {
+                    // Cow should probably work, but just clone for simplicity
+                    return end(info.clone());
+                } else {
+                    // computation started but not complete
+                    fctx.ifaces.insert(okey, None);
+                }
+            } else {
+                // We have a cycle and use check.cycle to report it.
+                // We are guaranteed that check.cycle also finds the
+                // cycle because when infoFromTypeLit is called, any
+                // tname that's already in check.interfaces was also
+                // added to the path. (But the converse is not true:
+                // A non-nil tname is always the last element in path.)
+                let yes = self.has_cycle(okey, path, true);
+                assert!(yes);
+            }
         }
-        unimplemented!()
+
+        let iinfo = if iface.methods.list.len() == 0 {
+            IfaceInfo::new_empty()
+        } else {
+            let mut mset = HashMap::new();
+            let mut methods = vec![];
+            let mut embeddeds = vec![];
+            let mut positions = vec![];
+            for fkey in iface.methods.list.iter() {
+                let field = &self.ast_objs.fields[*fkey];
+                if field.names.len() > 0 {
+                    // We have a method with name f.Names[0].
+                    // (The parser ensures that there's only one method
+                    // and we don't care if a constructed AST has more.)
+
+                    // spec: "As with all method sets, in an interface type,
+                    // each method must have a unique non-blank name."
+                    let name = self.ast_ident(field.names[0]);
+                    if name.name == "_" {
+                        self.error_str(name.pos, "invalid method name _");
+                        continue; // ignore
+                    }
+
+                    let m = MethodInfo::with_src(*fkey);
+                    if self.declare_in_method_set(&mut mset, m.clone(), fkey.pos(self.ast_objs)) {
+                        methods.push(m);
+                    }
+                } else {
+                    // We have an embedded interface and f.Type is its
+                    // (possibly qualified) embedded type name. Collect
+                    // it if it's a valid interface.
+                    let e = match &field.typ {
+                        Expr::Ident(i) => self.info_from_type_name(skey, *i, path, fctx),
+                        Expr::Selector(sel) => self.info_from_qualified_type_mame(skey, sel),
+                        _ => {
+                            // The parser makes sure we only see one of the above.
+                            // Constructed ASTs may contain other (invalid) nodes;
+                            // we simply ignore them. The full type-checking pass
+                            // will report those as errors later.
+                            None
+                        }
+                    };
+                    if let Some(emb) = e {
+                        embeddeds.push(emb);
+                        positions.push(fkey.pos(self.ast_objs));
+                    }
+                }
+            }
+            let explicites = methods.len();
+            // collect methods of embedded interfaces
+            for (i, e) in embeddeds.into_iter().enumerate() {
+                let pos = positions[i];
+                for m in e.methods.into_iter() {
+                    if self.declare_in_method_set(&mut mset, m.clone(), pos) {
+                        methods.push(m);
+                    }
+                }
+            }
+            IfaceInfo::new(explicites, methods)
+        };
+
+        // mark check.interfaces as complete
+        if let Some(okey) = tname {
+            fctx.ifaces.insert(okey, Some(iinfo.clone()));
+        }
+
+        end(Some(iinfo))
     }
 
     // info_from_type_name computes the method set for the given type name
@@ -282,22 +398,23 @@ impl<'a> Checker<'a> {
     }
 
     /// like Checker::declare_in_set but for method infos.
-    fn declare_in_method_set<'b>(
+    fn declare_in_method_set(
         &self,
-        set: &'b mut HashMap<String, &'b MethodInfo>,
-        mi: &'b MethodInfo,
+        set: &mut HashMap<String, MethodInfo>,
+        mi: MethodInfo,
         pos: Pos,
     ) -> bool {
         let id = mi.id(self.pkg, self.tc_objs, self.ast_objs);
         if let Some(alt) = set.insert(id.to_string(), mi) {
-            let md = MethodInfoDisplay::new(mi, self.ast_objs, self.tc_objs);
+            let mi_ref = set.get(id.as_ref()).unwrap();
+            let md = MethodInfoDisplay::new(mi_ref, self.ast_objs, self.tc_objs);
             self.error(pos, format!("{} redeclared", md));
-            let mpos = mi.pos(self.tc_objs, self.ast_objs);
+            let mpos = mi_ref.pos(self.tc_objs, self.ast_objs);
             if mpos > 0 {
                 // We use "other" rather than "previous" here because
                 // the first declaration seen may not be textually
                 // earlier in the source.
-                let md = MethodInfoDisplay::new(alt, self.ast_objs, self.tc_objs);
+                let md = MethodInfoDisplay::new(&alt, self.ast_objs, self.tc_objs);
                 self.error(mpos, format!("\tother declaration of {}", md));
             }
             false

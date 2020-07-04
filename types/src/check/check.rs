@@ -165,7 +165,7 @@ pub struct FilesContext<'a> {
     pub methods: HashMap<ObjKey, Vec<ObjKey>>,
     // maps interface(LangObj::TypeName) type names to corresponding
     // interface infos
-    pub ifaces: HashMap<ObjKey, IfaceInfo>,
+    pub ifaces: HashMap<ObjKey, Option<IfaceInfo>>,
     // map of expressions(ast::Expr) without final type
     pub untyped: HashMap<NodeId, ExprInfo>,
     // stack of delayed actions
