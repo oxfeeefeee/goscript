@@ -2,9 +2,9 @@
 use super::check::MethodInfo;
 use super::obj::fmt_obj;
 use super::objects::{ObjKey, TCObjects, TypeKey};
-use super::operand::{fmt_expr, Operand};
+use super::operand::{fmt_expr, fmt_expr_call, fmt_expr_interface, Operand};
 use super::typ::fmt_type;
-use goscript_parser::ast::{Expr, InterfaceType};
+use goscript_parser::ast::{CallExpr, Expr, InterfaceType};
 use goscript_parser::objects::Objects as AstObjects;
 use std::fmt::{self};
 
@@ -44,7 +44,27 @@ impl<'a> ExprIfaceDisplay<'a> {
 
 impl<'a> fmt::Display for ExprIfaceDisplay<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt_expr(self.expr, f, self.objs)
+        fmt_expr_interface(self.expr, f, self.objs)
+    }
+}
+
+pub struct ExprCallDisplay<'a> {
+    call: &'a CallExpr,
+    objs: &'a AstObjects,
+}
+
+impl<'a> ExprCallDisplay<'a> {
+    pub fn new(call: &'a CallExpr, objs: &'a AstObjects) -> ExprCallDisplay<'a> {
+        ExprCallDisplay {
+            call: call,
+            objs: objs,
+        }
+    }
+}
+
+impl<'a> fmt::Display for ExprCallDisplay<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt_expr_call(self.call, f, self.objs)
     }
 }
 

@@ -2,6 +2,7 @@
 mod util;
 
 mod assignment;
+mod builtin;
 mod call;
 pub mod check;
 mod decl;

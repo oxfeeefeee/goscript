@@ -336,6 +336,18 @@ pub fn fmt_expr_interface(
     .visit_expr_interface_type(iface)
 }
 
+pub fn fmt_expr_call(
+    call: &ast::CallExpr,
+    f: &mut fmt::Formatter<'_>,
+    ast_objs: &AstObjects,
+) -> fmt::Result {
+    ExprFormater {
+        f: f,
+        ast_objs: ast_objs,
+    }
+    .visit_expr_call(&call.func, &call.args, call.ellipsis.is_some())
+}
+
 struct ExprFormater<'a, 'b> {
     f: &'a mut fmt::Formatter<'b>,
     ast_objs: &'a AstObjects,

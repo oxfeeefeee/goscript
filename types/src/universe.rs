@@ -44,9 +44,10 @@ pub enum Builtin {
     Trace,
 }
 
+#[derive(Copy, Clone)]
 pub struct BuiltinInfo {
     pub name: &'static str,
-    pub arg_count: isize,
+    pub arg_count: usize,
     pub variadic: bool,
     pub kind: ExprKind,
 }

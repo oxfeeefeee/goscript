@@ -23,6 +23,7 @@ pub enum UnpackResult<'a> {
     CommaOk(Option<Expr>, [TypeKey; 2]),       // rhs returns comma_ok
     Mutliple(&'a Vec<Expr>),                   // N to N
     Single(Operand),                           // 1 to 1
+    Nothing,                                   // nothing to unpack
     Mismatch(&'a Vec<Expr>),                   // M to N (M != N)
     Error,                                     // errors when trying to unpack
 }
@@ -48,6 +49,7 @@ impl<'a> UnpackResult<'a> {
                 x.expr = sx.expr.clone();
                 x.typ = sx.typ;
             }
+            UnpackResult::Nothing => unreachable!(),
             UnpackResult::Mismatch(_) => unreachable!(),
             UnpackResult::Error => unreachable!(),
         }
@@ -58,6 +60,10 @@ impl<'a> Checker<'a> {
     /// invalid_ast helps to report ast error
     pub fn invalid_ast(&self, pos: Pos, err: &str) {
         self.error(pos, format!("invalid AST: {}", err));
+    }
+
+    pub fn invalid_op(&self, pos: Pos, err: &str) {
+        self.error(pos, format!("invalid operation: {}", err));
     }
 
     pub fn obj_path_str(&self, path: &Vec<ObjKey>) -> String {
@@ -137,6 +143,8 @@ impl<'a> Checker<'a> {
         if rhs.len() != 1 {
             return if lhs_len != rhs.len() {
                 UnpackResult::Mismatch(rhs)
+            } else if lhs_len == 0 {
+                UnpackResult::Nothing
             } else {
                 UnpackResult::Mutliple(rhs)
             };

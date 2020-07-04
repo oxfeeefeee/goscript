@@ -272,7 +272,8 @@ impl<'a> Checker<'a> {
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
             | UnpackResult::Mutliple(_)
-            | UnpackResult::Single(_) => {
+            | UnpackResult::Single(_)
+            | UnpackResult::Nothing => {
                 let context = if return_pos.is_some() {
                     "return statement"
                 } else {
@@ -305,7 +306,8 @@ impl<'a> Checker<'a> {
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
             | UnpackResult::Mutliple(_)
-            | UnpackResult::Single(_) => {
+            | UnpackResult::Single(_)
+            | UnpackResult::Nothing => {
                 for (i, l) in lhs.iter().enumerate() {
                     let mut x = Operand::new();
                     result.get(self, &mut x, i);

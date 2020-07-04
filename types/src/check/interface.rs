@@ -17,7 +17,7 @@
 #![allow(dead_code)]
 use super::super::display::{ExprIfaceDisplay, MethodInfoDisplay};
 use super::super::obj;
-use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects};
 use super::super::scope::Scope;
 use super::super::typ;
 use super::check::{Checker, FilesContext};
