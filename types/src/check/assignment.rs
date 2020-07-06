@@ -18,7 +18,7 @@ impl<'a> Checker<'a> {
     /// x.mode is set to invalid if the assignment failed.
     pub fn assignment(&mut self, x: &mut Operand, t: Option<TypeKey>, note: &str) {
         self.single_value(x);
-        if x.mode == OperandMode::Invalid {
+        if x.invalid() {
             return;
         }
 
@@ -52,7 +52,7 @@ impl<'a> Checker<'a> {
                 t.unwrap()
             };
             self.convert_untyped(x, target);
-            if x.mode == OperandMode::Invalid {
+            if x.invalid() {
                 return;
             }
         }
@@ -68,17 +68,17 @@ impl<'a> Checker<'a> {
         let mut reason = String::new();
         if !x.assignable_to(&t, Some(&mut reason), self.tc_objs) {
             let pos = x.pos(self.ast_objs);
-            let dx = OperandDisplay::new(x, self.ast_objs, self.tc_objs);
-            let dt = TypeDisplay::new(t.as_ref().unwrap(), self.tc_objs);
+            let xd = self.new_xd(x);
+            let td = self.new_td(t.as_ref().unwrap());
             if reason.is_empty() {
                 self.error(
                     pos,
-                    format!("cannot use {} as {} value in {}", dx, dt, note),
+                    format!("cannot use {} as {} value in {}", xd, td, note),
                 );
             } else {
                 self.error(
                     pos,
-                    format!("cannot use {} as {} value in {}: {}", dx, dt, note, reason),
+                    format!("cannot use {} as {} value in {}: {}", xd, td, note, reason),
                 );
             }
             x.mode = OperandMode::Invalid;
@@ -88,7 +88,7 @@ impl<'a> Checker<'a> {
     pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand) {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
-        if x.mode == OperandMode::Invalid || x.typ == Some(invalid_type) {
+        if x.invalid() || x.typ == Some(invalid_type) {
             lhs.set_type(Some(invalid_type));
         }
         if lhs.typ() == &Some(invalid_type) {
@@ -109,7 +109,7 @@ impl<'a> Checker<'a> {
                     .set_const_val(x.mode.constant_val().clone());
             }
         } else {
-            let dis = OperandDisplay::new(x, self.ast_objs, self.tc_objs);
+            let dis = self.new_xd(x);
             self.error(x.pos(self.ast_objs), format!("{} is not constant", dis));
         }
     }
@@ -117,7 +117,7 @@ impl<'a> Checker<'a> {
     pub fn init_var(&mut self, lhskey: ObjKey, x: &mut Operand, msg: &str) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
-        if x.mode == OperandMode::Invalid || x.typ == Some(invalid_type) {
+        if x.invalid() || x.typ == Some(invalid_type) {
             lhs.set_type(Some(invalid_type));
         }
         if lhs.typ() == &Some(invalid_type) {
@@ -157,7 +157,7 @@ impl<'a> Checker<'a> {
 
     pub fn assign_var(&mut self, lhs: &Expr, x: &mut Operand) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
-        if x.mode == OperandMode::Invalid || x.typ == Some(invalid_type) {
+        if x.invalid() || x.typ == Some(invalid_type) {
             return None;
         }
 
@@ -218,14 +218,14 @@ impl<'a> Checker<'a> {
                                 z.pos(self.ast_objs),
                                 format!(
                                     "cannot assign to struct field {} in map",
-                                    ExprDisplay::new(expr, self.ast_objs)
+                                    self.new_ed(expr)
                                 ),
                             );
                             return None;
                         }
                     }
                 }
-                let dis = OperandDisplay::new(&z, self.ast_objs, self.tc_objs);
+                let dis = self.new_xd(&z);
                 self.error(z.pos(self.ast_objs), format!("cannot assign to {}", dis));
                 return None;
             }
@@ -351,10 +351,7 @@ impl<'a> Checker<'a> {
                             *okey
                         } else {
                             let pos = x.pos(self.ast_objs);
-                            self.error(
-                                pos,
-                                format!("cannot assign to {}", ExprDisplay::new(x, self.ast_objs)),
-                            );
+                            self.error(pos, format!("cannot assign to {}", self.new_ed(x)));
                             // dummy variable
                             self.tc_objs
                                 .new_var(pos, Some(self.pkg), "_".to_string(), None)
@@ -371,10 +368,7 @@ impl<'a> Checker<'a> {
                 } else {
                     self.use_lhs(&vec![x.clone()]);
                     let pos = x.pos(self.ast_objs);
-                    self.error(
-                        pos,
-                        format!("cannot declare {}", ExprDisplay::new(x, self.ast_objs)),
-                    );
+                    self.error(pos, format!("cannot declare {}", self.new_ed(x)));
                     // dummy variable
                     self.tc_objs
                         .new_var(pos, Some(self.pkg), "_".to_string(), None)

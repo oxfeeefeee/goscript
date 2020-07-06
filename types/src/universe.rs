@@ -60,6 +60,7 @@ pub struct Universe {
     iota: ObjKey,
     byte: TypeKey,
     rune: TypeKey,
+    slice_of_bytes: TypeKey, // for builtin append
     // indir is a sentinel type name that is pushed onto the object path
     // to indicate an "indirection" in the dependency from one type name
     // to the next. For instance, for "type p *p" the object path contains
@@ -93,6 +94,7 @@ impl Universe {
         Universe::def_builtins(&builtins, ftype, &uskey, &unsafe_, objs);
         // iota byte rune
         let (iota, byte, rune) = Universe::iota_byte_rune(&uskey, objs);
+        let slice_of_bytes = objs.new_t_slice(byte);
         let indir = objs.new_type_name(0, None, "*".to_string(), None);
         Universe {
             scope: uskey,
@@ -100,6 +102,7 @@ impl Universe {
             iota: iota,
             byte: byte,
             rune: rune,
+            slice_of_bytes: slice_of_bytes,
             indir: indir,
             types: types,
             builtins: builtins,
@@ -132,6 +135,10 @@ impl Universe {
 
     pub fn rune(&self) -> &TypeKey {
         &self.rune
+    }
+
+    pub fn slice_of_bytes(&self) -> &TypeKey {
+        &self.slice_of_bytes
     }
 
     pub fn indir(&self) -> &ObjKey {
@@ -170,22 +177,16 @@ impl Universe {
             "".to_owned(),
             Some(types[&BasicType::Str]),
         ));
-        let params = objs.types.insert(Type::Tuple(TupleDetail::new(vec![])));
-        let results = objs.types.insert(Type::Tuple(TupleDetail::new(vec![res])));
-        let sig_detail = SignatureDetail::new(None, params, results, false, objs);
-        let sig = objs.types.insert(Type::Signature(sig_detail));
+        let params = objs.new_t_tuple(vec![]);
+        let results = objs.new_t_tuple(vec![res]);
+        let sig = objs.new_t_signature(None, params, results, false);
         let err = objs
             .lobjs
             .insert(LangObj::new_func(0, None, "Error".to_owned(), Some(sig)));
         let inter_detail = InterfaceDetail::new(vec![err], vec![], objs);
         inter_detail.complete(objs);
         let underlying = objs.types.insert(Type::Interface(inter_detail));
-        let typ = objs.types.insert(Type::Named(NamedDetail::new(
-            None,
-            Some(underlying),
-            vec![],
-            objs,
-        )));
+        let typ = objs.new_t_named(None, Some(underlying), vec![]);
         let recv = objs
             .lobjs
             .insert(LangObj::new_var(0, None, "".to_owned(), Some(typ)));
@@ -257,7 +258,7 @@ impl Universe {
             (BasicType::UntypedNil, BasicInfo::IsInvalid, "untyped nil"),
         ]
         .into_iter()
-        .map(|(t, i, n)| (t, tobjs.insert(Type::Basic(BasicDetail::new(t, i, n)))))
+        .map(|(t, i, n)| (t, tobjs.new_t_basic(t, i, n))
         .collect::<HashMap<_, _>>()
     }
 

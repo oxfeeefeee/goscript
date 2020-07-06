@@ -148,8 +148,7 @@ impl Selection {
                 let mut params = vec![arg0key];
                 let tup = &mut objs.types[*sig.params()].try_as_tuple_mut().unwrap();
                 params.append(&mut tup.vars().clone());
-                let params_tuple = typ::TupleDetail::new(params);
-                sig.set_params(objs.types.insert(typ::Type::Tuple(params_tuple)));
+                sig.set_params(objs.new_t_tuple(params));
                 objs.types.insert(typ::Type::Signature(sig))
             }
         }

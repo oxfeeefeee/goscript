@@ -149,8 +149,7 @@ impl<'a> Checker<'a> {
     ) -> TypeKey {
         if self.config().trace_checker {
             let pos = e.pos(self.ast_objs);
-            let ed = ExprDisplay::new(e, self.ast_objs);
-            self.trace_begin(pos, &format!("{}", ed));
+            self.trace_begin(pos, &format!("{}", self.new_ed(e)));
         }
 
         let t = self.type_internal(e, def, fctx);
@@ -160,8 +159,7 @@ impl<'a> Checker<'a> {
 
         if self.config().trace_checker {
             let pos = e.pos(self.ast_objs);
-            let td = TypeDisplay::new(&t, self.tc_objs);
-            self.trace_end(pos, &format!("=> {}", td));
+            self.trace_end(pos, &format!("=> {}", self.new_td(&t)));
         }
         t
     }
@@ -250,23 +248,17 @@ impl<'a> Checker<'a> {
                 };
                 if let Some(err) = err_msg {
                     let pos = *recv_var_val.pos();
-                    let td = TypeDisplay::new(&recv_type, self.tc_objs);
+                    let td = self.new_td(&recv_type);
                     self.error(pos, format!("invalid receiver {} ({})", td, err));
                     // ok to continue
                 }
             }
         }
 
-        let params_tuple = self.insert_otype(typ::Type::Tuple(typ::TupleDetail::new(params)));
-        let results_tuple = self.insert_otype(typ::Type::Tuple(typ::TupleDetail::new(results)));
-        let sig = typ::Type::Signature(typ::SignatureDetail::new(
-            recv_okey,
-            params_tuple,
-            results_tuple,
-            variadic,
-            self.tc_objs,
-        ));
-        self.insert_otype(sig)
+        let params_tuple = self.tc_objs.new_t_tuple(params);
+        let results_tuple = self.tc_objs.new_t_tuple(results);
+        self.tc_objs
+            .new_t_signature(recv_okey, params_tuple, results_tuple, variadic)
     }
 
     /// type_internal drives type checking of types.
@@ -331,12 +323,12 @@ impl<'a> Checker<'a> {
                 if let Some(l) = &a.len {
                     let len = self.array_len(&l);
                     let elem = self.type_expr(&a.elt, fctx);
-                    let t = self.insert_otype(typ::Type::Array(typ::ArrayDetail::new(elem, len)));
+                    let t = self.tc_objs.new_t_array(elem, len);
                     set_underlying(Some(t), self.tc_objs);
                     Some(t)
                 } else {
                     let elem = self.indirect_type(&a.elt, fctx);
-                    let t = self.insert_otype(typ::Type::Slice(typ::SliceDetail::new(elem)));
+                    let t = self.tc_objs.new_t_slice(elem);
                     set_underlying(Some(t), self.tc_objs);
                     Some(t)
                 }
@@ -348,7 +340,7 @@ impl<'a> Checker<'a> {
             }
             Expr::Star(s) => {
                 let base = self.indirect_type(&s.expr, fctx);
-                let t = self.insert_otype(typ::Type::Pointer(typ::PointerDetail::new(base)));
+                let t = self.tc_objs.new_t_pointer(base);
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
@@ -365,13 +357,13 @@ impl<'a> Checker<'a> {
             Expr::Map(m) => {
                 let k = self.indirect_type(&m.key, fctx);
                 let v = self.indirect_type(&m.val, fctx);
-                let t = self.insert_otype(typ::Type::Map(typ::MapDetail::new(k, v)));
+                let t = self.tc_objs.new_t_map(k, v);
                 set_underlying(Some(t), self.tc_objs);
 
                 let pos = m.key.pos(self.ast_objs);
                 let f = move |checker: &mut Checker, _: &mut FilesContext| {
                     if !typ::comparable(&k, checker.tc_objs) {
-                        let td = TypeDisplay::new(&k, checker.tc_objs);
+                        let td = checker.new_td(&k);
                         checker.error(pos, format!("invalid map key type {}", td));
                     }
                 };
@@ -386,12 +378,12 @@ impl<'a> Checker<'a> {
                     ast::ChanDir::SendRecv => typ::ChanDir::SendRecv,
                 };
                 let elem = self.indirect_type(&chan.val, fctx);
-                let t = self.insert_otype(typ::Type::Chan(typ::ChanDetail::new(dir, elem)));
+                let t = self.tc_objs.new_t_chan(dir, elem);
                 set_underlying(Some(t), self.tc_objs);
                 Some(t)
             }
             _ => {
-                let ed = ExprDisplay::new(e, self.ast_objs);
+                let ed = self.new_ed(e);
                 self.error(pos, format!("{} is not a type", ed));
                 None
             }
@@ -537,9 +529,7 @@ impl<'a> Checker<'a> {
             // record the type for ...T.
             if variadic {
                 let last = params[params.len() - 1];
-                let t = self.insert_otype(typ::Type::Slice(typ::SliceDetail::new(
-                    self.lobj(last).typ().unwrap(),
-                )));
+                let t = self.tc_objs.new_t_slice(self.lobj(last).typ().unwrap());
                 self.lobj_mut(last).set_type(Some(t));
                 let e = &self.ast_objs.fields[l.list[l.list.len() - 1]].typ;
                 self.result
@@ -562,14 +552,10 @@ impl<'a> Checker<'a> {
             _ => unreachable!(),
         };
         if iface.methods.list.len() == 0 {
-            return self.insert_otype(typ::Type::Interface(typ::InterfaceDetail::new_empty()));
+            return self.tc_objs.new_t_empty_interface();
         }
 
-        let itype = self.insert_otype(typ::Type::Interface(typ::InterfaceDetail::new(
-            vec![],
-            vec![],
-            self.tc_objs,
-        )));
+        let itype = self.tc_objs.new_t_interface(vec![], vec![]);
         // collect embedded interfaces
         // Only needed for printing and API. Delay collection
         // to end of type-checking (for package-global interfaces)
@@ -581,7 +567,7 @@ impl<'a> Checker<'a> {
         let iface_clone = iface.clone();
         let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
             if checker.config().trace_checker {
-                let ed = ExprDisplay::new(&expr_clone, checker.ast_objs);
+                let ed = checker.new_ed(&expr_clone);
                 let msg = format!("-- delayed checking embedded interfaces of {}", ed);
                 checker.trace_begin(iface_clone.interface, &msg);
             }
@@ -589,8 +575,8 @@ impl<'a> Checker<'a> {
             let ctx_backup = std::mem::replace(&mut checker.octx, context_clone);
 
             let mut embeds = vec![];
-            for f in iface_clone.methods.list.iter() {
-                let field = &checker.ast_objs.fields[*f];
+            for fkey in iface_clone.methods.list.iter() {
+                let field = &checker.ast_objs.fields[*fkey];
                 if field.names.len() == 0 {
                     let texpr = field.typ.clone();
                     let ty = checker.indirect_type(&texpr, fctx);
@@ -607,7 +593,7 @@ impl<'a> Checker<'a> {
                         }
                         _ => {
                             let pos = texpr.pos(checker.ast_objs);
-                            let td = TypeDisplay::new(&ty, checker.tc_objs);
+                            let td = checker.new_td(&ty);
                             checker.error(pos, format!("{} is not an interface", td));
                             continue;
                         }
@@ -696,13 +682,9 @@ impl<'a> Checker<'a> {
                 let recv_key =
                     self.tc_objs
                         .new_var(pos, Some(self.pkg), "".to_string(), Some(recv_type));
-                let sig_key = self.insert_otype(typ::Type::Signature(typ::SignatureDetail::new(
-                    Some(recv_key),
-                    null_key!(),
-                    null_key!(),
-                    false,
-                    self.tc_objs,
-                )));
+                let sig_key =
+                    self.tc_objs
+                        .new_t_signature(Some(recv_key), null_key!(), null_key!(), false);
                 let fun_key = self
                     .tc_objs
                     .new_func(pos, Some(self.pkg), name, Some(sig_key));
@@ -740,7 +722,7 @@ impl<'a> Checker<'a> {
             } else {
                 if ty != invalid_type {
                     let pos = ftype.pos(self.ast_objs);
-                    let td = TypeDisplay::new(&ty, self.tc_objs);
+                    let td = self.new_td(&ty);
                     self.invalid_ast(pos, &format!("{} is not a method signature", td));
                 }
             }
@@ -840,11 +822,7 @@ impl<'a> Checker<'a> {
     fn struct_type(&mut self, st: &ast::StructType, fctx: &mut FilesContext) -> TypeKey {
         let fields = &st.fields.list;
         if fields.len() == 0 {
-            return self.insert_otype(typ::Type::Struct(typ::StructDetail::new(
-                vec![],
-                None,
-                self.tc_objs,
-            )));
+            return self.tc_objs.new_t_struct(vec![], None);
         }
 
         let mut field_objs: Vec<ObjKey> = vec![];
@@ -927,7 +905,7 @@ impl<'a> Checker<'a> {
                         ),
                     }
                 } else {
-                    let ed = ExprDisplay::new(&field.typ, self.ast_objs);
+                    let ed = self.new_ed(&field.typ);
                     self.invalid_ast(pos, &format!("embedded field type {} has no name", ed));
                     let ident = self.ast_objs.idents.insert(ast::Ident::blank(pos));
                     add_invalid(self, ident);
@@ -935,10 +913,6 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.insert_otype(typ::Type::Struct(typ::StructDetail::new(
-            field_objs,
-            tags,
-            self.tc_objs,
-        )))
+        self.tc_objs.new_t_struct(field_objs, tags)
     }
 }

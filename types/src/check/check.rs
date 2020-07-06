@@ -307,14 +307,14 @@ impl TypeInfo {
         self.types.insert(e.id(), TypeAndValue::new(mode, typ));
     }
 
-    pub fn record_builtin_type(&mut self, mode: &OperandMode, e: &Expr, sig: TypeKey) {
+    pub fn record_builtin_type(&mut self, e: &Expr, sig: TypeKey) {
         let mut expr = e;
         // expr must be a (possibly parenthesized) identifier denoting a built-in
         // (built-ins in package unsafe always produce a constant result and
         // we don't record their signatures, so we don't see qualified idents
         // here): record the signature for f and possible children.
         loop {
-            self.record_type_and_value(expr, mode.clone(), sig);
+            self.record_type_and_value(expr, OperandMode::Builtin, sig);
             match expr {
                 Expr::Ident(_) => break,
                 Expr::Paren(p) => expr = &(*p).expr,

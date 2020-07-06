@@ -5,7 +5,7 @@ use super::constant;
 use super::obj::LangObj;
 use super::package::Package;
 use super::scope::Scope;
-use super::typ::Type;
+use super::typ::*;
 use super::universe::Universe;
 use goscript_parser::position;
 use std::borrow::Cow;
@@ -72,6 +72,10 @@ impl TCObjects {
         };
         objs.universe = Some(Universe::new(&mut objs));
         objs
+    }
+
+    pub fn universe(&self) -> &Universe {
+        self.universe.as_ref().unwrap()
     }
 
     pub fn new_scope(
@@ -184,7 +188,72 @@ impl TCObjects {
         self.lobjs.insert(lobj)
     }
 
-    pub fn universe(&self) -> &Universe {
-        self.universe.as_ref().unwrap()
+    pub fn new_t_basic(&mut self, typ: BasicType, info: BasicInfo, name: &'static str) -> TypeKey {
+        self.types
+            .insert(Type::Basic(BasicDetail::new(typ, info, name)))
+    }
+
+    pub fn new_t_array(&mut self, elem: TypeKey, len: Option<u64>) -> TypeKey {
+        self.types.insert(Type::Array(ArrayDetail::new(elem, len)))
+    }
+
+    pub fn new_t_slice(&mut self, elem: TypeKey) -> TypeKey {
+        self.types.insert(Type::Slice(SliceDetail::new(elem)))
+    }
+
+    pub fn new_t_struct(
+        &mut self,
+        fields: Vec<ObjKey>,
+        tags: Option<Vec<Option<String>>>,
+    ) -> TypeKey {
+        self.types
+            .insert(Type::Struct(StructDetail::new(fields, tags, self)))
+    }
+    pub fn new_t_pointer(&mut self, base: TypeKey) -> TypeKey {
+        self.types.insert(Type::Pointer(PointerDetail::new(base)))
+    }
+
+    pub fn new_t_tuple(&mut self, vars: Vec<ObjKey>) -> TypeKey {
+        self.types.insert(Type::Tuple(TupleDetail::new(vars)))
+    }
+
+    pub fn new_t_signature(
+        &mut self,
+        recv: Option<ObjKey>,
+        params: TypeKey,
+        results: TypeKey,
+        variadic: bool,
+    ) -> TypeKey {
+        self.types.insert(Type::Signature(SignatureDetail::new(
+            recv, params, results, variadic, self,
+        )))
+    }
+
+    pub fn new_t_interface(&mut self, methods: Vec<ObjKey>, embeddeds: Vec<TypeKey>) -> TypeKey {
+        self.types.insert(Type::Interface(InterfaceDetail::new(
+            methods, embeddeds, self,
+        )))
+    }
+
+    pub fn new_t_empty_interface(&mut self) -> TypeKey {
+        self.types
+            .insert(Type::Interface(InterfaceDetail::new_empty()))
+    }
+
+    pub fn new_t_map(&mut self, key: TypeKey, elem: TypeKey) -> TypeKey {
+        self.types.insert(Type::Map(MapDetail::new(key, elem)))
+    }
+    pub fn new_t_chan(&mut self, dir: ChanDir, elem: TypeKey) -> TypeKey {
+        self.types.insert(Type::Chan(ChanDetail::new(dir, elem)))
+    }
+    pub fn new_t_named(
+        &mut self,
+        obj: Option<ObjKey>,
+        underlying: Option<TypeKey>,
+        methods: Vec<ObjKey>,
+    ) -> TypeKey {
+        self.types.insert(Type::Named(NamedDetail::new(
+            obj, underlying, methods, self,
+        )))
     }
 }

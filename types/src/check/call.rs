@@ -7,11 +7,23 @@ use super::super::operand::{Operand, OperandMode};
 use super::super::scope::Scope;
 use super::super::typ;
 use super::check::{Checker, FilesContext};
-use goscript_parser::ast::{Expr, FieldList, Node, SelectorExpr};
+use super::util::{UnpackResult, UnpackedResultLeftovers};
+use goscript_parser::ast::{CallExpr, Expr, FieldList, Node, SelectorExpr};
 use goscript_parser::objects::{FuncTypeKey, IdentKey};
 
 impl<'a> Checker<'a> {
     pub fn selector(&mut self, x: &mut Operand, e: &SelectorExpr) {
+        unimplemented!()
+    }
+
+    pub fn arguments(
+        &mut self,
+        x: &mut Operand,
+        call: &CallExpr,
+        sig: TypeKey,
+        re: &UnpackedResultLeftovers,
+        n: usize,
+    ) {
         unimplemented!()
     }
 }

@@ -81,6 +81,10 @@ impl Operand {
         }
     }
 
+    pub fn invalid(&self) -> bool {
+        self.mode == OperandMode::Invalid
+    }
+
     pub fn pos(&self, ast_objs: &AstObjects) -> position::Pos {
         if let Some(e) = &self.expr {
             e.pos(ast_objs)

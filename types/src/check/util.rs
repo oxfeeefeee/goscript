@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
@@ -26,6 +27,11 @@ pub enum UnpackResult<'a> {
     Nothing,                                   // nothing to unpack
     Mismatch(&'a Vec<Expr>),                   // M to N (M != N)
     Error,                                     // errors when trying to unpack
+}
+
+pub struct UnpackedResultLeftovers<'a> {
+    pub leftovers: &'a UnpackResult<'a>,
+    pub consumed: &'a Vec<Operand>,
 }
 
 impl<'a> UnpackResult<'a> {
@@ -60,6 +66,10 @@ impl<'a> Checker<'a> {
     /// invalid_ast helps to report ast error
     pub fn invalid_ast(&self, pos: Pos, err: &str) {
         self.error(pos, format!("invalid AST: {}", err));
+    }
+
+    pub fn invalid_arg(&self, pos: Pos, err: &str) {
+        self.error(pos, format!("invalid argument: {}", err));
     }
 
     pub fn invalid_op(&self, pos: Pos, err: &str) {
@@ -129,9 +139,7 @@ impl<'a> Checker<'a> {
                 Some(t[1]),
             )),
         ];
-        tc_objs
-            .types
-            .insert(typ::Type::Tuple(typ::TupleDetail::new(vars)))
+        tc_objs.new_t_tuple(vars)
     }
 
     pub fn unpack<'b>(
@@ -152,7 +160,7 @@ impl<'a> Checker<'a> {
 
         let mut x = Operand::new();
         self.multi_expr(&mut x, &rhs[0]);
-        if x.mode == OperandMode::Invalid {
+        if x.invalid() {
             return UnpackResult::Error;
         }
 
@@ -268,5 +276,17 @@ impl<'a> Checker<'a> {
 
     pub fn invalid_type(&self) -> TypeKey {
         self.basic_type(typ::BasicType::Invalid)
+    }
+
+    pub fn new_xd<'x>(&'x self, x: &'x Operand) -> OperandDisplay<'x> {
+        OperandDisplay::new(x, self.ast_objs, self.tc_objs)
+    }
+
+    pub fn new_ed<'e>(&'e self, e: &'e Expr) -> ExprDisplay<'e> {
+        ExprDisplay::new(e, self.ast_objs)
+    }
+
+    pub fn new_td<'t>(&'t self, t: &'t TypeKey) -> TypeDisplay<'t> {
+        TypeDisplay::new(t, self.tc_objs)
     }
 }

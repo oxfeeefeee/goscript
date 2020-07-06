@@ -305,10 +305,7 @@ impl<'a> Checker<'a> {
                 if tval.underlying().unwrap_or(&t) == &invalid_type {
                     self.error(
                         e.pos(self.ast_objs),
-                        format!(
-                            "invalid constant type {}",
-                            TypeDisplay::new(&t, self.tc_objs)
-                        ),
+                        format!("invalid constant type {}", self.new_td(&t)),
                     );
                 }
                 self.lobj_mut(okey).set_type(Some(invalid_type));
@@ -399,8 +396,7 @@ impl<'a> Checker<'a> {
             let t = self.type_expr(typ, fctx);
             self.lobj_mut(okey).set_type(Some(t));
         } else {
-            let named = Type::Named(NamedDetail::new(Some(okey), None, vec![], self.tc_objs));
-            let named_key = self.tc_objs.types.insert(named);
+            let named_key = self.tc_objs.new_t_named(Some(okey), None, vec![]);
             if let Some(d) = def {
                 self.tc_objs.types[d]
                     .try_as_named_mut()

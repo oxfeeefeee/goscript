@@ -218,8 +218,40 @@ impl Value {
         }
     }
 
-    // int_as_u64 returns the Go uint64 value and whether the result is exact;
+    /// int_as_u64 returns the Go uint64 value and whether the result is exact;
     pub fn int_as_u64(&self) -> (u64, bool) {
+        unimplemented!()
+    }
+
+    /// real returns the real part of x, which must be a numeric or unknown value.
+    /// If x is Unknown, the result is Unknown.
+    pub fn real(&self) -> Value {
+        unimplemented!()
+    }
+
+    /// imag returns the imaginary part of x, which must be a numeric or unknown value.
+    /// If x is Unknown, the result is Unknown.
+    pub fn imag(&self) -> Value {
+        unimplemented!()
+    }
+
+    /// Sign returns -1, 0, or 1 depending on whether x < 0, x == 0, or x > 0;
+    /// x must be numeric or Unknown. For complex values x, the sign is 0 if x == 0,
+    /// otherwise it is != 0. If x is Unknown, the result is 1.
+    pub fn sign(&self) -> isize {
+        unimplemented!()
+    }
+
+    /// BinaryOp returns the result of the binary expression x op y.
+    /// The operation must be defined for the operands. If one of the
+    /// operands is Unknown, the result is Unknown.
+    /// BinaryOp doesn't handle comparisons or shifts; use Compare
+    /// or Shift instead.
+    ///
+    /// To force integer division of Int operands, use op == token.QUO_ASSIGN
+    /// instead of token.QUO; the result is guaranteed to be Int in this case.
+    /// Division by zero leads to a run-time panic.
+    pub fn binary_op(x: &Value, op: Token, y: &Value) -> Value {
         unimplemented!()
     }
 }

@@ -584,7 +584,7 @@ impl<'a> Checker<'a> {
                 let expr = &s.values[l];
                 self.error(
                     expr.pos(self.ast_objs),
-                    format!("extra init expr {}", ExprDisplay::new(expr, self.ast_objs)),
+                    format!("extra init expr {}", self.new_ed(expr)),
                 );
                 return Err(());
             } else {
