@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 /// NodeId can be used as key of HashMaps
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub enum NodeId {
     Address(usize),
     IdentExpr(IdentKey),
@@ -234,11 +234,11 @@ impl Node for Expr {
             Expr::FuncLit(e) => NodeId::Address(&**e as *const FuncLit as usize),
             Expr::CompositeLit(e) => NodeId::Address(&**e as *const CompositeLit as usize),
             Expr::Paren(e) => NodeId::Address(&**e as *const ParenExpr as usize),
-            Expr::Selector(e) => NodeId::Address(&**e as *const SelectorExpr as usize),
+            Expr::Selector(e) => e.id(),
             Expr::Index(e) => NodeId::Address(&**e as *const IndexExpr as usize),
             Expr::Slice(e) => NodeId::Address(&**e as *const SliceExpr as usize),
             Expr::TypeAssert(e) => NodeId::Address(&**e as *const TypeAssertExpr as usize),
-            Expr::Call(e) => NodeId::Address(&**e as *const CallExpr as usize),
+            Expr::Call(e) => e.id(),
             Expr::Star(e) => NodeId::Address(&**e as *const StarExpr as usize),
             Expr::Unary(e) => NodeId::Address(&**e as *const UnaryExpr as usize),
             Expr::Binary(e) => NodeId::Address(&**e as *const BinaryExpr as usize),
@@ -633,6 +633,12 @@ pub struct SelectorExpr {
     pub sel: IdentKey,
 }
 
+impl SelectorExpr {
+    pub fn id(&self) -> NodeId {
+        NodeId::Address(self as *const SelectorExpr as usize)
+    }
+}
+
 // An IndexExpr node represents an expression followed by an index.
 #[derive(Debug)]
 pub struct IndexExpr {
@@ -672,6 +678,12 @@ pub struct CallExpr {
     pub args: Vec<Expr>,
     pub ellipsis: Option<position::Pos>,
     pub r_paren: position::Pos,
+}
+
+impl CallExpr {
+    pub fn id(&self) -> NodeId {
+        NodeId::Address(self as *const CallExpr as usize)
+    }
 }
 
 // A StarExpr node represents an expression of the form "*" Expression.

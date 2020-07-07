@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::obj::EntityType;
 use super::super::objects::{ObjKey, TypeKey};
 use super::super::operand::{Operand, OperandMode};
@@ -67,17 +66,16 @@ impl<'a> Checker<'a> {
 
         let mut reason = String::new();
         if !x.assignable_to(&t, Some(&mut reason), self.tc_objs) {
-            let pos = x.pos(self.ast_objs);
             let xd = self.new_xd(x);
             let td = self.new_td(t.as_ref().unwrap());
             if reason.is_empty() {
                 self.error(
-                    pos,
+                    xd.pos(),
                     format!("cannot use {} as {} value in {}", xd, td, note),
                 );
             } else {
                 self.error(
-                    pos,
+                    xd.pos(),
                     format!("cannot use {} as {} value in {}: {}", xd, td, note, reason),
                 );
             }
@@ -110,7 +108,7 @@ impl<'a> Checker<'a> {
             }
         } else {
             let dis = self.new_xd(x);
-            self.error(x.pos(self.ast_objs), format!("{} is not constant", dis));
+            self.error(dis.pos(), format!("{} is not constant", dis));
         }
     }
 
@@ -214,19 +212,17 @@ impl<'a> Checker<'a> {
                         let mut op = Operand::new();
                         self.expr(&mut op, &sexpr.expr);
                         if op.mode == OperandMode::MapIndex {
+                            let ed = self.new_ed(expr);
                             self.error(
-                                z.pos(self.ast_objs),
-                                format!(
-                                    "cannot assign to struct field {} in map",
-                                    self.new_ed(expr)
-                                ),
+                                ed.pos(),
+                                format!("cannot assign to struct field {} in map", ed),
                             );
                             return None;
                         }
                     }
                 }
                 let dis = self.new_xd(&z);
-                self.error(z.pos(self.ast_objs), format!("cannot assign to {}", dis));
+                self.error(dis.pos(), format!("cannot assign to {}", dis));
                 return None;
             }
         }

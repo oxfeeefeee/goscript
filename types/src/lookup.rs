@@ -19,6 +19,7 @@ macro_rules! lookup_on_found {
 }
 
 /// the result of lookup_field_or_method
+#[derive(PartialEq)]
 pub enum LookupResult {
     /// valid entry
     Entry(ObjKey, Vec<usize>),

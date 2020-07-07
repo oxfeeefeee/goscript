@@ -4,8 +4,10 @@ use super::obj::fmt_obj;
 use super::objects::{ObjKey, TCObjects, TypeKey};
 use super::operand::{fmt_expr, fmt_expr_call, fmt_expr_interface, Operand};
 use super::typ::fmt_type;
+use goscript_parser::ast::Node;
 use goscript_parser::ast::{CallExpr, Expr, InterfaceType};
 use goscript_parser::objects::Objects as AstObjects;
+use goscript_parser::Pos;
 use std::fmt::{self};
 
 pub struct ExprDisplay<'a> {
@@ -19,6 +21,10 @@ impl<'a> ExprDisplay<'a> {
             expr: expr,
             objs: objs,
         }
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.expr.pos(self.objs)
     }
 }
 
@@ -59,6 +65,10 @@ impl<'a> ExprCallDisplay<'a> {
             call: call,
             objs: objs,
         }
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.call.func.pos(self.objs)
     }
 }
 
@@ -121,6 +131,10 @@ impl<'a> OperandDisplay<'a> {
             ast_objs: aobjs,
             tc_objs: tobjs,
         }
+    }
+
+    pub fn pos(&self) -> Pos {
+        self.op.pos(self.ast_objs)
     }
 }
 

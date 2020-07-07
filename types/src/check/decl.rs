@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
 use super::super::constant;
-use super::super::display::{LangObjDisplay, TypeDisplay};
+use super::super::display::LangObjDisplay;
 use super::super::obj::{EntityType, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
-use super::super::typ::{self, NamedDetail, Type};
+use super::super::typ::{self};
 use super::check::{Checker, FilesContext, ObjContext};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;

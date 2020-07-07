@@ -31,4 +31,11 @@ impl<'a> Checker<'a> {
     pub fn convert_untyped(&mut self, x: &mut Operand, target: TypeKey) {
         unimplemented!()
     }
+
+    /// index checks an index expression for validity.
+    /// If max >= 0, it is the upper bound for index.
+    /// If the result >= 0, then it is the constant value of index.
+    pub fn index(&mut self, index: &Expr, max: Option<isize>) -> Option<isize> {
+        unimplemented!()
+    }
 }

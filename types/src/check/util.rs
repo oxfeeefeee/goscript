@@ -1,11 +1,12 @@
-#![allow(dead_code)]
-use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
+//#![allow(dead_code)]
+use super::super::display::{ExprCallDisplay, ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::typ::{self, BasicType, Type};
+use super::super::universe::{Builtin, BuiltinInfo};
 use super::check::Checker;
 use super::resolver::DeclInfo;
 use goscript_parser::objects::IdentKey;
@@ -14,8 +15,8 @@ use std::collections::HashMap;
 
 macro_rules! error_operand {
     ($x:ident, $fmt:expr, $checker:ident) => {
-        let xd = OperandDisplay::new(&$x, $checker.ast_objs, $checker.tc_objs);
-        $checker.error($x.pos($checker.ast_objs), format!($fmt, xd));
+        let xd = $checker.new_xd(&$x);
+        $checker.error(xd.pos(), format!($fmt, xd));
     };
 }
 
@@ -79,6 +80,12 @@ impl<'a> Checker<'a> {
     pub fn obj_path_str(&self, path: &Vec<ObjKey>) -> String {
         let names: Vec<&str> = path.iter().map(|p| self.lobj(*p).name().as_str()).collect();
         names[..].join("->")
+    }
+
+    pub fn dump(&self, pos: Pos, msg: &str) {
+        let file = self.fset.file(pos).unwrap();
+        let p = file.position(pos);
+        print!("checker dump({}):{}\n", p, msg);
     }
 
     pub fn print_trace(&self, pos: Pos, msg: &str) {
@@ -210,10 +217,6 @@ impl<'a> Checker<'a> {
         set.insert(id, okey)
     }
 
-    pub fn insert_otype(&mut self, t: Type) -> TypeKey {
-        self.tc_objs.types.insert(t)
-    }
-
     pub fn ast_ident(&self, key: IdentKey) -> &ast::Ident {
         &self.ast_objs.idents[key]
     }
@@ -270,6 +273,10 @@ impl<'a> Checker<'a> {
         self.fset.file(pos).unwrap().position(pos)
     }
 
+    pub fn builtin_info(&self, id: Builtin) -> &BuiltinInfo {
+        &self.tc_objs.universe().builtins()[&id]
+    }
+
     pub fn basic_type(&self, t: typ::BasicType) -> TypeKey {
         self.tc_objs.universe().types()[&t]
     }
@@ -286,7 +293,15 @@ impl<'a> Checker<'a> {
         ExprDisplay::new(e, self.ast_objs)
     }
 
+    pub fn new_ed_call<'e>(&'e self, e: &'e ast::CallExpr) -> ExprCallDisplay<'e> {
+        ExprCallDisplay::new(e, self.ast_objs)
+    }
+
     pub fn new_td<'t>(&'t self, t: &'t TypeKey) -> TypeDisplay<'t> {
         TypeDisplay::new(t, self.tc_objs)
+    }
+
+    pub fn new_td_o<'t>(&'t self, t: &'t Option<TypeKey>) -> TypeDisplay<'t> {
+        TypeDisplay::new(t.as_ref().unwrap(), self.tc_objs)
     }
 }

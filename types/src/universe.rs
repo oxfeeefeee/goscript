@@ -258,7 +258,7 @@ impl Universe {
             (BasicType::UntypedNil, BasicInfo::IsInvalid, "untyped nil"),
         ]
         .into_iter()
-        .map(|(t, i, n)| (t, tobjs.new_t_basic(t, i, n))
+        .map(|(t, i, n)| (t, tobjs.insert(Type::Basic(BasicDetail::new(t, i, n)))))
         .collect::<HashMap<_, _>>()
     }
 

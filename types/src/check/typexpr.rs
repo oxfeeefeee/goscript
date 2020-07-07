@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use super::super::constant;
-use super::super::display::{ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::lookup;
 use super::super::obj::EntityType;
 use super::super::objects::{ObjKey, ScopeKey, TCObjects, TypeKey};
@@ -148,8 +147,8 @@ impl<'a> Checker<'a> {
         fctx: &mut FilesContext,
     ) -> TypeKey {
         if self.config().trace_checker {
-            let pos = e.pos(self.ast_objs);
-            self.trace_begin(pos, &format!("{}", self.new_ed(e)));
+            let ed = self.new_ed(e);
+            self.trace_begin(ed.pos(), &format!("{}", ed));
         }
 
         let t = self.type_internal(e, def, fctx);

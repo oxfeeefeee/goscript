@@ -13,7 +13,7 @@ use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::position::Pos;
 use goscript_parser::FileSet;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// TypeAndValue reports the type and value (for constants, stored in 'mode')
@@ -142,9 +142,9 @@ pub struct ObjContext {
     // value of iota in a constant declaration; None otherwise
     pub iota: Option<Value>,
     // function signature if inside a function; None otherwise
-    pub sig: Option<ObjKey>,
+    pub sig: Option<TypeKey>,
     // set of panic call ids (used for termination check)
-    pub panics: Option<Vec<Expr>>,
+    pub panics: Option<HashSet<NodeId>>,
     // set if a function makes use of labels (only ~1% of functions); unused outside functions
     pub has_label: bool,
     // set if an expression contains a function call or channel receive operation
@@ -307,14 +307,14 @@ impl TypeInfo {
         self.types.insert(e.id(), TypeAndValue::new(mode, typ));
     }
 
-    pub fn record_builtin_type(&mut self, e: &Expr, sig: TypeKey) {
+    pub fn record_builtin_type(&mut self, mode: &OperandMode, e: &Expr, sig: TypeKey) {
         let mut expr = e;
         // expr must be a (possibly parenthesized) identifier denoting a built-in
         // (built-ins in package unsafe always produce a constant result and
         // we don't record their signatures, so we don't see qualified idents
         // here): record the signature for f and possible children.
         loop {
-            self.record_type_and_value(expr, OperandMode::Builtin, sig);
+            self.record_type_and_value(expr, mode.clone(), sig);
             match expr {
                 Expr::Ident(_) => break,
                 Expr::Paren(p) => expr = &(*p).expr,
@@ -355,12 +355,8 @@ impl TypeInfo {
         self.implicits.insert(node.id(), obj);
     }
 
-    pub fn record_selection(&mut self, expr: &Expr, sel: Selection) {
-        let sel_ident = match expr {
-            Expr::Selector(e) => e.sel,
-            _ => unreachable!(),
-        };
-        self.record_use(sel_ident, *sel.obj());
+    pub fn record_selection(&mut self, expr: &ast::SelectorExpr, sel: Selection) {
+        self.record_use(expr.sel, *sel.obj());
         self.selections.insert(expr.id(), sel);
     }
 

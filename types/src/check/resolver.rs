@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use super::super::constant;
-use super::super::display::ExprDisplay;
 use super::super::importer::ImportKey;
 use super::super::obj::EntityType;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey};
@@ -582,10 +581,8 @@ impl<'a> Checker<'a> {
         } else if l < r {
             if init.is_none() {
                 let expr = &s.values[l];
-                self.error(
-                    expr.pos(self.ast_objs),
-                    format!("extra init expr {}", self.new_ed(expr)),
-                );
+                let ed = self.new_ed(expr);
+                self.error(ed.pos(), format!("extra init expr {}", ed));
                 return Err(());
             } else {
                 let pos = self.ast_ident(init.unwrap().names[0]).pos;
