@@ -22,14 +22,14 @@ macro_rules! lookup_on_found {
 #[derive(PartialEq)]
 pub enum LookupResult {
     /// valid entry
-    Entry(ObjKey, Vec<usize>),
+    Entry(ObjKey, Vec<usize>, bool),
     /// the index sequence points to an ambiguous entry
     /// (the same name appeared more than once at the same embedding level).
     Ambiguous(Vec<usize>),
     /// a method with a pointer receiver type was found
     /// but there was no pointer on the path from the actual receiver type to
     /// the method's formal receiver base type, nor was the receiver addressable.
-    Indirect,
+    BadMethodReceiver,
     /// nothing found
     NotFound,
 }
@@ -224,7 +224,7 @@ pub fn lookup_field_or_method(
         let pkey = named.underlying();
         if objs.types[*pkey].try_as_pointer().is_some() {
             let re = lookup_field_or_method_impl(pkey, false, pkg, name, objs);
-            if let LookupResult::Entry(okey, _) = &re {
+            if let LookupResult::Entry(okey, _, _) = &re {
                 if objs.lobjs[*okey].entity_type().is_func() {
                     return LookupResult::NotFound;
                 }
@@ -337,7 +337,7 @@ pub fn missing_method(
     for fkey in ival.all_methods().as_ref().unwrap().iter() {
         let fval = &objs.lobjs[*fkey];
         match lookup_field_or_method(t, false, fval.pkg(), fval.name(), objs) {
-            LookupResult::Entry(okey, _) => {
+            LookupResult::Entry(okey, _, _) => {
                 let result_obj = &objs.lobjs[okey];
                 if !result_obj.entity_type().is_func() {
                     return Some((fkey.clone(), false));
@@ -457,9 +457,9 @@ fn lookup_field_or_method_impl(
             //        is shorthand for (&x).m()".
             let lobj = &objs.lobjs[*okey];
             if lobj.entity_type().is_func() && ptr_recv(lobj, objs) && !indirect && !addressable {
-                return LookupResult::Indirect;
+                return LookupResult::BadMethodReceiver;
             }
-            return LookupResult::Entry(*okey, indices.unwrap());
+            return LookupResult::Entry(*okey, indices.unwrap(), indirect);
         }
         current = consolidate_multiples(next, objs);
     }

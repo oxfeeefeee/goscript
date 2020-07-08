@@ -1,5 +1,4 @@
 //#![allow(dead_code)]
-use super::super::display::{ExprCallDisplay, ExprDisplay, OperandDisplay, TypeDisplay};
 use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
@@ -8,14 +7,16 @@ use super::super::scope::Scope;
 use super::super::typ::{self, BasicType, Type};
 use super::super::universe::{Builtin, BuiltinInfo};
 use super::check::Checker;
+use super::display::{Display, Displayer};
 use super::resolver::DeclInfo;
+
 use goscript_parser::objects::IdentKey;
 use goscript_parser::{ast, ast::Expr, position::Pos, position::Position};
 use std::collections::HashMap;
 
 macro_rules! error_operand {
     ($x:ident, $fmt:expr, $checker:ident) => {
-        let xd = $checker.new_xd(&$x);
+        let xd = $checker.new_dis(&$x);
         $checker.error(xd.pos(), format!($fmt, xd));
     };
 }
@@ -82,10 +83,14 @@ impl<'a> Checker<'a> {
         names[..].join("->")
     }
 
-    pub fn dump(&self, pos: Pos, msg: &str) {
-        let file = self.fset.file(pos).unwrap();
-        let p = file.position(pos);
-        print!("checker dump({}):{}\n", p, msg);
+    pub fn dump(&self, pos: Option<Pos>, msg: &str) {
+        if let Some(p) = pos {
+            let file = self.fset.file(p).unwrap();
+            let p = file.position(p);
+            print!("checker dump({}):{}\n", p, msg);
+        } else {
+            print!("checker dump:{}\n", msg);
+        }
     }
 
     pub fn print_trace(&self, pos: Pos, msg: &str) {
@@ -196,6 +201,16 @@ impl<'a> Checker<'a> {
         unimplemented!()
     }
 
+    pub fn lookup(&self, name: &str) -> Option<ObjKey> {
+        Scope::lookup_parent(
+            self.octx.scope.as_ref().unwrap(),
+            name,
+            self.octx.pos,
+            self.tc_objs,
+        )
+        .map(|(_, okey)| okey)
+    }
+
     pub fn add_decl_dep(&mut self, to: ObjKey) {
         if self.octx.decl.is_none() {
             // not in a package-level init expression
@@ -285,23 +300,11 @@ impl<'a> Checker<'a> {
         self.basic_type(typ::BasicType::Invalid)
     }
 
-    pub fn new_xd<'x>(&'x self, x: &'x Operand) -> OperandDisplay<'x> {
-        OperandDisplay::new(x, self.ast_objs, self.tc_objs)
+    pub fn new_dis<'b>(&'b self, x: &'b impl Display) -> Displayer<'b> {
+        Displayer::new(x, self)
     }
 
-    pub fn new_ed<'e>(&'e self, e: &'e Expr) -> ExprDisplay<'e> {
-        ExprDisplay::new(e, self.ast_objs)
-    }
-
-    pub fn new_ed_call<'e>(&'e self, e: &'e ast::CallExpr) -> ExprCallDisplay<'e> {
-        ExprCallDisplay::new(e, self.ast_objs)
-    }
-
-    pub fn new_td<'t>(&'t self, t: &'t TypeKey) -> TypeDisplay<'t> {
-        TypeDisplay::new(t, self.tc_objs)
-    }
-
-    pub fn new_td_o<'t>(&'t self, t: &'t Option<TypeKey>) -> TypeDisplay<'t> {
-        TypeDisplay::new(t.as_ref().unwrap(), self.tc_objs)
+    pub fn new_td_o<'t>(&'t self, t: &'t Option<TypeKey>) -> Displayer<'t> {
+        Displayer::new(t.as_ref().unwrap(), self)
     }
 }

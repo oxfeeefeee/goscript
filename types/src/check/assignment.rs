@@ -66,8 +66,8 @@ impl<'a> Checker<'a> {
 
         let mut reason = String::new();
         if !x.assignable_to(&t, Some(&mut reason), self.tc_objs) {
-            let xd = self.new_xd(x);
-            let td = self.new_td(t.as_ref().unwrap());
+            let xd = self.new_dis(x);
+            let td = self.new_dis(t.as_ref().unwrap());
             if reason.is_empty() {
                 self.error(
                     xd.pos(),
@@ -107,7 +107,7 @@ impl<'a> Checker<'a> {
                     .set_const_val(x.mode.constant_val().clone());
             }
         } else {
-            let dis = self.new_xd(x);
+            let dis = self.new_dis(x);
             self.error(dis.pos(), format!("{} is not constant", dis));
         }
     }
@@ -212,7 +212,7 @@ impl<'a> Checker<'a> {
                         let mut op = Operand::new();
                         self.expr(&mut op, &sexpr.expr);
                         if op.mode == OperandMode::MapIndex {
-                            let ed = self.new_ed(expr);
+                            let ed = self.new_dis(expr);
                             self.error(
                                 ed.pos(),
                                 format!("cannot assign to struct field {} in map", ed),
@@ -221,7 +221,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                 }
-                let dis = self.new_xd(&z);
+                let dis = self.new_dis(&z);
                 self.error(dis.pos(), format!("cannot assign to {}", dis));
                 return None;
             }
@@ -347,7 +347,7 @@ impl<'a> Checker<'a> {
                             *okey
                         } else {
                             let pos = x.pos(self.ast_objs);
-                            self.error(pos, format!("cannot assign to {}", self.new_ed(x)));
+                            self.error(pos, format!("cannot assign to {}", self.new_dis(x)));
                             // dummy variable
                             self.tc_objs
                                 .new_var(pos, Some(self.pkg), "_".to_string(), None)
@@ -364,7 +364,7 @@ impl<'a> Checker<'a> {
                 } else {
                     self.use_lhs(&vec![x.clone()]);
                     let pos = x.pos(self.ast_objs);
-                    self.error(pos, format!("cannot declare {}", self.new_ed(x)));
+                    self.error(pos, format!("cannot declare {}", self.new_dis(x)));
                     // dummy variable
                     self.tc_objs
                         .new_var(pos, Some(self.pkg), "_".to_string(), None)

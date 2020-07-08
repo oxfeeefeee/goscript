@@ -15,7 +15,6 @@
 // to compute an ifaceInfo.
 
 #![allow(dead_code)]
-use super::super::display::{ExprIfaceDisplay, MethodInfoDisplay};
 use super::super::obj;
 use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects};
 use super::super::scope::Scope;
@@ -28,6 +27,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Write;
+use std::rc::Rc;
 
 /// MethodInfo represents an interface method.
 /// At least one of src or fun must be non-None.
@@ -153,13 +153,14 @@ impl<'a> Checker<'a> {
     pub fn info_from_type_lit(
         &self,
         skey: ScopeKey,
-        iface: &ast::InterfaceType,
+        iface: &Rc<ast::InterfaceType>,
         tname: Option<ObjKey>,
         path: &mut Vec<ObjKey>,
         fctx: &mut FilesContext,
     ) -> Option<IfaceInfo> {
         if self.config().trace_checker {
-            let ed = ExprIfaceDisplay::new(iface, self.ast_objs);
+            let expr = Expr::Interface(iface.clone());
+            let ed = self.new_dis(&expr);
             let pstr = self.obj_path_str(path);
             let opstr = self.obj_path_str(&fctx.obj_path);
             let msg = format!(
@@ -171,7 +172,8 @@ impl<'a> Checker<'a> {
 
         let end = |ret: Option<IfaceInfo>| {
             if self.config().trace_checker {
-                let ed = ExprIfaceDisplay::new(iface, self.ast_objs);
+                let expr = Expr::Interface(iface.clone());
+                let ed = self.new_dis(&expr);
                 self.trace_end(iface.interface, &format!("=> {}", ed));
             }
             ret
@@ -318,8 +320,7 @@ impl<'a> Checker<'a> {
 
         let mut ident = self.ast_ident(name);
         loop {
-            let lookup =
-                Scope::lookup_parent(&skey, &ident.name, Some(self.octx.pos), self.tc_objs);
+            let lookup = Scope::lookup_parent(&skey, &ident.name, self.octx.pos, self.tc_objs);
             if lookup.is_none() {
                 break;
             }
@@ -407,14 +408,14 @@ impl<'a> Checker<'a> {
         let id = mi.id(self.pkg, self.tc_objs, self.ast_objs);
         if let Some(alt) = set.insert(id.to_string(), mi) {
             let mi_ref = set.get(id.as_ref()).unwrap();
-            let md = MethodInfoDisplay::new(mi_ref, self.ast_objs, self.tc_objs);
+            let md = self.new_dis(mi_ref);
             self.error(pos, format!("{} redeclared", md));
             let mpos = mi_ref.pos(self.tc_objs, self.ast_objs);
             if mpos > 0 {
                 // We use "other" rather than "previous" here because
                 // the first declaration seen may not be textually
                 // earlier in the source.
-                let md = MethodInfoDisplay::new(&alt, self.ast_objs, self.tc_objs);
+                let md = self.new_dis(&alt);
                 self.error(mpos, format!("\tother declaration of {}", md));
             }
             false
@@ -433,7 +434,7 @@ impl<'a> Checker<'a> {
         if let Some(name) = sel.expr.try_as_ident() {
             let ident = self.ast_ident(*name);
             if let Some((_, obj1)) =
-                Scope::lookup_parent(&skey, &ident.name, Some(self.octx.pos), self.tc_objs)
+                Scope::lookup_parent(&skey, &ident.name, self.octx.pos, self.tc_objs)
             {
                 let obj_val = self.lobj(obj1);
                 if let obj::EntityType::PkgName(imported, _) = obj_val.entity_type() {

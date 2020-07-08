@@ -33,12 +33,9 @@ impl<'a> Checker<'a> {
         // Note that we cannot use check.lookup here because the returned scope
         // may be different from obj.parent(). See also Scope.lookup_parent doc.
         let name = &self.ast_ident(ikey).name;
-        if let Some((skey, okey)) = Scope::lookup_parent(
-            &self.octx.scope.unwrap(),
-            name,
-            Some(self.octx.pos),
-            self.tc_objs,
-        ) {
+        if let Some((skey, okey)) =
+            Scope::lookup_parent(&self.octx.scope.unwrap(), name, self.octx.pos, self.tc_objs)
+        {
             self.result.record_use(ikey, okey);
 
             // Type-check the object.
@@ -147,7 +144,7 @@ impl<'a> Checker<'a> {
         fctx: &mut FilesContext,
     ) -> TypeKey {
         if self.config().trace_checker {
-            let ed = self.new_ed(e);
+            let ed = self.new_dis(e);
             self.trace_begin(ed.pos(), &format!("{}", ed));
         }
 
@@ -158,7 +155,7 @@ impl<'a> Checker<'a> {
 
         if self.config().trace_checker {
             let pos = e.pos(self.ast_objs);
-            self.trace_end(pos, &format!("=> {}", self.new_td(&t)));
+            self.trace_end(pos, &format!("=> {}", self.new_dis(&t)));
         }
         t
     }
@@ -247,7 +244,7 @@ impl<'a> Checker<'a> {
                 };
                 if let Some(err) = err_msg {
                     let pos = *recv_var_val.pos();
-                    let td = self.new_td(&recv_type);
+                    let td = self.new_dis(&recv_type);
                     self.error(pos, format!("invalid receiver {} ({})", td, err));
                     // ok to continue
                 }
@@ -300,7 +297,7 @@ impl<'a> Checker<'a> {
             }
             Expr::Selector(s) => {
                 let mut x = Operand::new();
-                self.selector(&mut x, s);
+                self.selector(&mut x, s, fctx);
                 match x.mode {
                     OperandMode::TypeExpr => {
                         set_underlying(x.typ, self.tc_objs);
@@ -362,7 +359,7 @@ impl<'a> Checker<'a> {
                 let pos = m.key.pos(self.ast_objs);
                 let f = move |checker: &mut Checker, _: &mut FilesContext| {
                     if !typ::comparable(&k, checker.tc_objs) {
-                        let td = checker.new_td(&k);
+                        let td = checker.new_dis(&k);
                         checker.error(pos, format!("invalid map key type {}", td));
                     }
                 };
@@ -382,7 +379,7 @@ impl<'a> Checker<'a> {
                 Some(t)
             }
             _ => {
-                let ed = self.new_ed(e);
+                let ed = self.new_dis(e);
                 self.error(pos, format!("{} is not a type", ed));
                 None
             }
@@ -566,7 +563,7 @@ impl<'a> Checker<'a> {
         let iface_clone = iface.clone();
         let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
             if checker.config().trace_checker {
-                let ed = checker.new_ed(&expr_clone);
+                let ed = checker.new_dis(&expr_clone);
                 let msg = format!("-- delayed checking embedded interfaces of {}", ed);
                 checker.trace_begin(iface_clone.interface, &msg);
             }
@@ -592,7 +589,7 @@ impl<'a> Checker<'a> {
                         }
                         _ => {
                             let pos = texpr.pos(checker.ast_objs);
-                            let td = checker.new_td(&ty);
+                            let td = checker.new_dis(&ty);
                             checker.error(pos, format!("{} is not an interface", td));
                             continue;
                         }
@@ -721,7 +718,7 @@ impl<'a> Checker<'a> {
             } else {
                 if ty != invalid_type {
                     let pos = ftype.pos(self.ast_objs);
-                    let td = self.new_td(&ty);
+                    let td = self.new_dis(&ty);
                     self.invalid_ast(pos, &format!("{} is not a method signature", td));
                 }
             }
@@ -904,7 +901,7 @@ impl<'a> Checker<'a> {
                         ),
                     }
                 } else {
-                    let ed = self.new_ed(&field.typ);
+                    let ed = self.new_dis(&field.typ);
                     self.invalid_ast(pos, &format!("embedded field type {} has no name", ed));
                     let ident = self.ast_objs.idents.insert(ast::Ident::blank(pos));
                     add_invalid(self, ident);

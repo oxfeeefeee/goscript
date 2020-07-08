@@ -24,6 +24,12 @@ impl<'a> Checker<'a> {
         unimplemented!()
     }
 
+    /// expr_or_type typechecks expression or type e and initializes x with the expression
+    /// value or type. If an error occurred, x.mode is set to invalid.
+    pub fn expr_or_type(&mut self, x: &mut Operand, e: &Expr) {
+        unimplemented!()
+    }
+
     pub fn single_value(&mut self, x: &mut Operand) {
         unimplemented!()
     }

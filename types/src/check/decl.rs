@@ -1,7 +1,5 @@
 #![allow(dead_code)]
-
 use super::super::constant;
-use super::super::display::LangObjDisplay;
 use super::super::obj::{EntityType, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
 use super::super::operand::Operand;
@@ -50,7 +48,7 @@ impl<'a> Checker<'a> {
         let trace_end_data = if self.config().trace_checker {
             let lobj = self.lobj(okey);
             let pos = *lobj.pos();
-            let obj_display = LangObjDisplay::new(&okey, self.tc_objs);
+            let obj_display = self.new_dis(&okey);
             let bmsg = format!(
                 "-- checking {} {} (objPath = {})",
                 lobj.color(),
@@ -305,7 +303,7 @@ impl<'a> Checker<'a> {
                 if tval.underlying().unwrap_or(&t) == &invalid_type {
                     self.error(
                         e.pos(self.ast_objs),
-                        format!("invalid constant type {}", self.new_td(&t)),
+                        format!("invalid constant type {}", self.new_dis(&t)),
                     );
                 }
                 self.lobj_mut(okey).set_type(Some(invalid_type));
@@ -519,7 +517,7 @@ impl<'a> Checker<'a> {
                                 format!(
                                     "method {} already declared for {}",
                                     mobj.name(),
-                                    LangObjDisplay::new(m, self.tc_objs)
+                                    self.new_dis(m)
                                 ),
                             );
                         }

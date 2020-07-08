@@ -11,6 +11,7 @@ use super::util::{UnpackResult, UnpackedResultLeftovers};
 use goscript_parser::ast::{CallExpr, Expr, Node};
 use goscript_parser::{Parser, Token};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 impl<'a> Checker<'a> {
     /// builtin type-checks a call to the built-in specified by id and
@@ -20,7 +21,7 @@ impl<'a> Checker<'a> {
     pub fn builtin(
         &mut self,
         x: &mut Operand,
-        call: &CallExpr,
+        call: &Rc<CallExpr>,
         id: Builtin,
         fctx: &mut FilesContext,
     ) -> bool {
@@ -75,7 +76,8 @@ impl<'a> Checker<'a> {
                             None
                         };
                         if let Some(m) = msg {
-                            let ed = self.new_ed_call(call);
+                            let expr = Expr::Call(call.clone());
+                            let ed = self.new_dis(&expr);
                             self.invalid_op(
                                 call.r_paren,
                                 &format!(
@@ -115,7 +117,7 @@ impl<'a> Checker<'a> {
                 {
                     *detail.elem()
                 } else {
-                    let xd = self.new_xd(&x);
+                    let xd = self.new_dis(x);
                     self.invalid_arg(xd.pos(), &format!("{} is not a slice", xd));
                     return false;
                 };
@@ -207,7 +209,7 @@ impl<'a> Checker<'a> {
                 };
 
                 if mode == OperandMode::Invalid && ty != invalid_type {
-                    let dis = self.new_xd(x);
+                    let dis = self.new_dis(x);
                     self.invalid_arg(dis.pos(), &format!("{} for {}", dis, binfo.name));
                     return false;
                 }
@@ -224,7 +226,7 @@ impl<'a> Checker<'a> {
                 let tkey = *typ::underlying_type(x.typ.as_ref().unwrap(), self.tc_objs);
                 if let Some(detail) = self.otype(tkey).try_as_chan() {
                     if *detail.dir() == typ::ChanDir::RecvOnly {
-                        let dis = self.new_xd(x);
+                        let dis = self.new_dis(x);
                         self.invalid_arg(
                             dis.pos(),
                             &format!("{} must not be a receive-only channel", dis),
@@ -235,7 +237,7 @@ impl<'a> Checker<'a> {
 
                     record(self, None, &vec![tkey], false);
                 } else {
-                    let dis = self.new_xd(x);
+                    let dis = self.new_dis(x);
                     self.invalid_arg(dis.pos(), &format!("{} is not a channel", dis));
                     return false;
                 }
@@ -299,8 +301,8 @@ impl<'a> Checker<'a> {
                         x.pos(self.ast_objs),
                         &format!(
                             "mismatched types {} and {}",
-                            self.new_td(x.typ.as_ref().unwrap()),
-                            self.new_td(y.typ.as_ref().unwrap())
+                            self.new_dis(x.typ.as_ref().unwrap()),
+                            self.new_dis(y.typ.as_ref().unwrap())
                         ),
                     );
                     return false;
@@ -312,7 +314,7 @@ impl<'a> Checker<'a> {
                         x.pos(self.ast_objs),
                         &format!(
                             "arguments have type {}, expected floating-point",
-                            self.new_td(x.typ.as_ref().unwrap())
+                            self.new_dis(x.typ.as_ref().unwrap())
                         ),
                     );
                     return false;
@@ -382,7 +384,7 @@ impl<'a> Checker<'a> {
                 };
 
                 if dst.is_none() || src.is_none() {
-                    let (xd, yd) = (self.new_xd(x), self.new_xd(&y));
+                    let (xd, yd) = (self.new_dis(x), self.new_dis(&y));
                     self.invalid_arg(
                         xd.pos(),
                         &format!("copy expects slice arguments; found {} and {}", xd, yd),
@@ -391,7 +393,7 @@ impl<'a> Checker<'a> {
                 }
 
                 if !typ::identical_option(&dst, &src, self.tc_objs) {
-                    let (xd, yd) = (self.new_xd(x), self.new_xd(&y));
+                    let (xd, yd) = (self.new_dis(x), self.new_dis(&y));
                     let (txd, tyd) = (self.new_td_o(&dst), self.new_td_o(&src));
                     self.invalid_arg(
                         xd.pos(),
@@ -424,8 +426,8 @@ impl<'a> Checker<'a> {
                             return false;
                         }
                         if !x.assignable_to(&Some(key), None, self.tc_objs) {
-                            let xd = self.new_xd(x);
-                            let td = self.new_td(&key);
+                            let xd = self.new_dis(x);
+                            let td = self.new_dis(&key);
                             self.invalid_arg(
                                 xd.pos(),
                                 &format!("{} is not assignable to {}", xd, td),
@@ -435,7 +437,7 @@ impl<'a> Checker<'a> {
                         record(self, None, &vec![mtype, key], false);
                     }
                     None => {
-                        let xd = self.new_xd(x);
+                        let xd = self.new_dis(x);
                         self.invalid_arg(xd.pos(), &format!("{} is not a map", xd));
                         return false;
                     }
@@ -468,7 +470,7 @@ impl<'a> Checker<'a> {
 
                 // the argument must be of complex type
                 if !typ::is_complex(x.typ.as_ref().unwrap(), self.tc_objs) {
-                    let xd = self.new_xd(x);
+                    let xd = self.new_dis(x);
                     self.invalid_arg(
                         xd.pos(),
                         &format!("argument has type {}, expected complex type", xd),
@@ -523,7 +525,7 @@ impl<'a> Checker<'a> {
                     Type::Slice(_) => 2,
                     Type::Map(_) | Type::Chan(_) => 1,
                     _ => {
-                        let ed = self.new_ed(arg0);
+                        let ed = self.new_dis(arg0);
                         self.invalid_arg(
                             ed.pos(),
                             &format!("cannot make {}; type must be slice, map, or channel", ed),
@@ -532,7 +534,8 @@ impl<'a> Checker<'a> {
                     }
                 };
                 if nargs < min || min + 1 < nargs {
-                    let ed = self.new_ed_call(call);
+                    let expr = Expr::Call(call.clone());
+                    let ed = self.new_dis(&expr);
                     self.error(
                         ed.pos(),
                         format!(
@@ -673,9 +676,9 @@ impl<'a> Checker<'a> {
                     let (obj, indices) = match result {
                         LookupResult::Ambiguous(_)
                         | LookupResult::NotFound
-                        | LookupResult::Indirect => {
-                            let td = self.new_td(base);
-                            let msg = if result == LookupResult::Indirect {
+                        | LookupResult::BadMethodReceiver => {
+                            let td = self.new_dis(base);
+                            let msg = if result == LookupResult::BadMethodReceiver {
                                 format!("field {} is embedded via a pointer in {}", sel, td)
                             } else {
                                 format!("{} has no single field {}", td, sel)
@@ -683,9 +686,9 @@ impl<'a> Checker<'a> {
                             self.invalid_arg(x.pos(self.ast_objs), &msg);
                             return false;
                         }
-                        LookupResult::Entry(okey, indices) => {
+                        LookupResult::Entry(okey, indices, _) => {
                             if self.lobj(okey).entity_type().is_func() {
-                                let ed = self.new_ed(arg0);
+                                let ed = self.new_dis(arg0);
                                 self.invalid_arg(ed.pos(), &format!("{} is a method value", ed));
                             }
                             (okey, indices)
@@ -701,7 +704,7 @@ impl<'a> Checker<'a> {
                     x.mode = OperandMode::Constant(offs);
                     x.typ = Some(self.basic_type(BasicType::Uintptr));
                 } else {
-                    let ed = self.new_ed(arg0);
+                    let ed = self.new_dis(arg0);
                     self.invalid_arg(ed.pos(), &format!("{} is not a selector expression", ed));
                     self.use_exprs(&vec![arg0.clone()]);
                     return false;
@@ -725,7 +728,7 @@ impl<'a> Checker<'a> {
                 // The result of assert is the value of pred if there is no error.
                 // todo: make it work in runtime
                 let default_err = || {
-                    let xd = self.new_xd(x);
+                    let xd = self.new_dis(x);
                     self.invalid_arg(xd.pos(), &format!("{} is not a boolean constant", xd));
                     false
                 };
@@ -737,13 +740,14 @@ impl<'a> Checker<'a> {
                         match v {
                             Value::Bool(b) => {
                                 if !*b {
-                                    let ed = self.new_ed_call(call);
+                                    let expr = Expr::Call(call.clone());
+                                    let ed = self.new_dis(&expr);
                                     self.error(ed.pos(), format!("{} failed", ed))
                                     // compile-time assertion failure - safe to continue
                                 }
                             }
                             _ => {
-                                let xd = self.new_xd(x);
+                                let xd = self.new_dis(x);
                                 let msg = format!(
                                     "internal error: value of {} should be a boolean constant",
                                     xd
@@ -766,8 +770,9 @@ impl<'a> Checker<'a> {
                 // Note: trace is only available in self-test mode.
                 // (no argument evaluated yet)
                 if nargs == 0 {
-                    let ed = self.new_ed_call(call);
-                    self.dump(ed.pos(), "trace() without arguments");
+                    let expr = Expr::Call(call.clone());
+                    let ed = self.new_dis(&expr);
+                    self.dump(Some(ed.pos()), "trace() without arguments");
                     x.mode = OperandMode::NoValue;
                     return true;
                 }
@@ -775,8 +780,8 @@ impl<'a> Checker<'a> {
                 let mut cur_x = x;
                 for arg in call.args.iter() {
                     self.raw_expr(cur_x, arg, None); // permit trace for types, e.g.: new(trace(T))
-                    let xd = self.new_xd(cur_x);
-                    self.dump(xd.pos(), &format!("{}", xd));
+                    let xd = self.new_dis(cur_x);
+                    self.dump(Some(xd.pos()), &format!("{}", xd));
                     cur_x = &mut x_temp;
                 }
                 // x contains info of the first argument

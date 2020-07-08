@@ -581,7 +581,7 @@ impl<'a> Checker<'a> {
         } else if l < r {
             if init.is_none() {
                 let expr = &s.values[l];
-                let ed = self.new_ed(expr);
+                let ed = self.new_dis(expr);
                 self.error(ed.pos(), format!("extra init expr {}", ed));
                 return Err(());
             } else {

@@ -138,7 +138,7 @@ pub struct ObjContext {
     // top-most scope for lookups
     pub scope: Option<ScopeKey>,
     // if valid, identifiers are looked up as if at position pos (used by Eval)
-    pub pos: Pos,
+    pub pos: Option<Pos>,
     // value of iota in a constant declaration; None otherwise
     pub iota: Option<Value>,
     // function signature if inside a function; None otherwise
@@ -208,7 +208,7 @@ impl ObjContext {
         ObjContext {
             decl: None,
             scope: None,
-            pos: 0,
+            pos: None,
             iota: None,
             sig: None,
             panics: None,
