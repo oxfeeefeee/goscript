@@ -131,7 +131,7 @@ impl<'a> Checker<'a> {
                 if nargs == 2
                     && call.ellipsis.is_some()
                     && x.assignable_to(
-                        &Some(*self.tc_objs.universe().slice_of_bytes()),
+                        *self.tc_objs.universe().slice_of_bytes(),
                         None,
                         self.tc_objs,
                     )
@@ -156,7 +156,7 @@ impl<'a> Checker<'a> {
                 let sig = make_sig(self.tc_objs, Some(slice), &vec![slice, tslice], true);
                 let re = UnpackedResultLeftovers {
                     leftovers: unpack_result.as_ref().unwrap(),
-                    consumed: &alist,
+                    consumed: Some(&alist),
                 };
                 self.arguments(x, call, sig, &re, nargs);
                 // ok to continue even if check.arguments reported errors
@@ -425,7 +425,7 @@ impl<'a> Checker<'a> {
                         if x.invalid() {
                             return false;
                         }
-                        if !x.assignable_to(&Some(key), None, self.tc_objs) {
+                        if !x.assignable_to(key, None, self.tc_objs) {
                             let xd = self.new_dis(x);
                             let td = self.new_dis(&key);
                             self.invalid_arg(

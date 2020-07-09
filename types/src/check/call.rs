@@ -1,20 +1,108 @@
 #![allow(dead_code)]
 use super::super::lookup::{self, LookupResult, MethodSet};
 use super::super::obj::EntityType;
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::TypeKey;
 use super::super::operand::{Operand, OperandMode};
-use super::super::scope::Scope;
 use super::super::selection::{Selection, SelectionKind};
 use super::super::typ;
+use super::super::universe::ExprKind;
 use super::check::{Checker, FilesContext};
-use super::display;
 use super::util::{UnpackResult, UnpackedResultLeftovers};
-use goscript_parser::ast::{CallExpr, Expr, FieldList, Node, SelectorExpr};
-use goscript_parser::objects::{FuncTypeKey, IdentKey};
+use goscript_parser::ast::{CallExpr, Expr, Node, SelectorExpr};
 use goscript_parser::Pos;
 use std::rc::Rc;
 
 impl<'a> Checker<'a> {
+    pub fn call(&mut self, x: &mut Operand, e: &Rc<CallExpr>, fctx: &mut FilesContext) -> ExprKind {
+        self.expr_or_type(x, &e.func);
+
+        let expr = Some(Expr::Call(e.clone()));
+        match x.mode {
+            OperandMode::Invalid => {
+                self.use_exprs(&e.args);
+                x.expr = expr;
+                ExprKind::Statement
+            }
+            OperandMode::TypeExpr => {
+                // conversion
+                let t = x.typ.unwrap();
+                x.mode = OperandMode::Invalid;
+                match e.args.len() {
+                    0 => self.error(
+                        e.r_paren,
+                        format!("missing argument in conversion to {}", self.new_dis(&t)),
+                    ),
+                    1 => {
+                        self.expr(x, &e.args[0]);
+                        if !x.invalid() {
+                            self.conversion(x, t);
+                        }
+                    }
+                    _ => {
+                        self.use_exprs(&e.args);
+                        self.error(
+                            e.args[e.args.len() - 1].pos(self.ast_objs),
+                            format!("too many arguments in conversion to {}", self.new_dis(&t)),
+                        )
+                    }
+                }
+                x.expr = expr;
+                ExprKind::Conversion
+            }
+            OperandMode::Builtin(id) => {
+                if !self.builtin(x, e, id, fctx) {
+                    x.mode = OperandMode::Invalid;
+                }
+                x.expr = expr;
+                // a non-constant result implies a function call
+                self.octx.has_call_or_recv = match x.mode {
+                    OperandMode::Invalid | OperandMode::Constant(_) => true,
+                    _ => false,
+                };
+                self.tc_objs.universe().builtins()[&id].kind
+            }
+            _ => {
+                // function/method call
+                let sig_key = *typ::underlying_type(x.typ.as_ref().unwrap(), self.tc_objs);
+                if let Some(sig) = self.otype(sig_key).try_as_signature() {
+                    let sig_results = *sig.results();
+                    let result = self.unpack(&e.args, e.args.len(), false);
+                    match result {
+                        UnpackResult::Nothing | UnpackResult::Mismatch(_) | UnpackResult::Error => {
+                            x.mode = OperandMode::Invalid
+                        }
+                        _ => {
+                            let re = UnpackedResultLeftovers::new(&result, None);
+                            self.arguments(x, e, sig_key, &re, e.args.len());
+                        }
+                    }
+
+                    // determine result
+                    let sigre = self.tc_objs.types[sig_results].try_as_tuple().unwrap();
+                    match sigre.vars().len() {
+                        0 => x.mode = OperandMode::NoValue,
+                        1 => {
+                            x.mode = OperandMode::Value;
+                            x.typ = *self.lobj(sigre.vars()[0]).typ(); // unpack tuple
+                        }
+                        _ => {
+                            x.mode = OperandMode::Value;
+                            x.typ = Some(sig_results);
+                        }
+                    }
+                    self.octx.has_call_or_recv = true;
+                } else {
+                    let dis = self.new_dis(x);
+                    self.invalid_op(dis.pos(), &format!("cannot call non-function {}", dis));
+                    x.mode = OperandMode::Invalid;
+                }
+                x.expr = expr;
+                ExprKind::Statement
+            }
+        }
+    }
+
+    /// arguments checks argument passing for the call with the given signature.
     pub fn arguments(
         &mut self,
         x: &mut Operand,
@@ -23,12 +111,54 @@ impl<'a> Checker<'a> {
         re: &UnpackedResultLeftovers,
         n: usize,
     ) {
-        unimplemented!()
+        let sig_val = self.otype(sig).try_as_signature().unwrap();
+        let variadic = sig_val.variadic();
+        let params = self.otype(*sig_val.params()).try_as_tuple().unwrap();
+        let params_len = params.vars().len();
+        if let Some(ell) = call.ellipsis {
+            if !variadic {
+                let dis = self.new_dis(&call.func);
+                self.error(
+                    ell,
+                    format!("cannot use ... in call to non-variadic {}", dis),
+                );
+                re.use_all(self);
+                return;
+            }
+            if call.args.len() == 1 && n > 1 {
+                let dis = self.new_dis(&call.args[0]);
+                self.error(ell, format!("cannot use ... with {}-valued {}", n, dis));
+                re.use_all(self);
+                return;
+            }
+        }
+
+        // evaluate arguments
+        let note = &format!("argument to {}", self.new_dis(&call.func));
+        for i in 0..n {
+            re.get(self, x, i);
+            if x.invalid() {
+                let ellipsis = if i == n - 1 { call.ellipsis } else { None };
+                self.argument(sig, i, x, ellipsis, note);
+            }
+        }
+
+        // check argument count
+        // a variadic function accepts an "empty"
+        // last argument: count one extra
+        let count = if variadic { n + 1 } else { n };
+        if count < params_len {
+            let dis = self.new_dis(&call.func);
+            self.error(
+                call.r_paren,
+                format!("too few arguments in call to {}", dis),
+            );
+        }
     }
 
     /// argument checks passing of argument x to the i'th parameter of the given signature.
     /// If ellipsis is_some(), the argument is followed by ... at that position in the call.
-    pub fn argument(
+    fn argument(
         &mut self,
         sig: TypeKey,
         i: usize,
@@ -47,7 +177,7 @@ impl<'a> Checker<'a> {
 
         let mut ty = if i < n {
             self.lobj(params.vars()[i]).typ().unwrap()
-        } else if *sig_val.variadic() {
+        } else if sig_val.variadic() {
             let t = self.lobj(params.vars()[n - 1]).typ().unwrap();
             if self.tc_objs.debug {
                 if self.otype(t).try_as_slice().is_none() {
@@ -87,7 +217,7 @@ impl<'a> Checker<'a> {
                 );
                 return;
             }
-        } else if *sig_val.variadic() && i >= n - 1 {
+        } else if sig_val.variadic() && i >= n - 1 {
             ty = *self.otype(ty).try_as_slice().unwrap().elem();
         }
 
@@ -223,7 +353,7 @@ impl<'a> Checker<'a> {
                         .new_var(0, Some(self.pkg), "".to_string(), x.typ);
                     let lobj = self.lobj(okey);
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
-                    let (p, r, v) = (*sig.params(), *sig.results(), *sig.variadic());
+                    let (p, r, v) = (*sig.params(), *sig.results(), sig.variadic());
                     let params_val = self.otype(p).try_as_tuple().unwrap();
                     let mut vars = vec![var];
                     vars.append(&mut params_val.vars().clone());
@@ -302,7 +432,7 @@ impl<'a> Checker<'a> {
                     // remove receiver
                     let lobj = &self.tc_objs.lobjs[okey];
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
-                    let (p, r, v) = (*sig.params(), *sig.results(), *sig.variadic());
+                    let (p, r, v) = (*sig.params(), *sig.results(), sig.variadic());
                     let new_sig = self.tc_objs.new_t_signature(None, p, r, v);
                     x.typ = Some(new_sig);
 

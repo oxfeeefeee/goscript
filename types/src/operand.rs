@@ -113,31 +113,20 @@ impl Operand {
         }
     }
 
-    /// assignable_to reports whether self is assignable to a variable of type 't'.
+    /// assignable_to returns whether self is assignable to a variable of type 't'.
     /// If the result is false and a non-None reason is provided, it may be set
     /// to a more detailed explanation of the failure.
-    pub fn assignable_to(
-        &self,
-        t: &Option<TypeKey>,
-        reason: Option<&mut String>,
-        objs: &TCObjects,
-    ) -> bool {
+    pub fn assignable_to(&self, t: TypeKey, reason: Option<&mut String>, objs: &TCObjects) -> bool {
         let u = objs.universe();
-        if let OperandMode::Invalid = self.mode {
-            return true; // avoid spurious errors
-        }
-        if *t == Some(u.types()[&BasicType::Invalid]) {
+        if self.invalid() || t == u.types()[&BasicType::Invalid] {
             return true; // avoid spurious errors
         }
 
-        if typ::identical_option(&self.typ, t, objs) {
+        if typ::identical(self.typ.as_ref().unwrap(), &t, objs) {
             return true;
         }
-        if self.typ.is_none() || t.is_none() {
-            return false;
-        }
 
-        let (k_left, k_right) = (t.unwrap(), self.typ.unwrap());
+        let (k_left, k_right) = (t, self.typ.unwrap());
         let t_left = &objs.types[k_left];
         let t_right = &objs.types[k_right];
         let ut_key_left = typ::underlying_type(&k_left, objs);

@@ -223,6 +223,11 @@ impl Value {
         unimplemented!()
     }
 
+    /// int_as_i64 returns the Go int64 value and whether the result is exact;
+    pub fn int_as_i64(&self) -> (i64, bool) {
+        unimplemented!()
+    }
+
     /// real returns the real part of x, which must be a numeric or unknown value.
     /// If x is Unknown, the result is Unknown.
     pub fn real(&self) -> Value {

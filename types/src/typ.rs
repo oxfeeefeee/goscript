@@ -603,8 +603,8 @@ impl SignatureDetail {
         &self.results
     }
 
-    pub fn variadic(&self) -> &bool {
-        &self.variadic
+    pub fn variadic(&self) -> bool {
+        self.variadic
     }
 
     pub fn params_count(&self, objs: &TCObjects) -> usize {
@@ -1026,7 +1026,7 @@ fn identical_impl(
             }
         }
         (Type::Signature(sx), Type::Signature(sy)) => {
-            *sx.variadic() == *sy.variadic()
+            sx.variadic() == sy.variadic()
                 && identical_impl(sx.params(), sy.params(), cmp_tags, dup, objs)
                 && identical_impl(sx.results(), sy.results(), cmp_tags, dup, objs)
         }
@@ -1223,7 +1223,7 @@ fn fmt_signature_impl(
     objs: &TCObjects,
 ) -> fmt::Result {
     let sig = &objs.types[*t].try_as_signature().unwrap();
-    fmt_tuple(sig.params(), *sig.variadic(), f, visited, &objs)?;
+    fmt_tuple(sig.params(), sig.variadic(), f, visited, &objs)?;
     f.write_char(' ')?;
     let results = &objs.types[*sig.results()].try_as_tuple().unwrap();
     if results.vars().len() == 1 {

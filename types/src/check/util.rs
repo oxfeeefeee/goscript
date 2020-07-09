@@ -31,11 +31,6 @@ pub enum UnpackResult<'a> {
     Error,                                     // errors when trying to unpack
 }
 
-pub struct UnpackedResultLeftovers<'a> {
-    pub leftovers: &'a UnpackResult<'a>,
-    pub consumed: &'a Vec<Operand>,
-}
-
 impl<'a> UnpackResult<'a> {
     pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize) {
         match self {
@@ -60,6 +55,63 @@ impl<'a> UnpackResult<'a> {
             UnpackResult::Nothing => unreachable!(),
             UnpackResult::Mismatch(_) => unreachable!(),
             UnpackResult::Error => unreachable!(),
+        }
+    }
+
+    pub fn use_(&self, checker: &mut Checker, from: usize) {
+        let exprs = match self {
+            UnpackResult::Mutliple(exprs) => exprs,
+            UnpackResult::Mismatch(exprs) => exprs,
+            _ => {
+                return;
+            }
+        };
+
+        let mut x = Operand::new();
+        for i in from..exprs.len() {
+            checker.multi_expr(&mut x, &exprs[i]);
+        }
+    }
+}
+
+pub struct UnpackedResultLeftovers<'a> {
+    pub leftovers: &'a UnpackResult<'a>,
+    pub consumed: Option<&'a Vec<Operand>>,
+}
+
+impl<'a> UnpackedResultLeftovers<'a> {
+    pub fn new(
+        re: &'a UnpackResult<'a>,
+        consumed: Option<&'a Vec<Operand>>,
+    ) -> UnpackedResultLeftovers<'a> {
+        UnpackedResultLeftovers {
+            leftovers: re,
+            consumed: consumed,
+        }
+    }
+
+    pub fn use_all(&self, checker: &mut Checker) {
+        let from = if self.consumed.is_none() {
+            0
+        } else {
+            self.consumed.unwrap().len()
+        };
+        self.leftovers.use_(checker, from);
+    }
+
+    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize) {
+        if self.consumed.is_none() {
+            self.leftovers.get(checker, x, i);
+            return;
+        }
+        let consumed = self.consumed.unwrap();
+        if i < consumed.len() {
+            let c = &consumed[i];
+            x.mode = c.mode.clone();
+            x.expr = c.expr.clone();
+            x.typ = c.typ;
+        } else {
+            self.leftovers.get(checker, x, i);
         }
     }
 }
@@ -191,9 +243,9 @@ impl<'a> Checker<'a> {
     }
 
     pub fn use_exprs(&mut self, exprs: &Vec<Expr>) {
+        let mut x = Operand::new();
         for e in exprs.iter() {
-            let mut x = Operand::new();
-            self.multi_expr(&mut x, &e);
+            self.raw_expr(&mut x, &e, None);
         }
     }
 

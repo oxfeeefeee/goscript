@@ -6,6 +6,7 @@ mod assignment;
 mod builtin;
 mod call;
 pub mod check;
+mod conversion;
 mod decl;
 mod expr;
 mod interface;

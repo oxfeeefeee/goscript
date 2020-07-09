@@ -65,7 +65,7 @@ impl<'a> Checker<'a> {
         }
 
         let mut reason = String::new();
-        if !x.assignable_to(&t, Some(&mut reason), self.tc_objs) {
+        if !x.assignable_to(t.unwrap(), Some(&mut reason), self.tc_objs) {
             let xd = self.new_dis(x);
             let td = self.new_dis(t.as_ref().unwrap());
             if reason.is_empty() {
@@ -251,7 +251,7 @@ impl<'a> Checker<'a> {
             UnpackResult::Error => invalidate_lhs(),
             UnpackResult::Mismatch(exprs) => {
                 invalidate_lhs();
-                self.use_exprs(exprs);
+                result.use_(self, 0);
                 let rl = exprs.len();
                 if let Some(p) = return_pos {
                     self.error(
@@ -298,7 +298,7 @@ impl<'a> Checker<'a> {
         let result = self.unpack(rhs, ll, ll == 2);
         match result {
             UnpackResult::Error => self.use_lhs(lhs),
-            UnpackResult::Mismatch(exprs) => self.use_exprs(exprs),
+            UnpackResult::Mismatch(_) => result.use_(self, 0),
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
             | UnpackResult::Mutliple(_)
