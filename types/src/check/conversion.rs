@@ -3,11 +3,11 @@ use super::super::constant::Value;
 use super::super::objects::TypeKey;
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ::{self, BasicType, Type};
-use super::check::Checker;
+use super::check::{Checker, FilesContext};
 use std::char;
 
 impl<'a> Checker<'a> {
-    pub fn conversion(&mut self, x: &mut Operand, t: TypeKey) {
+    pub fn conversion(&mut self, x: &mut Operand, t: TypeKey, fctx: &mut FilesContext) {
         let constv = match &mut x.mode {
             OperandMode::Constant(v) => Some(v),
             _ => None,
@@ -21,8 +21,8 @@ impl<'a> Checker<'a> {
             let v = constv.unwrap();
             let tval = self.otype(t).underlying_val(o);
             let basic = tval.try_as_basic().unwrap();
-            let mut round = v.clone();
-            if v.representable(basic, Some(&mut round)) {
+            let clone = v.clone();
+            if clone.representable(basic, Some(v)) {
                 true
             } else if typ::is_integer(&xtype, o) && tval.is_string(o) {
                 // todo: not exactly the same of the go version
@@ -69,7 +69,7 @@ impl<'a> Checker<'a> {
             } else {
                 t
             };
-            self.update_expr_type(x.expr.as_ref().unwrap(), final_t, true);
+            self.update_expr_type(x.expr.as_ref().unwrap(), final_t, true, fctx);
         }
 
         x.typ = Some(t);

@@ -4,13 +4,10 @@ use super::super::importer::ImportKey;
 use super::super::obj::EntityType;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey};
 use super::check::{Checker, FilesContext};
-use goscript_parser::ast;
-use goscript_parser::ast::{Expr, Node};
+use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
 use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
-use goscript_parser::position::Pos;
-use goscript_parser::token::Token;
-use goscript_parser::Parser;
+use goscript_parser::{Pos, Token};
 use std::collections::HashSet;
 
 pub struct DeclInfoConst {
@@ -615,14 +612,14 @@ impl<'a> Checker<'a> {
         let mut path = Vec::new();
         let mut ptr = false;
         loop {
-            typ = Parser::unparen(typ);
+            typ = Checker::unparen(typ);
             if let Expr::Star(t) = typ {
                 // if we've already seen a pointer, we're done
                 if ptr {
                     break;
                 }
                 ptr = true;
-                typ = Parser::unparen(&t.expr);
+                typ = Checker::unparen(&t.expr);
             }
 
             // typ must be the name

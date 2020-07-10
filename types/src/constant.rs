@@ -256,7 +256,16 @@ impl Value {
     /// To force integer division of Int operands, use op == token.QUO_ASSIGN
     /// instead of token.QUO; the result is guaranteed to be Int in this case.
     /// Division by zero leads to a run-time panic.
-    pub fn binary_op(x: &Value, op: Token, y: &Value) -> Value {
+    pub fn binary_op(x: &Value, op: &Token, y: &Value) -> Value {
+        unimplemented!()
+    }
+
+    // UnaryOp returns the result of the unary expression op y.
+    // The operation must be defined for the operand.
+    // If prec > 0 it specifies the ^ (xor) result size in bits.
+    // If y is Unknown, the result is Unknown.
+    //
+    pub fn unary_op(op: &Token, y: &Value, prec: usize) -> Value {
         unimplemented!()
     }
 }

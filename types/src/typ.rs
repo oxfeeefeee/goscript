@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Write;
+use std::mem::size_of as std_size_of;
 use std::rc::Rc;
 
 macro_rules! compare_by_method_name {
@@ -135,7 +136,14 @@ impl Type {
     }
 
     pub fn try_as_chan(&self) -> Option<&ChanDetail> {
-        match &self {
+        match self {
+            Type::Chan(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn try_as_chan_mut(&mut self) -> Option<&mut ChanDetail> {
+        match self {
             Type::Chan(c) => Some(c),
             _ => None,
         }
@@ -415,6 +423,21 @@ impl BasicDetail {
 
     pub fn name(&self) -> &str {
         self.name
+    }
+
+    pub fn size_of(&self) -> usize {
+        match self.typ {
+            BasicType::Bool | BasicType::Byte | BasicType::Uint8 | BasicType::Int8 => 1,
+            BasicType::Int16 | BasicType::Uint16 => 2,
+            BasicType::Int32 | BasicType::Uint32 | BasicType::Rune | BasicType::Float32 => 4,
+            BasicType::Int64 | BasicType::Uint64 | BasicType::Float64 | BasicType::Complex64 => 8,
+            BasicType::Int | BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
+                std_size_of::<usize>()
+            }
+            BasicType::Complex128 => 16,
+            BasicType::Str => std_size_of::<String>(),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -832,6 +855,17 @@ impl NamedDetail {
 
 // ----------------------------------------------------------------------------
 // utilities
+
+/// size_of only works for typed basic types for now
+/// it panics with untyped, and return the size of
+/// machine word size for all other types
+pub fn size_of(t: &TypeKey, objs: &TCObjects) -> usize {
+    let typ = &objs.types[*t].underlying_val(objs);
+    match typ {
+        Type::Basic(detail) => detail.size_of(),
+        _ => std_size_of::<usize>(),
+    }
+}
 
 /// underlying_type returns the underlying type of type 't'
 pub fn underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {

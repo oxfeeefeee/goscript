@@ -9,7 +9,7 @@ use super::super::universe::Builtin;
 use super::check::{Checker, FilesContext};
 use super::util::{UnpackResult, UnpackedResultLeftovers};
 use goscript_parser::ast::{CallExpr, Expr, Node};
-use goscript_parser::{Parser, Token};
+use goscript_parser::Token;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -158,7 +158,7 @@ impl<'a> Checker<'a> {
                     leftovers: unpack_result.as_ref().unwrap(),
                     consumed: Some(&alist),
                 };
-                self.arguments(x, call, sig, &re, nargs);
+                self.arguments(x, call, sig, &re, nargs, fctx);
                 // ok to continue even if check.arguments reported errors
 
                 x.mode = OperandMode::Value;
@@ -256,9 +256,9 @@ impl<'a> Checker<'a> {
                 match (x_untyped, y_untyped) {
                     (false, false) => {} // x and y are typed => nothing to do
                     // only x is untyped => convert to type of y
-                    (true, false) => self.convert_untyped(x, y.typ.unwrap()),
+                    (true, false) => self.convert_untyped(x, y.typ.unwrap(), fctx),
                     // only y is untyped => convert to type of x
-                    (false, true) => self.convert_untyped(&mut y, x.typ.unwrap()),
+                    (false, true) => self.convert_untyped(&mut y, x.typ.unwrap(), fctx),
                     (true, true) => {
                         // x and y are untyped =>
                         // 1) if both are constants, convert them to untyped
@@ -283,8 +283,8 @@ impl<'a> Checker<'a> {
                             }
                             _ => {
                                 let tf64 = self.basic_type(BasicType::Float64);
-                                self.convert_untyped(x, tf64);
-                                self.convert_untyped(&mut y, tf64);
+                                self.convert_untyped(x, tf64, fctx);
+                                self.convert_untyped(&mut y, tf64, fctx);
                                 // x and y should be invalid now, but be conservative
                                 // and check below
                             }
@@ -323,7 +323,7 @@ impl<'a> Checker<'a> {
                 // if both arguments are constants, the result is a constant
                 match (&mut x.mode, &y.mode) {
                     (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
-                        *vx = Value::binary_op(vx, Token::ADD, vy);
+                        *vx = Value::binary_op(vx, &Token::ADD, vy);
                     }
                     _ => {
                         x.mode = OperandMode::Value;
@@ -460,7 +460,7 @@ impl<'a> Checker<'a> {
                         // it contains a (yet untyped non-constant) shift
                         // expression: convert it to complex128 which will
                         // result in an error (shift of complex value)
-                        self.convert_untyped(x, self.basic_type(BasicType::Complex128));
+                        self.convert_untyped(x, self.basic_type(BasicType::Complex128), fctx);
                         // x should be invalid now, but be conservative and check
                         if x.invalid() {
                             return false;
@@ -610,7 +610,7 @@ impl<'a> Checker<'a> {
                 }
 
                 let iempty = self.tc_objs.new_t_empty_interface();
-                self.assignment(x, Some(iempty), "argument to panic");
+                self.assignment(x, Some(iempty), "argument to panic", fctx);
                 if x.invalid() {
                     return false;
                 }
@@ -628,7 +628,7 @@ impl<'a> Checker<'a> {
                         unpack_result.as_ref().unwrap().get(self, x, i);
                     }
                     let msg = format!("argument to {}", self.builtin_info(id).name);
-                    self.assignment(x, None, &msg);
+                    self.assignment(x, None, &msg, fctx);
                     if x.invalid() {
                         return false;
                     }
@@ -646,7 +646,7 @@ impl<'a> Checker<'a> {
             }
             Builtin::Alignof => {
                 // unsafe.Alignof(x T) uintptr
-                self.assignment(x, None, "argument to unsafe.Alignof");
+                self.assignment(x, None, "argument to unsafe.Alignof", fctx);
                 if x.invalid() {
                     return false;
                 }
@@ -659,7 +659,7 @@ impl<'a> Checker<'a> {
                 // unsafe.Offsetof(x T) uintptr, where x must be a selector
                 // (no argument evaluated yet)
                 let arg0 = &call.args[0];
-                if let Expr::Selector(selx) = Parser::unparen(arg0) {
+                if let Expr::Selector(selx) = Checker::unparen(arg0) {
                     self.expr(x, &selx.expr);
                     if x.invalid() {
                         return false;
@@ -713,12 +713,11 @@ impl<'a> Checker<'a> {
             }
             Builtin::Sizeof => {
                 // unsafe.Sizeof(x T) uintptr
-                self.assignment(x, None, "argument to unsafe.Sizeof");
+                self.assignment(x, None, "argument to unsafe.Sizeof", fctx);
                 if x.invalid() {
                     return false;
                 }
-                // todo
-                let size = Value::with_i64(1); // set Sizeof to zero
+                let size = Value::with_u64(typ::size_of(&x.typ.unwrap(), self.tc_objs) as u64);
                 x.mode = OperandMode::Constant(size);
                 x.typ = Some(self.basic_type(BasicType::Uintptr));
                 // result is constant - no need to record signature

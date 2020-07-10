@@ -9,6 +9,7 @@ pub mod scope;
 pub mod token;
 pub mod visitor;
 
+pub use ast::Expr;
 pub use parser::Parser;
 pub use position::{FileSet, Pos, Position};
 pub use token::Token;

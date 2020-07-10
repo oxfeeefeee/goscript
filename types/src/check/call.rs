@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
                     1 => {
                         self.expr(x, &e.args[0]);
                         if !x.invalid() {
-                            self.conversion(x, t);
+                            self.conversion(x, t, fctx);
                         }
                     }
                     _ => {
@@ -73,7 +73,7 @@ impl<'a> Checker<'a> {
                         }
                         _ => {
                             let re = UnpackedResultLeftovers::new(&result, None);
-                            self.arguments(x, e, sig_key, &re, e.args.len());
+                            self.arguments(x, e, sig_key, &re, e.args.len(), fctx);
                         }
                     }
 
@@ -110,6 +110,7 @@ impl<'a> Checker<'a> {
         sig: TypeKey,
         re: &UnpackedResultLeftovers,
         n: usize,
+        fctx: &mut FilesContext,
     ) {
         let sig_val = self.otype(sig).try_as_signature().unwrap();
         let variadic = sig_val.variadic();
@@ -139,7 +140,7 @@ impl<'a> Checker<'a> {
             re.get(self, x, i);
             if x.invalid() {
                 let ellipsis = if i == n - 1 { call.ellipsis } else { None };
-                self.argument(sig, i, x, ellipsis, note);
+                self.argument(sig, i, x, ellipsis, note, fctx);
             }
         }
 
@@ -165,6 +166,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         ellipsis: Option<Pos>,
         note: &str,
+        fctx: &mut FilesContext,
     ) {
         self.single_value(x);
         if x.invalid() {
@@ -221,7 +223,7 @@ impl<'a> Checker<'a> {
             ty = *self.otype(ty).try_as_slice().unwrap().elem();
         }
 
-        self.assignment(x, Some(ty), note);
+        self.assignment(x, Some(ty), note, fctx);
     }
 
     pub fn selector(&mut self, x: &mut Operand, e: &Rc<SelectorExpr>, fctx: &mut FilesContext) {

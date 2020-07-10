@@ -5,9 +5,9 @@ use super::super::operand::{Operand, OperandMode};
 use super::super::typ;
 use super::check::{Checker, FilesContext};
 use super::util::UnpackResult;
+use goscript_parser::ast::Expr;
 use goscript_parser::ast::Node;
 use goscript_parser::position::Pos;
-use goscript_parser::{ast::Expr, Parser};
 
 impl<'a> Checker<'a> {
     /// assignment reports whether x can be assigned to a variable of type t,
@@ -15,7 +15,13 @@ impl<'a> Checker<'a> {
     /// type. context describes the context in which the assignment takes place.
     /// Use t == None to indicate assignment to an untyped blank identifier.
     /// x.mode is set to invalid if the assignment failed.
-    pub fn assignment(&mut self, x: &mut Operand, t: Option<TypeKey>, note: &str) {
+    pub fn assignment(
+        &mut self,
+        x: &mut Operand,
+        t: Option<TypeKey>,
+        note: &str,
+        fctx: &mut FilesContext,
+    ) {
         self.single_value(x);
         if x.invalid() {
             return;
@@ -50,7 +56,7 @@ impl<'a> Checker<'a> {
             } else {
                 t.unwrap()
             };
-            self.convert_untyped(x, target);
+            self.convert_untyped(x, target, fctx);
             if x.invalid() {
                 return;
             }
@@ -83,7 +89,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand) {
+    pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand, fctx: &mut FilesContext) {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
         if x.invalid() || x.typ == Some(invalid_type) {
@@ -101,7 +107,7 @@ impl<'a> Checker<'a> {
                 lhs.set_type(x.typ);
             }
             let t = lhs.typ().clone();
-            self.assignment(x, t, "constant declaration");
+            self.assignment(x, t, "constant declaration", fctx);
             if x.mode != OperandMode::Invalid {
                 self.lobj_mut(lhskey)
                     .set_const_val(x.mode.constant_val().clone());
@@ -112,7 +118,13 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn init_var(&mut self, lhskey: ObjKey, x: &mut Operand, msg: &str) -> Option<TypeKey> {
+    pub fn init_var(
+        &mut self,
+        lhskey: ObjKey,
+        x: &mut Operand,
+        msg: &str,
+        fctx: &mut FilesContext,
+    ) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
         if x.invalid() || x.typ == Some(invalid_type) {
@@ -145,7 +157,7 @@ impl<'a> Checker<'a> {
             }
         }
         let t = self.lobj(lhskey).typ().clone();
-        self.assignment(x, t, msg);
+        self.assignment(x, t, msg, fctx);
         if x.mode != OperandMode::Invalid {
             x.typ
         } else {
@@ -153,7 +165,12 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn assign_var(&mut self, lhs: &Expr, x: &mut Operand) -> Option<TypeKey> {
+    pub fn assign_var(
+        &mut self,
+        lhs: &Expr,
+        x: &mut Operand,
+        fctx: &mut FilesContext,
+    ) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         if x.invalid() || x.typ == Some(invalid_type) {
             return None;
@@ -162,11 +179,11 @@ impl<'a> Checker<'a> {
         let mut v: Option<ObjKey> = None;
         let mut v_used = false;
         // determine if the lhs is a (possibly parenthesized) identifier.
-        if let Expr::Ident(ikey) = Parser::unparen(lhs) {
+        if let Expr::Ident(ikey) = Checker::unparen(lhs) {
             let name = &self.ast_ident(*ikey).name;
             if name == "_" {
                 self.result.record_def(*ikey, None);
-                self.assignment(x, None, "assignment to _ identifier");
+                self.assignment(x, None, "assignment to _ identifier", fctx);
                 return if x.mode != OperandMode::Invalid {
                     x.typ
                 } else {
@@ -227,7 +244,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.assignment(x, z.typ, "assignment");
+        self.assignment(x, z.typ, "assignment", fctx);
         if x.mode != OperandMode::Invalid {
             x.typ
         } else {
@@ -237,7 +254,13 @@ impl<'a> Checker<'a> {
 
     /// If return_pos is_some, init_vars is called to type-check the assignment of
     /// return expressions, and return_pos is the position of the return statement.
-    pub fn init_vars(&mut self, lhs: &Vec<ObjKey>, rhs: &Vec<Expr>, return_pos: Option<Pos>) {
+    pub fn init_vars(
+        &mut self,
+        lhs: &Vec<ObjKey>,
+        rhs: &Vec<Expr>,
+        return_pos: Option<Pos>,
+        fctx: &mut FilesContext,
+    ) {
         let invalid_type = self.invalid_type();
         let ll = lhs.len();
         let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_some());
@@ -278,7 +301,7 @@ impl<'a> Checker<'a> {
                 for (i, l) in lhs.iter().enumerate() {
                     let mut x = Operand::new();
                     result.get(self, &mut x, i);
-                    self.init_var(*l, &mut x, context);
+                    self.init_var(*l, &mut x, context, fctx);
                 }
             }
         }
@@ -293,7 +316,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>) {
+    pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>, fctx: &mut FilesContext) {
         let ll = lhs.len();
         let result = self.unpack(rhs, ll, ll == 2);
         match result {
@@ -307,7 +330,7 @@ impl<'a> Checker<'a> {
                 for (i, l) in lhs.iter().enumerate() {
                     let mut x = Operand::new();
                     result.get(self, &mut x, i);
-                    self.assign_var(l, &mut x);
+                    self.assign_var(l, &mut x, fctx);
                 }
             }
         }
@@ -372,7 +395,7 @@ impl<'a> Checker<'a> {
             })
             .collect();
 
-        self.init_vars(&lhs_vars, rhs, None);
+        self.init_vars(&lhs_vars, rhs, None, fctx);
 
         // process function literals in rhs expressions before scope changes
         fctx.process_delayed(top, self);

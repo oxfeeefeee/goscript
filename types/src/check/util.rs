@@ -117,6 +117,14 @@ impl<'a> UnpackedResultLeftovers<'a> {
 }
 
 impl<'a> Checker<'a> {
+    pub fn unparen(x: &Expr) -> &Expr {
+        if let Expr::Paren(p) = x {
+            Checker::unparen(&p.expr)
+        } else {
+            x
+        }
+    }
+
     /// invalid_ast helps to report ast error
     pub fn invalid_ast(&self, pos: Pos, err: &str) {
         self.error(pos, format!("invalid AST: {}", err));

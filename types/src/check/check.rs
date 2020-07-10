@@ -123,10 +123,9 @@ impl TypeInfo {
 
 /// ExprInfo stores information about an untyped expression.
 pub struct ExprInfo {
-    is_lhs: bool,
-    mode: OperandMode,
-    typ: TypeKey,
-    val: Value,
+    pub is_lhs: bool,
+    pub mode: OperandMode,
+    pub typ: Option<TypeKey>,
 }
 
 // ObjContext is context within which the current object is type-checked

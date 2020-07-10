@@ -22,7 +22,7 @@ use super::super::typ;
 use super::check::{Checker, FilesContext};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::{FieldKey, IdentKey, Objects as AstObjects};
-use goscript_parser::{Parser, Pos};
+use goscript_parser::Pos;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -356,7 +356,7 @@ impl<'a> Checker<'a> {
             // lying interface.)
             if let Some(decl_key) = self.obj_map.get(&tname) {
                 let decl = &self.tc_objs.decls[*decl_key].as_type();
-                let ty = Parser::unparen(&decl.typ);
+                let ty = Checker::unparen(&decl.typ);
                 match ty {
                     Expr::Ident(i) => {
                         // type tname T

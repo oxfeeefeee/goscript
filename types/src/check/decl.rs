@@ -318,7 +318,7 @@ impl<'a> Checker<'a> {
         if let Some(expr) = init {
             self.expr(&mut x, expr);
         }
-        self.init_const(okey, &mut x);
+        self.init_const(okey, &mut x, fctx);
 
         // clear iota
         self.octx.iota = None;
@@ -358,7 +358,7 @@ impl<'a> Checker<'a> {
             assert!(lhs.is_none() || lhs.as_ref().unwrap()[0] == okey);
             let mut x = Operand::new();
             self.expr(&mut x, init.as_ref().unwrap());
-            self.init_var(okey, &mut x, "variable declaration");
+            self.init_var(okey, &mut x, "variable declaration", fctx);
             return;
         }
 
@@ -375,7 +375,12 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.init_vars(lhs.as_ref().unwrap(), &vec![init.clone().unwrap()], None);
+        self.init_vars(
+            lhs.as_ref().unwrap(),
+            &vec![init.clone().unwrap()],
+            None,
+            fctx,
+        );
     }
 
     pub fn type_decl(
