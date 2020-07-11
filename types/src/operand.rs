@@ -30,17 +30,17 @@ pub enum OperandMode {
 }
 
 impl OperandMode {
-    pub fn constant_val(&self) -> &constant::Value {
+    pub fn constant_val(&self) -> Option<&constant::Value> {
         match self {
-            OperandMode::Constant(v) => v,
-            _ => unreachable!(),
+            OperandMode::Constant(v) => Some(v),
+            _ => None,
         }
     }
 
-    pub fn builtin_id(&self) -> Builtin {
+    pub fn builtin_id(&self) -> Option<Builtin> {
         match self {
-            OperandMode::Builtin(id) => *id,
-            _ => unreachable!(),
+            OperandMode::Builtin(id) => Some(*id),
+            _ => None,
         }
     }
 }

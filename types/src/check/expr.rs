@@ -475,6 +475,168 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn comparision(&mut self, x: &mut Operand, y: &Operand, op: &Token, fctx: &mut FilesContext) {
+        // spec: "In any comparison, the first operand must be assignable
+        // to the type of the second operand, or vice versa."
+        let o = &self.tc_objs;
+        let u = o.universe();
+        let (xtype, ytype) = (x.typ.unwrap(), y.typ.unwrap());
+        let (xtval, ytval) = (self.otype(xtype), self.otype(ytype));
+        let emsg = if x.assignable_to(ytype, None, o) || x.assignable_to(xtype, None, o) {
+            let defined = match op {
+                Token::EQL | Token::NEQ => {
+                    (xtval.comparable(o) && ytval.comparable(o))
+                        || (x.is_nil(u) && ytval.has_nil(o))
+                        || (y.is_nil(u) && xtval.has_nil(o))
+                }
+                Token::LSS | Token::LEQ | Token::GTR | Token::GEQ => {
+                    xtval.is_ordered(o) && ytval.is_ordered(o)
+                }
+                _ => unreachable!(),
+            };
+            if !defined {
+                let t = if x.is_nil(u) { ytype } else { xtype };
+                let td = self.new_dis(&t);
+                Some(format!("operator {} not defined for {}", op, td))
+            } else {
+                None
+            }
+        } else {
+            let (xd, yd) = (self.new_dis(&xtype), self.new_dis(&ytype));
+            Some(format!("mismatched types {} and {}", xd, yd))
+        };
+        if let Some(m) = emsg {
+            let pos = x.pos(self.ast_objs);
+            let xd = self.new_dis(x.expr.as_ref().unwrap());
+            let yd = self.new_dis(y.expr.as_ref().unwrap());
+            self.error(pos, format!("cannot compare {} {} {} ({})", xd, op, yd, m));
+            return;
+        }
+
+        match (&mut x.mode, &y.mode) {
+            (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
+                *vx = Value::with_bool(Value::compare(vx, op, vy));
+                // The operands are never materialized; no need to update
+                // their types.
+            }
+            _ => {
+                x.mode = OperandMode::Value;
+                // The operands have now their final types, which at run-
+                // time will be materialized. Update the expression trees.
+                // If the current types are untyped, the materialized type
+                // is the respective default type.
+                self.update_expr_type(
+                    x.expr.as_ref().unwrap(),
+                    *typ::untyped_default_type(&xtype, self.tc_objs),
+                    true,
+                    fctx,
+                );
+                self.update_expr_type(
+                    y.expr.as_ref().unwrap(),
+                    *typ::untyped_default_type(&ytype, self.tc_objs),
+                    true,
+                    fctx,
+                );
+            }
+        }
+        // spec: "Comparison operators compare two operands and yield
+        //        an untyped boolean value."
+        x.typ = Some(self.basic_type(BasicType::UntypedBool));
+    }
+
+    fn shift(
+        &mut self,
+        x: &mut Operand,
+        y: &mut Operand,
+        op: &Token,
+        e: Option<Expr>,
+        fctx: &mut FilesContext,
+    ) {
+        let o = &self.tc_objs;
+        let xtval = self.otype(x.typ.unwrap());
+        let xt_untyped = xtval.is_untyped(o);
+        let xt_integer = xtval.is_integer(o);
+        let x_const = x.mode.constant_val().map(|x| x.to_int().into_owned());
+
+        // The lhs is of integer type or an untyped constant representable
+        // as an integer
+        let lhs_ok =
+            xt_integer || (xt_untyped && x_const.is_some() && x_const.as_ref().unwrap().is_int());
+        if !lhs_ok {
+            let xd = self.new_dis(x);
+            self.error(xd.pos(), format!("shifted operand {} must be integer", xd));
+        }
+
+        // spec: "The right operand in a shift expression must have unsigned
+        // integer type or be an untyped constant representable by a value of
+        // type uint."
+        let ytval = self.otype(y.typ.unwrap());
+        if ytval.is_unsigned(o) {
+            //ok
+        } else if ytval.is_untyped(o) {
+            self.convert_untyped(y, self.basic_type(BasicType::Uint), fctx);
+            if y.invalid() {
+                x.mode = OperandMode::Invalid;
+                return;
+            }
+        } else {
+            let yd = self.new_dis(y);
+            self.error(
+                yd.pos(),
+                format!("shift count {} must be unsigned integer", yd),
+            );
+            x.mode = OperandMode::Invalid;
+            return;
+        }
+
+        if let OperandMode::Constant(xv) = &mut x.mode {
+            if let OperandMode::Constant(yv) = &y.mode {
+                // rhs must be an integer value
+                let yval = yv.to_int();
+                if !yval.is_int() {
+                    let yd = self.new_dis(y);
+                    self.invalid_op(
+                        yd.pos(),
+                        &format!("shift count {} must be unsigned integer", yd),
+                    );
+                    x.mode = OperandMode::Invalid;
+                    return;
+                }
+                // rhs must be within reasonable bounds
+                let shift_bound = 1023 - 1 + 52; // so we can express smallestFloat64
+                let (s, ok) = yval.int_as_u64();
+                if !ok || s > shift_bound {
+                    let yd = self.new_dis(y);
+                    self.invalid_op(yd.pos(), &format!("invalid shift count {}", yd));
+                    x.mode = OperandMode::Invalid;
+                    return;
+                }
+                // The lhs is representable as an integer but may not be an integer
+                // (e.g., 2.0, an untyped float) - this can only happen for untyped
+                // non-integer numeric constants. Correct the type so that the shift
+                // result is of integer type.
+                if !xt_integer {
+                    x.typ = Some(self.basic_type(BasicType::UntypedInt));
+                }
+                // x is a constant so xval != nil and it must be of Int kind.
+                *xv = Value::shift(xv, op, s as usize);
+                // Typed constants must be representable in
+                // their type after each constant operation.
+                if typ::is_typed(&x.typ.unwrap(), self.tc_objs) {
+                    if e.is_some() {
+                        x.expr = e
+                    }
+                    self.representable(x, x.typ.unwrap());
+                }
+                return;
+            }
+
+            if xt_untyped {}
+            unimplemented!()
+        }
+        unimplemented!()
+    }
+
     /// expr typechecks expression e and initializes x with the expression value.
     /// The result must be a single value.
     /// If an error occurred, x.mode is set to invalid.

@@ -110,7 +110,7 @@ impl<'a> Checker<'a> {
             self.assignment(x, t, "constant declaration", fctx);
             if x.mode != OperandMode::Invalid {
                 self.lobj_mut(lhskey)
-                    .set_const_val(x.mode.constant_val().clone());
+                    .set_const_val(x.mode.constant_val().unwrap().clone());
             }
         } else {
             let dis = self.new_dis(x);

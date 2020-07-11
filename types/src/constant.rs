@@ -95,6 +95,13 @@ impl Value {
         }
     }
 
+    pub fn is_int(&self) -> bool {
+        match self {
+            Value::Int(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn representable(&self, base: &BasicDetail, rounded: Option<&mut Value>) -> bool {
         if let Value::Unknown = self {
             return true; // avoid follow-up errors
@@ -260,12 +267,27 @@ impl Value {
         unimplemented!()
     }
 
-    // UnaryOp returns the result of the unary expression op y.
-    // The operation must be defined for the operand.
-    // If prec > 0 it specifies the ^ (xor) result size in bits.
-    // If y is Unknown, the result is Unknown.
-    //
+    /// UnaryOp returns the result of the unary expression op y.
+    /// The operation must be defined for the operand.
+    /// If prec > 0 it specifies the ^ (xor) result size in bits.
+    /// If y is Unknown, the result is Unknown.
+    ///
     pub fn unary_op(op: &Token, y: &Value, prec: usize) -> Value {
+        unimplemented!()
+    }
+
+    /// compare returns the result of the comparison x op y.
+    /// The comparison must be defined for the operands.
+    /// If one of the operands is Unknown, the result is
+    /// false.
+    pub fn compare(x: &Value, op: &Token, y: &Value) -> bool {
+        unimplemented!()
+    }
+
+    // Shift returns the result of the shift expression x op s
+    // with op == token.SHL or token.SHR (<< or >>). x must be
+    // an Int or an Unknown. If x is Unknown, the result is x.
+    pub fn shift(x: &Value, op: &Token, s: usize) -> Value {
         unimplemented!()
     }
 }
