@@ -631,10 +631,164 @@ impl<'a> Checker<'a> {
                 return;
             }
 
-            if xt_untyped {}
-            unimplemented!()
+            if xt_untyped {
+                // spec: "If the left operand of a non-constant shift
+                // expression is an untyped constant, the type of the
+                // constant is what it would be if the shift expression
+                // were replaced by its left operand alone.".
+                //
+                // Delay operand checking until we know the final type
+                // by marking the lhs expression as lhs shift operand.
+                //
+                // Usually (in correct programs), the lhs expression
+                // is in the untyped map. However, it is possible to
+                // create incorrect programs where the same expression
+                // is evaluated twice (via a declaration cycle) such
+                // that the lhs expression type is determined in the
+                // first round and thus deleted from the map, and then
+                // not found in the second round (double insertion of
+                // the same expr node still just leads to one entry for
+                // that node, and it can only be deleted once).
+                // Be cautious and check for presence of entry.
+                // Example: var e, f = int(1<<""[f])
+                if let Some(info) = fctx.untyped.get_mut(&x.expr.as_ref().unwrap().id()) {
+                    info.is_lhs = true;
+                }
+                // keep x's type
+                x.mode = OperandMode::Value;
+                return;
+            }
         }
-        unimplemented!()
+
+        // constant rhs must be >= 0
+        if let OperandMode::Constant(v) = &y.mode {
+            if v.sign() < 0 {
+                let yd = self.new_dis(y);
+                self.invalid_op(
+                    yd.pos(),
+                    &format!("shift count {} must not be negative", yd),
+                );
+            }
+        }
+
+        if !typ::is_integer(&x.typ.unwrap(), self.tc_objs) {
+            let xd = self.new_dis(x);
+            self.invalid_op(xd.pos(), &format!("shifted operand {} must be integer", xd));
+            x.mode = OperandMode::Value;
+            return;
+        }
+        x.mode = OperandMode::Value;
+    }
+
+    fn binary(
+        &mut self,
+        x: &mut Operand,
+        e: &Rc<ast::BinaryExpr>,
+        op: &Token,
+        fctx: &mut FilesContext,
+    ) {
+        let mut y = Operand::new();
+        self.expr(x, &e.expr_a);
+        self.expr(&mut y, &e.expr_b);
+
+        if x.invalid() {
+            return;
+        }
+        if y.invalid() {
+            x.mode = OperandMode::Invalid;
+            x.expr = y.expr.clone();
+            return;
+        }
+
+        if Checker::is_shift(op) {
+            self.shift(x, &mut y, op, Some(Expr::Binary(e.clone())), fctx);
+            return;
+        }
+
+        self.convert_untyped(x, y.typ.unwrap(), fctx);
+        if x.invalid() {
+            return;
+        }
+
+        self.convert_untyped(&mut y, x.typ.unwrap(), fctx);
+        if y.invalid() {
+            x.mode = OperandMode::Invalid;
+            return;
+        }
+
+        if Checker::is_comparison(op) {
+            self.comparision(x, &y, op, fctx);
+            return;
+        }
+
+        if !typ::identical_option(&x.typ, &y.typ, self.tc_objs) {
+            // only report an error if we have valid types
+            // (otherwise we had an error reported elsewhere already)
+            let invalid = Some(self.invalid_type());
+            if x.typ == invalid && y.typ == invalid {
+                let xd = self.new_td_o(&x.typ);
+                let yd = self.new_td_o(&y.typ);
+                self.invalid_op(xd.pos(), &format!("mismatched types {} and {}", xd, yd));
+            }
+            x.mode = OperandMode::Invalid;
+            return;
+        }
+
+        if !self.op_token(x, op, true) {
+            x.mode = OperandMode::Invalid;
+            return;
+        }
+
+        let o = &self.tc_objs;
+        if *op == Token::QUO || *op == Token::REM {
+            // check for zero divisor
+            if x.mode.constant_val().is_some() || typ::is_integer(&x.typ.unwrap(), o) {
+                if let Some(v) = y.mode.constant_val() {
+                    if v.sign() == 0 {
+                        self.invalid_op(y.pos(self.ast_objs), "division by zero");
+                        x.mode = OperandMode::Invalid;
+                        return;
+                    }
+                }
+            }
+            // check for divisor underflow in complex division
+            if x.mode.constant_val().is_some() && typ::is_complex(&x.typ.unwrap(), o) {
+                if let Some(v) = y.mode.constant_val() {
+                    let (re, im) = (v.real(), v.imag());
+                    let re2 = Value::binary_op(&re, &Token::MUL, &re);
+                    let im2 = Value::binary_op(&im, &Token::MUL, &im);
+                    if re2.sign() == 0 && im2.sign() == 0 {
+                        self.invalid_op(y.pos(self.ast_objs), "division by zero");
+                        x.mode = OperandMode::Invalid;
+                        return;
+                    }
+                }
+            }
+        }
+
+        match (&mut x.mode, &y.mode) {
+            (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
+                let ty = *typ::underlying_type(x.typ.as_ref().unwrap(), o);
+                // force integer division of integer operands
+                // (not real QUO_ASSIGN, just borrowing it)
+                let op2 = if *op == Token::QUO && typ::is_integer(&ty, o) {
+                    &Token::QUO_ASSIGN
+                } else {
+                    op
+                };
+                *vx = Value::binary_op(vx, op2, vy);
+                // Typed constants must be representable in
+                // their type after each constant operation.
+                if typ::is_typed(&ty, o) {
+                    x.expr = Some(Expr::Binary(e.clone())); // for better error message
+                    self.representable(x, ty)
+                }
+            }
+            _ => {
+                x.mode = OperandMode::Value;
+                // x.typ is unchanged
+            }
+        }
     }
 
     /// expr typechecks expression e and initializes x with the expression value.
