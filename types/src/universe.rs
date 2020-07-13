@@ -61,6 +61,7 @@ pub struct Universe {
     byte: TypeKey,
     rune: TypeKey,
     slice_of_bytes: TypeKey, // for builtin append
+    no_value_tuple: TypeKey, // for OperandMode::NoValue
     // indir is a sentinel type name that is pushed onto the object path
     // to indicate an "indirection" in the dependency from one type name
     // to the next. For instance, for "type p *p" the object path contains
@@ -95,6 +96,7 @@ impl Universe {
         // iota byte rune
         let (iota, byte, rune) = Universe::iota_byte_rune(&uskey, objs);
         let slice_of_bytes = objs.new_t_slice(byte);
+        let no_value_tuple = objs.new_t_tuple(vec![]);
         let indir = objs.new_type_name(0, None, "*".to_string(), None);
         Universe {
             scope: uskey,
@@ -103,6 +105,7 @@ impl Universe {
             byte: byte,
             rune: rune,
             slice_of_bytes: slice_of_bytes,
+            no_value_tuple: no_value_tuple,
             indir: indir,
             types: types,
             builtins: builtins,
@@ -139,6 +142,10 @@ impl Universe {
 
     pub fn slice_of_bytes(&self) -> &TypeKey {
         &self.slice_of_bytes
+    }
+
+    pub fn no_value_tuple(&self) -> &TypeKey {
+        &self.no_value_tuple
     }
 
     pub fn indir(&self) -> &ObjKey {

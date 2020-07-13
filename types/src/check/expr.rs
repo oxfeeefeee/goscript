@@ -1,12 +1,16 @@
 #![allow(dead_code)]
 use super::super::constant::Value;
+use super::super::lookup;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ::{self, BasicType, Type};
-use super::check::{Checker, FilesContext};
+use super::super::universe::ExprKind;
+use super::check::{Checker, ExprInfo, FilesContext};
+use super::stmt::BodyContainer;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{self};
 use goscript_parser::{Expr, Token};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 ///Basic algorithm:
@@ -791,17 +795,416 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// expr typechecks expression e and initializes x with the expression value.
-    /// The result must be a single value.
-    /// If an error occurred, x.mode is set to invalid.
-    pub fn expr(&mut self, x: &mut Operand, e: &Expr) {
-        unimplemented!()
+    /// index checks an index expression for validity.
+    /// max is the upper bound for index.
+    /// returns the value of the index when it's a constant, returns -1 if it's not
+    pub fn index(
+        &mut self,
+        index: &Expr,
+        max: Option<i64>,
+        fctx: &mut FilesContext,
+    ) -> Option<i64> {
+        let x = &mut Operand::new();
+        self.expr(x, index);
+        if x.invalid() {
+            return None;
+        }
+
+        // an untyped constant must be representable as Int
+        self.convert_untyped(x, self.basic_type(BasicType::Int), fctx);
+        if x.invalid() {
+            return None;
+        }
+
+        // the index must be of integer type
+        if !typ::is_integer(&x.typ.unwrap(), self.tc_objs) {
+            let xd = self.new_dis(x);
+            self.invalid_arg(xd.pos(), &format!("index {} must be integer", xd));
+            return None;
+        }
+
+        // a constant index i must be in bounds
+        if let OperandMode::Constant(v) = &x.mode {
+            if v.sign() < 0 {
+                let xd = self.new_dis(x);
+                self.invalid_arg(xd.pos(), &format!("index {} must not be negative", xd));
+                return None;
+            }
+            let (i, valid) = v.to_int().int_as_i64();
+            if !valid || max.map_or(false, |x| i >= x) {
+                let xd = self.new_dis(x);
+                self.invalid_arg(xd.pos(), &format!("index {} out of bounds", xd));
+                return None;
+            }
+            return Some(i);
+        }
+
+        Some(-1)
+    }
+
+    /// indexed_elems checks the elements of an array or slice composite literal
+    /// against the literal's element type, and the element indices against
+    /// the literal length if known . It returns the length of the literal
+    /// (maximum index value + 1).
+    fn indexed_elems(
+        &mut self,
+        elems: &Vec<Expr>,
+        t: TypeKey,
+        length: Option<i64>,
+        fctx: &mut FilesContext,
+    ) -> i64 {
+        let mut visited: HashSet<i64> = HashSet::new();
+        let (_, max) = elems.iter().fold((0, 0), |(index, max), e| {
+            let (valid_index, eval) = if let Expr::KeyValue(kv) = e {
+                let i = self.index(&kv.key, length, fctx);
+                let kv_index = if i.is_some() && i.unwrap() >= 0 {
+                    Some(i.unwrap())
+                } else {
+                    let pos = e.pos(self.ast_objs);
+                    let kd = self.new_dis(&kv.key);
+                    self.error(pos, format!("index {} must be integer constant", kd));
+                    None
+                };
+                (kv_index, &kv.val)
+            } else if length.is_some() && index >= length.unwrap() {
+                self.error(
+                    e.pos(self.ast_objs),
+                    format!("index {} is out of bounds (>= {})", index, length.unwrap()),
+                );
+                (None, e)
+            } else {
+                (Some(index), e)
+            };
+
+            let (mut new_index, mut new_max) = (index, max);
+            if let Some(i) = valid_index {
+                if visited.contains(&i) {
+                    self.error(
+                        e.pos(self.ast_objs),
+                        format!("duplicate index {} in array or slice literal", i),
+                    );
+                }
+                visited.insert(i);
+
+                new_index = i + 1;
+                if new_index > new_max {
+                    new_max = new_index;
+                }
+            }
+
+            // check element against composite literal element type
+            let x = &mut Operand::new();
+            self.expr_with_hint(x, eval, t);
+            self.assignment(x, Some(t), "array or slice literal", fctx);
+
+            (new_index, new_max)
+        });
+        max
     }
 
     /// raw_expr typechecks expression e and initializes x with the expression
     /// value or type. If an error occurred, x.mode is set to invalid.
     /// If hint is_some(), it is the type of a composite literal element.
-    pub fn raw_expr(&mut self, x: &mut Operand, e: &Expr, hint: Option<TypeKey>) {
+    pub fn raw_expr(
+        &mut self,
+        x: &mut Operand,
+        e: &Expr,
+        hint: Option<TypeKey>,
+        fctx: &mut FilesContext,
+    ) -> ExprKind {
+        if self.config().trace_checker {
+            let ed = self.new_dis(e);
+            self.trace_begin(ed.pos(), &format!("{}", ed));
+        }
+
+        let kind = self.raw_internal(x, e, hint, fctx);
+
+        let ty = match &x.mode {
+            OperandMode::Invalid => self.invalid_type(),
+            OperandMode::NoValue => *self.tc_objs.universe().no_value_tuple(),
+            _ => x.typ.unwrap(),
+        };
+
+        if typ::is_untyped(&ty, self.tc_objs) {
+            // delay type and value recording until we know the type
+            // or until the end of type checking
+            fctx.remember_untyped(
+                x.expr.as_ref().unwrap(),
+                ExprInfo {
+                    is_lhs: false,
+                    mode: x.mode.clone(),
+                    typ: Some(ty),
+                },
+            )
+        } else {
+            self.result.record_type_and_value(e, x.mode.clone(), ty);
+        }
+
+        if self.config().trace_checker {
+            let pos = e.pos(self.ast_objs);
+            self.trace_end(pos, &format!("=> {}", self.new_dis(x)));
+        }
+
+        kind
+    }
+
+    /// raw_internal contains the core of type checking of expressions.
+    /// Must only be called by raw_expr.
+    fn raw_internal(
+        &mut self,
+        x: &mut Operand,
+        e: &Expr,
+        hint: Option<TypeKey>,
+        fctx: &mut FilesContext,
+    ) -> ExprKind {
+        // make sure x has a valid state in case of bailout
+        x.mode = OperandMode::Invalid;
+        x.typ = Some(self.invalid_type());
+        let on_err = |x: &mut Operand| {
+            x.mode = OperandMode::Invalid;
+            x.expr = Some(e.clone());
+            ExprKind::Statement // avoid follow-up errors
+        };
+
+        let epos = e.pos(self.ast_objs);
+        match e {
+            Expr::Bad(_) => return on_err(x),
+            Expr::Ident(i) => self.ident(x, *i, None, false, fctx),
+            Expr::Ellipsis(_) => {
+                // ellipses are handled explicitly where they are legal
+                // (array composite literals and parameter lists)
+                self.error_str(epos, "invalid use of '...'");
+                return on_err(x);
+            }
+            Expr::BasicLit(bl) => {
+                x.set_const(&bl.token, self.tc_objs.universe());
+                if x.invalid() {
+                    let lit = bl.token.get_literal();
+                    self.invalid_ast(epos, &format!("invalid literal {}", lit));
+                    return on_err(x);
+                }
+            }
+            Expr::FuncLit(fl) => {
+                let t = self.type_expr(&Expr::Func(fl.typ), fctx);
+                if let Some(_) = self.otype(t).try_as_signature() {
+                    let decl = self.octx.decl.unwrap();
+                    let body = BodyContainer::FuncLitExpr(e.clone());
+                    let iota = self.octx.iota.clone();
+                    let f = move |checker: &mut Checker, _: &mut FilesContext| {
+                        checker.func_body(decl, "<function literal>", t, body, iota);
+                    };
+                    fctx.later(Box::new(f));
+                    x.mode = OperandMode::Value;
+                    x.typ = Some(t);
+                } else {
+                    let ed = self.new_dis(e);
+                    self.invalid_ast(epos, &format!("invalid function literal {}", ed));
+                    return on_err(x);
+                }
+            }
+            Expr::CompositeLit(cl) => {
+                let (ty, base) = if let Some(etype) = &cl.typ {
+                    // composite literal type present - use it
+                    // [...]T array types may only appear with composite literals.
+                    // Check for them here so we don't have to handle ... in general.
+                    let mut elem = None;
+                    if let Expr::Array(arr) = etype {
+                        if let Some(len_expr) = &arr.len {
+                            if let Expr::Ellipsis(ell) = len_expr {
+                                if ell.elt.is_none() {
+                                    elem = Some(&arr.elt);
+                                }
+                            }
+                        }
+                    }
+                    let t = if let Some(el) = elem {
+                        let elem_ty = self.type_expr(el, fctx);
+                        self.tc_objs.new_t_array(elem_ty, None)
+                    } else {
+                        self.type_expr(&etype, fctx)
+                    };
+                    (t, t)
+                } else if let Some(h) = hint {
+                    // no composite literal type present - use hint (element type of enclosing type)
+                    let (base, _) =
+                        lookup::try_deref(typ::underlying_type(&h, self.tc_objs), self.tc_objs);
+                    (h, *base)
+                } else {
+                    self.error_str(epos, "missing type in composite literal");
+                    return on_err(x);
+                };
+
+                let utype_key = *typ::underlying_type(&base, self.tc_objs);
+                let utype = self.otype(utype_key);
+                match utype {
+                    Type::Struct(detail) => {
+                        if cl.elts.len() > 0 {
+                            let fields = detail.fields().clone();
+                            if let Expr::KeyValue(_) = &cl.elts[0] {
+                                let mut visited: HashSet<usize> = HashSet::new();
+                                for e in cl.elts.iter() {
+                                    let kv = if let Expr::KeyValue(kv) = e {
+                                        kv
+                                    } else {
+                                        let msg = "mixture of field:value and value elements in struct literal";
+                                        self.error_str(e.pos(self.ast_objs), msg);
+                                        continue;
+                                    };
+                                    // do all possible checks early (before exiting due to errors)
+                                    // so we don't drop information on the floor
+                                    self.expr(x, &kv.val);
+                                    let keykey = if let Expr::Ident(ikey) = kv.key {
+                                        ikey
+                                    } else {
+                                        let ed = self.new_dis(&kv.key);
+                                        self.error(
+                                            e.pos(self.ast_objs),
+                                            format!("invalid field name {} in struct literal", ed),
+                                        );
+                                        continue;
+                                    };
+                                    let key = &self.ast_objs.idents[keykey];
+                                    let i = if let Some(i) = lookup::field_index(
+                                        &fields,
+                                        &Some(self.pkg),
+                                        &key.name,
+                                        self.tc_objs,
+                                    ) {
+                                        i
+                                    } else {
+                                        self.error(
+                                            e.pos(self.ast_objs),
+                                            format!(
+                                                "unknown field {} in struct literal",
+                                                &key.name
+                                            ),
+                                        );
+                                        continue;
+                                    };
+                                    let fld = fields[i];
+                                    self.result.record_use(keykey, fld);
+                                    let etype = self.lobj(fld).typ().unwrap();
+                                    self.assignment(x, Some(etype), "struct literal", fctx);
+                                    if visited.contains(&i) {
+                                        self.error(
+                                            e.pos(self.ast_objs),
+                                            format!(
+                                                "duplicate field name {} in struct literal",
+                                                &self.ast_objs.idents[keykey].name
+                                            ),
+                                        );
+                                        continue;
+                                    } else {
+                                        visited.insert(i);
+                                    }
+                                }
+                            } else {
+                                for (i, e) in cl.elts.iter().enumerate() {
+                                    if let Expr::KeyValue(_) = e {
+                                        let msg = "mixture of field:value and value elements in struct literal";
+                                        self.error_str(e.pos(self.ast_objs), msg);
+                                        continue;
+                                    }
+                                    self.expr(x, e);
+                                    if i > fields.len() {
+                                        let pos = x.pos(self.ast_objs);
+                                        self.error_str(pos, "too many values in struct literal");
+                                        break; // cannot continue
+                                    }
+                                    let fld = self.lobj(fields[i]);
+                                    if !fld.exported() && *fld.pkg() != Some(self.pkg) {
+                                        let pos = x.pos(self.ast_objs);
+                                        let (n, td) = (fld.name(), self.new_dis(&ty));
+                                        let msg = format!(
+                                            "implicit assignment to unexported field {} in {} literal", n, td);
+                                        self.error(pos, msg);
+                                        continue;
+                                    }
+                                    let field_type = *fld.typ();
+                                    self.assignment(x, field_type, "struct literal", fctx);
+                                }
+                                if cl.elts.len() < fields.len() {
+                                    self.error_str(cl.r_brace, "too few values in struct literal");
+                                    // ok to continue
+                                }
+                            }
+                        }
+                    }
+                    Type::Array(detail) => {
+                        // todo: the go code checks if detail.elem is nil, do we need that?
+                        // see the original go code for details
+                        let arr_len = *detail.len();
+                        let n = self.indexed_elems(
+                            &cl.elts,
+                            *detail.elem(),
+                            detail.len().map(|x| x as i64),
+                            fctx,
+                        );
+                        // If we have an array of unknown length (usually [...]T arrays, but also
+                        // arrays [n]T where n is invalid) set the length now that we know it and
+                        // record the type for the array (usually done by check.typ which is not
+                        // called for [...]T). We handle [...]T arrays and arrays with invalid
+                        // length the same here because it makes sense to "guess" the length for
+                        // the latter if we have a composite literal; e.g. for [n]int{1, 2, 3}
+                        // where n is invalid for some reason, it seems fair to assume it should
+                        // be 3
+                        if arr_len.is_none() {
+                            self.otype_mut(utype_key)
+                                .try_as_array_mut()
+                                .unwrap()
+                                .set_len(n as u64);
+                            // cl.Type is missing if we have a composite literal element
+                            // that is itself a composite literal with omitted type. In
+                            // that case there is nothing to record (there is no type in
+                            // the source at that point).
+                            if let Some(te) = &cl.typ {
+                                self.result.record_type_and_value(
+                                    te,
+                                    OperandMode::TypeExpr,
+                                    utype_key,
+                                );
+                            }
+                        }
+                    }
+                    Type::Slice(detail) => {
+                        // todo: the go code checks if detail.elem is nil, do we need that?
+                        // see the original go code for details
+                        let elem_t = *detail.elem();
+                        self.indexed_elems(&cl.elts, elem_t, None, fctx);
+                    }
+                    Type::Map(detail) => {}
+                    _ => {}
+                }
+
+                x.mode = OperandMode::Value;
+                x.typ = Some(ty);
+            }
+            Expr::Paren(_) => {}
+            Expr::Selector(_) => {}
+            Expr::Index(_) => {}
+            Expr::Slice(_) => {}
+            Expr::TypeAssert(_) => {}
+            Expr::Call(_) => {}
+            Expr::Star(_) => {}
+            Expr::Unary(_) => {}
+            Expr::Binary(_) => {}
+            Expr::KeyValue(_) => {}
+            Expr::Array(_)
+            | Expr::Struct(_)
+            | Expr::Func(_)
+            | Expr::Interface(_)
+            | Expr::Map(_)
+            | Expr::Chan(_) => {}
+        }
+
+        x.expr = Some(e.clone());
+        ExprKind::Expression
+    }
+
+    /// expr typechecks expression e and initializes x with the expression value.
+    /// The result must be a single value.
+    /// If an error occurred, x.mode is set to invalid.
+    pub fn expr(&mut self, x: &mut Operand, e: &Expr) {
         unimplemented!()
     }
 
@@ -820,10 +1223,10 @@ impl<'a> Checker<'a> {
         unimplemented!()
     }
 
-    /// index checks an index expression for validity.
-    /// If max >= 0, it is the upper bound for index.
-    /// If the result >= 0, then it is the constant value of index.
-    pub fn index(&mut self, index: &Expr, max: Option<isize>) -> Option<isize> {
+    /// expr_with_hint typechecks expression e and initializes x with the expression value;
+    /// hint is the type of a composite literal element.
+    /// If an error occurred, x.mode is set to invalid.
+    pub fn expr_with_hint(&mut self, x: &mut Operand, e: &Expr, hint: TypeKey) {
         unimplemented!()
     }
 }

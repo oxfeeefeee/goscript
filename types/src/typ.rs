@@ -65,6 +65,13 @@ impl Type {
         }
     }
 
+    pub fn try_as_array_mut(&mut self) -> Option<&mut ArrayDetail> {
+        match self {
+            Type::Array(a) => Some(a),
+            _ => None,
+        }
+    }
+
     pub fn try_as_slice(&self) -> Option<&SliceDetail> {
         match &self {
             Type::Slice(s) => Some(s),
@@ -457,6 +464,10 @@ impl ArrayDetail {
 
     pub fn len(&self) -> &Option<u64> {
         &self.len
+    }
+
+    pub fn set_len(&mut self, len: u64) {
+        self.len = Some(len);
     }
 
     pub fn elem(&self) -> &TypeKey {

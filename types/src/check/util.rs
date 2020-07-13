@@ -6,7 +6,7 @@ use super::super::package::Package;
 use super::super::scope::Scope;
 use super::super::typ::{self, BasicType, Type};
 use super::super::universe::{Builtin, BuiltinInfo};
-use super::check::Checker;
+use super::check::{Checker, FilesContext};
 use super::display::{Display, Displayer};
 use super::resolver::DeclInfo;
 
@@ -250,10 +250,10 @@ impl<'a> Checker<'a> {
         UnpackResult::Single(x)
     }
 
-    pub fn use_exprs(&mut self, exprs: &Vec<Expr>) {
+    pub fn use_exprs(&mut self, exprs: &Vec<Expr>, fctx: &mut FilesContext) {
         let mut x = Operand::new();
         for e in exprs.iter() {
-            self.raw_expr(&mut x, &e, None);
+            self.raw_expr(&mut x, &e, None, fctx);
         }
     }
 

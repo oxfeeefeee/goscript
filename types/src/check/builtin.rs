@@ -32,7 +32,7 @@ impl<'a> Checker<'a> {
                 call.ellipsis.unwrap(),
                 &format!("invalid use of ... with built-in {}", binfo.name),
             );
-            self.use_exprs(&call.args);
+            self.use_exprs(&call.args, fctx);
             return false;
         }
 
@@ -550,10 +550,10 @@ impl<'a> Checker<'a> {
                 }
 
                 // constant integer arguments, if any
-                let sizes: Vec<isize> = call.args[1..]
+                let sizes: Vec<i64> = call.args[1..]
                     .iter()
                     .filter_map(|x| {
-                        if let Some(i) = self.index(x, None) {
+                        if let Some(i) = self.index(x, None, fctx) {
                             if i >= 0 {
                                 return Some(i);
                             }
@@ -706,7 +706,7 @@ impl<'a> Checker<'a> {
                 } else {
                     let ed = self.new_dis(arg0);
                     self.invalid_arg(ed.pos(), &format!("{} is not a selector expression", ed));
-                    self.use_exprs(&vec![arg0.clone()]);
+                    self.use_exprs(&vec![arg0.clone()], fctx);
                     return false;
                 }
                 // result is constant - no need to record signature
@@ -778,7 +778,7 @@ impl<'a> Checker<'a> {
                 let mut x_temp = Operand::new(); // only used for dumping
                 let mut cur_x = x;
                 for arg in call.args.iter() {
-                    self.raw_expr(cur_x, arg, None); // permit trace for types, e.g.: new(trace(T))
+                    self.raw_expr(cur_x, arg, None, fctx); // permit trace for types, e.g.: new(trace(T))
                     let xd = self.new_dis(cur_x);
                     self.dump(Some(xd.pos()), &format!("{}", xd));
                     cur_x = &mut x_temp;

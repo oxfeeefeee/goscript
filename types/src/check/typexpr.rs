@@ -397,9 +397,9 @@ impl<'a> Checker<'a> {
     /// type_or_nil type-checks the type expression (or nil value) e
     /// and returns the typ of e, or None.
     /// If e is neither a type nor nil, typOrNil returns Typ[Invalid].
-    pub fn type_or_nil(&mut self, e: &Expr) -> Option<TypeKey> {
+    pub fn type_or_nil(&mut self, e: &Expr, fctx: &mut FilesContext) -> Option<TypeKey> {
         let mut x = Operand::new();
-        self.raw_expr(&mut x, e, None);
+        self.raw_expr(&mut x, e, None, fctx);
         let invalid_type = self.invalid_type();
         match x.mode {
             OperandMode::Invalid => Some(invalid_type), // ignore - error reported before

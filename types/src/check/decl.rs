@@ -6,6 +6,7 @@ use super::super::operand::Operand;
 use super::super::scope::Scope;
 use super::super::typ::{self};
 use super::check::{Checker, FilesContext, ObjContext};
+use super::stmt::BodyContainer;
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
 use goscript_parser::position::Pos;
@@ -462,8 +463,9 @@ impl<'a> Checker<'a> {
 
         if let Some(_) = &fdecl.body {
             let name = lobj.name().clone();
+            let body = BodyContainer::FuncDecl(fdecl_key);
             let f = move |checker: &mut Checker, _: &mut FilesContext| {
-                checker.func_body(dkey, &name, sig_key, fdecl_key, None);
+                checker.func_body(dkey, &name, sig_key, body, None);
             };
             fctx.later(Box::new(f));
         }

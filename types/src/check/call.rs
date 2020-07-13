@@ -19,7 +19,7 @@ impl<'a> Checker<'a> {
         let expr = Some(Expr::Call(e.clone()));
         match x.mode {
             OperandMode::Invalid => {
-                self.use_exprs(&e.args);
+                self.use_exprs(&e.args, fctx);
                 x.expr = expr;
                 ExprKind::Statement
             }
@@ -39,7 +39,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        self.use_exprs(&e.args);
+                        self.use_exprs(&e.args, fctx);
                         self.error(
                             e.args[e.args.len() - 1].pos(self.ast_objs),
                             format!("too many arguments in conversion to {}", self.new_dis(&t)),
