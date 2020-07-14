@@ -9,6 +9,7 @@ slotmap = "0.4"
 num-bigint = "0.2.6"
 num-rational = "0.2.4"
 num-traits = "0.2"
+ordered-float = "2.0"
 
 [dependencies.goscript-parser]
 path = "../parser"

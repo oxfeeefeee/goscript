@@ -176,15 +176,15 @@ impl<'a> Checker<'a> {
             if report {
                 let obj_val = self.lobj(okey);
                 self.error(
-                    *obj_val.pos(),
+                    obj_val.pos(),
                     format!("illegal cycle in declaration of {}", obj_val.name()),
                 );
                 // print cycle
                 for o in path[i..].iter() {
                     let oval = self.lobj(*o);
-                    self.error(*oval.pos(), format!("\t{} refers to", oval.name()));
+                    self.error(oval.pos(), format!("\t{} refers to", oval.name()));
                 }
-                self.error(*obj_val.pos(), format!("\t{}", obj_val.name()));
+                self.error(obj_val.pos(), format!("\t{}", obj_val.name()));
             }
             return true;
         }
@@ -237,7 +237,7 @@ impl<'a> Checker<'a> {
         }
 
         if let Some(t) = self.otype(x.typ.unwrap()).try_as_tuple() {
-            let types = t.vars().iter().map(|x| *self.lobj(*x).typ()).collect();
+            let types = t.vars().iter().map(|x| self.lobj(*x).typ()).collect();
             return UnpackResult::Tuple(x.expr.clone(), types);
         } else if x.mode == OperandMode::MapIndex || x.mode == OperandMode::CommaOk {
             if allow_comma_ok {

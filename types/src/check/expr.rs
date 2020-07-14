@@ -10,7 +10,7 @@ use super::stmt::BodyContainer;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{self};
 use goscript_parser::{Expr, Token};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 ///Basic algorithm:
@@ -55,7 +55,7 @@ use std::rc::Rc;
 
 impl<'a> Checker<'a> {
     fn op_token(&self, x: &mut Operand, token: &Token, binary: bool) -> bool {
-        let pred = |t: &Token, ty: &TypeKey| -> Option<bool> {
+        let pred = |t: &Token, ty: TypeKey| -> Option<bool> {
             if binary {
                 match t {
                     Token::ADD => {
@@ -84,7 +84,7 @@ impl<'a> Checker<'a> {
             }
         };
 
-        if let Some(ok) = pred(token, x.typ.as_ref().unwrap()) {
+        if let Some(ok) = pred(token, x.typ.unwrap()) {
             if !ok {
                 let xd = self.new_dis(x);
                 self.invalid_op(
@@ -121,7 +121,7 @@ impl<'a> Checker<'a> {
                     .underlying_val(self.tc_objs)
                     .try_as_chan()
                 {
-                    if *chan.dir() == typ::ChanDir::SendOnly {
+                    if chan.dir() == typ::ChanDir::SendOnly {
                         let xd = self.new_dis(x);
                         self.invalid_op(
                             xd.pos(),
@@ -130,7 +130,7 @@ impl<'a> Checker<'a> {
                         return;
                     }
                     x.mode = OperandMode::CommaOk;
-                    x.typ = Some(*chan.elem());
+                    x.typ = Some(chan.elem());
                     self.octx.has_call_or_recv = true;
                     return;
                 } else {
@@ -144,7 +144,7 @@ impl<'a> Checker<'a> {
                     return;
                 }
                 if let OperandMode::Constant(v) = &mut x.mode {
-                    let ty = *typ::underlying_type(&x.typ.unwrap(), self.tc_objs);
+                    let ty = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
                     let tval = self.otype(ty);
                     let prec = if tval.is_unsigned(self.tc_objs) {
                         tval.try_as_basic().unwrap().size_of()
@@ -311,9 +311,9 @@ impl<'a> Checker<'a> {
         // If the new type is not final and still untyped, just
         // update the recorded type.
         let o = &self.tc_objs;
-        if !final_ && typ::is_typed(&t, o) {
+        if !final_ && typ::is_typed(t, o) {
             let old = fctx.untyped.get_mut(&e.id()).unwrap();
-            old.typ = Some(*typ::underlying_type(&t, o));
+            old.typ = Some(typ::underlying_type(t, o));
             return;
         } else {
             // Otherwise we have the final (typed or untyped type).
@@ -326,7 +326,7 @@ impl<'a> Checker<'a> {
             // If x is the lhs of a shift, its final type must be integer.
             // We already know from the shift check that it is representable
             // as an integer if it is a constant.
-            if !typ::is_integer(&t, o) {
+            if !typ::is_integer(t, o) {
                 let ed = self.new_dis(e);
                 let td = self.new_dis(&t);
                 self.invalid_op(
@@ -367,7 +367,7 @@ impl<'a> Checker<'a> {
     /// convert_untyped attempts to set the type of an untyped value to the target type.
     pub fn convert_untyped(&mut self, x: &mut Operand, target: TypeKey, fctx: &mut FilesContext) {
         let o = &self.tc_objs;
-        if x.invalid() || typ::is_typed(&x.typ.unwrap(), o) || target == self.invalid_type() {
+        if x.invalid() || typ::is_typed(x.typ.unwrap(), o) || target == self.invalid_type() {
             return;
         }
 
@@ -378,7 +378,7 @@ impl<'a> Checker<'a> {
             x.mode = OperandMode::Invalid;
         };
 
-        if typ::is_untyped(&target, o) {
+        if typ::is_untyped(target, o) {
             // both x and target are untyped
             let order = |bt: BasicType| -> usize {
                 match bt {
@@ -406,7 +406,7 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        let t = *typ::underlying_type(&target, o);
+        let t = typ::underlying_type(target, o);
         let xtype = x.typ.unwrap();
         let tval = self.otype(t);
         let final_target = match tval {
@@ -450,7 +450,7 @@ impl<'a> Checker<'a> {
                     Some(self.basic_type(BasicType::UntypedNil))
                 } else {
                     if detail.is_empty() {
-                        Some(*typ::untyped_default_type(&xtype, o))
+                        Some(typ::untyped_default_type(xtype, o))
                     } else {
                         // cannot assign untyped values to non-empty interfaces
                         None
@@ -531,13 +531,13 @@ impl<'a> Checker<'a> {
                 // is the respective default type.
                 self.update_expr_type(
                     x.expr.as_ref().unwrap(),
-                    *typ::untyped_default_type(&xtype, self.tc_objs),
+                    typ::untyped_default_type(xtype, self.tc_objs),
                     true,
                     fctx,
                 );
                 self.update_expr_type(
                     y.expr.as_ref().unwrap(),
-                    *typ::untyped_default_type(&ytype, self.tc_objs),
+                    typ::untyped_default_type(ytype, self.tc_objs),
                     true,
                     fctx,
                 );
@@ -626,7 +626,7 @@ impl<'a> Checker<'a> {
                 *xv = Value::shift(xv, op, s as usize);
                 // Typed constants must be representable in
                 // their type after each constant operation.
-                if typ::is_typed(&x.typ.unwrap(), self.tc_objs) {
+                if typ::is_typed(x.typ.unwrap(), self.tc_objs) {
                     if e.is_some() {
                         x.expr = e
                     }
@@ -675,7 +675,7 @@ impl<'a> Checker<'a> {
             }
         }
 
-        if !typ::is_integer(&x.typ.unwrap(), self.tc_objs) {
+        if !typ::is_integer(x.typ.unwrap(), self.tc_objs) {
             let xd = self.new_dis(x);
             self.invalid_op(xd.pos(), &format!("shifted operand {} must be integer", xd));
             x.mode = OperandMode::Value;
@@ -725,7 +725,7 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        if !typ::identical_option(&x.typ, &y.typ, self.tc_objs) {
+        if !typ::identical_option(x.typ, y.typ, self.tc_objs) {
             // only report an error if we have valid types
             // (otherwise we had an error reported elsewhere already)
             let invalid = Some(self.invalid_type());
@@ -746,7 +746,7 @@ impl<'a> Checker<'a> {
         let o = &self.tc_objs;
         if *op == Token::QUO || *op == Token::REM {
             // check for zero divisor
-            if x.mode.constant_val().is_some() || typ::is_integer(&x.typ.unwrap(), o) {
+            if x.mode.constant_val().is_some() || typ::is_integer(x.typ.unwrap(), o) {
                 if let Some(v) = y.mode.constant_val() {
                     if v.sign() == 0 {
                         self.invalid_op(y.pos(self.ast_objs), "division by zero");
@@ -756,7 +756,7 @@ impl<'a> Checker<'a> {
                 }
             }
             // check for divisor underflow in complex division
-            if x.mode.constant_val().is_some() && typ::is_complex(&x.typ.unwrap(), o) {
+            if x.mode.constant_val().is_some() && typ::is_complex(x.typ.unwrap(), o) {
                 if let Some(v) = y.mode.constant_val() {
                     let (re, im) = (v.real(), v.imag());
                     let re2 = Value::binary_op(&re, &Token::MUL, &re);
@@ -772,10 +772,10 @@ impl<'a> Checker<'a> {
 
         match (&mut x.mode, &y.mode) {
             (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
-                let ty = *typ::underlying_type(x.typ.as_ref().unwrap(), o);
+                let ty = typ::underlying_type(x.typ.unwrap(), o);
                 // force integer division of integer operands
                 // (not real QUO_ASSIGN, just borrowing it)
-                let op2 = if *op == Token::QUO && typ::is_integer(&ty, o) {
+                let op2 = if *op == Token::QUO && typ::is_integer(ty, o) {
                     &Token::QUO_ASSIGN
                 } else {
                     op
@@ -783,7 +783,7 @@ impl<'a> Checker<'a> {
                 *vx = Value::binary_op(vx, op2, vy);
                 // Typed constants must be representable in
                 // their type after each constant operation.
-                if typ::is_typed(&ty, o) {
+                if typ::is_typed(ty, o) {
                     x.expr = Some(Expr::Binary(e.clone())); // for better error message
                     self.representable(x, ty)
                 }
@@ -817,7 +817,7 @@ impl<'a> Checker<'a> {
         }
 
         // the index must be of integer type
-        if !typ::is_integer(&x.typ.unwrap(), self.tc_objs) {
+        if !typ::is_integer(x.typ.unwrap(), self.tc_objs) {
             let xd = self.new_dis(x);
             self.invalid_arg(xd.pos(), &format!("index {} must be integer", xd));
             return None;
@@ -925,7 +925,7 @@ impl<'a> Checker<'a> {
             _ => x.typ.unwrap(),
         };
 
-        if typ::is_untyped(&ty, self.tc_objs) {
+        if typ::is_untyped(ty, self.tc_objs) {
             // delay type and value recording until we know the type
             // or until the end of type checking
             fctx.remember_untyped(
@@ -1027,15 +1027,15 @@ impl<'a> Checker<'a> {
                 } else if let Some(h) = hint {
                     // no composite literal type present - use hint (element type of enclosing type)
                     let (base, _) =
-                        lookup::try_deref(typ::underlying_type(&h, self.tc_objs), self.tc_objs);
-                    (h, *base)
+                        lookup::try_deref(typ::underlying_type(h, self.tc_objs), self.tc_objs);
+                    (h, base)
                 } else {
                     self.error_str(epos, "missing type in composite literal");
                     return on_err(x);
                 };
 
-                let utype_key = *typ::underlying_type(&base, self.tc_objs);
-                let utype = self.otype(utype_key);
+                let utype_key = typ::underlying_type(base, self.tc_objs);
+                let utype = &self.tc_objs.types[utype_key];
                 match utype {
                     Type::Struct(detail) => {
                         if cl.elts.len() > 0 {
@@ -1066,7 +1066,7 @@ impl<'a> Checker<'a> {
                                     let key = &self.ast_objs.idents[keykey];
                                     let i = if let Some(i) = lookup::field_index(
                                         &fields,
-                                        &Some(self.pkg),
+                                        Some(self.pkg),
                                         &key.name,
                                         self.tc_objs,
                                     ) {
@@ -1112,7 +1112,7 @@ impl<'a> Checker<'a> {
                                         break; // cannot continue
                                     }
                                     let fld = self.lobj(fields[i]);
-                                    if !fld.exported() && *fld.pkg() != Some(self.pkg) {
+                                    if !fld.exported() && fld.pkg() != Some(self.pkg) {
                                         let pos = x.pos(self.ast_objs);
                                         let (n, td) = (fld.name(), self.new_dis(&ty));
                                         let msg = format!(
@@ -1120,7 +1120,7 @@ impl<'a> Checker<'a> {
                                         self.error(pos, msg);
                                         continue;
                                     }
-                                    let field_type = *fld.typ();
+                                    let field_type = fld.typ();
                                     self.assignment(x, field_type, "struct literal", fctx);
                                 }
                                 if cl.elts.len() < fields.len() {
@@ -1133,13 +1133,10 @@ impl<'a> Checker<'a> {
                     Type::Array(detail) => {
                         // todo: the go code checks if detail.elem is nil, do we need that?
                         // see the original go code for details
-                        let arr_len = *detail.len();
-                        let n = self.indexed_elems(
-                            &cl.elts,
-                            *detail.elem(),
-                            detail.len().map(|x| x as i64),
-                            fctx,
-                        );
+                        let arr_len = detail.len();
+                        let elem = detail.elem();
+                        let len = detail.len().map(|x| x as i64);
+                        let n = self.indexed_elems(&cl.elts, elem, len, fctx);
                         // If we have an array of unknown length (usually [...]T arrays, but also
                         // arrays [n]T where n is invalid) set the length now that we know it and
                         // record the type for the array (usually done by check.typ which is not
@@ -1169,20 +1166,256 @@ impl<'a> Checker<'a> {
                     Type::Slice(detail) => {
                         // todo: the go code checks if detail.elem is nil, do we need that?
                         // see the original go code for details
-                        let elem_t = *detail.elem();
+                        let elem_t = detail.elem();
                         self.indexed_elems(&cl.elts, elem_t, None, fctx);
                     }
-                    Type::Map(detail) => {}
-                    _ => {}
+                    Type::Map(detail) => {
+                        // todo: the go code checks if detail.key/elem is nil, do we need that?
+                        // see the original go code for details
+                        let iface_key = self
+                            .otype(detail.key())
+                            .underlying_val(self.tc_objs)
+                            .try_as_interface()
+                            .is_some();
+                        let (t_key, t_elem) = (detail.key(), detail.elem());
+                        let mut visited = HashMap::with_capacity(cl.elts.len());
+                        for e in cl.elts.iter() {
+                            let kv = match e {
+                                Expr::KeyValue(kv) => kv,
+                                _ => {
+                                    let pos = e.pos(self.ast_objs);
+                                    self.error_str(pos, "missing key in map literal");
+                                    continue;
+                                }
+                            };
+                            self.expr_with_hint(x, &kv.key, t_key);
+                            self.assignment(x, Some(t_key), "map literal", fctx);
+                            if x.invalid() {
+                                continue;
+                            }
+                            if let OperandMode::Constant(v) = &x.mode {
+                                // if the key is of interface type, the type is also significant
+                                // when checking for duplicates
+                                let duplicate = if iface_key {
+                                    let o = &self.tc_objs;
+                                    let xtype = x.typ.unwrap();
+                                    if !visited.contains_key(v) {
+                                        visited.insert(v.clone(), Some(vec![]));
+                                    }
+                                    let types = visited.get_mut(v).unwrap().as_mut().unwrap();
+                                    let dup = types
+                                        .iter()
+                                        .find(|&&ty| typ::identical(ty, xtype, o))
+                                        .is_some();
+                                    types.push(xtype);
+                                    dup
+                                } else {
+                                    let dup = visited.contains_key(v);
+                                    if !dup {
+                                        visited.insert(v.clone(), None);
+                                    }
+                                    dup
+                                };
+                                if duplicate {
+                                    self.error(
+                                        x.pos(self.ast_objs),
+                                        format!("duplicate key {} in map literal", v),
+                                    );
+                                    continue;
+                                }
+                            }
+                            self.expr_with_hint(x, &kv.val, t_elem);
+                            self.assignment(x, Some(t_elem), "map literal", fctx);
+                        }
+                    }
+                    _ => {
+                        // when "using" all elements unpack KeyValueExpr
+                        // explicitly because check.use doesn't accept them
+                        for e in cl.elts.iter() {
+                            let unpack = match e {
+                                // Ideally, we should also "use" kv.Key but we can't know
+                                // if it's an externally defined struct key or not. Going
+                                // forward anyway can lead to other errors. Give up instead.
+                                Expr::KeyValue(kv) => &kv.key,
+                                _ => e,
+                            };
+                            self.use_exprs(&vec![unpack.clone()], fctx);
+                        }
+                        // if utype is invalid, an error was reported before
+                        if utype_key != self.invalid_type() {
+                            let td = self.new_dis(&ty);
+                            self.error(epos, format!("invalid composite literal type {}", td));
+                            return on_err(x);
+                        }
+                    }
                 }
 
                 x.mode = OperandMode::Value;
                 x.typ = Some(ty);
             }
-            Expr::Paren(_) => {}
-            Expr::Selector(_) => {}
-            Expr::Index(_) => {}
-            Expr::Slice(_) => {}
+            Expr::Paren(p) => {
+                let kind = self.raw_expr(x, &p.expr, None, fctx);
+                x.expr = Some(e.clone());
+                return kind;
+            }
+            Expr::Selector(s) => {
+                self.selector(x, s, fctx);
+            }
+            Expr::Index(ie) => {
+                self.expr(x, &ie.expr);
+                if x.invalid() {
+                    self.use_exprs(&vec![ie.index.clone()], fctx);
+                    return on_err(x);
+                }
+
+                let typ_val = self.otype(x.typ.unwrap()).underlying_val(self.tc_objs);
+                let (valid, length) = match typ_val {
+                    Type::Basic(detail) => {
+                        if detail.info() == typ::BasicInfo::IsString {
+                            let len = if let OperandMode::Constant(v) = &x.mode {
+                                Some(v.str_as_string().len() as u64)
+                            } else {
+                                None
+                            };
+                            // an indexed string always yields a byte value
+                            // (not a constant) even if the string and the
+                            // index are constant
+                            x.mode = OperandMode::Value;
+                            x.typ = Some(*self.tc_objs.universe().byte());
+                            (true, len)
+                        } else {
+                            (false, None)
+                        }
+                    }
+                    Type::Array(detail) => {
+                        if x.mode != OperandMode::Variable {
+                            x.mode = OperandMode::Value;
+                        }
+                        x.typ = Some(detail.elem());
+                        (true, detail.len())
+                    }
+                    Type::Pointer(detail) => {
+                        if let Some(arr) = self
+                            .otype(detail.base())
+                            .underlying_val(self.tc_objs)
+                            .try_as_array()
+                        {
+                            x.mode = OperandMode::Variable;
+                            x.typ = Some(arr.elem());
+                            (true, arr.len())
+                        } else {
+                            (false, None)
+                        }
+                    }
+                    Type::Slice(detail) => {
+                        x.mode = OperandMode::Variable;
+                        x.typ = Some(detail.elem());
+                        (true, None)
+                    }
+                    Type::Map(detail) => {
+                        let (key, elem) = (detail.key(), detail.elem());
+                        let xkey = &mut Operand::new();
+                        self.expr(xkey, &ie.index);
+                        self.assignment(xkey, Some(key), "map index", fctx);
+                        if x.invalid() {
+                            return on_err(x);
+                        }
+                        x.mode = OperandMode::MapIndex;
+                        x.typ = Some(elem);
+                        x.expr = Some(e.clone());
+                        return ExprKind::Expression;
+                    }
+                    _ => (false, None),
+                };
+
+                if !valid {
+                    let xd = self.new_dis(x);
+                    self.invalid_op(xd.pos(), &format!("cannot index {}", xd));
+                    return on_err(x);
+                }
+                self.index(&ie.index, length.map(|x| x as i64), fctx);
+                // ok to continue
+            }
+            Expr::Slice(se) => {
+                self.expr(x, &se.expr);
+                if x.invalid() {
+                    let exprs = [se.low.as_ref(), se.high.as_ref(), se.max.as_ref()]
+                        .iter()
+                        .filter_map(|x| x.map(|ex| ex.clone()))
+                        .collect();
+                    self.use_exprs(&exprs, fctx);
+                    return on_err(x);
+                }
+
+                let typ_val = self.otype(x.typ.unwrap()).underlying_val(self.tc_objs);
+                let (valid, length) = match typ_val {
+                    Type::Basic(detail) => {
+                        if detail.info() == typ::BasicInfo::IsString {
+                            if se.slice3 {
+                                self.error_str(epos, "3-index slice of string");
+                                return on_err(x);
+                            }
+                            let len = if let OperandMode::Constant(v) = &x.mode {
+                                Some(v.str_as_string().len() as u64)
+                            } else {
+                                None
+                            };
+                            // spec: "For untyped string operands the result
+                            // is a non-constant value of type string."
+                            if detail.typ() == typ::BasicType::UntypedString {
+                                x.typ = Some(self.basic_type(BasicType::Str));
+                            }
+                            (true, len)
+                        } else {
+                            (false, None)
+                        }
+                    }
+                    Type::Array(detail) => {
+                        if x.mode != OperandMode::Variable {
+                            let xd = self.new_dis(x);
+                            self.invalid_op(
+                                xd.pos(),
+                                &format!("cannot slice {} (value not addressable)", xd),
+                            );
+                            return on_err(x);
+                        }
+                        let (elem, len) = (detail.elem(), detail.len());
+                        x.typ = Some(self.tc_objs.new_t_slice(elem));
+                        (true, len)
+                    }
+                    Type::Pointer(detail) => {
+                        if let Some(arr) = self
+                            .otype(detail.base())
+                            .underlying_val(self.tc_objs)
+                            .try_as_array()
+                        {
+                            x.mode = OperandMode::Variable;
+                            let (elem, len) = (arr.elem(), arr.len());
+                            x.typ = Some(self.tc_objs.new_t_slice(elem));
+                            (true, len)
+                        } else {
+                            (false, None)
+                        }
+                    }
+                    Type::Slice(_) => (true, None),
+                    _ => (false, None),
+                };
+
+                if !valid {
+                    let xd = self.new_dis(x);
+                    self.invalid_op(xd.pos(), &format!("cannot slice {}", xd));
+                    return on_err(x);
+                }
+                x.mode = OperandMode::Value;
+
+                // spec: "Only the first index may be omitted; it defaults to 0."
+                if se.slice3 && (se.high.is_none() || se.max.is_none()) {
+                    self.error_str(se.r_brack, "2nd and 3rd index required in 3-index slice");
+                    return on_err(x);
+                }
+
+                // check indices
+            }
             Expr::TypeAssert(_) => {}
             Expr::Call(_) => {}
             Expr::Star(_) => {}

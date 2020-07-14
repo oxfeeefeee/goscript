@@ -63,9 +63,9 @@ impl<'a> Checker<'a> {
             }
             _ => {
                 // function/method call
-                let sig_key = *typ::underlying_type(x.typ.as_ref().unwrap(), self.tc_objs);
+                let sig_key = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
                 if let Some(sig) = self.otype(sig_key).try_as_signature() {
-                    let sig_results = *sig.results();
+                    let sig_results = sig.results();
                     let result = self.unpack(&e.args, e.args.len(), false);
                     match result {
                         UnpackResult::Nothing | UnpackResult::Mismatch(_) | UnpackResult::Error => {
@@ -83,7 +83,7 @@ impl<'a> Checker<'a> {
                         0 => x.mode = OperandMode::NoValue,
                         1 => {
                             x.mode = OperandMode::Value;
-                            x.typ = *self.lobj(sigre.vars()[0]).typ(); // unpack tuple
+                            x.typ = self.lobj(sigre.vars()[0]).typ(); // unpack tuple
                         }
                         _ => {
                             x.mode = OperandMode::Value;
@@ -114,7 +114,7 @@ impl<'a> Checker<'a> {
     ) {
         let sig_val = self.otype(sig).try_as_signature().unwrap();
         let variadic = sig_val.variadic();
-        let params = self.otype(*sig_val.params()).try_as_tuple().unwrap();
+        let params = self.otype(sig_val.params()).try_as_tuple().unwrap();
         let params_len = params.vars().len();
         if let Some(ell) = call.ellipsis {
             if !variadic {
@@ -174,7 +174,7 @@ impl<'a> Checker<'a> {
         }
 
         let sig_val = self.otype(sig).try_as_signature().unwrap();
-        let params = self.otype(*sig_val.params()).try_as_tuple().unwrap();
+        let params = self.otype(sig_val.params()).try_as_tuple().unwrap();
         let n = params.vars().len();
 
         let mut ty = if i < n {
@@ -183,7 +183,7 @@ impl<'a> Checker<'a> {
             let t = self.lobj(params.vars()[n - 1]).typ().unwrap();
             if self.tc_objs.debug {
                 if self.otype(t).try_as_slice().is_none() {
-                    let pos = *self.lobj(params.vars()[n - 1]).pos();
+                    let pos = self.lobj(params.vars()[n - 1]).pos();
                     let td = self.new_dis(&t);
                     self.dump(
                         Some(pos),
@@ -220,7 +220,7 @@ impl<'a> Checker<'a> {
                 return;
             }
         } else if sig_val.variadic() && i >= n - 1 {
-            ty = *self.otype(ty).try_as_slice().unwrap().elem();
+            ty = self.otype(ty).try_as_slice().unwrap().elem();
         }
 
         self.assignment(x, Some(ty), note, fctx);
@@ -246,7 +246,7 @@ impl<'a> Checker<'a> {
                             debug_assert_eq!(self.pkg, *pkey);
                             self.result.record_use(*ikey, okey);
                             *used = true;
-                            let pkg = &self.tc_objs.pkgs[*lobj.pkg_name_imported()];
+                            let pkg = &self.tc_objs.pkgs[lobj.pkg_name_imported()];
                             let sel_name = &self.ast_objs.idents[e.sel].name;
                             let exp_op = self.tc_objs.scopes[*pkg.scope()].lookup(sel_name);
                             if exp_op.is_none() {
@@ -284,7 +284,7 @@ impl<'a> Checker<'a> {
                                 EntityType::Builtin(id) => OperandMode::Builtin(*id),
                                 _ => unreachable!(),
                             };
-                            x.typ = *exp.typ();
+                            x.typ = exp.typ();
                             x.expr = Some(Expr::Selector(e.clone()));
                             return;
                         }
@@ -302,9 +302,9 @@ impl<'a> Checker<'a> {
 
         let sel_name = &self.ast_objs.idents[e.sel].name;
         let result = lookup::lookup_field_or_method(
-            x.typ.as_ref().unwrap(),
+            x.typ.unwrap(),
             x.mode == OperandMode::Variable,
-            &Some(self.pkg),
+            Some(self.pkg),
             sel_name,
             self.tc_objs,
         );
@@ -355,7 +355,7 @@ impl<'a> Checker<'a> {
                         .new_var(0, Some(self.pkg), "".to_string(), x.typ);
                     let lobj = self.lobj(okey);
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
-                    let (p, r, v) = (*sig.params(), *sig.results(), sig.variadic());
+                    let (p, r, v) = (sig.params(), sig.results(), sig.variadic());
                     let params_val = self.otype(p).try_as_tuple().unwrap();
                     let mut vars = vec![var];
                     vars.append(&mut params_val.vars().clone());
@@ -390,7 +390,7 @@ impl<'a> Checker<'a> {
                     } else {
                         OperandMode::Value
                     };
-                    x.typ = *lobj.typ();
+                    x.typ = lobj.typ();
                 }
                 EntityType::Func(_) => {
                     let selection =
@@ -407,14 +407,14 @@ impl<'a> Checker<'a> {
                             // Variables are addressable, so we can always take their
                             // address.
                             if self.otype(typ).try_as_pointer().is_none()
-                                && !typ::is_interface(&typ, self.tc_objs)
+                                && !typ::is_interface(typ, self.tc_objs)
                             {
                                 typ = self.tc_objs.new_t_pointer(typ);
                             }
                         }
                         let mset = MethodSet::new(&typ, self.tc_objs);
                         let re = mset.lookup(&self.pkg, sel_name, self.tc_objs);
-                        if re.is_none() || *re.unwrap().obj() != okey {
+                        if re.is_none() || re.unwrap().obj() != okey {
                             let obj_name = self.lobj(okey).name();
                             let expr = Expr::Selector(e.clone());
                             let ed = self.new_dis(&expr);
@@ -434,7 +434,7 @@ impl<'a> Checker<'a> {
                     // remove receiver
                     let lobj = &self.tc_objs.lobjs[okey];
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
-                    let (p, r, v) = (*sig.params(), *sig.results(), sig.variadic());
+                    let (p, r, v) = (sig.params(), sig.results(), sig.variadic());
                     let new_sig = self.tc_objs.new_t_signature(None, p, r, v);
                     x.typ = Some(new_sig);
 

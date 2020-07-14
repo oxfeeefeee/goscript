@@ -421,7 +421,7 @@ impl<'a> Checker<'a> {
                         EntityType::PkgName(pkey, _) => {
                             let pkg_val = self.package(*pkey);
                             self.error(
-                                *alt_val.pos(),
+                                alt_val.pos(),
                                 format!(
                                     "{} already declared through import of {}",
                                     alt_val.name(),
@@ -432,7 +432,7 @@ impl<'a> Checker<'a> {
                         _ => {
                             let pkg_val = self.package(obj_val.pkg().unwrap());
                             self.error(
-                                *alt_val.pos(),
+                                alt_val.pos(),
                                 format!(
                                     "{} already declared through dot-import of {}",
                                     alt_val.name(),
@@ -470,7 +470,7 @@ impl<'a> Checker<'a> {
     pub fn package_objects(&mut self, fctx: &mut FilesContext) {
         // process package objects in source order for reproducible results
         let mut obj_list: Vec<ObjKey> = self.obj_map.iter().map(|(o, _)| *o).collect();
-        obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(self.lobj(*b).order()));
+        obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(&self.lobj(*b).order()));
 
         for o in obj_list.iter() {
             self.add_method_decls(*o, fctx);
@@ -521,12 +521,12 @@ impl<'a> Checker<'a> {
                             let (path, base) = self.pkg_path_and_name(*pkey);
                             if obj_val.name() == base {
                                 self.soft_error(
-                                    *obj_val.pos(),
+                                    obj_val.pos(),
                                     format!("{} imported but not used", path),
                                 );
                             } else {
                                 self.soft_error(
-                                    *obj_val.pos(),
+                                    obj_val.pos(),
                                     format!("{} imported but not used as {}", path, base),
                                 );
                             }

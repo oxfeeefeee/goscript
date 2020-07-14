@@ -389,7 +389,7 @@ impl Universe {
     // scope; other objects are inserted in the universe scope.
     fn def(okey: ObjKey, universe: &ScopeKey, unsafe_: &PackageKey, objs: &mut TCObjects) {
         let obj = &objs.lobjs[okey];
-        assert!(*obj.color() == ObjColor::Black);
+        assert!(obj.color() == ObjColor::Black);
         if obj.name().contains(' ') {
             return;
         }

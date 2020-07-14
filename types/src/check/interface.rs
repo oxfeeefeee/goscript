@@ -78,7 +78,7 @@ impl MethodInfo {
 
     pub fn pos(&self, tc_objs: &TCObjects, ast_objs: &AstObjects) -> Pos {
         if let Some(okey) = self.fun {
-            *tc_objs.lobjs[okey].pos()
+            tc_objs.lobjs[okey].pos()
         } else {
             self.src.unwrap().pos(ast_objs)
         }
@@ -387,8 +387,8 @@ impl<'a> Checker<'a> {
                 // cycle, and direct cycles will be caught above. Also, the denoted
                 // type should be an interface (e.g., int is not an interface).
                 if let Some(ty) = tname_val.typ() {
-                    let ty = typ::underlying_type(&ty, self.tc_objs);
-                    if let typ::Type::Interface(i) = self.otype(*ty) {
+                    let ty = typ::underlying_type(ty, self.tc_objs);
+                    if let typ::Type::Interface(i) = self.otype(ty) {
                         return Some(self.info_from_type(i));
                     }
                 }
@@ -438,7 +438,7 @@ impl<'a> Checker<'a> {
             {
                 let obj_val = self.lobj(obj1);
                 if let obj::EntityType::PkgName(imported, _) = obj_val.entity_type() {
-                    debug_assert!(obj_val.pkg() == &Some(self.pkg));
+                    debug_assert!(obj_val.pkg() == Some(self.pkg));
                     let imported_val = &self.tc_objs.pkgs[*imported];
                     let scope = &self.tc_objs.scopes[*imported_val.scope()];
                     if let Some(obj2) = scope.lookup(&self.ast_ident(sel.sel).name) {
@@ -447,11 +447,8 @@ impl<'a> Checker<'a> {
                             return None;
                         }
                         if let obj::EntityType::TypeName = obj_val2.entity_type() {
-                            let t = typ::underlying_type(
-                                obj_val2.typ().as_ref().unwrap(),
-                                self.tc_objs,
-                            );
-                            if let Some(iface) = self.otype(*t).try_as_interface() {
+                            let t = typ::underlying_type(obj_val2.typ().unwrap(), self.tc_objs);
+                            if let Some(iface) = self.otype(t).try_as_interface() {
                                 return Some(self.info_from_type(iface));
                             }
                         }

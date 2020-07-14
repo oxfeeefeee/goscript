@@ -37,7 +37,7 @@ impl<'a> Checker<'a> {
         }
 
         let xt = x.typ.unwrap();
-        if typ::is_untyped(&xt, self.tc_objs) {
+        if typ::is_untyped(xt, self.tc_objs) {
             if t.is_none() && xt == self.basic_type(typ::BasicType::UntypedNil) {
                 self.error(
                     x.pos(self.ast_objs),
@@ -51,8 +51,8 @@ impl<'a> Checker<'a> {
             // bool, rune, int, float64, complex128 or string respectively, depending
             // on whether the value is a boolean, rune, integer, floating-point, complex,
             // or string constant."
-            let target = if t.is_none() || typ::is_interface(t.as_ref().unwrap(), self.tc_objs) {
-                *typ::untyped_default_type(&xt, self.tc_objs)
+            let target = if t.is_none() || typ::is_interface(t.unwrap(), self.tc_objs) {
+                typ::untyped_default_type(xt, self.tc_objs)
             } else {
                 t.unwrap()
             };
@@ -95,12 +95,12 @@ impl<'a> Checker<'a> {
         if x.invalid() || x.typ == Some(invalid_type) {
             lhs.set_type(Some(invalid_type));
         }
-        if lhs.typ() == &Some(invalid_type) {
+        if lhs.typ() == Some(invalid_type) {
             return;
         }
         // rhs must be a constant
         if let OperandMode::Constant(_) = &x.mode {
-            debug_assert!(typ::is_const_type(x.typ.as_ref().unwrap(), self.tc_objs));
+            debug_assert!(typ::is_const_type(x.typ.unwrap(), self.tc_objs));
             // If the lhs doesn't have a type yet, use the type of x.
             let lhs = self.lobj_mut(lhskey);
             if lhs.typ().is_none() {
@@ -130,13 +130,13 @@ impl<'a> Checker<'a> {
         if x.invalid() || x.typ == Some(invalid_type) {
             lhs.set_type(Some(invalid_type));
         }
-        if lhs.typ() == &Some(invalid_type) {
+        if lhs.typ() == Some(invalid_type) {
             return None;
         }
         // If the lhs doesn't have a type yet, use the type of x.
         if lhs.typ().is_none() {
             let xt = x.typ.unwrap();
-            let lhs_type = if typ::is_untyped(&xt, self.tc_objs) {
+            let lhs_type = if typ::is_untyped(xt, self.tc_objs) {
                 // convert untyped types to default types
                 if xt == invalid_type {
                     self.error(
@@ -145,7 +145,7 @@ impl<'a> Checker<'a> {
                     );
                     invalid_type
                 } else {
-                    *typ::untyped_default_type(&xt, self.tc_objs)
+                    typ::untyped_default_type(xt, self.tc_objs)
                 }
             } else {
                 xt

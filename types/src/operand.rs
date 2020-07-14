@@ -126,17 +126,17 @@ impl Operand {
             return true; // avoid spurious errors
         }
 
-        if typ::identical(self.typ.as_ref().unwrap(), &t, objs) {
+        if typ::identical(self.typ.unwrap(), t, objs) {
             return true;
         }
 
         let (k_left, k_right) = (t, self.typ.unwrap());
         let t_left = &objs.types[k_left];
         let t_right = &objs.types[k_right];
-        let ut_key_left = typ::underlying_type(&k_left, objs);
-        let ut_key_right = typ::underlying_type(&k_right, objs);
-        let ut_left = &objs.types[*ut_key_left];
-        let ut_right = &objs.types[*ut_key_right];
+        let ut_key_left = typ::underlying_type(k_left, objs);
+        let ut_key_right = typ::underlying_type(k_right, objs);
+        let ut_left = &objs.types[ut_key_left];
+        let ut_right = &objs.types[ut_key_right];
 
         if ut_right.is_untyped(objs) {
             match ut_left {
@@ -192,7 +192,7 @@ impl Operand {
         // type, they have identical element types,
         // and at least one of 'right' or 'left' is not a named type
         if let Some(cr) = ut_right.try_as_chan() {
-            if *cr.dir() == typ::ChanDir::SendRecv {
+            if cr.dir() == typ::ChanDir::SendRecv {
                 if let Some(cl) = ut_left.try_as_chan() {
                     if typ::identical(cr.elem(), cl.elem(), objs) {
                         return !t_right.is_named() || !t_left.is_named();
@@ -248,10 +248,10 @@ impl Operand {
                     f.write_str(universe.builtins()[bi].name)?;
                 }
                 OperandMode::TypeExpr => {
-                    fmt_type(&self.typ, f, tc_objs)?;
+                    fmt_type(self.typ, f, tc_objs)?;
                 }
                 OperandMode::Constant(val) => {
-                    f.write_str(&val.as_string())?;
+                    f.write_str(&val.to_string())?;
                 }
                 _ => has_expr = false,
             }
@@ -284,7 +284,7 @@ impl Operand {
         if let OperandMode::Constant(val) = &self.mode {
             if self.expr.is_some() {
                 f.write_char(' ')?;
-                f.write_str(&val.as_string())?;
+                f.write_str(&val.to_string())?;
             }
         }
 
@@ -292,7 +292,7 @@ impl Operand {
         if has_type {
             if self.typ != Some(universe.types()[&BasicType::Invalid]) {
                 f.write_str(" of type")?;
-                fmt_type(&self.typ, f, tc_objs)?;
+                fmt_type(self.typ, f, tc_objs)?;
             } else {
                 f.write_str(" with invalid type")?;
             }

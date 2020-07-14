@@ -291,24 +291,24 @@ impl LangObj {
         &mut self.entity_type
     }
 
-    pub fn parent(&self) -> &Option<ScopeKey> {
-        &self.parent
+    pub fn parent(&self) -> Option<ScopeKey> {
+        self.parent
     }
 
-    pub fn pos(&self) -> &position::Pos {
-        &self.pos
+    pub fn pos(&self) -> position::Pos {
+        self.pos
     }
 
     pub fn name(&self) -> &String {
         &self.name
     }
 
-    pub fn typ(&self) -> &Option<TypeKey> {
-        &self.typ
+    pub fn typ(&self) -> Option<TypeKey> {
+        self.typ
     }
 
-    pub fn pkg(&self) -> &Option<PackageKey> {
-        &self.pkg
+    pub fn pkg(&self) -> Option<PackageKey> {
+        self.pkg
     }
 
     pub fn exported(&self) -> bool {
@@ -320,12 +320,12 @@ impl LangObj {
         get_id(pkg, &self.name)
     }
 
-    pub fn order(&self) -> &u32 {
-        &self.order
+    pub fn order(&self) -> u32 {
+        self.order
     }
 
-    pub fn color(&self) -> &ObjColor {
-        &self.color
+    pub fn color(&self) -> ObjColor {
+        self.color
     }
 
     pub fn set_type(&mut self, typ: Option<TypeKey>) {
@@ -357,7 +357,7 @@ impl LangObj {
         self.scope_pos = pos
     }
 
-    pub fn same_id(&self, pkg: &Option<PackageKey>, name: &str, objs: &TCObjects) -> bool {
+    pub fn same_id(&self, pkg: Option<PackageKey>, name: &str, objs: &TCObjects) -> bool {
         // spec:
         // "Two identifiers are different if they are spelled differently,
         // or if they appear in different packages and are not exported.
@@ -367,7 +367,7 @@ impl LangObj {
         } else if self.exported() {
             true
         } else if pkg.is_none() || self.pkg.is_none() {
-            pkg == &self.pkg
+            pkg == self.pkg
         } else {
             let a = &objs.pkgs[pkg.unwrap()];
             let b = &objs.pkgs[self.pkg.unwrap()];
@@ -375,9 +375,9 @@ impl LangObj {
         }
     }
 
-    pub fn pkg_name_imported(&self) -> &PackageKey {
+    pub fn pkg_name_imported(&self) -> PackageKey {
         match &self.entity_type {
-            EntityType::PkgName(imported, _) => imported,
+            EntityType::PkgName(imported, _) => *imported,
             _ => unreachable!(),
         }
     }
@@ -555,23 +555,23 @@ fn fmt_obj_type(obj: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> 
         if obj.type_name_is_alias() {
             f.write_str(" =")?;
         } else {
-            obj_typ = *typ::underlying_type(&obj_typ, objs);
+            obj_typ = typ::underlying_type(obj_typ, objs);
         }
     }
     f.write_char(' ')?;
-    typ::fmt_type(&Some(obj_typ), f, objs)
+    typ::fmt_type(Some(obj_typ), f, objs)
 }
 
 fn fmt_func_name(func: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
     if let Some(t) = func.typ() {
-        let sig = objs.types[*t].try_as_signature().unwrap();
+        let sig = objs.types[t].try_as_signature().unwrap();
         if let Some(r) = sig.recv() {
             f.write_char('(')?;
             typ::fmt_type(objs.lobjs[*r].typ(), f, objs)?;
             f.write_str(").")?;
         } else {
             if let Some(p) = func.pkg() {
-                objs.pkgs[*p].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
+                objs.pkgs[p].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
             }
         }
     }

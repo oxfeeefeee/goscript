@@ -65,13 +65,13 @@ impl<'a> Display for ObjKey {
     }
 
     fn position(&self, c: &Checker) -> Pos {
-        *c.lobj(*self).pos()
+        c.lobj(*self).pos()
     }
 }
 
 impl<'a> Display for TypeKey {
     fn format(&self, f: &mut fmt::Formatter, c: &Checker) -> fmt::Result {
-        fmt_type(&Some(*self), f, c.tc_objs)
+        fmt_type(Some(*self), f, c.tc_objs)
     }
 }
 

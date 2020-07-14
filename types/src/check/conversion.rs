@@ -16,7 +16,7 @@ impl<'a> Checker<'a> {
 
         let o = &self.tc_objs;
         let xtype = x.typ.unwrap();
-        let ok = if const_arg && typ::is_const_type(&t, o) {
+        let ok = if const_arg && typ::is_const_type(t, o) {
             // constant conversion
             let v = constv.unwrap();
             let tval = self.otype(t).underlying_val(o);
@@ -24,7 +24,7 @@ impl<'a> Checker<'a> {
             let clone = v.clone();
             if clone.representable(basic, Some(v)) {
                 true
-            } else if typ::is_integer(&xtype, o) && tval.is_string(o) {
+            } else if typ::is_integer(xtype, o) && tval.is_string(o) {
                 // todo: not exactly the same of the go version
                 let mut s = "?".to_string();
                 let (i, exact) = v.int_as_i64();
@@ -55,16 +55,16 @@ impl<'a> Checker<'a> {
         // The conversion argument types are final. For untyped values the
         // conversion provides the type, per the spec: "A constant may be
         // given a type explicitly by a constant declaration or conversion,...".
-        if typ::is_untyped(&xtype, self.tc_objs) {
+        if typ::is_untyped(xtype, self.tc_objs) {
             // - For conversions to interfaces, use the argument's default type.
             // - For conversions of untyped constants to non-constant types, also
             //   use the default type (e.g., []byte("foo") should report string
             //   not []byte as type for the constant "foo").
             // - Keep untyped nil for untyped nil arguments.
             // - For integer to string conversions, keep the argument type.
-            let final_t = if typ::is_interface(&t, o) || const_arg && !typ::is_const_type(&t, o) {
-                *typ::untyped_default_type(&xtype, o)
-            } else if typ::is_integer(&xtype, o) && typ::is_string(&t, o) {
+            let final_t = if typ::is_interface(t, o) || const_arg && !typ::is_const_type(t, o) {
+                typ::untyped_default_type(xtype, o)
+            } else if typ::is_integer(xtype, o) && typ::is_string(t, o) {
                 xtype
             } else {
                 t
@@ -87,9 +87,9 @@ impl<'a> Checker<'a> {
 
         // "x's type and t have identical underlying types if tags are ignored"
         let v = x.typ.unwrap();
-        let vu = *typ::underlying_type(&v, o);
-        let tu = *typ::underlying_type(&t, o);
-        if typ::identical_ignore_tags(&Some(vu), &Some(tu), o) {
+        let vu = typ::underlying_type(v, o);
+        let tu = typ::underlying_type(t, o);
+        if typ::identical_ignore_tags(Some(vu), Some(tu), o) {
             return true;
         }
 
@@ -101,9 +101,9 @@ impl<'a> Checker<'a> {
         // have identical underlying types if tags are ignored"
         if let Some(vdetail) = vval.try_as_pointer() {
             if let Some(tdetail) = tval.try_as_pointer() {
-                let vu = *typ::underlying_type(vdetail.base(), o);
-                let tu = *typ::underlying_type(tdetail.base(), o);
-                if typ::identical_ignore_tags(&Some(vu), &Some(tu), o) {
+                let vu = typ::underlying_type(vdetail.base(), o);
+                let tu = typ::underlying_type(tdetail.base(), o);
+                if typ::identical_ignore_tags(Some(vu), Some(tu), o) {
                     return true;
                 }
             }
@@ -164,7 +164,7 @@ impl<'a> Checker<'a> {
     fn is_bytes_or_runes(&self, t: &Type) -> bool {
         if let Some(detail) = t.try_as_slice() {
             if let Some(b) = self
-                .otype(*detail.elem())
+                .otype(detail.elem())
                 .underlying_val(self.tc_objs)
                 .try_as_basic()
             {

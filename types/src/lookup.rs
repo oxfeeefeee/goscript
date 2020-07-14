@@ -42,14 +42,14 @@ impl MethodSet {
     pub fn new(t: &TypeKey, objs: &mut TCObjects) -> MethodSet {
         // method set up to the current depth
         let mut mset_base: HashMap<String, MethodCollision> = HashMap::new();
-        let (tkey, is_ptr) = try_deref(t, objs);
+        let (tkey, is_ptr) = try_deref(*t, objs);
         // *typ where typ is an interface has no methods.
-        if is_ptr && objs.types[*tkey].try_as_interface().is_some() {
+        if is_ptr && objs.types[tkey].try_as_interface().is_some() {
             return MethodSet { list: vec![] };
         }
 
         // Start with typ as single entry at shallowest depth.
-        let mut current = vec![EmbeddedType::new(*tkey, None, is_ptr, false)];
+        let mut current = vec![EmbeddedType::new(tkey, None, is_ptr, false)];
 
         // Named types that we have seen already, allocated lazily.
         // Used to avoid endless searches in case of recursive types.
@@ -91,7 +91,7 @@ impl MethodSet {
                         objs,
                     );
                     // continue with underlying type
-                    tobj = &objs.types[*detail.underlying()];
+                    tobj = &objs.types[detail.underlying()];
                 }
                 match tobj {
                     typ::Type::Struct(detail) => {
@@ -103,9 +103,9 @@ impl MethodSet {
                             // this depth, f.Type appears multiple times at the next
                             // depth.
                             if fobj.var_embedded() {
-                                let (tkey, is_ptr) = try_deref(fobj.typ().as_ref().unwrap(), objs);
+                                let (tkey, is_ptr) = try_deref(fobj.typ().unwrap(), objs);
                                 next.push(EmbeddedType::new(
-                                    *tkey,
+                                    tkey,
                                     concat_vec(et.indices.clone(), i),
                                     et.indirect || is_ptr,
                                     et.multiples,
@@ -207,13 +207,13 @@ impl MethodSet {
 /// The earlier index entries are the indices of the embedded struct fields
 /// traversed to get to the found entry, starting at depth 0.
 pub fn lookup_field_or_method(
-    tkey: &TypeKey,
+    tkey: TypeKey,
     addressable: bool,
-    pkg: &Option<PackageKey>,
+    pkg: Option<PackageKey>,
     name: &str,
     objs: &TCObjects,
 ) -> LookupResult {
-    if let Some(named) = &objs.types[*tkey].try_as_named() {
+    if let Some(named) = &objs.types[tkey].try_as_named() {
         // Methods cannot be associated to a named pointer type
         // (spec: "The type denoted by T is called the receiver base type;
         // it must not be a pointer or interface type and it must be declared
@@ -222,7 +222,7 @@ pub fn lookup_field_or_method(
         // pointer type but discard the result if it is a method since we would
         // not have found it for T
         let pkey = named.underlying();
-        if objs.types[*pkey].try_as_pointer().is_some() {
+        if objs.types[pkey].try_as_pointer().is_some() {
             let re = lookup_field_or_method_impl(pkey, false, pkg, name, objs);
             if let LookupResult::Entry(okey, _, _) = &re {
                 if objs.lobjs[*okey].entity_type().is_func() {
@@ -237,8 +237,8 @@ pub fn lookup_field_or_method(
 
 /// deref dereferences t if it is a *Pointer and returns its base.
 /// Otherwise it returns t.
-pub fn try_deref<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> (&'a TypeKey, bool) {
-    match &objs.types[*t] {
+pub fn try_deref(t: TypeKey, objs: &TCObjects) -> (TypeKey, bool) {
+    match &objs.types[t] {
         typ::Type::Pointer(detail) => (detail.base(), true),
         _ => (t, false),
     }
@@ -246,12 +246,12 @@ pub fn try_deref<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> (&'a TypeKey, bool)
 
 /// deref_struct_ptr dereferences typ if it is a (named or unnamed) pointer to a
 /// (named or unnamed) struct and returns its base. Otherwise it returns typ.   
-pub fn deref_struct_ptr<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
+pub fn deref_struct_ptr(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let ut = typ::underlying_type(t, objs);
-    match &objs.types[*ut] {
+    match &objs.types[ut] {
         typ::Type::Pointer(detail) => {
             let but = typ::underlying_type(detail.base(), objs);
-            match &objs.types[*but] {
+            match &objs.types[but] {
                 typ::Type::Struct(_) => but,
                 _ => t,
             }
@@ -263,7 +263,7 @@ pub fn deref_struct_ptr<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey 
 /// field_index returns the index for the field with matching package and name.
 pub fn field_index(
     fields: &Vec<ObjKey>,
-    pkg: &Option<PackageKey>,
+    pkg: Option<PackageKey>,
     name: &str,
     objs: &TCObjects,
 ) -> Option<usize> {
@@ -280,7 +280,7 @@ pub fn field_index(
 /// lookup_method returns the index of and method with matching package and name.
 pub fn lookup_method<'a>(
     methods: &'a Vec<ObjKey>,
-    pkg: &Option<PackageKey>,
+    pkg: Option<PackageKey>,
     name: &str,
     objs: &TCObjects,
 ) -> Option<(usize, &'a ObjKey)> {
@@ -305,16 +305,16 @@ pub fn lookup_method<'a>(
 /// types (e.g., for a type assertion x.(T) where x is of
 /// interface type 't').
 pub fn missing_method(
-    t: &TypeKey,
-    intf: &TypeKey,
+    t: TypeKey,
+    intf: TypeKey,
     static_: bool,
     objs: &TCObjects,
 ) -> Option<(ObjKey, bool)> {
-    let ival = &objs.types[*intf].try_as_interface().unwrap();
+    let ival = &objs.types[intf].try_as_interface().unwrap();
     if ival.is_empty() {
         return None;
     }
-    let tval = objs.types[*t].underlying_val(objs);
+    let tval = objs.types[t].underlying_val(objs);
     if let Some(detail) = tval.try_as_interface() {
         for fkey in ival.all_methods().as_ref().unwrap().iter() {
             let fval = &objs.lobjs[*fkey];
@@ -352,9 +352,9 @@ pub fn missing_method(
 }
 
 fn lookup_field_or_method_impl(
-    tkey: &TypeKey,
+    tkey: TypeKey,
     addressable: bool,
-    pkg: &Option<PackageKey>,
+    pkg: Option<PackageKey>,
     name: &str,
     objs: &TCObjects,
 ) -> LookupResult {
@@ -367,7 +367,7 @@ fn lookup_field_or_method_impl(
         return LookupResult::NotFound;
     }
     // Start with typ as single entry at shallowest depth.
-    let mut current = vec![EmbeddedType::new(*tkey, None, is_ptr, false)];
+    let mut current = vec![EmbeddedType::new(tkey, None, is_ptr, false)];
     // indices is lazily initialized
     let mut indices = None;
     let mut target = None;
@@ -406,7 +406,7 @@ fn lookup_field_or_method_impl(
                     continue; // we can't have a matching field or interface method
                 }
                 // continue with underlying type
-                tobj = &objs.types[*detail.underlying()];
+                tobj = &objs.types[detail.underlying()];
             }
             match tobj {
                 typ::Type::Struct(detail) => {
@@ -426,12 +426,12 @@ fn lookup_field_or_method_impl(
                         // this depth, f.typ appears multiple times at the next
                         // depth.
                         if target.is_none() && fobj.var_embedded() {
-                            let (tkey, is_ptr) = try_deref(fobj.typ().as_ref().unwrap(), objs);
-                            match &objs.types[*tkey] {
+                            let (tkey, is_ptr) = try_deref(fobj.typ().unwrap(), objs);
+                            match &objs.types[tkey] {
                                 typ::Type::Named(_)
                                 | typ::Type::Struct(_)
                                 | typ::Type::Interface(_) => next.push(EmbeddedType::new(
-                                    *tkey,
+                                    tkey,
                                     concat_vec(indices.clone(), i),
                                     et.indirect || is_ptr,
                                     et.multiples,
@@ -474,7 +474,7 @@ fn ptr_recv(lo: &obj::LangObj, objs: &TCObjects) -> bool {
     // check if the receiver is set (we cannot just look for non-nil f.typ).
     if let Some(sig) = objs.types[lo.typ().unwrap()].try_as_signature() {
         if let Some(re) = sig.recv() {
-            let t = objs.lobjs[*re].typ().as_ref().unwrap();
+            let t = objs.lobjs[*re].typ().unwrap();
             let (_, is_ptr) = try_deref(t, objs);
             return is_ptr;
         }
@@ -529,18 +529,18 @@ fn consolidate_multiples(list: Vec<EmbeddedType>, objs: &TCObjects) -> Vec<Embed
         return result;
     }
     // lookup finds the identical 'typ' in 'map', returns the value in HashMap
-    let lookup = |map: &HashMap<TypeKey, usize>, typ: &TypeKey| {
-        if let Some(i) = map.get(typ) {
+    let lookup = |map: &HashMap<TypeKey, usize>, typ: TypeKey| {
+        if let Some(i) = map.get(&typ) {
             Some(*i)
         } else {
             map.iter()
-                .find(|(k, _i)| typ::identical(*k, typ, objs))
+                .find(|(k, _i)| typ::identical(**k, typ, objs))
                 .map(|(_k, i)| *i)
         }
     };
     let mut map = HashMap::new();
     for et in list.into_iter() {
-        if let Some(i) = lookup(&map, &et.typ) {
+        if let Some(i) = lookup(&map, et.typ) {
             result[i].multiples = true;
         } else {
             map.insert(et.typ, result.len());

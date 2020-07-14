@@ -170,16 +170,16 @@ impl Type {
         }
     }
 
-    pub fn underlying(&self) -> Option<&TypeKey> {
+    pub fn underlying(&self) -> Option<TypeKey> {
         match self {
-            Type::Named(detail) => detail.underlying.as_ref(),
+            Type::Named(detail) => detail.underlying,
             _ => None,
         }
     }
 
     pub fn underlying_val<'a>(&'a self, objs: &'a TCObjects) -> &'a Type {
         if let Some(k) = self.underlying() {
-            &objs.types[*k]
+            &objs.types[k]
         } else {
             &self
         }
@@ -296,7 +296,7 @@ impl Type {
             Type::Struct(s) => !s
                 .fields()
                 .iter()
-                .any(|f| !comparable(objs.lobjs[*f].typ().as_ref().unwrap(), objs)),
+                .any(|f| !comparable(objs.lobjs[*f].typ().unwrap(), objs)),
             Type::Array(a) => comparable(a.elem(), objs),
             _ => false,
         }
@@ -462,16 +462,16 @@ impl ArrayDetail {
         }
     }
 
-    pub fn len(&self) -> &Option<u64> {
-        &self.len
+    pub fn len(&self) -> Option<u64> {
+        self.len
     }
 
     pub fn set_len(&mut self, len: u64) {
         self.len = Some(len);
     }
 
-    pub fn elem(&self) -> &TypeKey {
-        &self.elem
+    pub fn elem(&self) -> TypeKey {
+        self.elem
     }
 }
 
@@ -485,8 +485,8 @@ impl SliceDetail {
         SliceDetail { elem: elem }
     }
 
-    pub fn elem(&self) -> &TypeKey {
-        &self.elem
+    pub fn elem(&self) -> TypeKey {
+        self.elem
     }
 }
 
@@ -542,8 +542,8 @@ impl PointerDetail {
         PointerDetail { base: base }
     }
 
-    pub fn base(&self) -> &TypeKey {
-        &self.base
+    pub fn base(&self) -> TypeKey {
+        self.base
     }
 }
 
@@ -625,16 +625,16 @@ impl SignatureDetail {
         self.recv = r
     }
 
-    pub fn params(&self) -> &TypeKey {
-        &self.params
+    pub fn params(&self) -> TypeKey {
+        self.params
     }
 
     pub fn set_params(&mut self, p: TypeKey) {
         self.params = p;
     }
 
-    pub fn results(&self) -> &TypeKey {
-        &self.results
+    pub fn results(&self) -> TypeKey {
+        self.results
     }
 
     pub fn variadic(&self) -> bool {
@@ -776,12 +776,12 @@ impl MapDetail {
         }
     }
 
-    pub fn key(&self) -> &TypeKey {
-        &self.key
+    pub fn key(&self) -> TypeKey {
+        self.key
     }
 
-    pub fn elem(&self) -> &TypeKey {
-        &self.elem
+    pub fn elem(&self) -> TypeKey {
+        self.elem
     }
 }
 
@@ -805,12 +805,12 @@ impl ChanDetail {
         }
     }
 
-    pub fn dir(&self) -> &ChanDir {
-        &self.dir
+    pub fn dir(&self) -> ChanDir {
+        self.dir
     }
 
-    pub fn elem(&self) -> &TypeKey {
-        &self.elem
+    pub fn elem(&self) -> TypeKey {
+        self.elem
     }
 }
 
@@ -855,8 +855,8 @@ impl NamedDetail {
         &mut self.methods
     }
 
-    pub fn underlying(&self) -> &TypeKey {
-        self.underlying.as_ref().unwrap()
+    pub fn underlying(&self) -> TypeKey {
+        self.underlying.unwrap()
     }
 
     pub fn set_underlying(&mut self, t: TypeKey) {
@@ -879,8 +879,8 @@ pub fn size_of(t: &TypeKey, objs: &TCObjects) -> usize {
 }
 
 /// underlying_type returns the underlying type of type 't'
-pub fn underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
-    let typ = &objs.types[*t];
+pub fn underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
+    let typ = &objs.types[t];
     match typ.underlying() {
         Some(ut) => ut,
         None => t,
@@ -889,12 +889,12 @@ pub fn underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
 
 /// deep_underlying_type returns the 'deep' underlying type of type 't'
 /// chains only exist while named types are incomplete.
-pub fn deep_underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
-    let mut typ = &objs.types[*t];
+pub fn deep_underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
+    let mut typ = &objs.types[t];
     loop {
         match typ.underlying() {
             Some(ut) => {
-                typ = &objs.types[*ut];
+                typ = &objs.types[ut];
                 continue;
             }
             None => return t,
@@ -902,129 +902,123 @@ pub fn deep_underlying_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a Type
     }
 }
 
-pub fn is_named(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_named()
+pub fn is_named(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_named()
 }
 
-pub fn is_boolean(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_boolean(objs)
+pub fn is_boolean(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_boolean(objs)
 }
 
-pub fn is_integer(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_integer(objs)
+pub fn is_integer(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_integer(objs)
 }
 
-pub fn is_unsigned(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_unsigned(objs)
+pub fn is_unsigned(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_unsigned(objs)
 }
 
-pub fn is_float(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_float(objs)
+pub fn is_float(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_float(objs)
 }
 
-pub fn is_complex(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_complex(objs)
+pub fn is_complex(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_complex(objs)
 }
 
-pub fn is_numeric(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_numeric(objs)
+pub fn is_numeric(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_numeric(objs)
 }
 
-pub fn is_string(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_string(objs)
+pub fn is_string(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_string(objs)
 }
 
-pub fn is_typed(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_typed(objs)
+pub fn is_typed(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_typed(objs)
 }
 
-pub fn is_untyped(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_untyped(objs)
+pub fn is_untyped(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_untyped(objs)
 }
 
-pub fn is_ordered(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_ordered(objs)
+pub fn is_ordered(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_ordered(objs)
 }
 
-pub fn is_const_type(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_const_type(objs)
+pub fn is_const_type(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_const_type(objs)
 }
 
-pub fn is_interface(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].is_interface(objs)
+pub fn is_interface(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].is_interface(objs)
 }
 
 /// has_nil reports whether a type includes the nil value.
-pub fn has_nil(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].has_nil(objs)
+pub fn has_nil(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].has_nil(objs)
 }
 
 /// comparable reports whether values of type T are comparable.
-pub fn comparable(t: &TypeKey, objs: &TCObjects) -> bool {
-    objs.types[*t].comparable(objs)
+pub fn comparable(t: TypeKey, objs: &TCObjects) -> bool {
+    objs.types[t].comparable(objs)
 }
 
 /// untyped_default_type returns the default "typed" type for an "untyped" type;
 /// it returns the incoming type for all other types. The default type
 /// for untyped nil is untyped nil.
-pub fn untyped_default_type<'a>(t: &'a TypeKey, objs: &'a TCObjects) -> &'a TypeKey {
-    let typ = objs.types[*t].try_as_basic().unwrap().typ();
+pub fn untyped_default_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
+    let typ = objs.types[t].try_as_basic().unwrap().typ();
     match typ {
-        BasicType::UntypedBool => &objs.universe().types()[&BasicType::Bool],
-        BasicType::UntypedInt => &objs.universe().types()[&BasicType::Int],
-        BasicType::UntypedRune => &objs.universe().rune(),
-        BasicType::UntypedFloat => &objs.universe().types()[&BasicType::Float64],
-        BasicType::UntypedComplex => &objs.universe().types()[&BasicType::Complex128],
-        BasicType::UntypedString => &objs.universe().types()[&BasicType::Str],
+        BasicType::UntypedBool => objs.universe().types()[&BasicType::Bool],
+        BasicType::UntypedInt => objs.universe().types()[&BasicType::Int],
+        BasicType::UntypedRune => *objs.universe().rune(),
+        BasicType::UntypedFloat => objs.universe().types()[&BasicType::Float64],
+        BasicType::UntypedComplex => objs.universe().types()[&BasicType::Complex128],
+        BasicType::UntypedString => objs.universe().types()[&BasicType::Str],
         _ => t,
     }
 }
 
 /// identical reports whether x and y are identical types.
 /// Receivers of Signature types are ignored.
-pub fn identical(x: &TypeKey, y: &TypeKey, objs: &TCObjects) -> bool {
+pub fn identical(x: TypeKey, y: TypeKey, objs: &TCObjects) -> bool {
     identical_impl(x, y, true, &mut HashSet::new(), objs)
 }
 
 /// identical_option is the same as identical except for the parameters
-pub fn identical_option(x: &Option<TypeKey>, y: &Option<TypeKey>, objs: &TCObjects) -> bool {
+pub fn identical_option(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
     identical_impl_o(x, y, true, &mut HashSet::new(), objs)
 }
 
 /// identical_ignore_tags reports whether x and y are identical types if tags are ignored.
 /// Receivers of Signature types are ignored.
-pub fn identical_ignore_tags(x: &Option<TypeKey>, y: &Option<TypeKey>, objs: &TCObjects) -> bool {
+pub fn identical_ignore_tags(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
     identical_impl_o(x, y, false, &mut HashSet::new(), objs)
 }
 
 /// identical_impl_o accepts wrapped TypeKeys
 fn identical_impl_o(
-    x: &Option<TypeKey>,
-    y: &Option<TypeKey>,
+    x: Option<TypeKey>,
+    y: Option<TypeKey>,
     cmp_tags: bool,
     dup: &mut HashSet<(TypeKey, TypeKey)>,
     objs: &TCObjects,
 ) -> bool {
-    if *x == *y {
+    if x == y {
         true
     } else if x.is_none() || y.is_none() {
         false
     } else {
-        identical_impl(
-            x.as_ref().unwrap(),
-            y.as_ref().unwrap(),
-            cmp_tags,
-            dup,
-            objs,
-        )
+        identical_impl(x.unwrap(), y.unwrap(), cmp_tags, dup, objs)
     }
 }
 
 /// identical_impl implements the logic of identical
 /// 'dup' is used to detect cycles.
 fn identical_impl(
-    x: &TypeKey,
-    y: &TypeKey,
+    x: TypeKey,
+    y: TypeKey,
     cmp_tags: bool,
     dup: &mut HashSet<(TypeKey, TypeKey)>,
     objs: &TCObjects,
@@ -1032,8 +1026,8 @@ fn identical_impl(
     if x == y {
         return true;
     }
-    let tx = &objs.types[*x];
-    let ty = &objs.types[*y];
+    let tx = &objs.types[x];
+    let ty = &objs.types[y];
     match (tx, ty) {
         (Type::Basic(bx), Type::Basic(by)) => bx.typ() == by.typ(),
         (Type::Array(ax), Type::Array(ay)) => {
@@ -1095,7 +1089,7 @@ fn identical_impl(
                         //
                         // If x and y were compared before, they must be equal
                         // (if they were not, the recursion would have stopped);
-                        let pair = (*x, *y);
+                        let pair = (x, y);
                         if dup.get(&pair).is_some() {
                             // pair got compared before
                             true
@@ -1128,16 +1122,16 @@ fn identical_impl(
     false
 }
 
-pub fn fmt_type(t: &Option<TypeKey>, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+pub fn fmt_type(t: Option<TypeKey>, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
     fmt_type_impl(t, f, &mut HashSet::new(), objs)
 }
 
-pub fn fmt_signature(t: &TypeKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+pub fn fmt_signature(t: TypeKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
     fmt_signature_impl(t, f, &mut HashSet::new(), objs)
 }
 
 fn fmt_type_impl(
-    t: &Option<TypeKey>,
+    t: Option<TypeKey>,
     f: &mut fmt::Formatter<'_>,
     visited: &mut HashSet<TypeKey>,
     objs: &TCObjects,
@@ -1162,11 +1156,11 @@ fn fmt_type_impl(
                 Some(i) => write!(f, "[{}]", i)?,
                 None => f.write_str("[unknown]")?,
             };
-            fmt_type_impl(&Some(detail.elem), f, visited, objs)?;
+            fmt_type_impl(Some(detail.elem), f, visited, objs)?;
         }
         Type::Slice(detail) => {
             f.write_str("[]")?;
-            fmt_type_impl(&Some(detail.elem), f, visited, objs)?;
+            fmt_type_impl(Some(detail.elem), f, visited, objs)?;
         }
         Type::Struct(detail) => {
             f.write_str("struct{{")?;
@@ -1187,14 +1181,14 @@ fn fmt_type_impl(
         }
         Type::Pointer(detail) => {
             f.write_char('*')?;
-            fmt_type_impl(&Some(*detail.base()), f, visited, objs)?;
+            fmt_type_impl(Some(detail.base()), f, visited, objs)?;
         }
         Type::Tuple(_) => {
-            fmt_tuple(&tkey, false, f, visited, objs)?;
+            fmt_tuple(tkey, false, f, visited, objs)?;
         }
         Type::Signature(_) => {
             f.write_str("func")?;
-            fmt_signature_impl(&t.unwrap(), f, visited, objs)?;
+            fmt_signature_impl(t.unwrap(), f, visited, objs)?;
         }
         Type::Interface(detail) => {
             f.write_str("interface{{")?;
@@ -1204,13 +1198,13 @@ fn fmt_type_impl(
                 }
                 let mobj = &objs.lobjs[*k];
                 f.write_str(mobj.name())?;
-                fmt_signature_impl(mobj.typ().as_ref().unwrap(), f, visited, objs)?;
+                fmt_signature_impl(mobj.typ().unwrap(), f, visited, objs)?;
             }
             for (i, k) in detail.embeddeds().iter().enumerate() {
                 if i > 0 || detail.methods().len() > 0 {
                     f.write_str("; ")?;
                 }
-                fmt_type_impl(&Some(*k), f, visited, objs)?;
+                fmt_type_impl(Some(*k), f, visited, objs)?;
             }
             if detail.all_methods().is_none() {
                 f.write_str(" /* incomplete */")?;
@@ -1219,17 +1213,17 @@ fn fmt_type_impl(
         }
         Type::Map(detail) => {
             f.write_str("map[")?;
-            fmt_type_impl(&Some(*detail.key()), f, visited, objs)?;
+            fmt_type_impl(Some(detail.key()), f, visited, objs)?;
             f.write_char(']')?;
-            fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
+            fmt_type_impl(Some(detail.elem()), f, visited, objs)?;
         }
         Type::Chan(detail) => {
             let (s, paren) = match detail.dir() {
                 ChanDir::SendRecv => ("chan ", {
                     // chan (<-chan T) requires parentheses
-                    let elm = &objs.types[*detail.elem()];
+                    let elm = &objs.types[detail.elem()];
                     if let Some(c) = elm.try_as_chan() {
-                        *c.dir() == ChanDir::RecvOnly
+                        c.dir() == ChanDir::RecvOnly
                     } else {
                         false
                     }
@@ -1241,7 +1235,7 @@ fn fmt_type_impl(
             if paren {
                 f.write_char('(')?;
             }
-            fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
+            fmt_type_impl(Some(detail.elem()), f, visited, objs)?;
             if paren {
                 f.write_char(')')?;
             }
@@ -1250,7 +1244,7 @@ fn fmt_type_impl(
             if let Some(okey) = detail.obj() {
                 let o = &objs.lobjs[*okey];
                 if let Some(pkg) = o.pkg() {
-                    objs.pkgs[*pkg].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
+                    objs.pkgs[pkg].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
                 }
                 f.write_str(o.name())?;
             } else {
@@ -1262,15 +1256,15 @@ fn fmt_type_impl(
 }
 
 fn fmt_signature_impl(
-    t: &TypeKey,
+    t: TypeKey,
     f: &mut fmt::Formatter<'_>,
     visited: &mut HashSet<TypeKey>,
     objs: &TCObjects,
 ) -> fmt::Result {
-    let sig = &objs.types[*t].try_as_signature().unwrap();
+    let sig = &objs.types[t].try_as_signature().unwrap();
     fmt_tuple(sig.params(), sig.variadic(), f, visited, &objs)?;
     f.write_char(' ')?;
-    let results = &objs.types[*sig.results()].try_as_tuple().unwrap();
+    let results = &objs.types[sig.results()].try_as_tuple().unwrap();
     if results.vars().len() == 1 {
         let obj = &objs.lobjs[results.vars()[0]];
         if obj.name().is_empty() {
@@ -1283,14 +1277,14 @@ fn fmt_signature_impl(
 }
 
 fn fmt_tuple(
-    tkey: &TypeKey,
+    tkey: TypeKey,
     variadic: bool,
     f: &mut fmt::Formatter<'_>,
     visited: &mut HashSet<TypeKey>,
     objs: &TCObjects,
 ) -> fmt::Result {
     f.write_char('(')?;
-    let tuple = &objs.types[*tkey].try_as_tuple().unwrap();
+    let tuple = &objs.types[tkey].try_as_tuple().unwrap();
     for (i, v) in tuple.vars().iter().enumerate() {
         if i > 0 {
             f.write_str(", ")?;
@@ -1301,12 +1295,12 @@ fn fmt_tuple(
         }
         let tkey = obj.typ();
         if variadic && i == tuple.vars().len() - 1 {
-            let utype = underlying_type(tkey.as_ref().unwrap(), &objs);
-            let typ = &objs.types[*utype];
+            let utype = underlying_type(tkey.unwrap(), &objs);
+            let typ = &objs.types[utype];
             match typ {
                 Type::Slice(detail) => {
                     f.write_str("...")?;
-                    fmt_type_impl(&Some(*detail.elem()), f, visited, objs)?;
+                    fmt_type_impl(Some(detail.elem()), f, visited, objs)?;
                 }
                 Type::Basic(detail) => {
                     // special case:

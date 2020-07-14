@@ -112,10 +112,10 @@ impl<'a> Checker<'a> {
                 // of S and the respective parameter passing rules apply."
                 let slice = x.typ.unwrap();
                 let telem = if let Some(detail) = self
-                    .otype(*typ::underlying_type(&slice, self.tc_objs))
+                    .otype(typ::underlying_type(slice, self.tc_objs))
                     .try_as_slice()
                 {
-                    *detail.elem()
+                    detail.elem()
                 } else {
                     let xd = self.new_dis(x);
                     self.invalid_arg(xd.pos(), &format!("{} is not a slice", xd));
@@ -141,7 +141,7 @@ impl<'a> Checker<'a> {
                         return false;
                     }
                     let stype = x.typ.unwrap();
-                    if typ::is_string(&stype, self.tc_objs) {
+                    if typ::is_string(stype, self.tc_objs) {
                         record(self, Some(slice), &vec![slice, stype], true);
 
                         x.mode = OperandMode::Value;
@@ -168,13 +168,15 @@ impl<'a> Checker<'a> {
             Builtin::Cap | Builtin::Len => {
                 // cap(x)
                 // len(x)
-                let ty = typ::underlying_type(x.typ.as_ref().unwrap(), self.tc_objs);
-                let ty = implicit_array_deref(*ty, self.tc_objs);
+                let ty = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
+                let ty = implicit_array_deref(ty, self.tc_objs);
                 let mode = match self.otype(ty) {
                     Type::Basic(detail) => {
                         if detail.info() == BasicInfo::IsString {
                             if let OperandMode::Constant(v) = &x.mode {
-                                OperandMode::Constant(Value::with_u64(v.as_string().len() as u64))
+                                OperandMode::Constant(Value::with_u64(
+                                    v.str_as_string().len() as u64
+                                ))
                             } else {
                                 OperandMode::Value
                             }
@@ -191,7 +193,7 @@ impl<'a> Checker<'a> {
                             // the expression s does not contain channel receives or
                             // function calls; in this case s is not evaluated."
                             OperandMode::Constant(if let Some(len) = detail.len() {
-                                Value::with_u64(*len)
+                                Value::with_u64(len)
                             } else {
                                 Value::Unknown
                             })
@@ -223,9 +225,9 @@ impl<'a> Checker<'a> {
             }
             Builtin::Close => {
                 // close(c)
-                let tkey = *typ::underlying_type(x.typ.as_ref().unwrap(), self.tc_objs);
+                let tkey = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
                 if let Some(detail) = self.otype(tkey).try_as_chan() {
-                    if *detail.dir() == typ::ChanDir::RecvOnly {
+                    if detail.dir() == typ::ChanDir::RecvOnly {
                         let dis = self.new_dis(x);
                         self.invalid_arg(
                             dis.pos(),
@@ -251,8 +253,8 @@ impl<'a> Checker<'a> {
                 }
 
                 // convert or check untyped arguments
-                let x_untyped = typ::is_untyped(x.typ.as_ref().unwrap(), self.tc_objs);
-                let y_untyped = typ::is_untyped(y.typ.as_ref().unwrap(), self.tc_objs);
+                let x_untyped = typ::is_untyped(x.typ.unwrap(), self.tc_objs);
+                let y_untyped = typ::is_untyped(y.typ.unwrap(), self.tc_objs);
                 match (x_untyped, y_untyped) {
                     (false, false) => {} // x and y are typed => nothing to do
                     // only x is untyped => convert to type of y
@@ -272,7 +274,7 @@ impl<'a> Checker<'a> {
                             (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
                                 let to_float =
                                     |xtype: &mut Option<TypeKey>, v: &Value, objs: &TCObjects| {
-                                        if typ::is_numeric(xtype.as_ref().unwrap(), objs)
+                                        if typ::is_numeric(xtype.unwrap(), objs)
                                             && v.imag().sign() == 0
                                         {
                                             *xtype = Some(self.basic_type(BasicType::UntypedFloat));
@@ -296,7 +298,7 @@ impl<'a> Checker<'a> {
                 }
 
                 // both argument types must be identical
-                if !typ::identical_option(&x.typ, &y.typ, self.tc_objs) {
+                if !typ::identical_option(x.typ, y.typ, self.tc_objs) {
                     self.invalid_arg(
                         x.pos(self.ast_objs),
                         &format!(
@@ -309,7 +311,7 @@ impl<'a> Checker<'a> {
                 }
 
                 // the argument types must be of floating-point type
-                if !typ::is_float(x.typ.as_ref().unwrap(), self.tc_objs) {
+                if !typ::is_float(x.typ.unwrap(), self.tc_objs) {
                     self.invalid_arg(
                         x.pos(self.ast_objs),
                         &format!(
@@ -363,7 +365,7 @@ impl<'a> Checker<'a> {
                     .otype(x.typ.unwrap())
                     .underlying_val(self.tc_objs)
                     .try_as_slice()
-                    .map(|x| *x.elem());
+                    .map(|x| x.elem());
 
                 let mut y = Operand::new();
                 unpack_result.as_ref().unwrap().get(self, &mut y, 1);
@@ -379,7 +381,7 @@ impl<'a> Checker<'a> {
                             None
                         }
                     }
-                    Type::Slice(detail) => Some(*detail.elem()),
+                    Type::Slice(detail) => Some(detail.elem()),
                     _ => None,
                 };
 
@@ -392,7 +394,7 @@ impl<'a> Checker<'a> {
                     return false;
                 }
 
-                if !typ::identical_option(&dst, &src, self.tc_objs) {
+                if !typ::identical_option(dst, src, self.tc_objs) {
                     let (xd, yd) = (self.new_dis(x), self.new_dis(&y));
                     let (txd, tyd) = (self.new_td_o(&dst), self.new_td_o(&src));
                     self.invalid_arg(
@@ -420,7 +422,7 @@ impl<'a> Checker<'a> {
                 let mtype = x.typ.unwrap();
                 match self.otype(mtype).underlying_val(self.tc_objs).try_as_map() {
                     Some(detail) => {
-                        let key = *detail.key();
+                        let key = detail.key();
                         unpack_result.as_ref().unwrap().get(self, x, 1);
                         if x.invalid() {
                             return false;
@@ -448,11 +450,11 @@ impl<'a> Checker<'a> {
                 // real(complexT) floatT
 
                 // convert or check untyped argument
-                if typ::is_untyped(x.typ.as_ref().unwrap(), self.tc_objs) {
+                if typ::is_untyped(x.typ.unwrap(), self.tc_objs) {
                     if let OperandMode::Constant(_) = &x.mode {
                         // an untyped constant number can alway be considered
                         // as a complex constant
-                        if typ::is_numeric(x.typ.as_ref().unwrap(), self.tc_objs) {
+                        if typ::is_numeric(x.typ.unwrap(), self.tc_objs) {
                             x.typ = Some(self.basic_type(BasicType::UntypedComplex));
                         }
                     } else {
@@ -469,7 +471,7 @@ impl<'a> Checker<'a> {
                 }
 
                 // the argument must be of complex type
-                if !typ::is_complex(x.typ.as_ref().unwrap(), self.tc_objs) {
+                if !typ::is_complex(x.typ.unwrap(), self.tc_objs) {
                     let xd = self.new_dis(x);
                     self.invalid_arg(
                         xd.pos(),
@@ -664,12 +666,12 @@ impl<'a> Checker<'a> {
                     if x.invalid() {
                         return false;
                     }
-                    let base = lookup::deref_struct_ptr(x.typ.as_ref().unwrap(), self.tc_objs);
+                    let base = lookup::deref_struct_ptr(x.typ.unwrap(), self.tc_objs);
                     let sel = &self.ast_ident(selx.sel).name;
                     let result = lookup::lookup_field_or_method(
                         base,
                         false,
-                        &Some(self.pkg),
+                        Some(self.pkg),
                         sel,
                         self.tc_objs,
                     );
@@ -677,7 +679,7 @@ impl<'a> Checker<'a> {
                         LookupResult::Ambiguous(_)
                         | LookupResult::NotFound
                         | LookupResult::BadMethodReceiver => {
-                            let td = self.new_dis(base);
+                            let td = self.new_dis(&base);
                             let msg = if result == LookupResult::BadMethodReceiver {
                                 format!("field {} is embedded via a pointer in {}", sel, td)
                             } else {
@@ -696,7 +698,7 @@ impl<'a> Checker<'a> {
                     };
 
                     let selection =
-                        Selection::new(SelectionKind::FieldVal, Some(*base), obj, indices, false);
+                        Selection::new(SelectionKind::FieldVal, Some(base), obj, indices, false);
                     self.result.record_selection(selx, selection);
 
                     // todo: not sure if Offsetof will ever be used in goscript
@@ -733,7 +735,7 @@ impl<'a> Checker<'a> {
                 };
                 match &x.mode {
                     OperandMode::Constant(v) => {
-                        if !typ::is_boolean(x.typ.as_ref().unwrap(), self.tc_objs) {
+                        if !typ::is_boolean(x.typ.unwrap(), self.tc_objs) {
                             return default_err();
                         }
                         match v {
@@ -801,8 +803,8 @@ fn make_sig(
 ) -> TypeKey {
     let list: Vec<ObjKey> = args
         .iter()
-        .map(|x| {
-            let ty = Some(*untyped_default_type(x, objs));
+        .map(|&x| {
+            let ty = Some(untyped_default_type(x, objs));
             objs.new_var(0, None, "".to_string(), ty)
         })
         .collect();
@@ -819,9 +821,9 @@ fn make_sig(
 fn implicit_array_deref(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let ty = &objs.types[t];
     if let Some(detail) = ty.try_as_pointer() {
-        if let Some(under) = objs.types[*detail.base()].underlying() {
-            if objs.types[*under].try_as_array().is_some() {
-                return *under;
+        if let Some(under) = objs.types[detail.base()].underlying() {
+            if objs.types[under].try_as_array().is_some() {
+                return under;
             }
         }
     }

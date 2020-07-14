@@ -548,54 +548,6 @@ mod test {
         );
     }
 
-    /*
-        trait Float {
-        type Bits: Hash;
-        fn float_is_nan(&self) -> bool;
-        fn float_to_bits(&self) -> Self::Bits;
-    }
-
-    impl Float for f32 {
-        type Bits = u32;
-        fn float_is_nan(&self) -> bool {
-            self.is_nan()
-        }
-        fn float_to_bits(&self) -> u32 {
-            self.to_bits()
-        }
-    }
-
-    impl Float for f64 {
-        type Bits = u64;
-        fn float_is_nan(&self) -> bool {
-            self.is_nan()
-        }
-        fn float_to_bits(&self) -> u64 {
-            self.to_bits()
-        }
-    }
-
-    fn float_eq<T: Float + PartialEq>(x: &T, y: &T) -> bool {
-        match (x, y) {
-            (a, _) if a.float_is_nan() => false,
-            (_, b) if b.float_is_nan() => false,
-            (a, b) => a == b,
-        }
-    }
-
-    fn float_hash<T: Float, H: Hasher>(f: &T, state: &mut H) {
-        match f {
-            x if x.float_is_nan() => {
-                "NAN".hash(state);
-            }
-            x => {
-                x.float_to_bits().hash(state);
-            }
-        }
-    }
-
-        */
-
     #[test]
     fn test_types() {
         let mut o = VMObjects::new();

@@ -5,9 +5,13 @@ use num_bigint::BigInt;
 use num_traits::cast::FromPrimitive;
 use num_traits::cast::ToPrimitive;
 use num_traits::Num;
+use ordered_float;
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::fmt;
+
+type F32 = ordered_float::OrderedFloat<f32>;
+type F64 = ordered_float::OrderedFloat<f64>;
 
 /// constant implements Values representing untyped
 /// Go constants and their corresponding operations.
@@ -23,14 +27,14 @@ use std::fmt;
 /// todo: This is against the Go specs.
 
 /// All the values involved in the evaluation
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Unknown,
     Bool(bool),
     Str(String),
     Int(BigInt),
-    Float(f64),
-    Complex(f64, f64),
+    Float(F64),
+    Complex(F64, F64),
 }
 
 impl fmt::Display for Value {
@@ -67,7 +71,7 @@ impl Value {
     }
 
     pub fn with_f64(f: f64) -> Value {
-        Value::Float(f)
+        Value::Float(f.into())
     }
 
     pub fn with_literal(tok: &Token) -> Value {
@@ -78,7 +82,7 @@ impl Value {
                 if let Value::Float(f) =
                     float_from_literal(&imlit.as_str()[..(imlit.as_str().len() - 2)])
                 {
-                    Value::Complex(0.0, f)
+                    Value::Complex(0.0.into(), f)
                 } else {
                     Value::Unknown
                 }
@@ -137,7 +141,7 @@ impl Value {
                             true
                         } else {
                             if let Some(r) = rounded {
-                                *r = Value::Float((f as f32).into());
+                                *r = Value::Float(((*f as f32) as f64).into());
                             }
                             false
                         }
@@ -155,7 +159,10 @@ impl Value {
                             true
                         } else {
                             if let Some(r) = rounded {
-                                *r = Value::Complex((re as f32).into(), (im as f32).into());
+                                *r = Value::Complex(
+                                    ((*re as f32) as f64).into(),
+                                    ((*im as f32) as f64).into(),
+                                );
                             }
                             false
                         }
@@ -180,10 +187,10 @@ impl Value {
         };
         match self {
             Value::Int(_) => Cow::Borrowed(self),
-            Value::Float(f) => f64_to_int(*f),
+            Value::Float(f) => f64_to_int(**f),
             Value::Complex(r, i) => {
                 if *i == 0.0 {
-                    f64_to_int(*r)
+                    f64_to_int(**r)
                 } else {
                     Cow::Owned(Value::Unknown)
                 }
@@ -195,33 +202,33 @@ impl Value {
     pub fn to_float(&self) -> Value {
         let v = match self {
             Value::Int(i) => i.to_f64(),
-            Value::Float(f) => Some(*f),
+            Value::Float(f) => Some(**f),
             Value::Complex(r, i) => {
-                if *i == 0.0 {
-                    Some(*r)
+                if **i == 0.0 {
+                    Some(**r)
                 } else {
                     None
                 }
             }
             _ => None,
         };
-        v.map_or(Value::Unknown, |x| Value::Float(x))
+        v.map_or(Value::Unknown, |x| Value::Float(x.into()))
     }
 
     pub fn to_complex(&self) -> Value {
         let v = match self {
             Value::Int(i) => i.to_f64().map(|x| (x, 0.0)),
-            Value::Float(f) => Some((*f, 0.0)),
-            Value::Complex(r, i) => Some((*r, *i)),
+            Value::Float(f) => Some((**f, 0.0)),
+            Value::Complex(r, i) => Some((**r, **i)),
             _ => None,
         };
-        v.map_or(Value::Unknown, |(r, i)| Value::Complex(r, i))
+        v.map_or(Value::Unknown, |(r, i)| Value::Complex(r.into(), i.into()))
     }
 
-    pub fn as_string(&self) -> String {
+    pub fn str_as_string(&self) -> String {
         match self {
             Value::Str(s) => quote_str(s),
-            _ => self.to_string(),
+            _ => panic!("not a string"),
         }
     }
 

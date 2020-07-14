@@ -47,12 +47,12 @@ impl<'a> Checker<'a> {
             // informative "not a type/value" error that this function's caller
             // will issue
             let lobj = self.lobj(okey);
-            let pkg = *lobj.pkg();
-            let mut otype = *lobj.typ();
+            let pkg = lobj.pkg();
+            let mut otype = lobj.typ();
             if otype.is_none() || (lobj.entity_type().is_type_name() && want_type) {
                 self.obj_decl(okey, def, fctx);
                 // type must have been assigned by Checker.obj_decl
-                otype = *self.lobj(okey).typ();
+                otype = self.lobj(okey).typ();
             }
             debug_assert!(otype.is_some());
 
@@ -97,7 +97,7 @@ impl<'a> Checker<'a> {
                     // It's ok to mark non-local variables, but ignore variables
                     // from other packages to avoid potential race conditions with
                     // dot-imported variables.
-                    if *lobj.pkg() == Some(self.pkg) {
+                    if lobj.pkg() == Some(self.pkg) {
                         self.lobj_mut(okey)
                             .entity_type_mut()
                             .var_property_mut()
@@ -149,7 +149,7 @@ impl<'a> Checker<'a> {
         }
 
         let t = self.type_internal(e, def, fctx);
-        debug_assert!(typ::is_typed(&t, self.tc_objs));
+        debug_assert!(typ::is_typed(t, self.tc_objs));
         self.result
             .record_type_and_value(e, OperandMode::TypeExpr, t);
 
@@ -203,7 +203,7 @@ impl<'a> Checker<'a> {
                         .new_param_var(0, None, "".to_string(), Some(invalid_type))
                 }
                 x if x > 1 => {
-                    let pos = *self.lobj(recv_list[recv_list.len() - 1]).pos();
+                    let pos = self.lobj(recv_list[recv_list.len() - 1]).pos();
                     self.error_str(pos, "method must have exactly one receiver");
                     recv_list[0] // continue with first receiver
                 }
@@ -216,16 +216,16 @@ impl<'a> Checker<'a> {
             // (ignore invalid types - error was reported before)
             let recv_var_val = self.lobj(recv_var);
             let recv_type = recv_var_val.typ().unwrap();
-            let (&t, _) = lookup::try_deref(&recv_type, self.tc_objs);
+            let (t, _) = lookup::try_deref(recv_type, self.tc_objs);
             if t != invalid_type {
                 let err_msg = if let Some(n) = self.otype(t).try_as_named() {
                     // spec: "The type denoted by T is called the receiver base type; it must not
                     // be a pointer or interface type and it must be declared in the same package
                     // as the method."
-                    if *self.lobj(n.obj().unwrap()).pkg() != Some(self.pkg) {
+                    if self.lobj(n.obj().unwrap()).pkg() != Some(self.pkg) {
                         Some("type not defined in this package")
                     } else {
-                        match self.otype(*n.underlying()) {
+                        match self.otype(n.underlying()) {
                             typ::Type::Basic(b) => {
                                 if b.typ() == typ::BasicType::UnsafePointer {
                                     Some("unsafe.Pointer")
@@ -243,7 +243,7 @@ impl<'a> Checker<'a> {
                     Some("basic or unnamed type")
                 };
                 if let Some(err) = err_msg {
-                    let pos = *recv_var_val.pos();
+                    let pos = recv_var_val.pos();
                     let td = self.new_dis(&recv_type);
                     self.error(pos, format!("invalid receiver {} ({})", td, err));
                     // ok to continue
@@ -358,7 +358,7 @@ impl<'a> Checker<'a> {
 
                 let pos = m.key.pos(self.ast_objs);
                 let f = move |checker: &mut Checker, _: &mut FilesContext| {
-                    if !typ::comparable(&k, checker.tc_objs) {
+                    if !typ::comparable(k, checker.tc_objs) {
                         let td = checker.new_dis(&k);
                         checker.error(pos, format!("invalid map key type {}", td));
                     }
@@ -423,7 +423,7 @@ impl<'a> Checker<'a> {
         let mut x = Operand::new();
         self.expr(&mut x, e);
         if let OperandMode::Constant(v) = &x.mode {
-            let t = x.typ.as_ref().unwrap();
+            let t = x.typ.unwrap();
             if typ::is_untyped(t, self.tc_objs) || typ::is_integer(t, self.tc_objs) {
                 let int = v.to_int();
                 let int_type = self
@@ -582,7 +582,7 @@ impl<'a> Checker<'a> {
                     if ty == checker.invalid_type() {
                         continue; // error reported before
                     }
-                    match checker.otype(*typ::underlying_type(&ty, checker.tc_objs)) {
+                    match checker.otype(typ::underlying_type(ty, checker.tc_objs)) {
                         typ::Type::Interface(embed) => {
                             // Correct embedded interfaces must be complete
                             assert!(embed.all_methods().is_some());
@@ -864,10 +864,10 @@ impl<'a> Checker<'a> {
                     );
                 };
                 if let Some(ident) = Checker::embedded_field_ident(&field.typ) {
-                    let (t, is_ptr) = lookup::try_deref(&ty, self.tc_objs);
+                    let (t, is_ptr) = lookup::try_deref(ty, self.tc_objs);
                     // Because we have a name, typ must be of the form T or *T, where T is the name
                     // of a (named or alias) type, and t (= deref(typ)) must be the type of T.
-                    let t = *typ::underlying_type(&t, self.tc_objs);
+                    let t = typ::underlying_type(t, self.tc_objs);
                     let type_val = self.otype(t);
                     match type_val {
                         typ::Type::Basic(_) if t == invalid_type => {

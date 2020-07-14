@@ -68,17 +68,17 @@ impl Selection {
         &self.kind
     }
 
-    pub fn recv(&self) -> &Option<TypeKey> {
-        &self.recv
+    pub fn recv(&self) -> Option<TypeKey> {
+        self.recv
     }
 
-    pub fn obj(&self) -> &ObjKey {
-        &self.obj
+    pub fn obj(&self) -> ObjKey {
+        self.obj
     }
 
     /// typ must be called after init is called
-    pub fn typ(&self) -> &TypeKey {
-        self.typ.as_ref().unwrap()
+    pub fn typ(&self) -> TypeKey {
+        self.typ.unwrap()
     }
 
     /// id must be called after init is called
@@ -117,7 +117,7 @@ impl Selection {
         match self.kind {
             SelectionKind::FieldVal => {
                 f.write_char(' ')?;
-                typ::fmt_type(&Some(*self.typ()), f, objs)?;
+                typ::fmt_type(Some(self.typ()), f, objs)?;
             }
             _ => typ::fmt_signature(self.typ(), f, objs)?,
         }
@@ -146,7 +146,7 @@ impl Selection {
                 let arg0key = objs.lobjs.insert(arg0);
                 sig.set_recv(None);
                 let mut params = vec![arg0key];
-                let tup = &mut objs.types[*sig.params()].try_as_tuple_mut().unwrap();
+                let tup = &mut objs.types[sig.params()].try_as_tuple_mut().unwrap();
                 params.append(&mut tup.vars().clone());
                 sig.set_params(objs.new_t_tuple(params));
                 objs.types.insert(typ::Type::Signature(sig))

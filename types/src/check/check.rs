@@ -355,7 +355,7 @@ impl TypeInfo {
     }
 
     pub fn record_selection(&mut self, expr: &ast::SelectorExpr, sel: Selection) {
-        self.record_use(expr.sel, *sel.obj());
+        self.record_use(expr.sel, sel.obj());
         self.selections.insert(expr.id(), sel);
     }
 

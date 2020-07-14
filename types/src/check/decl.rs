@@ -16,7 +16,7 @@ use std::collections::HashMap;
 impl<'a> Checker<'a> {
     pub fn report_alt_decl(&self, okey: &ObjKey) {
         let lobj = self.lobj(*okey);
-        let pos = *lobj.pos();
+        let pos = lobj.pos();
         if pos > 0 {
             self.error(pos, format!("\tother declaration of {}", lobj.name()));
         }
@@ -32,7 +32,7 @@ impl<'a> Checker<'a> {
             if let Some(o) = alt {
                 let lobj = self.lobj(okey);
                 self.error(
-                    *lobj.pos(),
+                    lobj.pos(),
                     format!("{} redeclared in this block", lobj.name()),
                 );
                 self.report_alt_decl(&o);
@@ -48,7 +48,7 @@ impl<'a> Checker<'a> {
     pub fn obj_decl(&mut self, okey: ObjKey, def: Option<TypeKey>, fctx: &mut FilesContext) {
         let trace_end_data = if self.config().trace_checker {
             let lobj = self.lobj(okey);
-            let pos = *lobj.pos();
+            let pos = lobj.pos();
             let obj_display = self.new_dis(&okey);
             let bmsg = format!(
                 "-- checking {} {} (objPath = {})",
@@ -92,7 +92,7 @@ impl<'a> Checker<'a> {
         // everywhere where we set the type) to satisfy the color invariants.
 
         let lobj = &mut self.tc_objs.lobjs[okey];
-        if *lobj.color() == ObjColor::White && lobj.typ().is_some() {
+        if lobj.color() == ObjColor::White && lobj.typ().is_some() {
             lobj.set_color(ObjColor::Black);
 
             if let Some((p, m)) = &trace_end_data {
@@ -210,7 +210,7 @@ impl<'a> Checker<'a> {
         let mut has_type_def = false;
         let mut nval = 0;
         let start = match lobj.color() {
-            ObjColor::Gray(v) => *v,
+            ObjColor::Gray(v) => v,
             _ => unreachable!(),
         };
         let cycle = &fctx.obj_path[start..];
@@ -266,7 +266,7 @@ impl<'a> Checker<'a> {
         }
 
         // report error
-        let pos = *lobj.pos();
+        let pos = lobj.pos();
         self.error(
             pos,
             format!("illegal cycle in declaration of {}", lobj.name()),
@@ -301,7 +301,7 @@ impl<'a> Checker<'a> {
             let tval = &self.tc_objs.types[t];
             if !tval.is_const_type(self.tc_objs) {
                 let invalid_type = self.invalid_type();
-                if tval.underlying().unwrap_or(&t) == &invalid_type {
+                if tval.underlying().unwrap_or(t) == invalid_type {
                     self.error(
                         e.pos(self.ast_objs),
                         format!("invalid constant type {}", self.new_dis(&t)),
@@ -370,7 +370,7 @@ impl<'a> Checker<'a> {
         // one was specified, otherwise they assume the type of the
         // init expression values
         if typ.is_some() {
-            let t = *self.lobj(okey).typ();
+            let t = self.lobj(okey).typ();
             for o in lhs.as_ref().unwrap().iter() {
                 self.lobj_mut(*o).set_type(t);
             }
@@ -426,7 +426,7 @@ impl<'a> Checker<'a> {
             // and which has as its underlying type the named type B.
             // Determine the (final, unnamed) underlying type by resolving
             // any forward chain (they always end in an unnamed type).
-            let underlying = *typ::deep_underlying_type(&named_key, self.tc_objs);
+            let underlying = typ::deep_underlying_type(named_key, self.tc_objs);
             self.tc_objs.types[named_key]
                 .try_as_named_mut()
                 .unwrap()
@@ -488,7 +488,7 @@ impl<'a> Checker<'a> {
         // see original go code
         let type_key = self.lobj(okey).typ().unwrap();
         let named = self.otype(type_key).try_as_named().unwrap();
-        if let Some(struc) = self.otype(*named.underlying()).try_as_struct() {
+        if let Some(struc) = self.otype(named.underlying()).try_as_struct() {
             for f in struc.fields().iter() {
                 if self.lobj(*f).name() != "_" {
                     assert!(self.insert_obj_to_set(&mut mset, *f).is_none());
@@ -515,12 +515,12 @@ impl<'a> Checker<'a> {
                 if self.insert_obj_to_set(&mut mset, *m).is_some() {
                     match mobj.entity_type() {
                         EntityType::Var(_) => self.error(
-                            *mobj.pos(),
+                            mobj.pos(),
                             format!("field and method with the same name {}", mobj.name()),
                         ),
                         EntityType::Func(_) => {
                             self.error(
-                                *mobj.pos(),
+                                mobj.pos(),
                                 format!(
                                     "method {} already declared for {}",
                                     mobj.name(),
