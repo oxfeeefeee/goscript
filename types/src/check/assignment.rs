@@ -206,7 +206,7 @@ impl<'a> Checker<'a> {
         }
 
         let mut z = Operand::new();
-        self.expr(&mut z, lhs);
+        self.expr(&mut z, lhs, fctx);
         if let Some(okey) = v {
             self.lobj_mut(okey)
                 .entity_type_mut()
@@ -227,7 +227,7 @@ impl<'a> Checker<'a> {
                 if let Some(expr) = &z.expr {
                     if let Expr::Selector(sexpr) = expr {
                         let mut op = Operand::new();
-                        self.expr(&mut op, &sexpr.expr);
+                        self.expr(&mut op, &sexpr.expr, fctx);
                         if op.mode == OperandMode::MapIndex {
                             let ed = self.new_dis(expr);
                             self.error(
@@ -263,7 +263,7 @@ impl<'a> Checker<'a> {
     ) {
         let invalid_type = self.invalid_type();
         let ll = lhs.len();
-        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_some());
+        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_some(), fctx);
 
         let mut invalidate_lhs = || {
             for okey in lhs.iter() {
@@ -274,7 +274,7 @@ impl<'a> Checker<'a> {
             UnpackResult::Error => invalidate_lhs(),
             UnpackResult::Mismatch(exprs) => {
                 invalidate_lhs();
-                result.use_(self, 0);
+                result.use_(self, 0, fctx);
                 let rl = exprs.len();
                 if let Some(p) = return_pos {
                     self.error(
@@ -300,7 +300,7 @@ impl<'a> Checker<'a> {
                 };
                 for (i, l) in lhs.iter().enumerate() {
                     let mut x = Operand::new();
-                    result.get(self, &mut x, i);
+                    result.get(self, &mut x, i, fctx);
                     self.init_var(*l, &mut x, context, fctx);
                 }
             }
@@ -318,10 +318,10 @@ impl<'a> Checker<'a> {
 
     pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>, fctx: &mut FilesContext) {
         let ll = lhs.len();
-        let result = self.unpack(rhs, ll, ll == 2);
+        let result = self.unpack(rhs, ll, ll == 2, fctx);
         match result {
             UnpackResult::Error => self.use_lhs(lhs),
-            UnpackResult::Mismatch(_) => result.use_(self, 0),
+            UnpackResult::Mismatch(_) => result.use_(self, 0, fctx),
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
             | UnpackResult::Mutliple(_)

@@ -317,7 +317,7 @@ impl<'a> Checker<'a> {
 
         let mut x = Operand::new();
         if let Some(expr) = init {
-            self.expr(&mut x, expr);
+            self.expr(&mut x, expr, fctx);
         }
         self.init_const(okey, &mut x, fctx);
 
@@ -358,7 +358,7 @@ impl<'a> Checker<'a> {
         if lhs.is_none() || lhs.as_ref().unwrap().len() == 1 {
             assert!(lhs.is_none() || lhs.as_ref().unwrap()[0] == okey);
             let mut x = Operand::new();
-            self.expr(&mut x, init.as_ref().unwrap());
+            self.expr(&mut x, init.as_ref().unwrap(), fctx);
             self.init_var(okey, &mut x, "variable declaration", fctx);
             return;
         }

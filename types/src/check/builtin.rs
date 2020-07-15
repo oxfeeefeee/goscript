@@ -56,12 +56,12 @@ impl<'a> Checker<'a> {
             // arguments require special handling
             Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => None,
             _ => {
-                let result = self.unpack(&call.args, binfo.arg_count, false);
+                let result = self.unpack(&call.args, binfo.arg_count, false, fctx);
                 match result {
                     UnpackResult::Tuple(_, _)
                     | UnpackResult::Mutliple(_)
                     | UnpackResult::Single(_) => {
-                        result.get(self, x, 0);
+                        result.get(self, x, 0, fctx);
                         if x.invalid() {
                             return false;
                         }
@@ -136,7 +136,7 @@ impl<'a> Checker<'a> {
                         self.tc_objs,
                     )
                 {
-                    unpack_result.as_ref().unwrap().get(self, x, 1);
+                    unpack_result.as_ref().unwrap().get(self, x, 1, fctx);
                     if x.invalid() {
                         return false;
                     }
@@ -247,7 +247,7 @@ impl<'a> Checker<'a> {
             Builtin::Complex => {
                 // complex(x, y floatT) complexT
                 let mut y = Operand::new();
-                unpack_result.as_ref().unwrap().get(self, &mut y, 1);
+                unpack_result.as_ref().unwrap().get(self, &mut y, 1, fctx);
                 if y.invalid() {
                     return false;
                 }
@@ -368,7 +368,7 @@ impl<'a> Checker<'a> {
                     .map(|x| x.elem());
 
                 let mut y = Operand::new();
-                unpack_result.as_ref().unwrap().get(self, &mut y, 1);
+                unpack_result.as_ref().unwrap().get(self, &mut y, 1, fctx);
                 if y.invalid() {
                     return false;
                 }
@@ -423,7 +423,7 @@ impl<'a> Checker<'a> {
                 match self.otype(mtype).underlying_val(self.tc_objs).try_as_map() {
                     Some(detail) => {
                         let key = detail.key();
-                        unpack_result.as_ref().unwrap().get(self, x, 1);
+                        unpack_result.as_ref().unwrap().get(self, x, 1, fctx);
                         if x.invalid() {
                             return false;
                         }
@@ -552,13 +552,11 @@ impl<'a> Checker<'a> {
                 }
 
                 // constant integer arguments, if any
-                let sizes: Vec<i64> = call.args[1..]
+                let sizes: Vec<u64> = call.args[1..]
                     .iter()
                     .filter_map(|x| {
-                        if let Some(i) = self.index(x, None, fctx) {
-                            if i >= 0 {
-                                return Some(i);
-                            }
+                        if let Ok(i) = self.index(x, None, fctx) {
+                            return i;
                         }
                         None
                     })
@@ -627,7 +625,7 @@ impl<'a> Checker<'a> {
                 for i in 0..nargs {
                     if i > 0 {
                         // first argument already evaluated
-                        unpack_result.as_ref().unwrap().get(self, x, i);
+                        unpack_result.as_ref().unwrap().get(self, x, i, fctx);
                     }
                     let msg = format!("argument to {}", self.builtin_info(id).name);
                     self.assignment(x, None, &msg, fctx);
@@ -662,7 +660,7 @@ impl<'a> Checker<'a> {
                 // (no argument evaluated yet)
                 let arg0 = &call.args[0];
                 if let Expr::Selector(selx) = Checker::unparen(arg0) {
-                    self.expr(x, &selx.expr);
+                    self.expr(x, &selx.expr, fctx);
                     if x.invalid() {
                         return false;
                     }

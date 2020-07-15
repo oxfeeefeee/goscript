@@ -32,7 +32,7 @@ pub enum UnpackResult<'a> {
 }
 
 impl<'a> UnpackResult<'a> {
-    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize) {
+    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize, fctx: &mut FilesContext) {
         match self {
             UnpackResult::Tuple(expr, types) => {
                 x.mode = OperandMode::Value;
@@ -45,7 +45,7 @@ impl<'a> UnpackResult<'a> {
                 x.typ = Some(types[i]);
             }
             UnpackResult::Mutliple(exprs) => {
-                checker.multi_expr(x, &exprs[i]);
+                checker.multi_expr(x, &exprs[i], fctx);
             }
             UnpackResult::Single(sx) => {
                 x.mode = sx.mode.clone();
@@ -58,7 +58,7 @@ impl<'a> UnpackResult<'a> {
         }
     }
 
-    pub fn use_(&self, checker: &mut Checker, from: usize) {
+    pub fn use_(&self, checker: &mut Checker, from: usize, fctx: &mut FilesContext) {
         let exprs = match self {
             UnpackResult::Mutliple(exprs) => exprs,
             UnpackResult::Mismatch(exprs) => exprs,
@@ -69,7 +69,7 @@ impl<'a> UnpackResult<'a> {
 
         let mut x = Operand::new();
         for i in from..exprs.len() {
-            checker.multi_expr(&mut x, &exprs[i]);
+            checker.multi_expr(&mut x, &exprs[i], fctx);
         }
     }
 }
@@ -90,18 +90,18 @@ impl<'a> UnpackedResultLeftovers<'a> {
         }
     }
 
-    pub fn use_all(&self, checker: &mut Checker) {
+    pub fn use_all(&self, checker: &mut Checker, fctx: &mut FilesContext) {
         let from = if self.consumed.is_none() {
             0
         } else {
             self.consumed.unwrap().len()
         };
-        self.leftovers.use_(checker, from);
+        self.leftovers.use_(checker, from, fctx);
     }
 
-    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize) {
+    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize, fctx: &mut FilesContext) {
         if self.consumed.is_none() {
-            self.leftovers.get(checker, x, i);
+            self.leftovers.get(checker, x, i, fctx);
             return;
         }
         let consumed = self.consumed.unwrap();
@@ -111,7 +111,7 @@ impl<'a> UnpackedResultLeftovers<'a> {
             x.expr = c.expr.clone();
             x.typ = c.typ;
         } else {
-            self.leftovers.get(checker, x, i);
+            self.leftovers.get(checker, x, i, fctx);
         }
     }
 }
@@ -219,6 +219,7 @@ impl<'a> Checker<'a> {
         rhs: &'b Vec<Expr>,
         lhs_len: usize,
         allow_comma_ok: bool,
+        fctx: &mut FilesContext,
     ) -> UnpackResult<'b> {
         if rhs.len() != 1 {
             return if lhs_len != rhs.len() {
@@ -231,7 +232,7 @@ impl<'a> Checker<'a> {
         }
 
         let mut x = Operand::new();
-        self.multi_expr(&mut x, &rhs[0]);
+        self.multi_expr(&mut x, &rhs[0], fctx);
         if x.invalid() {
             return UnpackResult::Error;
         }

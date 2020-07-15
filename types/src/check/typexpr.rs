@@ -317,7 +317,7 @@ impl<'a> Checker<'a> {
             Expr::Paren(p) => Some(self.defined_type(&p.expr, def, fctx)),
             Expr::Array(a) => {
                 if let Some(l) = &a.len {
-                    let len = self.array_len(&l);
+                    let len = self.array_len(&l, fctx);
                     let elem = self.type_expr(&a.elt, fctx);
                     let t = self.tc_objs.new_t_array(elem, len);
                     set_underlying(Some(t), self.tc_objs);
@@ -419,9 +419,9 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn array_len(&mut self, e: &Expr) -> Option<u64> {
+    fn array_len(&mut self, e: &Expr, fctx: &mut FilesContext) -> Option<u64> {
         let mut x = Operand::new();
-        self.expr(&mut x, e);
+        self.expr(&mut x, e, fctx);
         if let OperandMode::Constant(v) = &x.mode {
             let t = x.typ.unwrap();
             if typ::is_untyped(t, self.tc_objs) || typ::is_integer(t, self.tc_objs) {

@@ -1,14 +1,12 @@
-#![allow(dead_code)]
 use super::super::constant::Value;
 use super::super::lookup;
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::TypeKey;
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ::{self, BasicType, Type};
 use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext};
 use super::stmt::BodyContainer;
-use goscript_parser::ast::Node;
-use goscript_parser::ast::{self};
+use goscript_parser::ast::{self, Node};
 use goscript_parser::{Expr, Token};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -692,8 +690,8 @@ impl<'a> Checker<'a> {
         fctx: &mut FilesContext,
     ) {
         let mut y = Operand::new();
-        self.expr(x, &e.expr_a);
-        self.expr(&mut y, &e.expr_b);
+        self.expr(x, &e.expr_a, fctx);
+        self.expr(&mut y, &e.expr_b, fctx);
 
         if x.invalid() {
             return;
@@ -797,30 +795,30 @@ impl<'a> Checker<'a> {
 
     /// index checks an index expression for validity.
     /// max is the upper bound for index.
-    /// returns the value of the index when it's a constant, returns -1 if it's not
+    /// returns the value of the index when it's a constant, returns None if it's not
     pub fn index(
         &mut self,
         index: &Expr,
-        max: Option<i64>,
+        max: Option<u64>,
         fctx: &mut FilesContext,
-    ) -> Option<i64> {
+    ) -> Result<Option<u64>, ()> {
         let x = &mut Operand::new();
-        self.expr(x, index);
+        self.expr(x, index, fctx);
         if x.invalid() {
-            return None;
+            return Err(());
         }
 
         // an untyped constant must be representable as Int
         self.convert_untyped(x, self.basic_type(BasicType::Int), fctx);
         if x.invalid() {
-            return None;
+            return Err(());
         }
 
         // the index must be of integer type
         if !typ::is_integer(x.typ.unwrap(), self.tc_objs) {
             let xd = self.new_dis(x);
             self.invalid_arg(xd.pos(), &format!("index {} must be integer", xd));
-            return None;
+            return Err(());
         }
 
         // a constant index i must be in bounds
@@ -828,18 +826,18 @@ impl<'a> Checker<'a> {
             if v.sign() < 0 {
                 let xd = self.new_dis(x);
                 self.invalid_arg(xd.pos(), &format!("index {} must not be negative", xd));
-                return None;
+                return Err(());
             }
-            let (i, valid) = v.to_int().int_as_i64();
+            let (i, valid) = v.to_int().int_as_u64();
             if !valid || max.map_or(false, |x| i >= x) {
                 let xd = self.new_dis(x);
                 self.invalid_arg(xd.pos(), &format!("index {} out of bounds", xd));
-                return None;
+                return Err(());
             }
-            return Some(i);
+            return Ok(Some(i));
         }
 
-        Some(-1)
+        Ok(None)
     }
 
     /// indexed_elems checks the elements of an array or slice composite literal
@@ -850,15 +848,15 @@ impl<'a> Checker<'a> {
         &mut self,
         elems: &Vec<Expr>,
         t: TypeKey,
-        length: Option<i64>,
+        length: Option<u64>,
         fctx: &mut FilesContext,
-    ) -> i64 {
-        let mut visited: HashSet<i64> = HashSet::new();
+    ) -> u64 {
+        let mut visited = HashSet::new();
         let (_, max) = elems.iter().fold((0, 0), |(index, max), e| {
             let (valid_index, eval) = if let Expr::KeyValue(kv) = e {
                 let i = self.index(&kv.key, length, fctx);
-                let kv_index = if i.is_some() && i.unwrap() >= 0 {
-                    Some(i.unwrap())
+                let kv_index = if i.is_ok() && i.unwrap().is_some() {
+                    i.unwrap()
                 } else {
                     let pos = e.pos(self.ast_objs);
                     let kd = self.new_dis(&kv.key);
@@ -894,7 +892,7 @@ impl<'a> Checker<'a> {
 
             // check element against composite literal element type
             let x = &mut Operand::new();
-            self.expr_with_hint(x, eval, t);
+            self.expr_with_hint(x, eval, t, fctx);
             self.assignment(x, Some(t), "array or slice literal", fctx);
 
             (new_index, new_max)
@@ -1052,7 +1050,7 @@ impl<'a> Checker<'a> {
                                     };
                                     // do all possible checks early (before exiting due to errors)
                                     // so we don't drop information on the floor
-                                    self.expr(x, &kv.val);
+                                    self.expr(x, &kv.val, fctx);
                                     let keykey = if let Expr::Ident(ikey) = kv.key {
                                         ikey
                                     } else {
@@ -1105,7 +1103,7 @@ impl<'a> Checker<'a> {
                                         self.error_str(e.pos(self.ast_objs), msg);
                                         continue;
                                     }
-                                    self.expr(x, e);
+                                    self.expr(x, e, fctx);
                                     if i > fields.len() {
                                         let pos = x.pos(self.ast_objs);
                                         self.error_str(pos, "too many values in struct literal");
@@ -1135,7 +1133,7 @@ impl<'a> Checker<'a> {
                         // see the original go code for details
                         let arr_len = detail.len();
                         let elem = detail.elem();
-                        let len = detail.len().map(|x| x as i64);
+                        let len = detail.len();
                         let n = self.indexed_elems(&cl.elts, elem, len, fctx);
                         // If we have an array of unknown length (usually [...]T arrays, but also
                         // arrays [n]T where n is invalid) set the length now that we know it and
@@ -1188,7 +1186,7 @@ impl<'a> Checker<'a> {
                                     continue;
                                 }
                             };
-                            self.expr_with_hint(x, &kv.key, t_key);
+                            self.expr_with_hint(x, &kv.key, t_key, fctx);
                             self.assignment(x, Some(t_key), "map literal", fctx);
                             if x.invalid() {
                                 continue;
@@ -1224,7 +1222,7 @@ impl<'a> Checker<'a> {
                                     continue;
                                 }
                             }
-                            self.expr_with_hint(x, &kv.val, t_elem);
+                            self.expr_with_hint(x, &kv.val, t_elem, fctx);
                             self.assignment(x, Some(t_elem), "map literal", fctx);
                         }
                     }
@@ -1262,7 +1260,7 @@ impl<'a> Checker<'a> {
                 self.selector(x, s, fctx);
             }
             Expr::Index(ie) => {
-                self.expr(x, &ie.expr);
+                self.expr(x, &ie.expr, fctx);
                 if x.invalid() {
                     self.use_exprs(&vec![ie.index.clone()], fctx);
                     return on_err(x);
@@ -1315,7 +1313,7 @@ impl<'a> Checker<'a> {
                     Type::Map(detail) => {
                         let (key, elem) = (detail.key(), detail.elem());
                         let xkey = &mut Operand::new();
-                        self.expr(xkey, &ie.index);
+                        self.expr(xkey, &ie.index, fctx);
                         self.assignment(xkey, Some(key), "map index", fctx);
                         if x.invalid() {
                             return on_err(x);
@@ -1333,11 +1331,11 @@ impl<'a> Checker<'a> {
                     self.invalid_op(xd.pos(), &format!("cannot index {}", xd));
                     return on_err(x);
                 }
-                self.index(&ie.index, length.map(|x| x as i64), fctx);
+                let _ = self.index(&ie.index, length, fctx);
                 // ok to continue
             }
             Expr::Slice(se) => {
-                self.expr(x, &se.expr);
+                self.expr(x, &se.expr, fctx);
                 if x.invalid() {
                     let exprs = [se.low.as_ref(), se.high.as_ref(), se.max.as_ref()]
                         .iter()
@@ -1415,51 +1413,212 @@ impl<'a> Checker<'a> {
                 }
 
                 // check indices
+                let ind: Vec<Option<u64>> = [se.low.as_ref(), se.high.as_ref(), se.max.as_ref()]
+                    .iter()
+                    .enumerate()
+                    .map(|(i, x)| {
+                        if let Some(e) = x {
+                            // The "capacity" is only known statically for strings, arrays,
+                            // and pointers to arrays, and it is the same as the length for
+                            // those types.
+                            let max = length.map(|x| x + 1);
+                            self.index(e, max, fctx).unwrap_or(None)
+                        } else if i == 0 {
+                            Some(0)
+                        } else {
+                            length
+                        }
+                    })
+                    .collect();
+                // constant indices must be in range
+                // (check.index already checks that existing indices >= 0)
+                let pairs = [[ind[2], ind[1]], [ind[2], ind[0]], [ind[1], ind[0]]];
+                for p in pairs.iter() {
+                    if let (Some(a), Some(b)) = (p[0], p[1]) {
+                        if a < b {
+                            self.error(se.r_brack, format!("invalid slice indices: {} > {}", b, a));
+                        }
+                    }
+                }
             }
-            Expr::TypeAssert(_) => {}
-            Expr::Call(_) => {}
-            Expr::Star(_) => {}
-            Expr::Unary(_) => {}
-            Expr::Binary(_) => {}
-            Expr::KeyValue(_) => {}
+            Expr::TypeAssert(ta) => {
+                self.expr(x, &ta.expr, fctx);
+                if x.invalid() {
+                    return on_err(x);
+                }
+                let xtype = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
+                if self.otype(xtype).try_as_interface().is_none() {
+                    let dx = self.new_dis(x);
+                    self.invalid_op(dx.pos(), &format!("{} is not an interface", dx));
+                    return on_err(x);
+                }
+                // x.(type) expressions are handled explicitly in type switches
+                if ta.typ.is_none() {
+                    self.invalid_ast(epos, "use of .(type) outside type switch");
+                    return on_err(x);
+                }
+                let t = self.type_expr(ta.typ.as_ref().unwrap(), fctx);
+                if t == self.invalid_type() {
+                    return on_err(x);
+                }
+                self.type_assertion(x, xtype, t);
+                x.mode = OperandMode::CommaOk;
+                x.typ = Some(t)
+            }
+            Expr::Call(c) => return self.call(x, c, fctx),
+            Expr::Star(se) => {
+                self.expr_or_type(x, &se.expr, fctx);
+                match &x.mode {
+                    OperandMode::Invalid => return on_err(x),
+                    OperandMode::TypeExpr => {
+                        x.typ = Some(self.tc_objs.new_t_pointer(x.typ.unwrap()))
+                    }
+                    _ => {
+                        if let Some(ptype) = self
+                            .otype(x.typ.unwrap())
+                            .underlying_val(self.tc_objs)
+                            .try_as_pointer()
+                        {
+                            x.mode = OperandMode::Variable;
+                            x.typ = Some(ptype.base());
+                        } else {
+                            let xd = self.new_dis(x);
+                            self.invalid_op(xd.pos(), &format!("cannot indirect {}", xd));
+                            return on_err(x);
+                        }
+                    }
+                }
+            }
+            Expr::Unary(ue) => {
+                self.expr(x, &ue.expr, fctx);
+                if x.invalid() {
+                    return on_err(x);
+                }
+                self.unary(x, Some(ue.expr.clone()), &ue.op);
+                if x.invalid() {
+                    return on_err(x);
+                }
+                if ue.op == Token::ARROW {
+                    x.expr = Some(e.clone());
+                    // receive operations may appear in statement context
+                    return ExprKind::Statement;
+                }
+            }
+            Expr::Binary(be) => {
+                self.binary(x, be, &be.op, fctx);
+                if x.invalid() {
+                    return on_err(x);
+                }
+            }
+            Expr::KeyValue(_) => {
+                // key:value expressions are handled in composite literals
+                self.invalid_ast(epos, "no key:value expected");
+                return on_err(x);
+            }
             Expr::Array(_)
             | Expr::Struct(_)
             | Expr::Func(_)
             | Expr::Interface(_)
             | Expr::Map(_)
-            | Expr::Chan(_) => {}
+            | Expr::Chan(_) => {
+                x.mode = OperandMode::TypeExpr;
+                x.typ = Some(self.type_expr(e, fctx));
+            }
         }
 
         x.expr = Some(e.clone());
         ExprKind::Expression
     }
 
+    /// type_assertion checks that x.(T) is legal; xtyp must be the type of x.
+    fn type_assertion(&self, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
+        if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self.tc_objs) {
+            let dx = self.new_dis(x);
+            self.error(
+                dx.pos(),
+                format!(
+                    "{} cannot have dynamic type {} ({} {})",
+                    dx,
+                    self.new_dis(&t),
+                    if wrong_type {
+                        "wrong type for method"
+                    } else {
+                        "missing method"
+                    },
+                    self.lobj(method).name()
+                ),
+            );
+        }
+    }
+
+    fn expr_value_err(&self, x: &mut Operand) {
+        let msg = match &x.mode {
+            OperandMode::NoValue => Some("used as value"),
+            OperandMode::Builtin(_) => Some("must be called"),
+            OperandMode::TypeExpr => Some("is not an expression"),
+            _ => None,
+        };
+        if let Some(m) = msg {
+            let xd = self.new_dis(x);
+            self.error(xd.pos(), format!("{} {}", m, xd));
+            x.mode = OperandMode::Invalid;
+        }
+    }
+
+    pub fn single_value(&self, x: &mut Operand) {
+        if x.mode == OperandMode::Value {
+            // tuple types are never named - no need for underlying type below
+            if let Some(tuple) = self.otype(x.typ.unwrap()).try_as_tuple() {
+                let len = tuple.vars().len();
+                assert_ne!(len, 1);
+                let xd = self.new_dis(x);
+                self.error(
+                    xd.pos(),
+                    format!("{}-valued {} where single value is expected", len, xd),
+                );
+                x.mode = OperandMode::Invalid;
+            }
+        }
+    }
+
     /// expr typechecks expression e and initializes x with the expression value.
     /// The result must be a single value.
     /// If an error occurred, x.mode is set to invalid.
-    pub fn expr(&mut self, x: &mut Operand, e: &Expr) {
-        unimplemented!()
+    pub fn expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+        self.multi_expr(x, e, fctx);
+        self.single_value(x);
     }
 
     /// multi_expr is like expr but the result may be a multi-value.
-    pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr) {
-        unimplemented!()
+    pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+        self.raw_expr(x, e, None, fctx);
+        self.expr_value_err(x);
     }
 
     /// expr_or_type typechecks expression or type e and initializes x with the expression
     /// value or type. If an error occurred, x.mode is set to invalid.
-    pub fn expr_or_type(&mut self, x: &mut Operand, e: &Expr) {
-        unimplemented!()
-    }
-
-    pub fn single_value(&mut self, x: &mut Operand) {
-        unimplemented!()
+    pub fn expr_or_type(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+        self.raw_expr(x, e, None, fctx);
+        self.single_value(x);
+        if x.mode == OperandMode::NoValue {
+            let xd = self.new_dis(x);
+            self.error(xd.pos(), format!("{} used as value or type", xd));
+            x.mode = OperandMode::Invalid;
+        }
     }
 
     /// expr_with_hint typechecks expression e and initializes x with the expression value;
     /// hint is the type of a composite literal element.
     /// If an error occurred, x.mode is set to invalid.
-    pub fn expr_with_hint(&mut self, x: &mut Operand, e: &Expr, hint: TypeKey) {
-        unimplemented!()
+    pub fn expr_with_hint(
+        &mut self,
+        x: &mut Operand,
+        e: &Expr,
+        hint: TypeKey,
+        fctx: &mut FilesContext,
+    ) {
+        self.raw_expr(x, e, Some(hint), fctx);
+        self.single_value(x);
+        self.expr_value_err(x);
     }
 }

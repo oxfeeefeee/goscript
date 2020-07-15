@@ -235,7 +235,20 @@ pub fn lookup_field_or_method(
     lookup_field_or_method_impl(tkey, addressable, pkg, name, objs)
 }
 
-/// deref dereferences t if it is a *Pointer and returns its base.
+/// assertable_to reports whether a value of type iface can be asserted to have type t.
+/// It returns None as affirmative answer. See docs for missing_method for more info
+pub fn assertable_to(iface: TypeKey, t: TypeKey, objs: &TCObjects) -> Option<(ObjKey, bool)> {
+    // no static check is required if T is an interface
+    // spec: "If T is an interface type, x.(T) asserts that the
+    //        dynamic type of x implements the interface T."
+    let strict = true; // see original go code for more info
+    if !strict && objs.types[t].is_interface(objs) {
+        return None;
+    }
+    missing_method(t, iface, false, objs)
+}
+
+/// try_deref dereferences t if it is a *Pointer and returns its base.
 /// Otherwise it returns t.
 pub fn try_deref(t: TypeKey, objs: &TCObjects) -> (TypeKey, bool) {
     match &objs.types[t] {
@@ -325,10 +338,10 @@ pub fn missing_method(
                 objs,
             ) {
                 if !typ::identical_option(fval.typ(), objs.lobjs[*f].typ(), objs) {
-                    return Some((fkey.clone(), true));
+                    return Some((*fkey, true));
                 }
             } else if static_ {
-                return Some((fkey.clone(), false));
+                return Some((*fkey, false));
             }
         }
         return None;
@@ -340,12 +353,12 @@ pub fn missing_method(
             LookupResult::Entry(okey, _, _) => {
                 let result_obj = &objs.lobjs[okey];
                 if !result_obj.entity_type().is_func() {
-                    return Some((fkey.clone(), false));
+                    return Some((*fkey, false));
                 } else if !typ::identical_option(fval.typ(), result_obj.typ(), objs) {
-                    return Some((fkey.clone(), true));
+                    return Some((*fkey, true));
                 }
             }
-            _ => return Some((fkey.clone(), false)),
+            _ => return Some((*fkey, false)),
         }
     }
     None

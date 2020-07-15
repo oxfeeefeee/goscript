@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 impl<'a> Checker<'a> {
     pub fn call(&mut self, x: &mut Operand, e: &Rc<CallExpr>, fctx: &mut FilesContext) -> ExprKind {
-        self.expr_or_type(x, &e.func);
+        self.expr_or_type(x, &e.func, fctx);
 
         let expr = Some(Expr::Call(e.clone()));
         match x.mode {
@@ -33,7 +33,7 @@ impl<'a> Checker<'a> {
                         format!("missing argument in conversion to {}", self.new_dis(&t)),
                     ),
                     1 => {
-                        self.expr(x, &e.args[0]);
+                        self.expr(x, &e.args[0], fctx);
                         if !x.invalid() {
                             self.conversion(x, t, fctx);
                         }
@@ -66,7 +66,7 @@ impl<'a> Checker<'a> {
                 let sig_key = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
                 if let Some(sig) = self.otype(sig_key).try_as_signature() {
                     let sig_results = sig.results();
-                    let result = self.unpack(&e.args, e.args.len(), false);
+                    let result = self.unpack(&e.args, e.args.len(), false, fctx);
                     match result {
                         UnpackResult::Nothing | UnpackResult::Mismatch(_) | UnpackResult::Error => {
                             x.mode = OperandMode::Invalid
@@ -123,13 +123,13 @@ impl<'a> Checker<'a> {
                     ell,
                     format!("cannot use ... in call to non-variadic {}", dis),
                 );
-                re.use_all(self);
+                re.use_all(self, fctx);
                 return;
             }
             if call.args.len() == 1 && n > 1 {
                 let dis = self.new_dis(&call.args[0]);
                 self.error(ell, format!("cannot use ... with {}-valued {}", n, dis));
-                re.use_all(self);
+                re.use_all(self, fctx);
                 return;
             }
         }
@@ -137,7 +137,7 @@ impl<'a> Checker<'a> {
         // evaluate arguments
         let note = &format!("argument to {}", self.new_dis(&call.func));
         for i in 0..n {
-            re.get(self, x, i);
+            re.get(self, x, i, fctx);
             if x.invalid() {
                 let ellipsis = if i == n - 1 { call.ellipsis } else { None };
                 self.argument(sig, i, x, ellipsis, note, fctx);
@@ -295,7 +295,7 @@ impl<'a> Checker<'a> {
             _ => {}
         }
 
-        self.expr_or_type(x, &e.expr);
+        self.expr_or_type(x, &e.expr, fctx);
         if x.invalid() {
             return err_exit(x);
         }
