@@ -48,8 +48,6 @@ pub struct TCObjects {
     pub scopes: Scopes,
     pub universe: Option<Universe>,
     // "global" variable
-    pub debug: bool,
-    // "global" variable
     pub fmt_qualifier: Box<dyn Fn(&Package) -> Cow<str>>,
 }
 
@@ -67,7 +65,6 @@ impl TCObjects {
             decls: new_objects!(),
             scopes: new_objects!(),
             universe: None,
-            debug: true,
             fmt_qualifier: fmtq,
         };
         objs.universe = Some(Universe::new(&mut objs));

@@ -503,7 +503,7 @@ impl StructDetail {
         objs: &TCObjects,
     ) -> StructDetail {
         // sanity checks
-        if objs.debug {
+        if cfg!(debug_assertions) {
             let set = ObjSet::new();
             let result = fields.iter().try_fold(set, |s, x| {
                 if !objs.lobjs[*x].entity_type().is_var() {
@@ -588,7 +588,7 @@ impl SignatureDetail {
         variadic: bool,
         objs: &TCObjects,
     ) -> SignatureDetail {
-        if objs.debug {
+        if cfg!(debug_assertions) {
             if variadic {
                 let typ = &objs.types[params];
                 match typ {
@@ -668,7 +668,7 @@ impl InterfaceDetail {
         mut embeddeds: Vec<TypeKey>,
         objs: &TCObjects,
     ) -> InterfaceDetail {
-        if objs.debug {
+        if cfg!(debug_assertions) {
             let set = ObjSet::new();
             let result = methods.iter().try_fold(set, |s, x| {
                 let func_obj = &objs.lobjs[*x];
@@ -827,7 +827,7 @@ impl NamedDetail {
         methods: Vec<ObjKey>,
         objs: &TCObjects,
     ) -> NamedDetail {
-        if objs.debug && underlying.is_some() {
+        if cfg!(debug_assertions) && underlying.is_some() {
             let t = &objs.types[underlying.clone().unwrap()];
             assert!(t.try_as_named().is_some());
         }

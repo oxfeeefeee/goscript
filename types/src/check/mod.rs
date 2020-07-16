@@ -10,6 +10,7 @@ mod conversion;
 mod decl;
 mod expr;
 mod interface;
+mod label;
 mod resolver;
 mod stmt;
 mod typexpr;

@@ -253,7 +253,7 @@ impl<'a> Checker<'a> {
             | Expr::Interface(_)
             | Expr::Map(_)
             | Expr::Chan(_) => {
-                if self.tc_objs.debug {
+                if cfg!(debug_assertions) {
                     let ed = self.new_dis(e);
                     let (otd, td) = (self.new_td_o(&old.typ), self.new_dis(&t));
                     self.dump(

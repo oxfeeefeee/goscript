@@ -181,7 +181,7 @@ impl<'a> Checker<'a> {
             self.lobj(params.vars()[i]).typ().unwrap()
         } else if sig_val.variadic() {
             let t = self.lobj(params.vars()[n - 1]).typ().unwrap();
-            if self.tc_objs.debug {
+            if cfg!(debug_assertions) {
                 if self.otype(t).try_as_slice().is_none() {
                     let pos = self.lobj(params.vars()[n - 1]).pos();
                     let td = self.new_dis(&t);
@@ -397,7 +397,7 @@ impl<'a> Checker<'a> {
                         Selection::new(SelectionKind::MethodVal, x.typ, okey, indices, indirect);
                     self.result.record_selection(e, selection);
 
-                    if self.tc_objs.debug {
+                    if cfg!(debug_assertions) {
                         // Verify that LookupFieldOrMethod and MethodSet.Lookup agree.
                         let mut typ = x.typ.unwrap();
                         if x.mode == OperandMode::Variable {
