@@ -54,29 +54,29 @@ pub enum Expr {
     Chan(Rc<ChanType>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
-    Bad(Box<BadStmt>),
-    Decl(Box<Decl>),
-    Empty(Box<EmptyStmt>),
+    Bad(Rc<BadStmt>),
+    Decl(Rc<Decl>),
+    Empty(Rc<EmptyStmt>),
     Labeled(LabeledStmtKey),
-    Expr(Box<Expr>),
-    Send(Box<SendStmt>),
-    IncDec(Box<IncDecStmt>),
+    Expr(Box<Expr>), // Doesn't need to be Rc since Expr is Rc
+    Send(Rc<SendStmt>),
+    IncDec(Rc<IncDecStmt>),
     Assign(AssignStmtKey),
-    Go(Box<GoStmt>),
-    Defer(Box<DeferStmt>),
-    Return(Box<ReturnStmt>),
-    Branch(Box<BranchStmt>),
-    Block(Box<BlockStmt>),
-    If(Box<IfStmt>),
-    Case(Box<CaseClause>),
-    Switch(Box<SwitchStmt>),
-    TypeSwitch(Box<TypeSwitchStmt>),
-    Comm(Box<CommClause>),
-    Select(Box<SelectStmt>),
-    For(Box<ForStmt>),
-    Range(Box<RangeStmt>),
+    Go(Rc<GoStmt>),
+    Defer(Rc<DeferStmt>),
+    Return(Rc<ReturnStmt>),
+    Branch(Rc<BranchStmt>),
+    Block(Rc<BlockStmt>),
+    If(Rc<IfStmt>),
+    Case(Rc<CaseClause>),
+    Switch(Rc<SwitchStmt>),
+    TypeSwitch(Rc<TypeSwitchStmt>),
+    Comm(Rc<CommClause>),
+    Select(Rc<SelectStmt>),
+    For(Rc<ForStmt>),
+    Range(Rc<RangeStmt>),
 }
 
 #[derive(Clone, Debug)]
@@ -255,7 +255,7 @@ impl Node for Expr {
 
 impl Stmt {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Stmt {
-        Stmt::Bad(Box::new(BadStmt { from: from, to: to }))
+        Stmt::Bad(Rc::new(BadStmt { from: from, to: to }))
     }
 
     pub fn new_assign(
@@ -269,7 +269,7 @@ impl Stmt {
     }
 
     pub fn box_block(block: BlockStmt) -> Stmt {
-        Stmt::Block(Box::new(block))
+        Stmt::Block(Rc::new(block))
     }
 }
 
@@ -294,7 +294,7 @@ impl Node for Stmt {
             Stmt::Defer(s) => s.defer,
             Stmt::Return(s) => s.ret,
             Stmt::Branch(s) => s.token_pos,
-            Stmt::Block(s) => s.l_brace,
+            Stmt::Block(s) => s.pos(),
             Stmt::If(s) => s.if_pos,
             Stmt::Case(s) => s.case,
             Stmt::Switch(s) => s.switch,
@@ -341,7 +341,7 @@ impl Node for Stmt {
                 Some(l) => arena.idents[*l].end(),
                 None => s.token_pos + s.token.text().len(),
             },
-            Stmt::Block(s) => s.r_brace + 1,
+            Stmt::Block(s) => s.end(),
             Stmt::If(s) => match &s.els {
                 Some(e) => e.end(arena),
                 None => s.body.end(),
@@ -606,7 +606,7 @@ pub struct BasicLit {
 #[derive(Debug)]
 pub struct FuncLit {
     pub typ: FuncTypeKey,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 // A CompositeLit node represents a composite literal.
@@ -871,7 +871,7 @@ pub struct FuncDecl {
     pub recv: Option<FieldList>,
     pub name: IdentKey,
     pub typ: FuncTypeKey,
-    pub body: Option<BlockStmt>,
+    pub body: Option<Rc<BlockStmt>>,
 }
 
 impl FuncDecl {
@@ -1010,8 +1010,12 @@ impl BlockStmt {
         }
     }
 
-    fn end(&self) -> position::Pos {
+    pub fn pos(&self) -> position::Pos {
         self.l_brace
+    }
+
+    pub fn end(&self) -> position::Pos {
+        self.r_brace + 1
     }
 }
 
@@ -1020,7 +1024,7 @@ pub struct IfStmt {
     pub if_pos: position::Pos,
     pub init: Option<Stmt>,
     pub cond: Expr,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
     pub els: Option<Stmt>,
 }
 
@@ -1038,7 +1042,7 @@ pub struct SwitchStmt {
     pub switch: position::Pos,
     pub init: Option<Stmt>,
     pub tag: Option<Expr>,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 #[derive(Debug)]
@@ -1046,7 +1050,7 @@ pub struct TypeSwitchStmt {
     pub switch: position::Pos,
     pub init: Option<Stmt>,
     pub assign: Stmt,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 // A CommClause node represents a case of a select statement.
@@ -1062,7 +1066,7 @@ pub struct CommClause {
 #[derive(Debug)]
 pub struct SelectStmt {
     pub select: position::Pos,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 #[derive(Debug)]
@@ -1071,7 +1075,7 @@ pub struct ForStmt {
     pub init: Option<Stmt>,
     pub cond: Option<Expr>,
     pub post: Option<Stmt>,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 #[derive(Debug)]
@@ -1082,7 +1086,7 @@ pub struct RangeStmt {
     pub token_pos: position::Pos,
     pub token: token::Token,
     pub expr: Expr,
-    pub body: BlockStmt,
+    pub body: Rc<BlockStmt>,
 }
 
 #[derive(Debug)]

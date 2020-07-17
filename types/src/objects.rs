@@ -185,6 +185,16 @@ impl TCObjects {
         self.lobjs.insert(lobj)
     }
 
+    pub fn new_label(
+        &mut self,
+        pos: position::Pos,
+        pkg: Option<PackageKey>,
+        name: String,
+    ) -> ObjKey {
+        let lobj = LangObj::new_label(pos, pkg, name, self.universe());
+        self.lobjs.insert(lobj)
+    }
+
     pub fn new_t_basic(&mut self, typ: BasicType, info: BasicInfo, name: &'static str) -> TypeKey {
         self.types
             .insert(Type::Basic(BasicDetail::new(typ, info, name)))

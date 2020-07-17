@@ -495,7 +495,7 @@ impl<'a> Checker<'a> {
                             par_name,
                             Some(ty),
                         );
-                        let scope_pos = *self.scope(skey).pos();
+                        let scope_pos = self.scope(skey).pos();
                         self.declare(skey, Some(*name), par, scope_pos);
                         params.push(par);
                     }
@@ -765,7 +765,7 @@ impl<'a> Checker<'a> {
     fn declare_in_set(&self, set: &mut HashMap<String, ObjKey>, fld: ObjKey, pos: Pos) -> bool {
         if let Some(okey) = self.insert_obj_to_set(set, fld) {
             self.error(pos, format!("{} redeclared", self.lobj(fld).name()));
-            self.report_alt_decl(&okey);
+            self.report_alt_decl(okey);
             false
         } else {
             true

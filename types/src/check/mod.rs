@@ -12,6 +12,7 @@ mod expr;
 mod interface;
 mod label;
 mod resolver;
+mod returns;
 mod stmt;
 mod typexpr;
 

@@ -441,7 +441,7 @@ impl<'a> Checker<'a> {
                             );
                         }
                     }
-                    self.report_alt_decl(okey);
+                    self.report_alt_decl(*okey);
                 }
             }
         }

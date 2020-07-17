@@ -988,8 +988,8 @@ impl<'a> Checker<'a> {
                     let decl = self.octx.decl.unwrap();
                     let body = BodyContainer::FuncLitExpr(e.clone());
                     let iota = self.octx.iota.clone();
-                    let f = move |checker: &mut Checker, _: &mut FilesContext| {
-                        checker.func_body(decl, "<function literal>", t, body, iota);
+                    let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+                        checker.func_body(decl, "<function literal>", t, body, iota, fctx);
                     };
                     fctx.later(Box::new(f));
                     x.mode = OperandMode::Value;

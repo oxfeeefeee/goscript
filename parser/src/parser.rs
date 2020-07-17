@@ -1021,7 +1021,7 @@ impl<'a> Parser<'a> {
             self.expr_level += 1;
             let body = self.parse_body(scope);
             self.expr_level -= 1;
-            Expr::FuncLit(Rc::new(FuncLit{typ: typ_key, body: body}))
+            Expr::FuncLit(Rc::new(FuncLit{typ: typ_key, body: Rc::new(body)}))
         }; 
  
         self.trace_end(); 
@@ -1643,10 +1643,10 @@ impl<'a> Parser<'a> {
                         let arrow = self.pos;
                         self.next();
                         let y = self.parse_rhs();
-                        Stmt::Send(Box::new(SendStmt{chan: x0, arrow: arrow, val: y}))
+                        Stmt::Send(Rc::new(SendStmt{chan: x0, arrow: arrow, val: y}))
                     },
                     Token::INC | Token::DEC => {
-                        let s = Stmt::IncDec(Box::new(IncDecStmt{
+                        let s = Stmt::IncDec(Rc::new(IncDecStmt{
                             expr: x0, token_pos: self.pos, token: self.token.clone()}));
                         self.next();
                         s
@@ -1683,7 +1683,7 @@ impl<'a> Parser<'a> {
         let call = self.parse_call_expr("go");
         self.expect_semi();
         let ret = match call {
-            Some(c) => Stmt::Go(Box::new(GoStmt{go: pos, call: c})),
+            Some(c) => Stmt::Go(Rc::new(GoStmt{go: pos, call: c})),
             None => {
                 Stmt::new_bad(pos, pos + 2) // "go".len() == 2
             }
@@ -1700,7 +1700,7 @@ impl<'a> Parser<'a> {
         let call = self.parse_call_expr("defer");
         self.expect_semi();
         let ret = match call {
-            Some(c) => Stmt::Defer(Box::new(DeferStmt{defer: pos, call: c})),
+            Some(c) => Stmt::Defer(Rc::new(DeferStmt{defer: pos, call: c})),
             None => {
                 Stmt::new_bad(pos, pos + 5) // "defer".len() == 5
             }
@@ -1721,7 +1721,7 @@ impl<'a> Parser<'a> {
         };
 
         self.trace_end();
-        Stmt::Return(Box::new(ReturnStmt{ret: pos, results: x}))
+        Stmt::Return(Rc::new(ReturnStmt{ret: pos, results: x}))
     }
 
     fn parse_branch_stmt(&mut self, token: Token) -> Stmt {
@@ -1739,7 +1739,7 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         self.trace_end();
-        Stmt::Branch(Box::new(BranchStmt{
+        Stmt::Branch(Rc::new(BranchStmt{
             token_pos: pos, token: token, label: label}))
     }
 
@@ -1857,8 +1857,8 @@ impl<'a> Parser<'a> {
 
         self.close_scope();
         self.trace_end();
-        Stmt::If(Box::new(IfStmt{
-            if_pos: pos, init: init, cond: cond, body: body, els: els}))
+        Stmt::If(Rc::new(IfStmt{
+            if_pos: pos, init: init, cond: cond, body: Rc::new(body), els: els}))
     }
 
     fn parse_type_list(&mut self) -> Vec<Expr> {
@@ -1972,19 +1972,19 @@ impl<'a> Parser<'a> {
         let mut list = vec![];
         while self.token == Token::CASE || self.token == Token::DEFAULT {
             let clause = self.parse_case_clause(type_switch);
-            list.push(Stmt::Case(Box::new(clause)));
+            list.push(Stmt::Case(Rc::new(clause)));
         }
         let rbrace = self.expect(&Token::RBRACE);
         self.expect_semi();
         let body = BlockStmt{l_brace: lbrace, list: list, r_brace: rbrace};
         let ret = if type_switch {
-            Stmt::TypeSwitch(Box::new(TypeSwitchStmt{
-                switch: pos, init: s1, assign: s2.unwrap(), body: body}))
+            Stmt::TypeSwitch(Rc::new(TypeSwitchStmt{
+                switch: pos, init: s1, assign: s2.unwrap(), body: Rc::new(body)}))
         } else {
-            Stmt::Switch(Box::new(SwitchStmt{
+            Stmt::Switch(Rc::new(SwitchStmt{
                 switch: pos, init: s1,
                 tag: self.make_expr(s2, "switch expression"),
-                body: body}))
+                body: Rc::new(body)}))
         };
  
         self.close_scope();
@@ -2009,7 +2009,7 @@ impl<'a> Parser<'a> {
                 let arrow = self.pos;
                 self.next();
                 let rhs = self.parse_rhs();
-                Some(Stmt::Send(Box::new(SendStmt{
+                Some(Stmt::Send(Rc::new(SendStmt{
                     chan: lhs.into_iter().nth(0).unwrap(), arrow: arrow, val: rhs})))
             } else {
                 // RecvStmt
@@ -2056,14 +2056,14 @@ impl<'a> Parser<'a> {
         let lbrace = self.expect(&Token::LBRACE);
         let mut list = vec![];
         while self.token == Token::CASE || self.token == Token::DEFAULT {
-            list.push(Stmt::Comm(Box::new(self.parse_comm_clause())));
+            list.push(Stmt::Comm(Rc::new(self.parse_comm_clause())));
         }
         let rbrace = self.expect(&Token::RBRACE);
         self.expect_semi();
         let body = BlockStmt{l_brace: lbrace, list: list, r_brace: rbrace};
 
         self.trace_end();
-        Stmt::Select(Box::new(SelectStmt{select: pos, body: body}))
+        Stmt::Select(Rc::new(SelectStmt{select: pos, body: Rc::new(body)}))
     }
 
     fn parse_for_stmt(&mut self) -> Stmt {
@@ -2135,14 +2135,14 @@ impl<'a> Parser<'a> {
                 // parseSimpleStmt returned a right-hand side that
 		        // is a single unary expression of the form "range x"
                 if let Expr::Unary(unary) = ass.rhs.remove(0) {
-                    Stmt::Range(Box::new(RangeStmt{
+                    Stmt::Range(Rc::new(RangeStmt{
                         for_pos: pos,
                         key: key,
                         val: val,
                         token_pos: ass.token_pos,
                         token: ass.token,
                         expr: unary.expr.clone(),
-                        body: body,
+                        body: Rc::new(body),
                     }))
                 } else {
                     unreachable!();    
@@ -2151,12 +2151,12 @@ impl<'a> Parser<'a> {
                 unreachable!();
             }
         } else {
-            Stmt::For(Box::new(ForStmt{
+            Stmt::For(Rc::new(ForStmt{
                 for_pos: pos,
                 init: s1,
                 cond: self.make_expr(s2, "boolean or range expression"),
                 post: s3,
-                body: body,
+                body: Rc::new(body),
             }))
         };
         
@@ -2170,7 +2170,7 @@ impl<'a> Parser<'a> {
 
         let ret = match &self.token {
             Token::CONST | Token::TYPE | Token::VAR => 
-                Stmt::Decl(Box::new(self.parse_decl(Token::is_stmt_start))),
+                Stmt::Decl(Rc::new(self.parse_decl(Token::is_stmt_start))),
             Token::IDENT(_) | Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
             Token::CHAR(_) | Token::STRING(_) | Token::FUNC | Token::LPAREN | // operands
 		    Token::LBRACK | Token::STRUCT | 
@@ -2189,7 +2189,7 @@ impl<'a> Parser<'a> {
             Token::LBRACE => {
                 let s = self.parse_block_stmt();
                 self.expect_semi();
-                Stmt::Block(Box::new(s))
+                Stmt::Block(Rc::new(s))
             },
             Token::IF => self.parse_if_stmt(),
             Token::SWITCH => self.parse_switch_stmt(),
@@ -2199,14 +2199,14 @@ impl<'a> Parser<'a> {
                 // Is it ever possible to have an implicit semicolon
                 // producing an empty statement in a valid program?
                 // (handle correctly anyway)
-                let s = Stmt::Empty(Box::new(
+                let s = Stmt::Empty(Rc::new(
                     EmptyStmt{semi: self.pos, implicit: !*real.as_bool()}));
                 self.next();
                 s
             }
             Token::RBRACE => {
                 // a semicolon may be omitted before a closing "}"
-                Stmt::Empty(Box::new(EmptyStmt{
+                Stmt::Empty(Rc::new(EmptyStmt{
                     semi: self.pos, implicit: false}))
             }
             _ => {
@@ -2397,7 +2397,7 @@ impl<'a> Parser<'a> {
         let ident = self.parse_ident();
         let (params, results) = self.parse_signature(scope);
         let body = if self.token == Token::LBRACE {
-            Some(self.parse_body(scope))
+            Some(Rc::new(self.parse_body(scope)))
         } else {
             None
         };

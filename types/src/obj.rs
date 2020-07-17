@@ -48,7 +48,7 @@ pub enum EntityType {
     Func(bool), // has_ptr_recv, only valid for methods that don't have a type yet
     /// A Label represents a declared label.
     /// Labels don't have a type.
-    Label(bool),
+    Label(bool), // bool for used
     /// A Builtin represents a built-in function.
     /// Builtins don't have a valid type.
     Builtin(universe::Builtin),
@@ -132,6 +132,22 @@ impl EntityType {
     pub fn var_property_mut(&mut self) -> &mut VarProperty {
         match self {
             EntityType::Var(prop) => prop,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn label_used(&self) -> bool {
+        match self {
+            EntityType::Label(u) => *u,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn label_set_used(&mut self, used: bool) {
+        match self {
+            EntityType::Label(u) => {
+                *u = used;
+            }
             _ => unreachable!(),
         }
     }
@@ -265,7 +281,7 @@ impl LangObj {
         LangObj::new(EntityType::Func(false), pos, pkg, name, typ)
     }
 
-    fn new_label(
+    pub fn new_label(
         pos: position::Pos,
         pkg: Option<PackageKey>,
         name: String,

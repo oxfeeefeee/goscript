@@ -611,6 +611,10 @@ impl SignatureDetail {
         }
     }
 
+    pub fn scope(&self) -> Option<ScopeKey> {
+        self.scope
+    }
+
     /// Recv returns the receiver of signature s (if a method), or nil if a
     /// function. It is ignored when comparing signatures for identity.
     ///

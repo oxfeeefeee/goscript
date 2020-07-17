@@ -14,8 +14,8 @@ use goscript_parser::Token;
 use std::collections::HashMap;
 
 impl<'a> Checker<'a> {
-    pub fn report_alt_decl(&self, okey: &ObjKey) {
-        let lobj = self.lobj(*okey);
+    pub fn report_alt_decl(&self, okey: ObjKey) {
+        let lobj = self.lobj(okey);
         let pos = lobj.pos();
         if pos > 0 {
             self.error(pos, format!("\tother declaration of {}", lobj.name()));
@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
                     lobj.pos(),
                     format!("{} redeclared in this block", lobj.name()),
                 );
-                self.report_alt_decl(&o);
+                self.report_alt_decl(o);
                 return;
             }
             self.lobj_mut(okey).set_scope_pos(pos);
@@ -464,8 +464,8 @@ impl<'a> Checker<'a> {
         if let Some(_) = &fdecl.body {
             let name = lobj.name().clone();
             let body = BodyContainer::FuncDecl(fdecl_key);
-            let f = move |checker: &mut Checker, _: &mut FilesContext| {
-                checker.func_body(dkey, &name, sig_key, body, None);
+            let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+                checker.func_body(dkey, &name, sig_key, body, None, fctx);
             };
             fctx.later(Box::new(f));
         }
@@ -530,7 +530,7 @@ impl<'a> Checker<'a> {
                         }
                         _ => unreachable!(),
                     }
-                    self.report_alt_decl(m);
+                    self.report_alt_decl(*m);
                     false
                 } else {
                     true

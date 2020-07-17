@@ -57,12 +57,20 @@ impl Scope {
         self.elems.len()
     }
 
-    pub fn pos(&self) -> &position::Pos {
-        &self.pos
+    pub fn pos(&self) -> position::Pos {
+        self.pos
     }
 
-    pub fn end(&self) -> &position::Pos {
-        &self.end
+    pub fn set_pos(&mut self, p: position::Pos) {
+        self.pos = p;
+    }
+
+    pub fn end(&self) -> position::Pos {
+        self.end
+    }
+
+    pub fn set_end(&mut self, e: position::Pos) {
+        self.end = e;
     }
 
     pub fn contains(&self, pos: position::Pos) -> bool {
@@ -123,11 +131,11 @@ impl Scope {
     /// the same name, insert leaves s unchanged and returns alt.
     /// Otherwise it inserts obj, sets the object's parent scope
     /// if not already set, and returns None.
-    pub fn insert(self_key: ScopeKey, okey: ObjKey, objs: &mut TCObjects) -> Option<&ObjKey> {
+    pub fn insert(self_key: ScopeKey, okey: ObjKey, objs: &mut TCObjects) -> Option<ObjKey> {
         let scope = &objs.scopes[self_key];
         let lang_obj = &mut objs.lobjs[okey];
         if let Some(obj) = scope.lookup(lang_obj.name()) {
-            return Some(obj);
+            return Some(*obj);
         }
         if lang_obj.parent().is_none() {
             lang_obj.set_parent(Some(self_key));
