@@ -477,7 +477,13 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn comparision(&mut self, x: &mut Operand, y: &Operand, op: &Token, fctx: &mut FilesContext) {
+    pub fn comparison(
+        &mut self,
+        x: &mut Operand,
+        y: &Operand,
+        op: &Token,
+        fctx: &mut FilesContext,
+    ) {
         // spec: "In any comparison, the first operand must be assignable
         // to the type of the second operand, or vice versa."
         let o = &self.tc_objs;
@@ -719,7 +725,7 @@ impl<'a> Checker<'a> {
         }
 
         if Checker::is_comparison(op) {
-            self.comparision(x, &y, op, fctx);
+            self.comparison(x, &y, op, fctx);
             return;
         }
 
@@ -1531,7 +1537,7 @@ impl<'a> Checker<'a> {
     }
 
     /// type_assertion checks that x.(T) is legal; xtyp must be the type of x.
-    fn type_assertion(&self, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
+    pub fn type_assertion(&self, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
         if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self.tc_objs) {
             let dx = self.new_dis(x);
             self.error(

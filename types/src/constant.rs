@@ -228,6 +228,7 @@ impl Value {
     pub fn str_as_string(&self) -> String {
         match self {
             Value::Str(s) => quote_str(s),
+            Value::Unknown => "".to_string(),
             _ => panic!("not a string"),
         }
     }
@@ -239,6 +240,20 @@ impl Value {
 
     /// int_as_i64 returns the Go int64 value and whether the result is exact;
     pub fn int_as_i64(&self) -> (i64, bool) {
+        unimplemented!()
+    }
+
+    /// num_as_f64 returns the nearest Go float64 value of x and whether the result is exact;
+    /// x must be numeric or an Unknown, but not Complex. For values too small (too close to 0)
+    /// to represent as float64, num_as_f64 silently underflows to 0. The result sign always
+    /// matches the sign of x, even for 0.
+    /// If x is Unknown, the result is (0, false).
+    pub fn num_as_f64(&self) -> (F64, bool) {
+        unimplemented!()
+    }
+
+    /// num_as_f32 is like num_as_f64 but for float32 instead of float64.
+    pub fn num_as_f32(&self) -> (F32, bool) {
         unimplemented!()
     }
 

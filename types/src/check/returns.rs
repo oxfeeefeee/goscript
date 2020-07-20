@@ -1,20 +1,58 @@
 #![allow(dead_code)]
-use super::super::objects::ScopeKey;
-use super::super::scope::Scope;
 use super::check::Checker;
-use goscript_parser::ast::Node;
-use goscript_parser::ast::{BlockStmt, BranchStmt, Decl, Stmt};
-use goscript_parser::objects::{LabeledStmtKey, Objects as AstObjects};
-use goscript_parser::{Pos, Token};
-use std::cell::RefCell;
-use std::collections::HashMap;
+use goscript_parser::ast::{BlockStmt, Expr, Stmt};
+use goscript_parser::Token;
 use std::rc::Rc;
 
 impl<'a> Checker<'a> {
     /// is_terminating returns if s is a terminating statement.
     /// If s is labeled, label is the label name
     pub fn is_terminating(&self, s: &Stmt, label: Option<&String>) -> bool {
-        unimplemented!()
+        match s {
+            Stmt::Labeled(ls) => {
+                let ls_val = &self.ast_objs.l_stmts[*ls];
+                let l = &self.ast_ident(ls_val.label).name;
+                self.is_terminating(&ls_val.stmt, Some(l))
+            }
+            Stmt::Expr(e) => match Checker::unparen(e) {
+                Expr::Call(ce) => match &self.octx.panics {
+                    Some(pa) => pa.contains(&ce.id()),
+                    _ => false,
+                },
+                _ => false,
+            },
+            Stmt::Return(_) => true,
+            Stmt::Branch(bs) => match bs.token {
+                Token::GOTO | Token::FALLTHROUGH => true,
+                _ => false,
+            },
+            Stmt::Block(bs) => self.is_terminating_list(&bs.list, None),
+            Stmt::If(ifs) => {
+                ifs.els.is_some()
+                    && self.is_terminating_list(&ifs.body.list, None)
+                    && self.is_terminating(ifs.els.as_ref().unwrap(), None)
+            }
+            Stmt::Switch(ss) => self.is_terminating_switch(&ss.body, label),
+            Stmt::TypeSwitch(tss) => self.is_terminating_switch(&tss.body, label),
+            Stmt::Select(ss) => !ss.body.list.iter().any(|x| match x {
+                Stmt::Case(cc) => {
+                    !self.is_terminating_list(&cc.body, None)
+                        || self.has_break_list(&cc.body, label, true)
+                }
+                _ => unreachable!(),
+            }),
+            Stmt::For(fs) => fs.cond.is_none() && !self.has_break_list(&fs.body.list, label, true),
+            Stmt::Bad(_)
+            | Stmt::Decl(_)
+            | Stmt::Empty(_)
+            | Stmt::Send(_)
+            | Stmt::IncDec(_)
+            | Stmt::Assign(_)
+            | Stmt::Go(_)
+            | Stmt::Defer(_)
+            | Stmt::Range(_) => false,
+            _ => unreachable!(),
+        }
     }
 
     fn is_terminating_list(&self, list: &Vec<Stmt>, label: Option<&String>) -> bool {
@@ -28,6 +66,26 @@ impl<'a> Checker<'a> {
         } else {
             false
         }
+    }
+
+    fn is_terminating_switch(&self, body: &Rc<BlockStmt>, label: Option<&String>) -> bool {
+        let mut has_default = false;
+        for s in body.list.iter() {
+            match s {
+                Stmt::Case(cc) => {
+                    if cc.list.is_none() {
+                        has_default = true
+                    }
+                    if !self.is_terminating_list(&cc.body, None)
+                        || self.has_break_list(&cc.body, label, true)
+                    {
+                        return true;
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+        has_default
     }
 
     /// has_break reports if s is or contains a break statement

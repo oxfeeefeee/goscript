@@ -1882,14 +1882,14 @@ impl<'a> Parser<'a> {
             Token::CASE => {
                 self.next();
                 if type_switch {
-                    self.parse_type_list()
+                    Some(self.parse_type_list())
                 } else {
-                    self.parse_rhs_list()
+                    Some(self.parse_rhs_list())
                 }
             }
             _ => {
                 self.expect(&Token::DEFAULT);
-                vec![]
+                None
             }
         };
 

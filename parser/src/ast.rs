@@ -1032,7 +1032,7 @@ pub struct IfStmt {
 #[derive(Debug)]
 pub struct CaseClause {
     pub case: position::Pos,
-    pub list: Vec<Expr>,
+    pub list: Option<Vec<Expr>>,
     pub colon: position::Pos,
     pub body: Vec<Stmt>,
 }

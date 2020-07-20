@@ -1,13 +1,22 @@
+#![allow(dead_code)]
 use super::super::constant;
 use super::super::obj::LangObj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
-use super::super::operand::Operand;
+use super::super::operand::{Operand, OperandMode};
+use super::super::typ;
+use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext, ObjContext};
-use goscript_parser::ast::{BlockStmt, Expr, Stmt};
+use constant::Value;
+use goscript_parser::ast::{BlockStmt, Expr, Node, Stmt};
 use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
+use goscript_parser::{Pos, Token};
+use ordered_float;
+use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Clone)]
+type F64 = ordered_float::OrderedFloat<f64>;
+
+#[derive(Clone, Copy)]
 struct StmtContext {
     break_ok: bool,
     continue_ok: bool,
@@ -25,6 +34,42 @@ impl StmtContext {
         }
     }
 }
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+enum GoVal {
+    Int64(i64),
+    Uint64(u64),
+    Float64(F64),
+    Str(String),
+    Invalid,
+}
+
+impl GoVal {
+    fn with_const(v: &Value) -> GoVal {
+        match v {
+            Value::Int(_) => match v.int_as_i64() {
+                (int, true) => GoVal::Int64(int),
+                _ => match v.int_as_u64() {
+                    (uint, true) => GoVal::Uint64(uint),
+                    _ => GoVal::Invalid,
+                },
+            },
+            Value::Float(_) => match v.num_as_f64() {
+                (f, true) => GoVal::Float64(f),
+                _ => GoVal::Invalid,
+            },
+            Value::Str(_) => GoVal::Str(v.str_as_string()),
+            _ => GoVal::Invalid,
+        }
+    }
+}
+
+struct PosType {
+    pos: Pos,
+    typ: TypeKey,
+}
+
+type ValueMap = HashMap<GoVal, Vec<PosType>>;
 
 pub enum BodyContainer {
     FuncLitExpr(Expr),
@@ -75,7 +120,7 @@ impl<'a> Checker<'a> {
 
         let sctx = StmtContext::new();
         let block2 = block.clone();
-        self.stmt_list(&block2, sctx, fctx);
+        self.stmt_list(&block2, &sctx, fctx);
 
         if self.octx.has_label {
             self.labels(&block2);
@@ -123,11 +168,191 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn stmt_list(&mut self, block: &Rc<BlockStmt>, sctx: StmtContext, fctx: &mut FilesContext) {
-        unimplemented!()
+    fn simple_stmt(&mut self, s: Option<&Stmt>, fctx: &mut FilesContext) {
+        if let Some(s) = s {
+            let sctx = StmtContext::new();
+            self.stmt(s, &sctx, fctx);
+        }
     }
 
-    fn stmt(&mut self, stmt: &Stmt, sctx: StmtContext, fctx: &mut FilesContext) {
+    fn stmt_list(&mut self, block: &Rc<BlockStmt>, sctx: &StmtContext, fctx: &mut FilesContext) {
+        // trailing empty statements are "invisible" to fallthrough analysis
+        let index = block
+            .list
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, x)| match x {
+                Stmt::Empty(_) => Some(i),
+                _ => None,
+            })
+            .unwrap_or(0);
+        for (i, s) in block.list[0..index].iter().enumerate() {
+            let mut inner = *sctx;
+            inner.fallthrough_ok = sctx.fallthrough_ok && i + 1 == index;
+            self.stmt(s, &inner, fctx);
+        }
+    }
+
+    fn multiple_defaults(&self, list: &Vec<Stmt>) {
+        let mut first: Option<&Stmt> = None;
+        for s in list.iter() {
+            let d_op = match s {
+                Stmt::Case(cc) => cc.list.as_ref().map_or(Some(s), |_| None),
+                Stmt::Comm(cc) => cc.comm.as_ref().map_or(Some(s), |_| None),
+                _ => {
+                    self.invalid_ast(s.pos(self.ast_objs), "case/communication clause expected");
+                    None
+                }
+            };
+            if let Some(d) = d_op {
+                match first {
+                    Some(f) => self.error(
+                        d.pos(self.ast_objs),
+                        format!(
+                            "multiple defaults (first at {})",
+                            self.position(f.pos(self.ast_objs))
+                        ),
+                    ),
+                    None => first = Some(d),
+                }
+            }
+        }
+    }
+
+    fn open_scope(&mut self, s: &Stmt, comment: String) {
+        let scope = self.tc_objs.new_scope(
+            self.octx.scope,
+            s.pos(self.ast_objs),
+            s.end(self.ast_objs),
+            comment,
+            false,
+        );
+        self.result.record_scope(s, scope);
+        self.octx.scope = Some(scope);
+    }
+
+    fn close_scope(&mut self) {
+        self.octx.scope = *self.tc_objs.scopes[self.octx.scope.unwrap()].parent();
+    }
+
+    fn assign_op(op: &Token) -> Option<Token> {
+        match op {
+            Token::ADD_ASSIGN => Some(Token::ADD),
+            Token::SUB_ASSIGN => Some(Token::SUB),
+            Token::MUL_ASSIGN => Some(Token::MUL),
+            Token::QUO_ASSIGN => Some(Token::QUO),
+            Token::REM_ASSIGN => Some(Token::REM),
+            Token::AND_ASSIGN => Some(Token::AND),
+            Token::OR_ASSIGN => Some(Token::OR),
+            Token::XOR_ASSIGN => Some(Token::XOR),
+            Token::SHL_ASSIGN => Some(Token::SHL),
+            Token::SHR_ASSIGN => Some(Token::SHR),
+            Token::AND_NOT_ASSIGN => Some(Token::AND_NOT),
+            _ => None,
+        }
+    }
+
+    fn suspended_call(&mut self, kw: &str, call: &Expr, fctx: &mut FilesContext) {
+        let x = &mut Operand::new();
+        let msg = match self.raw_expr(x, call, None, fctx) {
+            ExprKind::Conversion => "requires function call, not conversion",
+            ExprKind::Expression => "discards result of",
+            ExprKind::Statement => return,
+        };
+        let xd = self.new_dis(x);
+        self.error(xd.pos(), format!("{} {} {}", kw, msg, xd));
+    }
+
+    fn case_values(
+        &mut self,
+        x: &mut Operand,
+        values: &Vec<Expr>,
+        seen: &mut ValueMap,
+        fctx: &mut FilesContext,
+    ) {
+        for e in values.iter() {
+            let v = &mut Operand::new();
+            self.expr(v, e, fctx);
+            if x.invalid() || v.invalid() {
+                continue;
+            }
+            self.convert_untyped(v, x.typ.unwrap(), fctx);
+            if v.invalid() {
+                continue;
+            }
+            // Order matters: By comparing v against x, error positions are at the case values.
+            let res = &mut v.clone();
+            self.comparison(res, x, &Token::EQL, fctx);
+            if res.invalid() {
+                continue;
+            }
+            if let OperandMode::Constant(val) = &v.mode {
+                // look for duplicate values
+                match GoVal::with_const(val) {
+                    GoVal::Invalid => {}
+                    gov => {
+                        let entry = seen.entry(gov).or_insert(vec![]);
+                        if let Some(pt) = entry
+                            .iter()
+                            .find(|x| typ::identical(v.typ.unwrap(), x.typ, self.tc_objs))
+                        {
+                            let vd = self.new_dis(v);
+                            self.error(
+                                vd.pos(),
+                                format!("duplicate case {} in expression switch", vd),
+                            );
+                            self.error_str(pt.pos, "\tprevious case");
+                            continue;
+                        }
+                        entry.push(PosType {
+                            pos: v.pos(self.ast_objs),
+                            typ: v.typ.unwrap(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    fn case_types(
+        &mut self,
+        x: &mut Operand,
+        xtype: TypeKey,
+        types: &Vec<Expr>,
+        seen: &mut HashMap<Option<TypeKey>, Pos>,
+        fctx: &mut FilesContext,
+    ) -> Option<TypeKey> {
+        types
+            .iter()
+            .filter_map(|e| {
+                let t = self.type_or_nil(e, fctx);
+                if t == Some(self.invalid_type()) {
+                    return None;
+                }
+                if let Some((_, &pos)) = seen
+                    .iter()
+                    .find(|(&t2, _)| typ::identical_option(t, t2, self.tc_objs))
+                {
+                    let ts = t.map_or("nil".to_string(), |x| self.new_dis(&x).to_string());
+                    self.error(
+                        e.pos(self.ast_objs),
+                        format!("duplicate case {} in type switch", ts),
+                    );
+                    self.error_str(pos, "\tprevious case");
+                    return None;
+                }
+                seen.insert(t, e.pos(self.ast_objs));
+                if let Some(t) = t {
+                    self.type_assertion(x, xtype, t);
+                }
+                Some(t)
+            })
+            .last()
+            .flatten()
+    }
+
+    fn stmt(&mut self, stmt: &Stmt, sctx: &StmtContext, fctx: &mut FilesContext) {
         unimplemented!()
     }
 }
