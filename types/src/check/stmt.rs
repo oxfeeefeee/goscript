@@ -7,7 +7,7 @@ use super::super::typ;
 use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext, ObjContext};
 use constant::Value;
-use goscript_parser::ast::{BlockStmt, Expr, Node, Stmt};
+use goscript_parser::ast::{BasicLit, BlockStmt, Expr, Node, Stmt};
 use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
 use goscript_parser::{Pos, Token};
 use ordered_float;
@@ -352,7 +352,274 @@ impl<'a> Checker<'a> {
             .flatten()
     }
 
-    fn stmt(&mut self, stmt: &Stmt, sctx: &StmtContext, fctx: &mut FilesContext) {
-        unimplemented!()
+    fn stmt(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext) {
+        let begin_scope = self.octx.scope;
+        let begin_delayed_count = fctx.delayed_count();
+
+        let mut inner_ctx = ctx.clone();
+        inner_ctx.fallthrough_ok = false;
+        inner_ctx.final_switch_case = false;
+        match stmt {
+            Stmt::Bad(_) | Stmt::Empty(_) => {} //ignore
+            Stmt::Decl(d) => self.decl_stmt((**d).clone(), fctx),
+            Stmt::Labeled(lkey) => {
+                self.octx.has_label = true;
+                let s = &self.ast_objs.l_stmts[*lkey].stmt.clone();
+                self.stmt(&s, ctx, fctx);
+            }
+            Stmt::Expr(e) => {
+                // spec: "With the exception of specific built-in functions,
+                // function and method calls and receive operations can appear
+                // in statement context. Such statements may be parenthesized."
+                let x = &mut Operand::new();
+                let kind = self.raw_expr(x, e, None, fctx);
+                let msg = match &x.mode {
+                    OperandMode::Builtin(_) => "must be called",
+                    OperandMode::TypeExpr => "is not an expression",
+                    _ => {
+                        if kind == ExprKind::Statement {
+                            return;
+                        }
+                        "is not used"
+                    }
+                };
+                let xd = self.new_dis(x);
+                self.error(xd.pos(), format!("{} {}", xd, msg));
+            }
+            Stmt::Send(ss) => {
+                let (ch, x) = (&mut Operand::new(), &mut Operand::new());
+                self.expr(ch, &ss.chan, fctx);
+                self.expr(x, &ss.val, fctx);
+                if ch.invalid() || x.invalid() {
+                    return;
+                }
+                let chtype = ch.typ.unwrap();
+                let under_chtype = typ::underlying_type(chtype, self.tc_objs);
+                if let Some(chan) = self.otype(under_chtype).try_as_chan() {
+                    if chan.dir() == typ::ChanDir::RecvOnly {
+                        let td = self.new_dis(&under_chtype);
+                        self.invalid_op(
+                            ss.arrow,
+                            &format!("cannot send to receive-only type {}", td),
+                        );
+                    } else {
+                        let ty = Some(chan.elem());
+                        self.assignment(x, ty, "send", fctx);
+                    }
+                } else {
+                    let td = self.new_dis(&chtype);
+                    self.invalid_op(ss.arrow, &format!("cannot send to non-chan type {}", td));
+                }
+            }
+            Stmt::IncDec(ids) => {
+                let op = match &ids.token {
+                    Token::INC => Token::ADD,
+                    Token::DEC => Token::SUB,
+                    _ => {
+                        self.invalid_ast(
+                            ids.token_pos,
+                            &format!("unknown inc/dec operation {}", ids.token),
+                        );
+                        return;
+                    }
+                };
+                let x = &mut Operand::new();
+                self.expr(x, &ids.expr, fctx);
+                if x.invalid() {
+                    return;
+                }
+                if !typ::is_numeric(x.typ.unwrap(), self.tc_objs) {
+                    let ed = self.new_dis(&ids.expr);
+                    let td = self.new_dis(x.typ.as_ref().unwrap());
+                    self.invalid_op(
+                        ed.pos(),
+                        &format!("{}{} (non-numeric type {})", ed, ids.token, td),
+                    );
+                    return;
+                }
+                let one = Expr::BasicLit(Rc::new(BasicLit {
+                    pos: x.pos(self.ast_objs),
+                    token: Token::int1(),
+                }));
+                self.binary(x, None, &ids.expr, &one, &op, fctx);
+                if x.invalid() {
+                    return;
+                }
+                self.assign_var(&ids.expr, x, fctx);
+            }
+            Stmt::Assign(askey) => {
+                let astmt = &self.ast_objs.a_stmts[*askey];
+                match &astmt.token {
+                    Token::ASSIGN | Token::DEFINE => {
+                        if astmt.lhs.len() == 0 {
+                            let pos = astmt.pos(self.ast_objs);
+                            self.invalid_ast(pos, "missing lhs in assignment");
+                            return;
+                        }
+                        let (lhs, rhs, pos) =
+                            (astmt.lhs.clone(), astmt.rhs.clone(), astmt.token_pos);
+                        if astmt.token == Token::DEFINE {
+                            self.short_var_decl(&lhs, &rhs, pos, fctx);
+                        } else {
+                            self.assign_vars(&lhs, &rhs, fctx);
+                        }
+                    }
+                    _ => {
+                        // assignment operations
+                        if astmt.lhs.len() != 1 || astmt.rhs.len() != 1 {
+                            self.error(
+                                astmt.token_pos,
+                                format!(
+                                    "assignment operation {} requires single-valued expressions",
+                                    astmt.token
+                                ),
+                            );
+                            return;
+                        }
+                        let op = Checker::assign_op(&astmt.token);
+                        if op.is_none() {
+                            self.invalid_ast(
+                                astmt.token_pos,
+                                &format!("unknown assignment operation {}", astmt.token),
+                            );
+                            return;
+                        }
+                        let (lhs, rhs, op) =
+                            (astmt.lhs[0].clone(), astmt.rhs[0].clone(), op.unwrap());
+                        let x = &mut Operand::new();
+                        self.binary(x, None, &lhs, &rhs, &op, fctx);
+                        if x.invalid() {
+                            return;
+                        }
+                        self.assign_var(&lhs, x, fctx);
+                    }
+                }
+            }
+            Stmt::Go(gs) => self.suspended_call("go", &gs.call, fctx),
+            Stmt::Defer(ds) => self.suspended_call("defer", &ds.call, fctx),
+            Stmt::Return(rs) => {
+                let reskey = self
+                    .otype(self.octx.sig.unwrap())
+                    .try_as_signature()
+                    .unwrap()
+                    .results();
+                let res = self.otype(reskey).try_as_tuple().unwrap();
+                if res.vars().len() > 0 {
+                    // function returns results
+                    // (if one, say the first, result parameter is named, all of them are named)
+                    if rs.results.len() == 0 && self.lobj(res.vars()[0]).name() != "" {
+                        // spec: "Implementation restriction: A compiler may disallow an empty expression
+                        // list in a "return" statement if a different entity (constant, type, or variable)
+                        // with the same name as a result parameter is in scope at the place of the return."
+                        for okey in res.vars().iter() {
+                            let lobj = self.lobj(*okey);
+                            if let Some(alt) = self.octx.lookup(lobj.name(), self.tc_objs) {
+                                if alt == okey {
+                                    continue;
+                                }
+                                self.error(
+                                    stmt.pos(self.ast_objs),
+                                    format!(
+                                        "result parameter {} not in scope at return",
+                                        lobj.name()
+                                    ),
+                                );
+                                let (altd, objd) = (self.new_dis(alt), self.new_dis(okey));
+                                self.error(altd.pos(), format!("\tinner declaration of {}", objd));
+                                // ok to continue
+                            }
+                        }
+                    } else {
+                        // return has results or result parameters are unnamed
+                        let vars = res.vars().clone();
+                        self.init_vars(&vars, &rs.results, Some(rs.ret), fctx);
+                    }
+                } else if rs.results.len() > 0 {
+                    self.error_str(
+                        rs.results[0].pos(self.ast_objs),
+                        "no result values expected",
+                    );
+                    self.use_exprs(&rs.results, fctx);
+                }
+            }
+            Stmt::Branch(bs) => {
+                if bs.label.is_some() {
+                    self.octx.has_label = true;
+                    return; //checked in 2nd pass (Check::label)
+                }
+                let spos = stmt.pos(self.ast_objs);
+                match &bs.token {
+                    Token::BREAK => {
+                        if !ctx.break_ok {
+                            self.error_str(spos, "break not in for, switch, or select statement");
+                        }
+                    }
+                    Token::CONTINUE => {
+                        if !ctx.continue_ok {
+                            self.error_str(spos, "continue not in for statement");
+                        }
+                    }
+                    Token::FALLTHROUGH => {
+                        if !ctx.fallthrough_ok {
+                            let msg = if ctx.final_switch_case {
+                                "cannot fallthrough final case in switch"
+                            } else {
+                                "fallthrough statement out of place"
+                            };
+                            self.error_str(spos, msg);
+                        }
+                    }
+                    _ => {
+                        self.invalid_ast(spos, &format!("branch statement: {}", bs.token));
+                    }
+                }
+            }
+            Stmt::Block(bs) => {
+                self.open_scope(stmt, "block".to_string());
+
+                self.stmt_list(&bs, &inner_ctx, fctx);
+
+                self.close_scope();
+            }
+            Stmt::If(ifs) => {
+                self.open_scope(stmt, "if".to_string());
+
+                self.simple_stmt(ifs.init.as_ref(), fctx);
+                let x = &mut Operand::new();
+                self.expr(x, &ifs.cond, fctx);
+                if !x.invalid() && typ::is_boolean(x.typ.unwrap(), self.tc_objs) {
+                    self.error_str(
+                        ifs.cond.pos(self.ast_objs),
+                        "non-boolean condition in if statement",
+                    );
+                }
+                self.stmt(&Stmt::Block(ifs.body.clone()), &inner_ctx, fctx);
+                // The parser produces a correct AST but if it was modified
+                // elsewhere the else branch may be invalid. Check again.
+                if let Some(s) = &ifs.els {
+                    match s {
+                        Stmt::Bad(_) => {} //error already reported
+                        Stmt::If(_) | Stmt::Block(_) => {
+                            self.stmt(s, &inner_ctx, fctx);
+                        }
+                        _ => {
+                            let pos = s.pos(self.ast_objs);
+                            self.error_str(pos, "invalid else branch in if statement");
+                        }
+                    }
+                }
+
+                self.close_scope();
+            }
+            Stmt::Switch(ss) => {}
+            Stmt::TypeSwitch(tss) => {}
+            Stmt::Select(ss) => {}
+            Stmt::For(fs) => {}
+            Stmt::Range(rs) => {}
+            _ => unreachable!(),
+        }
+
+        fctx.process_delayed(begin_delayed_count, self);
+        debug_assert_eq!(begin_scope, self.octx.scope);
     }
 }

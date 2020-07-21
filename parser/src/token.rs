@@ -235,6 +235,10 @@ impl Token {
 		}
 	}
 
+	pub fn int1() -> Token {
+		Token::INT("1".to_string().into())
+	}
+
 	pub fn precedence(&self) -> usize {
 		match self {
 			Token::LOR => 1,

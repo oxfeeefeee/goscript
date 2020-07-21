@@ -6,10 +6,9 @@ use super::super::typ::{self, BasicType, Type};
 use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext};
 use super::stmt::BodyContainer;
-use goscript_parser::ast::{self, Node};
+use goscript_parser::ast::Node;
 use goscript_parser::{Expr, Token};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 
 ///Basic algorithm:
 ///
@@ -557,7 +556,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         y: &mut Operand,
         op: &Token,
-        e: Option<Expr>,
+        e: Option<&Expr>,
         fctx: &mut FilesContext,
     ) {
         let o = &self.tc_objs;
@@ -632,7 +631,7 @@ impl<'a> Checker<'a> {
                 // their type after each constant operation.
                 if typ::is_typed(x.typ.unwrap(), self.tc_objs) {
                     if e.is_some() {
-                        x.expr = e
+                        x.expr = e.map(|x| x.clone()); // for better error message
                     }
                     self.representable(x, x.typ.unwrap());
                 }
@@ -688,16 +687,19 @@ impl<'a> Checker<'a> {
         x.mode = OperandMode::Value;
     }
 
-    fn binary(
+    /// The binary expression e may be None. It's passed in for better error messages only.
+    pub fn binary(
         &mut self,
         x: &mut Operand,
-        e: &Rc<ast::BinaryExpr>,
+        e: Option<&Expr>,
+        lhs: &Expr,
+        rhs: &Expr,
         op: &Token,
         fctx: &mut FilesContext,
     ) {
         let mut y = Operand::new();
-        self.expr(x, &e.expr_a, fctx);
-        self.expr(&mut y, &e.expr_b, fctx);
+        self.expr(x, &lhs, fctx);
+        self.expr(&mut y, &rhs, fctx);
 
         if x.invalid() {
             return;
@@ -709,7 +711,7 @@ impl<'a> Checker<'a> {
         }
 
         if Checker::is_shift(op) {
-            self.shift(x, &mut y, op, Some(Expr::Binary(e.clone())), fctx);
+            self.shift(x, &mut y, op, e, fctx);
             return;
         }
 
@@ -788,7 +790,7 @@ impl<'a> Checker<'a> {
                 // Typed constants must be representable in
                 // their type after each constant operation.
                 if typ::is_typed(ty, o) {
-                    x.expr = Some(Expr::Binary(e.clone())); // for better error message
+                    x.expr = e.map(|x| x.clone()); // for better error message
                     self.representable(x, ty)
                 }
             }
@@ -1511,7 +1513,7 @@ impl<'a> Checker<'a> {
                 }
             }
             Expr::Binary(be) => {
-                self.binary(x, be, &be.op, fctx);
+                self.binary(x, Some(e), &be.expr_a, &be.expr_b, &be.op, fctx);
                 if x.invalid() {
                     return on_err(x);
                 }
