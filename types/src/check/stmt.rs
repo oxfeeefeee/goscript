@@ -1,14 +1,16 @@
 #![allow(dead_code)]
 use super::super::constant;
 use super::super::obj::LangObj;
-use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+use super::super::objects::{DeclInfoKey, ScopeKey, TypeKey};
 use super::super::operand::{Operand, OperandMode};
-use super::super::typ;
+use super::super::typ::{self, BasicInfo, BasicType, ChanDir, Type};
 use super::super::universe::ExprKind;
-use super::check::{Checker, ExprInfo, FilesContext, ObjContext};
+use super::check::{Checker, FilesContext, ObjContext};
 use constant::Value;
-use goscript_parser::ast::{BasicLit, BlockStmt, Expr, Node, Stmt};
-use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
+use goscript_parser::ast::{
+    BasicLit, BlockStmt, CaseClause, CommClause, Expr, Ident, Node, Stmt, TypeAssertExpr,
+};
+use goscript_parser::objects::{FuncDeclKey, IdentKey, Objects as AstObjects};
 use goscript_parser::{Pos, Token};
 use ordered_float;
 use std::collections::HashMap;
@@ -120,7 +122,7 @@ impl<'a> Checker<'a> {
 
         let sctx = StmtContext::new();
         let block2 = block.clone();
-        self.stmt_list(&block2, &sctx, fctx);
+        self.stmt_list(&block2.list, &sctx, fctx);
 
         if self.octx.has_label {
             self.labels(&block2);
@@ -175,10 +177,9 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn stmt_list(&mut self, block: &Rc<BlockStmt>, sctx: &StmtContext, fctx: &mut FilesContext) {
+    fn stmt_list(&mut self, list: &Vec<Stmt>, sctx: &StmtContext, fctx: &mut FilesContext) {
         // trailing empty statements are "invisible" to fallthrough analysis
-        let index = block
-            .list
+        let index = list
             .iter()
             .enumerate()
             .rev()
@@ -187,7 +188,7 @@ impl<'a> Checker<'a> {
                 _ => None,
             })
             .unwrap_or(0);
-        for (i, s) in block.list[0..index].iter().enumerate() {
+        for (i, s) in list[0..index].iter().enumerate() {
             let mut inner = *sctx;
             inner.fallthrough_ok = sctx.fallthrough_ok && i + 1 == index;
             self.stmt(s, &inner, fctx);
@@ -267,11 +268,14 @@ impl<'a> Checker<'a> {
     fn case_values(
         &mut self,
         x: &mut Operand,
-        values: &Vec<Expr>,
+        values: &Option<Vec<Expr>>,
         seen: &mut ValueMap,
         fctx: &mut FilesContext,
     ) {
-        for e in values.iter() {
+        if values.is_none() {
+            return;
+        }
+        for e in values.as_ref().unwrap().iter() {
             let v = &mut Operand::new();
             self.expr(v, e, fctx);
             if x.invalid() || v.invalid() {
@@ -319,11 +323,16 @@ impl<'a> Checker<'a> {
         &mut self,
         x: &mut Operand,
         xtype: TypeKey,
-        types: &Vec<Expr>,
+        types: &Option<Vec<Expr>>,
         seen: &mut HashMap<Option<TypeKey>, Pos>,
         fctx: &mut FilesContext,
     ) -> Option<TypeKey> {
+        if types.is_none() {
+            return None;
+        }
         types
+            .as_ref()
+            .unwrap()
             .iter()
             .filter_map(|e| {
                 let t = self.type_or_nil(e, fctx);
@@ -577,7 +586,7 @@ impl<'a> Checker<'a> {
             Stmt::Block(bs) => {
                 self.open_scope(stmt, "block".to_string());
 
-                self.stmt_list(&bs, &inner_ctx, fctx);
+                self.stmt_list(&bs.list, &inner_ctx, fctx);
 
                 self.close_scope();
             }
@@ -587,7 +596,7 @@ impl<'a> Checker<'a> {
                 self.simple_stmt(ifs.init.as_ref(), fctx);
                 let x = &mut Operand::new();
                 self.expr(x, &ifs.cond, fctx);
-                if !x.invalid() && typ::is_boolean(x.typ.unwrap(), self.tc_objs) {
+                if !x.invalid() && !typ::is_boolean(x.typ.unwrap(), self.tc_objs) {
                     self.error_str(
                         ifs.cond.pos(self.ast_objs),
                         "non-boolean condition in if statement",
@@ -611,12 +620,417 @@ impl<'a> Checker<'a> {
 
                 self.close_scope();
             }
-            Stmt::Switch(ss) => {}
-            Stmt::TypeSwitch(tss) => {}
-            Stmt::Select(ss) => {}
-            Stmt::For(fs) => {}
-            Stmt::Range(rs) => {}
-            _ => unreachable!(),
+            Stmt::Switch(ss) => {
+                inner_ctx.break_ok = true;
+                self.open_scope(stmt, "switch".to_string());
+
+                self.simple_stmt(ss.init.as_ref(), fctx);
+                let x = &mut Operand::new();
+                if let Some(tag) = &ss.tag {
+                    self.expr(x, tag, fctx);
+                    // By checking assignment of x to an invisible temporary
+                    // (as a compiler would), we get all the relevant checks.
+                    self.assignment(x, None, "switch expression", fctx);
+                } else {
+                    // spec: "A missing switch expression is
+                    // equivalent to the boolean value true."
+                    x.mode = OperandMode::Constant(Value::with_bool(true));
+                    x.typ = Some(self.basic_type(BasicType::Bool));
+                    x.expr = Some(Expr::Ident(
+                        self.ast_objs.idents.insert(Ident::true_(ss.body.l_brace)),
+                    ))
+                }
+
+                self.multiple_defaults(&ss.body.list);
+
+                let mut seen: ValueMap = HashMap::new();
+                for (i, c) in ss.body.list.iter().enumerate() {
+                    if let Stmt::Case(cc) = c {
+                        self.case_values(x, &cc.list, &mut seen, fctx);
+                        self.open_scope(stmt, "case".to_string());
+                        let mut inner2 = inner_ctx.clone();
+                        if i + 1 < cc.body.len() {
+                            inner2.fallthrough_ok = true;
+                        } else {
+                            inner2.final_switch_case = true;
+                        }
+                        self.stmt_list(&cc.body, &inner2, fctx);
+                        self.close_scope();
+                    } else {
+                        self.invalid_ast(c.pos(self.ast_objs), "incorrect expression switch case");
+                    }
+                }
+
+                self.close_scope();
+            }
+            Stmt::TypeSwitch(tss) => {
+                inner_ctx.break_ok = true;
+                self.open_scope(stmt, "type switch".to_string());
+
+                self.simple_stmt(tss.init.as_ref(), fctx);
+                // A type switch guard must be of the form:
+                //
+                //     TypeSwitchGuard = [ identifier ":=" ] PrimaryExpr "." "(" "type" ")" .
+                //
+                // The parser is checking syntactic correctness;
+                // remaining syntactic errors are considered AST errors here.
+                let invalid_ast = || {
+                    let spos = stmt.pos(self.ast_objs);
+                    self.invalid_ast(spos, "incorrect form of type switch guard");
+                };
+                let (lhs, rhs): (Option<IdentKey>, &Expr) = match &tss.assign {
+                    Stmt::Expr(e) => (None, &*e),
+                    Stmt::Assign(ass) => {
+                        let assign = &self.ast_objs.a_stmts[*ass];
+                        if assign.lhs.len() != 1
+                            || assign.token != Token::DEFINE
+                            || assign.rhs.len() != 1
+                        {
+                            invalid_ast();
+                            return self.close_scope();
+                        }
+                        if let Expr::Ident(ikey) = assign.lhs[0] {
+                            let ident = &self.ast_objs.idents[ikey];
+                            let l = if ident.name == "_" {
+                                // _ := x.(type) is an invalid short variable declaration
+                                self.soft_error_str(
+                                    ident.pos,
+                                    "no new variable on left side of :=",
+                                );
+                                None // avoid declared but not used error below
+                            } else {
+                                self.result.record_def(ikey, None);
+                                Some(ikey)
+                            };
+                            (l, &assign.rhs[0])
+                        } else {
+                            invalid_ast();
+                            return self.close_scope();
+                        }
+                    }
+                    _ => {
+                        invalid_ast();
+                        return self.close_scope();
+                    }
+                };
+
+                // rhs must be of the form: expr.(type) and expr must be an interface
+                let ta: &TypeAssertExpr = match rhs {
+                    Expr::TypeAssert(e) => e,
+                    _ => {
+                        let spos = stmt.pos(self.ast_objs);
+                        self.invalid_ast(spos, "incorrect form of type switch guard");
+                        return self.close_scope();
+                    }
+                };
+                let x = &mut Operand::new();
+                let ta_expr = ta.expr.clone();
+                self.expr(x, &ta_expr, fctx);
+                if x.invalid() {
+                    return self.close_scope();
+                }
+                let xtype = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
+                if self.otype(xtype).try_as_interface().is_none() {
+                    let xd = self.new_dis(x);
+                    self.error(xd.pos(), format!("{} is not an interface", xd));
+                    return self.close_scope();
+                }
+
+                self.multiple_defaults(&tss.body.list);
+
+                let mut seen = HashMap::new();
+                let mut lhs_vars = Vec::new();
+                for s in tss.body.list.iter() {
+                    let clause: &CaseClause = match s {
+                        Stmt::Case(cc) => cc,
+                        _ => {
+                            let spos = stmt.pos(self.ast_objs);
+                            self.invalid_ast(spos, "incorrect type switch case");
+                            continue;
+                        }
+                    };
+                    // Check each type in this type switch case.
+                    let mut t = self.case_types(x, xtype, &clause.list, &mut seen, fctx);
+                    self.open_scope(stmt, "case".to_string());
+                    // If lhs exists, declare a corresponding variable in the case-local scope.
+                    if let Some(lhs) = lhs {
+                        // spec: "The TypeSwitchGuard may include a short variable declaration.
+                        // When that form is used, the variable is declared at the beginning of
+                        // the implicit block in each clause. In clauses with a case listing
+                        // exactly one type, the variable has that type; otherwise, the variable
+                        // has the type of the expression in the TypeSwitchGuard."
+                        if clause.list.as_ref().map_or(0, |x| x.len()) != 1 || t.is_none() {
+                            t = x.typ;
+                        }
+                        let ident = self.ast_ident(lhs);
+                        let (pos, name) = (ident.pos, ident.name.clone());
+                        let okey = self.tc_objs.new_var(pos, Some(self.pkg), name, t);
+                        let scope_pos = clause
+                            .list
+                            .as_ref()
+                            .map_or(clause.case + "default".len(), |x| {
+                                x[x.len() - 1].end(self.ast_objs)
+                            });
+                        self.declare(self.octx.scope.unwrap(), None, okey, scope_pos);
+                        self.result.record_implicit(s, okey);
+                        // For the "declared but not used" error, all lhs variables act as
+                        // one; i.e., if any one of them is 'used', all of them are 'used'.
+                        // Collect them for later analysis.
+                        lhs_vars.push(okey);
+                    }
+                    self.stmt_list(&clause.body, &inner_ctx, fctx);
+                    self.close_scope();
+                }
+
+                // If lhs exists, we must have at least one lhs variable that was used.
+                if lhs.is_some() {
+                    let used = lhs_vars.iter_mut().fold(false, |acc, x| {
+                        let prop = self.tc_objs.lobjs[*x].entity_type_mut().var_property_mut();
+                        let used = prop.used;
+                        prop.used = true; // avoid usage error when checking entire function
+                        acc || used
+                    });
+                    if !used {
+                        let ident = self.ast_ident(lhs.unwrap());
+                        let (pos, name) = (ident.pos, &ident.name);
+                        self.soft_error(pos, format!("{} declared but not used", name));
+                    }
+                }
+
+                self.close_scope();
+            }
+            Stmt::Select(ss) => {
+                inner_ctx.break_ok = true;
+
+                self.multiple_defaults(&ss.body.list);
+
+                for s in ss.body.list.iter() {
+                    let clause: &CommClause = match s {
+                        Stmt::Comm(cc) => cc,
+                        _ => continue, // error reported before
+                    };
+                    // clause.Comm must be a SendStmt, RecvStmt, or default case
+                    let is_recv = |e: &Expr| match e {
+                        Expr::Unary(ue) => ue.op == Token::ARROW,
+                        _ => false,
+                    };
+                    let valid = match &clause.comm {
+                        None | Some(Stmt::Send(_)) => true,
+                        Some(Stmt::Assign(ass)) => {
+                            let assign = &self.ast_objs.a_stmts[*ass];
+                            if assign.rhs.len() == 1 {
+                                is_recv(&assign.rhs[0])
+                            } else {
+                                false
+                            }
+                        }
+                        Some(Stmt::Expr(e)) => is_recv(e),
+                        _ => false,
+                    };
+                    if !valid {
+                        self.error_str(
+                            clause.comm.as_ref().unwrap().pos(self.ast_objs),
+                            "select case must be send or receive (possibly with assignment)",
+                        );
+                        continue;
+                    }
+
+                    self.open_scope(stmt, "case".to_string());
+                    if let Some(cc) = &clause.comm {
+                        self.stmt(cc, &inner_ctx, fctx);
+                    }
+                    self.stmt_list(&clause.body, &inner_ctx, fctx);
+                    self.close_scope()
+                }
+            }
+            Stmt::For(fs) => {
+                inner_ctx.break_ok = true;
+                inner_ctx.continue_ok = true;
+                self.open_scope(stmt, "for".to_string());
+
+                self.simple_stmt(fs.init.as_ref(), fctx);
+                if let Some(cond) = &fs.cond {
+                    let x = &mut Operand::new();
+                    self.expr(x, cond, fctx);
+                    if !x.invalid() && !typ::is_boolean(x.typ.unwrap(), self.tc_objs) {
+                        self.error_str(
+                            cond.pos(self.ast_objs),
+                            "non-boolean condition in if statement",
+                        );
+                    }
+                }
+                self.simple_stmt(fs.post.as_ref(), fctx);
+                // spec: "The init statement may be a short variable
+                // declaration, but the post statement must not."
+                match &fs.post {
+                    Some(Stmt::Assign(ass)) => {
+                        let assign = &self.ast_objs.a_stmts[*ass];
+                        if assign.token == Token::DEFINE {
+                            self.soft_error_str(
+                                assign.pos(self.ast_objs),
+                                "cannot declare in post statement",
+                            );
+                            // Don't call useLHS here because we want to use the lhs in
+                            // this erroneous statement so that we don't get errors about
+                            // these lhs variables being declared but not used.
+                            let lhs = assign.lhs.clone();
+                            self.use_exprs(&lhs, fctx); // avoid follow-up errors
+                        }
+                    }
+                    _ => {}
+                }
+                self.stmt(&Stmt::Block(fs.body.clone()), &inner_ctx, fctx);
+
+                self.close_scope()
+            }
+            Stmt::Range(rs) => {
+                inner_ctx.break_ok = true;
+                inner_ctx.continue_ok = true;
+                self.open_scope(stmt, "for".to_string());
+
+                // check expression to iterate over
+                let x = &mut Operand::new();
+                self.expr(x, &rs.expr, fctx);
+
+                // determine key/value types
+                let (key, val) = if x.invalid() {
+                    (None, None)
+                } else {
+                    match self.otype(x.typ.unwrap()).underlying_val(self.tc_objs) {
+                        Type::Basic(detail) if detail.info() == BasicInfo::IsString => (
+                            Some(self.basic_type(BasicType::Int)),
+                            Some(*self.tc_objs.universe().rune()),
+                        ),
+                        Type::Array(detail) => {
+                            (Some(self.basic_type(BasicType::Int)), Some(detail.elem()))
+                        }
+                        Type::Slice(detail) => {
+                            (Some(self.basic_type(BasicType::Int)), Some(detail.elem()))
+                        }
+                        Type::Pointer(detail) => {
+                            if let Some(d) = self
+                                .otype(detail.base())
+                                .underlying_val(self.tc_objs)
+                                .try_as_array()
+                            {
+                                (Some(self.basic_type(BasicType::Int)), Some(d.elem()))
+                            } else {
+                                (None, None)
+                            }
+                        }
+                        Type::Map(detail) => (Some(detail.key()), Some(detail.elem())),
+                        Type::Chan(detail) => {
+                            if detail.dir() == ChanDir::SendOnly {
+                                let xd = self.new_dis(x);
+                                self.error(
+                                    xd.pos(),
+                                    format!("cannot range over send-only channel {}", xd),
+                                );
+                                // ok to continue
+                            }
+                            if let Some(v) = &rs.val {
+                                self.error(
+                                    v.pos(self.ast_objs),
+                                    format!(
+                                        "iteration over {} permits only one iteration variable",
+                                        self.new_dis(x)
+                                    ),
+                                );
+                                // ok to continue
+                            }
+                            (Some(detail.elem()), Some(self.invalid_type()))
+                        }
+                        _ => (None, None),
+                    }
+                };
+
+                if key.is_none() {
+                    let xd = self.new_dis(x);
+                    self.error(xd.pos(), format!("cannot range over {}", xd));
+                    // ok to continue
+                }
+
+                // check assignment to/declaration of iteration variables
+                // (irregular assignment, cannot easily map to existing assignment checks)
+
+                // lhs expressions and initialization value (rhs) types
+                let lhs = [rs.key.as_ref(), rs.val.as_ref()];
+                let rhs = [key, val];
+                if rs.token == Token::DEFINE {
+                    let mut vars = vec![];
+                    for (i, lhs) in lhs.iter().enumerate() {
+                        if lhs.is_none() {
+                            continue;
+                        }
+                        // determine lhs variable
+                        let okey = match lhs.unwrap() {
+                            Expr::Ident(ikey) => {
+                                let ident = self.ast_ident(*ikey);
+                                let (pos, name) = (ident.pos, ident.name.clone());
+                                let has_name = name != "_";
+                                let o = self.tc_objs.new_var(pos, Some(self.pkg), name, None);
+                                self.result.record_def(*ikey, Some(o));
+                                if has_name {
+                                    vars.push(o);
+                                }
+                                o
+                            }
+                            _ => {
+                                let ed = self.new_dis(lhs.unwrap());
+                                self.error(ed.pos(), format!("cannot declare {}", ed));
+                                let (pos, name) = (ed.pos(), "_".to_string());
+                                self.tc_objs.new_var(pos, Some(self.pkg), name, None)
+                            }
+                        };
+                        // initialize lhs variable
+                        if rhs[i].is_some() {
+                            x.mode = OperandMode::Value;
+                            x.expr = lhs.map(|x| x.clone());
+                            x.typ = rhs[i];
+                            self.init_var(okey, x, "range clause", fctx);
+                        } else {
+                            let invalid_type = self.invalid_type();
+                            let oval = self.lobj_mut(okey);
+                            oval.set_type(Some(invalid_type));
+                            oval.entity_type_mut().var_property_mut().used = true;
+                        }
+                    }
+
+                    // declare variables
+                    if vars.len() > 0 {
+                        let scope_pos = rs.expr.end(self.ast_objs);
+                        for okey in vars.iter() {
+                            // spec: "The scope of a constant or variable identifier declared inside
+                            // a function begins at the end of the ConstSpec or VarSpec (ShortVarDecl
+                            // for short variable declarations) and ends at the end of the innermost
+                            // containing block."
+                            self.declare(
+                                self.octx.scope.unwrap(),
+                                None, /* record_def already called */
+                                *okey,
+                                scope_pos,
+                            );
+                        }
+                    } else {
+                        self.error_str(rs.token_pos, "no new variables on left side of :=");
+                    }
+                } else {
+                    // ordinary assignment
+                    for (i, lhs) in lhs.iter().enumerate() {
+                        if lhs.is_some() && rhs[i].is_some() {
+                            x.mode = OperandMode::Value;
+                            x.expr = lhs.map(|x| x.clone());
+                            x.typ = rhs[i];
+                            self.assign_var(lhs.unwrap(), x, fctx);
+                        }
+                    }
+                }
+
+                self.stmt(&Stmt::Block(rs.body.clone()), &inner_ctx, fctx);
+
+                self.close_scope()
+            }
+            _ => self.error_str(stmt.pos(self.ast_objs), "invalid statement"),
         }
 
         fctx.process_delayed(begin_delayed_count, self);

@@ -556,9 +556,17 @@ pub struct Ident {
 
 impl Ident {
     pub fn blank(pos: position::Pos) -> Ident {
+        Ident::with_str(pos, "_")
+    }
+
+    pub fn true_(pos: position::Pos) -> Ident {
+        Ident::with_str(pos, "true")
+    }
+
+    pub fn with_str(pos: position::Pos, s: &str) -> Ident {
         Ident {
             pos: pos,
-            name: "_".to_owned(),
+            name: s.to_owned(),
             entity: IdentEntity::NoEntity,
         }
     }

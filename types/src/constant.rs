@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::typ::{BasicDetail, BasicInfo, BasicType};
 use goscript_parser::token::Token;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use num_traits::cast::FromPrimitive;
 use num_traits::cast::ToPrimitive;
 use num_traits::Num;
@@ -225,62 +225,58 @@ impl Value {
         v.map_or(Value::Unknown, |(r, i)| Value::Complex(r.into(), i.into()))
     }
 
-    pub fn str_as_string(&self) -> String {
-        match self {
-            Value::Str(s) => quote_str(s),
-            Value::Unknown => "".to_string(),
-            _ => panic!("not a string"),
-        }
-    }
-
-    /// int_as_u64 returns the Go uint64 value and whether the result is exact;
-    pub fn int_as_u64(&self) -> (u64, bool) {
-        unimplemented!()
-    }
-
-    /// int_as_i64 returns the Go int64 value and whether the result is exact;
-    pub fn int_as_i64(&self) -> (i64, bool) {
-        unimplemented!()
-    }
-
-    /// num_as_f64 returns the nearest Go float64 value of x and whether the result is exact;
-    /// x must be numeric or an Unknown, but not Complex. For values too small (too close to 0)
-    /// to represent as float64, num_as_f64 silently underflows to 0. The result sign always
-    /// matches the sign of x, even for 0.
-    /// If x is Unknown, the result is (0, false).
-    pub fn num_as_f64(&self) -> (F64, bool) {
-        unimplemented!()
-    }
-
-    /// num_as_f32 is like num_as_f64 but for float32 instead of float64.
-    pub fn num_as_f32(&self) -> (F32, bool) {
-        unimplemented!()
-    }
-
     /// real returns the real part of x, which must be a numeric or unknown value.
     /// If x is Unknown, the result is Unknown.
     pub fn real(&self) -> Value {
-        unimplemented!()
+        match self {
+            Value::Int(_) | Value::Float(_) | Value::Unknown => self.clone(),
+            Value::Complex(r, _) => Value::Float(*r),
+            _ => panic!(format!("{} not numeric", self)),
+        }
     }
 
     /// imag returns the imaginary part of x, which must be a numeric or unknown value.
     /// If x is Unknown, the result is Unknown.
     pub fn imag(&self) -> Value {
-        unimplemented!()
+        match self {
+            Value::Int(_) | Value::Float(_) => Value::with_f64(0.0),
+            Value::Complex(r, _) => Value::Float(*r),
+            Value::Unknown => Value::Unknown,
+            _ => panic!(format!("{} not numeric", self)),
+        }
     }
 
-    /// Sign returns -1, 0, or 1 depending on whether x < 0, x == 0, or x > 0;
+    /// sign returns -1, 0, or 1 depending on whether x < 0, x == 0, or x > 0;
     /// x must be numeric or Unknown. For complex values x, the sign is 0 if x == 0,
     /// otherwise it is != 0. If x is Unknown, the result is 1.
     pub fn sign(&self) -> isize {
-        unimplemented!()
+        match self {
+            Value::Int(i) => match i.sign() {
+                Sign::Plus => 1,
+                Sign::Minus => -1,
+                Sign::NoSign => 0,
+            },
+            Value::Float(v) => {
+                let f: f64 = **v;
+                if f > 0.0 {
+                    1
+                } else if f < 0.0 {
+                    -1
+                } else {
+                    0
+                }
+            }
+            Value::Complex(r, i) => Value::Float(*r).sign() | Value::Float(*i).sign(),
+            Value::Unknown => 1, // avoid spurious division by zero errors
+            _ => panic!(format!("{} not numeric", self)),
+        }
     }
 
-    /// BinaryOp returns the result of the binary expression x op y.
+    /// binary_op returns the result of the binary expression x op y.
     /// The operation must be defined for the operands. If one of the
     /// operands is Unknown, the result is Unknown.
-    /// BinaryOp doesn't handle comparisons or shifts; use Compare
-    /// or Shift instead.
+    /// binary_op doesn't handle comparisons or shifts; use compare
+    /// or shift instead.
     ///
     /// To force integer division of Int operands, use op == token.QUO_ASSIGN
     /// instead of token.QUO; the result is guaranteed to be Int in this case.
@@ -289,7 +285,7 @@ impl Value {
         unimplemented!()
     }
 
-    /// UnaryOp returns the result of the unary expression op y.
+    /// unary_op returns the result of the unary expression op y.
     /// The operation must be defined for the operand.
     /// If prec > 0 it specifies the ^ (xor) result size in bits.
     /// If y is Unknown, the result is Unknown.
@@ -306,11 +302,105 @@ impl Value {
         unimplemented!()
     }
 
-    // Shift returns the result of the shift expression x op s
+    // shift returns the result of the shift expression x op s
     // with op == token.SHL or token.SHR (<< or >>). x must be
     // an Int or an Unknown. If x is Unknown, the result is x.
     pub fn shift(x: &Value, op: &Token, s: usize) -> Value {
         unimplemented!()
+    }
+
+    pub fn str_as_string(&self) -> String {
+        match self {
+            Value::Str(s) => quote_str(s),
+            Value::Unknown => "".to_string(),
+            _ => panic!("not a string"),
+        }
+    }
+
+    /// int_as_u64 returns the Go uint64 value and whether the result is exact;
+    pub fn int_as_u64(&self) -> (u64, bool) {
+        match self {
+            Value::Int(i) => match i.to_u64() {
+                Some(v) => (v, true),
+                _ => (std::u64::MAX, false),
+            },
+            Value::Unknown => (0, false),
+            _ => panic!("not an integer"),
+        }
+    }
+
+    /// int_as_i64 returns the Go int64 value and whether the result is exact;
+    pub fn int_as_i64(&self) -> (i64, bool) {
+        match self {
+            Value::Int(i) => match i.to_i64() {
+                Some(v) => (v, true),
+                _ => (
+                    if self.sign() > 0 {
+                        std::i64::MAX
+                    } else {
+                        std::i64::MIN
+                    },
+                    false,
+                ),
+            },
+            Value::Unknown => (0, false),
+            _ => panic!("not an integer"),
+        }
+    }
+
+    /// num_as_f64 returns the nearest Go float64 value of x and whether the result is exact;
+    /// x must be numeric or an Unknown, but not Complex. For values too small (too close to 0)
+    /// to represent as float64, num_as_f64 silently underflows to 0. The result sign always
+    /// matches the sign of x, even for 0.
+    /// If x is Unknown, the result is (0, false).
+    pub fn num_as_f64(&self) -> (F64, bool) {
+        match self {
+            Value::Int(i) => match i.to_f64() {
+                Some(v) => (v.into(), true),
+                _ => (
+                    if self.sign() > 0 {
+                        std::f64::MAX.into()
+                    } else {
+                        std::f64::MIN.into()
+                    },
+                    false,
+                ),
+            },
+            Value::Float(f) => (*f, true),
+            Value::Unknown => (0.0.into(), false),
+            _ => panic!("not a number"),
+        }
+    }
+
+    /// num_as_f32 is like num_as_f64 but for float32 instead of float64.
+    pub fn num_as_f32(&self) -> (F32, bool) {
+        match self {
+            Value::Int(i) => match i.to_f32() {
+                Some(v) => (v.into(), true),
+                _ => (
+                    if self.sign() > 0 {
+                        std::f32::MAX.into()
+                    } else {
+                        std::f32::MIN.into()
+                    },
+                    false,
+                ),
+            },
+            Value::Float(v) => {
+                let min: f64 = std::f32::MIN as f64;
+                let max: f64 = std::f32::MAX as f64;
+                let f: f64 = v.into_inner();
+                if f > min && f < max {
+                    ((f as f32).into(), true)
+                } else if f < min {
+                    (std::f32::MIN.into(), false)
+                } else {
+                    (std::f32::MAX.into(), false)
+                }
+            }
+            Value::Unknown => (0.0.into(), false),
+            _ => panic!("not a number"),
+        }
     }
 }
 
