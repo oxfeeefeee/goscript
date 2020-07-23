@@ -185,7 +185,7 @@ impl<'a> Checker<'a> {
         let tbasic = tval.try_as_basic().unwrap();
         if let OperandMode::Constant(v) = &mut x.mode {
             let clone = v.clone();
-            if clone.representable(tbasic, Some(v)) {
+            if !clone.representable(tbasic, Some(v)) {
                 let o = &self.tc_objs;
                 let xtval = self.otype(x.typ.unwrap());
                 let tval = self.otype(t);

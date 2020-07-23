@@ -2,8 +2,10 @@
 use super::typ::{BasicDetail, BasicInfo, BasicType};
 use goscript_parser::token::Token;
 use num_bigint::{BigInt, Sign};
+use num_rational::BigRational;
 use num_traits::cast::FromPrimitive;
 use num_traits::cast::ToPrimitive;
+use num_traits::sign::Signed;
 use num_traits::Num;
 use ordered_float;
 use std::borrow::Borrow;
@@ -33,6 +35,7 @@ pub enum Value {
     Bool(bool),
     Str(String),
     Int(BigInt),
+    Rat(BigRational),
     Float(F64),
     Complex(F64, F64),
 }
@@ -47,6 +50,7 @@ impl fmt::Display for Value {
             Value::Bool(b) => b.fmt(f),
             Value::Str(s) => write!(f, "{}", short_quote_str(s, 72)),
             Value::Int(s) => s.fmt(f),
+            Value::Rat(r) => r.fmt(f),
             Value::Float(s) => s.fmt(f),
             Value::Complex(r, i) => write!(f, "({} + {}i)", r, i.to_string()),
         }
@@ -102,6 +106,7 @@ impl Value {
     pub fn is_int(&self) -> bool {
         match self {
             Value::Int(_) => true,
+            Value::Rat(r) => r.is_integer(),
             _ => false,
         }
     }
@@ -187,6 +192,13 @@ impl Value {
         };
         match self {
             Value::Int(_) => Cow::Borrowed(self),
+            Value::Rat(r) => {
+                if r.is_integer() {
+                    Cow::Owned(Value::Int(r.to_integer()))
+                } else {
+                    Cow::Owned(Value::Unknown)
+                }
+            }
             Value::Float(f) => f64_to_int(**f),
             Value::Complex(r, i) => {
                 if *i == 0.0 {
@@ -202,6 +214,7 @@ impl Value {
     pub fn to_float(&self) -> Value {
         let v = match self {
             Value::Int(i) => i.to_f64(),
+            Value::Rat(r) => rat_to_f64(r),
             Value::Float(f) => Some(**f),
             Value::Complex(r, i) => {
                 if **i == 0.0 {
@@ -217,8 +230,14 @@ impl Value {
 
     pub fn to_complex(&self) -> Value {
         let v = match self {
-            Value::Int(i) => i.to_f64().map(|x| (x, 0.0)),
-            Value::Float(f) => Some((**f, 0.0)),
+            Value::Int(_) | Value::Rat(_) | Value::Float(_) => {
+                let (f, ok) = self.num_as_f64();
+                if ok {
+                    Some((*f, 0.0 as f64))
+                } else {
+                    None
+                }
+            }
             Value::Complex(r, i) => Some((**r, **i)),
             _ => None,
         };
@@ -229,7 +248,7 @@ impl Value {
     /// If x is Unknown, the result is Unknown.
     pub fn real(&self) -> Value {
         match self {
-            Value::Int(_) | Value::Float(_) | Value::Unknown => self.clone(),
+            Value::Int(_) | Value::Float(_) | Value::Rat(_) | Value::Unknown => self.clone(),
             Value::Complex(r, _) => Value::Float(*r),
             _ => panic!(format!("{} not numeric", self)),
         }
@@ -239,7 +258,7 @@ impl Value {
     /// If x is Unknown, the result is Unknown.
     pub fn imag(&self) -> Value {
         match self {
-            Value::Int(_) | Value::Float(_) => Value::with_f64(0.0),
+            Value::Int(_) | Value::Float(_) | Value::Rat(_) => Value::with_f64(0.0),
             Value::Complex(r, _) => Value::Float(*r),
             Value::Unknown => Value::Unknown,
             _ => panic!(format!("{} not numeric", self)),
@@ -256,6 +275,15 @@ impl Value {
                 Sign::Minus => -1,
                 Sign::NoSign => 0,
             },
+            Value::Rat(r) => {
+                if r.is_positive() {
+                    1
+                } else if r.is_negative() {
+                    -1
+                } else {
+                    0
+                }
+            }
             Value::Float(v) => {
                 let f: f64 = **v;
                 if f > 0.0 {
@@ -281,8 +309,62 @@ impl Value {
     /// To force integer division of Int operands, use op == token.QUO_ASSIGN
     /// instead of token.QUO; the result is guaranteed to be Int in this case.
     /// Division by zero leads to a run-time panic.
+
     pub fn binary_op(x: &Value, op: &Token, y: &Value) -> Value {
-        unimplemented!()
+        let (x, y) = Value::match_type(Cow::Borrowed(x), Cow::Borrowed(y));
+        match (&*x, &*y) {
+            (Value::Unknown, Value::Unknown) => Value::Unknown,
+            (Value::Bool(a), Value::Bool(b)) => match op {
+                Token::LAND => Value::Bool(*a && *b),
+                Token::LOR => Value::Bool(*a || *b),
+                _ => unreachable!(),
+            },
+            (Value::Int(a), Value::Int(b)) => {
+                match op {
+                    Token::ADD => Value::Int(a + b),
+                    Token::SUB => Value::Int(a - b),
+                    Token::MUL => Value::Int(a * b),
+                    Token::QUO => Value::Rat(BigRational::new(a.clone(), b.clone())),
+                    Token::QUO_ASSIGN => Value::Int(a / b), // force integer division
+                    Token::REM => Value::Int(a % b),
+                    Token::AND => Value::Int(a & b),
+                    Token::OR => Value::Int(a | b),
+                    Token::XOR => Value::Int(a ^ b),
+                    Token::AND_NOT => Value::Int(a & !b),
+                    _ => unreachable!(),
+                }
+            }
+            (Value::Rat(a), Value::Rat(b)) => match op {
+                Token::ADD => Value::Rat(a + b),
+                Token::SUB => Value::Rat(a - b),
+                Token::MUL => Value::Rat(a * b),
+                Token::QUO => Value::Rat(a / b),
+                _ => unreachable!(),
+            },
+            (Value::Float(a), Value::Float(b)) => match op {
+                Token::ADD => Value::Float(*a + *b),
+                Token::SUB => Value::Float(*a - *b),
+                Token::MUL => Value::Float(*a * *b),
+                Token::QUO => Value::Float(*a / *b),
+                _ => unreachable!(),
+            },
+            (Value::Complex(ar, ai), Value::Complex(br, bi)) => match op {
+                Token::ADD => Value::Complex(*ar + *br, *ai + *bi),
+                Token::SUB => Value::Complex(*ar - *br, *ai - *bi),
+                Token::MUL => {
+                    let (a, b, c, d) = (*ar, *ai, *br, *bi);
+                    Value::Complex(a * c - b * d, b * c + a * d)
+                }
+                Token::QUO => {
+                    // (ac+bd)/s + i(bc-ad)/s, with s = cc + dd
+                    let (a, b, c, d) = (*ar, *ai, *br, *bi);
+                    let s = c * c + d * d;
+                    Value::Complex((a * c + b * d) / s, (b * c - a * d) / s)
+                }
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
     }
 
     /// unary_op returns the result of the unary expression op y.
@@ -355,17 +437,21 @@ impl Value {
     /// If x is Unknown, the result is (0, false).
     pub fn num_as_f64(&self) -> (F64, bool) {
         match self {
-            Value::Int(i) => match i.to_f64() {
-                Some(v) => (v.into(), true),
-                _ => (
-                    if self.sign() > 0 {
-                        std::f64::MAX.into()
-                    } else {
-                        std::f64::MIN.into()
-                    },
-                    false,
-                ),
-            },
+            Value::Int(_) | Value::Rat(_) => {
+                let vf = self.to_float();
+                if vf == Value::Unknown {
+                    (
+                        if self.sign() > 0 {
+                            std::f64::MAX.into()
+                        } else {
+                            std::f64::MIN.into()
+                        },
+                        false,
+                    )
+                } else {
+                    vf.num_as_f64()
+                }
+            }
             Value::Float(f) => (*f, true),
             Value::Unknown => (0.0.into(), false),
             _ => panic!("not a number"),
@@ -375,17 +461,21 @@ impl Value {
     /// num_as_f32 is like num_as_f64 but for float32 instead of float64.
     pub fn num_as_f32(&self) -> (F32, bool) {
         match self {
-            Value::Int(i) => match i.to_f32() {
-                Some(v) => (v.into(), true),
-                _ => (
-                    if self.sign() > 0 {
-                        std::f32::MAX.into()
-                    } else {
-                        std::f32::MIN.into()
-                    },
-                    false,
-                ),
-            },
+            Value::Int(_) | Value::Rat(_) => {
+                let vf = self.to_float();
+                if vf == Value::Unknown {
+                    (
+                        if self.sign() > 0 {
+                            std::f32::MAX.into()
+                        } else {
+                            std::f32::MIN.into()
+                        },
+                        false,
+                    )
+                } else {
+                    vf.num_as_f32()
+                }
+            }
             Value::Float(v) => {
                 let min: f64 = std::f32::MIN as f64;
                 let max: f64 = std::f32::MAX as f64;
@@ -400,6 +490,68 @@ impl Value {
             }
             Value::Unknown => (0.0.into(), false),
             _ => panic!("not a number"),
+        }
+    }
+
+    fn ord(&self) -> usize {
+        match self {
+            Value::Unknown => 0,
+            Value::Bool(_) | Value::Str(_) => 1,
+            Value::Int(_) => 2,
+            Value::Rat(_) => 3,
+            Value::Float(_) => 4,
+            Value::Complex(_, _) => 5,
+        }
+    }
+
+    /// match_type returns the matching representation (same type) with the
+    /// smallest complexity for two values x and y. If one of them is
+    /// numeric, both of them must be numeric. If one of them is Unknown
+    /// both results are Unknown
+    fn match_type<'a>(x: Cow<'a, Value>, y: Cow<'a, Value>) -> (Cow<'a, Value>, Cow<'a, Value>) {
+        if x.ord() > y.ord() {
+            let (y, x) = Value::match_type(y, x);
+            return (x, y);
+        }
+        match &*x {
+            Value::Bool(_) | Value::Str(_) | Value::Complex(_, _) => (x, y),
+            Value::Int(iv) => match &*y {
+                Value::Int(_) => (x, y),
+                Value::Rat(_) => (
+                    Cow::Owned(Value::Rat(BigRational::new(iv.clone(), 1.into()))),
+                    y,
+                ),
+                Value::Float(_) => match iv.to_f64() {
+                    Some(f) => (Cow::Owned(Value::Float(f.into())), y),
+                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
+                },
+                Value::Complex(_, _) => match iv.to_f64() {
+                    Some(f) => (Cow::Owned(Value::Complex(f.into(), 0.0.into())), y),
+                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
+                },
+                Value::Unknown => (x.clone(), x),
+                _ => unreachable!(),
+            },
+            Value::Rat(rv) => match &*y {
+                Value::Rat(_) => (x, y),
+                Value::Float(_) => match rat_to_f64(rv) {
+                    Some(f) => (Cow::Owned(Value::Float(f.into())), y),
+                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
+                },
+                Value::Complex(_, _) => match rat_to_f64(rv) {
+                    Some(f) => (Cow::Owned(Value::Complex(f.into(), 0.0.into())), y),
+                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
+                },
+                Value::Unknown => (x.clone(), x),
+                _ => unreachable!(),
+            },
+            Value::Float(fv) => match &*y {
+                Value::Float(_) => (x, y),
+                Value::Complex(_, _) => (Cow::Owned(Value::Complex(*fv, 0.0.into())), y),
+                Value::Unknown => (x.clone(), x),
+                _ => unreachable!(),
+            },
+            Value::Unknown => (x.clone(), x),
         }
     }
 }
@@ -448,6 +600,13 @@ fn shorten_with_ellipsis(s: String, max: usize) -> String {
         buf = buf[0..(buf.len() - 3)].to_vec();
         buf.append(&mut "...".to_owned().chars().collect());
         buf.into_iter().collect()
+    }
+}
+
+fn rat_to_f64(r: &BigRational) -> Option<f64> {
+    match (r.numer().to_f64(), r.denom().to_f64()) {
+        (Some(n), Some(d)) => Some(n / d),
+        _ => None,
     }
 }
 
