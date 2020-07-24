@@ -9,6 +9,7 @@ pub mod check;
 mod conversion;
 mod decl;
 mod expr;
+mod initorder;
 mod interface;
 mod label;
 mod resolver;

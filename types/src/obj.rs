@@ -113,6 +113,13 @@ impl EntityType {
         }
     }
 
+    pub fn is_dependency(&self) -> bool {
+        match self {
+            EntityType::Const(_) | EntityType::Var(_) | EntityType::Func(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn func_has_ptr_recv(&self) -> bool {
         match self {
             EntityType::Func(h) => *h,

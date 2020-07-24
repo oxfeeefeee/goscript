@@ -37,7 +37,7 @@ pub enum Value {
     Int(BigInt),
     Rat(BigRational),
     Float(F64),
-    Complex(F64, F64),
+    Complex(Box<Value>, Box<Value>),
 }
 
 impl fmt::Display for Value {
@@ -83,10 +83,9 @@ impl Value {
             Token::INT(ilit) => int_from_literal(ilit.as_str()),
             Token::FLOAT(flit) => float_from_literal(flit.as_str()),
             Token::IMAG(imlit) => {
-                if let Value::Float(f) =
-                    float_from_literal(&imlit.as_str()[..(imlit.as_str().len() - 2)])
-                {
-                    Value::Complex(0.0.into(), f)
+                let v = float_from_literal(&imlit.as_str()[..(imlit.as_str().len() - 2)]);
+                if let Value::Float(_) = &v {
+                    Value::Complex(Box::new(Value::with_f64(0.0)), Box::new(v))
                 } else {
                     Value::Unknown
                 }
@@ -115,6 +114,29 @@ impl Value {
         if let Value::Unknown = self {
             return true; // avoid follow-up errors
         }
+
+        let float_representable =
+            |val: &Value, btype: BasicType, rounded: Option<&mut Value>| -> bool {
+                match val.to_float() {
+                    Value::Float(f) => match btype {
+                        BasicType::Float64 => true,
+                        BasicType::Float32 => {
+                            if f.to_f32().is_some() {
+                                true
+                            } else {
+                                if let Some(r) = rounded {
+                                    *r = Value::Float(((*f as f32) as f64).into());
+                                }
+                                false
+                            }
+                        }
+                        BasicType::UntypedFloat => true,
+                        _ => unreachable!(),
+                    },
+                    _ => false,
+                }
+            };
+
         match base.info() {
             BasicInfo::IsInteger => match self.to_int().borrow() {
                 Value::Int(ival) => {
@@ -138,45 +160,38 @@ impl Value {
                 }
                 _ => false,
             },
-            BasicInfo::IsFloat => match self.to_float() {
-                Value::Float(f) => match base.typ() {
-                    BasicType::Float64 => true,
-                    BasicType::Float32 => {
-                        if f.to_f32().is_some() {
-                            true
-                        } else {
-                            if let Some(r) = rounded {
-                                *r = Value::Float(((*f as f32) as f64).into());
-                            }
-                            false
-                        }
-                    }
-                    BasicType::UntypedFloat => true,
+            BasicInfo::IsFloat => float_representable(self, base.typ(), rounded),
+            BasicInfo::IsComplex => {
+                let ty = match base.typ() {
+                    BasicType::Complex64 => BasicType::Float32,
+                    BasicType::Complex128 => BasicType::Float64,
+                    BasicType::UntypedComplex => BasicType::UntypedFloat,
                     _ => unreachable!(),
-                },
-                _ => false,
-            },
-            BasicInfo::IsComplex => match self.to_complex() {
-                Value::Complex(re, im) => match base.typ() {
-                    BasicType::Complex128 => true,
-                    BasicType::Complex64 => {
-                        if re.to_f32().is_some() && im.to_f32().is_some() {
-                            true
-                        } else {
-                            if let Some(r) = rounded {
-                                *r = Value::Complex(
-                                    ((*re as f32) as f64).into(),
-                                    ((*im as f32) as f64).into(),
-                                );
-                            }
-                            false
-                        }
+                };
+                match self.to_complex() {
+                    Value::Complex(r, i) => {
+                        let (rrounded, irounded): (Option<&mut Value>, Option<&mut Value>) =
+                            match rounded {
+                                Some(val) => {
+                                    *val = Value::Complex(
+                                        Box::new(Value::with_f64(0.0)),
+                                        Box::new(Value::with_f64(0.0)),
+                                    );
+                                    if let Value::Complex(r, i) = &mut *val {
+                                        (Some(r.as_mut()), Some(i.as_mut()))
+                                    } else {
+                                        unreachable!()
+                                    }
+                                }
+                                None => (None, None),
+                            };
+                        let rok = float_representable(&r, ty, rrounded);
+                        let iok = float_representable(&i, ty, irounded);
+                        rok && iok
                     }
-                    BasicType::UntypedComplex => true,
-                    _ => unreachable!(),
-                },
-                _ => false,
-            },
+                    _ => false,
+                }
+            }
             BasicInfo::IsBoolean => base.info() == BasicInfo::IsBoolean,
             BasicInfo::IsString => base.info() == BasicInfo::IsString,
             _ => false,
@@ -201,8 +216,9 @@ impl Value {
             }
             Value::Float(f) => f64_to_int(**f),
             Value::Complex(r, i) => {
-                if *i == 0.0 {
-                    f64_to_int(**r)
+                let (ival, ok) = i.to_int().int_as_i64();
+                if ok && ival == 0 {
+                    r.to_int()
                 } else {
                     Cow::Owned(Value::Unknown)
                 }
@@ -217,8 +233,14 @@ impl Value {
             Value::Rat(r) => rat_to_f64(r),
             Value::Float(f) => Some(**f),
             Value::Complex(r, i) => {
-                if **i == 0.0 {
-                    Some(**r)
+                let (ival, ok) = i.to_float().num_as_f64();
+                if ok && ival == 0.0 {
+                    let (rval, ok) = r.to_float().num_as_f64();
+                    if ok {
+                        Some(*rval)
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -229,19 +251,13 @@ impl Value {
     }
 
     pub fn to_complex(&self) -> Value {
-        let v = match self {
+        match self {
             Value::Int(_) | Value::Rat(_) | Value::Float(_) => {
-                let (f, ok) = self.num_as_f64();
-                if ok {
-                    Some((*f, 0.0 as f64))
-                } else {
-                    None
-                }
+                Value::Complex(Box::new(self.clone()), Box::new(Value::with_f64(0.0)))
             }
-            Value::Complex(r, i) => Some((**r, **i)),
-            _ => None,
-        };
-        v.map_or(Value::Unknown, |(r, i)| Value::Complex(r.into(), i.into()))
+            Value::Complex(_, _) => self.clone(),
+            _ => Value::Unknown,
+        }
     }
 
     /// real returns the real part of x, which must be a numeric or unknown value.
@@ -249,7 +265,7 @@ impl Value {
     pub fn real(&self) -> Value {
         match self {
             Value::Int(_) | Value::Float(_) | Value::Rat(_) | Value::Unknown => self.clone(),
-            Value::Complex(r, _) => Value::Float(*r),
+            Value::Complex(r, _) => *r.clone(),
             _ => panic!(format!("{} not numeric", self)),
         }
     }
@@ -259,7 +275,7 @@ impl Value {
     pub fn imag(&self) -> Value {
         match self {
             Value::Int(_) | Value::Float(_) | Value::Rat(_) => Value::with_f64(0.0),
-            Value::Complex(r, _) => Value::Float(*r),
+            Value::Complex(_, i) => *i.clone(),
             Value::Unknown => Value::Unknown,
             _ => panic!(format!("{} not numeric", self)),
         }
@@ -294,7 +310,7 @@ impl Value {
                     0
                 }
             }
-            Value::Complex(r, i) => Value::Float(*r).sign() | Value::Float(*i).sign(),
+            Value::Complex(r, i) => r.sign() | i.sign(),
             Value::Unknown => 1, // avoid spurious division by zero errors
             _ => panic!(format!("{} not numeric", self)),
         }
@@ -306,11 +322,16 @@ impl Value {
     /// binary_op doesn't handle comparisons or shifts; use compare
     /// or shift instead.
     ///
-    /// To force integer division of Int operands, use op == token.QUO_ASSIGN
-    /// instead of token.QUO; the result is guaranteed to be Int in this case.
+    /// To force integer division of Int operands, use op == Token::QUO_ASSIGN
+    /// instead of Token::QUO; the result is guaranteed to be Int in this case.
     /// Division by zero leads to a run-time panic.
-
     pub fn binary_op(x: &Value, op: &Token, y: &Value) -> Value {
+        let add = |x, y| Value::binary_op(x, &Token::ADD, y);
+        let sub = |x, y| Value::binary_op(x, &Token::SUB, y);
+        let mul = |x, y| Value::binary_op(x, &Token::MUL, y);
+        let div = |x, y| Value::binary_op(x, &Token::QUO, y);
+        let bx = |x| Box::new(x);
+
         let (x, y) = Value::match_type(Cow::Borrowed(x), Cow::Borrowed(y));
         match (&*x, &*y) {
             (Value::Unknown, Value::Unknown) => Value::Unknown,
@@ -349,17 +370,29 @@ impl Value {
                 _ => unreachable!(),
             },
             (Value::Complex(ar, ai), Value::Complex(br, bi)) => match op {
-                Token::ADD => Value::Complex(*ar + *br, *ai + *bi),
-                Token::SUB => Value::Complex(*ar - *br, *ai - *bi),
+                Token::ADD => Value::Complex(bx(add(ar, br)), bx(add(ai, bi))),
+                Token::SUB => Value::Complex(bx(sub(ar, br)), bx(sub(ai, bi))),
                 Token::MUL => {
-                    let (a, b, c, d) = (*ar, *ai, *br, *bi);
-                    Value::Complex(a * c - b * d, b * c + a * d)
+                    let (a, b, c, d) = (ar, ai, br, bi);
+                    let ac = mul(&a, &c);
+                    let bd = mul(&b, &d);
+                    let bc = mul(&b, &c);
+                    let ad = mul(&a, &d);
+                    Value::Complex(bx(sub(&ac, &bd)), bx(add(&bc, &ad)))
                 }
                 Token::QUO => {
                     // (ac+bd)/s + i(bc-ad)/s, with s = cc + dd
-                    let (a, b, c, d) = (*ar, *ai, *br, *bi);
-                    let s = c * c + d * d;
-                    Value::Complex((a * c + b * d) / s, (b * c - a * d) / s)
+                    let (a, b, c, d) = (ar, ai, br, bi);
+                    let cc = mul(&c, &c);
+                    let dd = mul(&d, &d);
+                    let s = add(&cc, &dd);
+                    let ac = mul(&a, &c);
+                    let bd = mul(&b, &d);
+                    let acbd = add(&ac, &bd);
+                    let bc = mul(&b, &c);
+                    let ad = mul(&a, &d);
+                    let bcad = sub(&bc, &ad);
+                    Value::Complex(bx(div(&acbd, &s)), bx(div(&bcad, &s)))
                 }
                 _ => unreachable!(),
             },
@@ -371,9 +404,41 @@ impl Value {
     /// The operation must be defined for the operand.
     /// If prec > 0 it specifies the ^ (xor) result size in bits.
     /// If y is Unknown, the result is Unknown.
-    ///
     pub fn unary_op(op: &Token, y: &Value, prec: usize) -> Value {
-        unimplemented!()
+        match op {
+            Token::ADD => match y {
+                Value::Str(_) => unreachable!(),
+                _ => y.clone(),
+            },
+            Token::SUB => match y {
+                Value::Unknown => Value::Unknown,
+                Value::Int(i) => Value::Int(-i),
+                Value::Rat(r) => Value::Rat(-r),
+                Value::Float(f) => Value::Float(-(*f)),
+                Value::Complex(r, i) => Value::Complex(
+                    Box::new(Value::unary_op(op, r, 0)),
+                    Box::new(Value::unary_op(op, i, 0)),
+                ),
+                _ => unreachable!(),
+            },
+            Token::XOR => match y {
+                Value::Unknown => Value::Unknown,
+                Value::Int(i) => {
+                    let mut v = !i;
+                    if prec > 0 {
+                        v = v & (!(BigInt::from_i64(-1).unwrap() << prec));
+                    }
+                    Value::Int(v)
+                }
+                _ => unreachable!(),
+            },
+            Token::NOT => match y {
+                Value::Unknown => Value::Unknown,
+                Value::Bool(b) => Value::Bool(!b),
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
     }
 
     /// compare returns the result of the comparison x op y.
@@ -381,14 +446,76 @@ impl Value {
     /// If one of the operands is Unknown, the result is
     /// false.
     pub fn compare(x: &Value, op: &Token, y: &Value) -> bool {
-        unimplemented!()
+        let (x, y) = Value::match_type(Cow::Borrowed(x), Cow::Borrowed(y));
+        match (&*x, &*y) {
+            (Value::Unknown, _) | (_, Value::Unknown) => false,
+            (Value::Bool(a), Value::Bool(b)) => match op {
+                Token::EQL => a == b,
+                Token::NEQ => a != b,
+                _ => unreachable!(),
+            },
+            (Value::Int(a), Value::Int(b)) => match op {
+                Token::EQL => a == b,
+                Token::NEQ => a != b,
+                Token::LSS => a < b,
+                Token::LEQ => a <= b,
+                Token::GTR => a > b,
+                Token::GEQ => a >= b,
+                _ => unreachable!(),
+            },
+            (Value::Rat(a), Value::Rat(b)) => match op {
+                Token::EQL => a == b,
+                Token::NEQ => a != b,
+                Token::LSS => a < b,
+                Token::LEQ => a <= b,
+                Token::GTR => a > b,
+                Token::GEQ => a >= b,
+                _ => unreachable!(),
+            },
+            (Value::Float(a), Value::Float(b)) => match op {
+                Token::EQL => a == b,
+                Token::NEQ => a != b,
+                Token::LSS => a < b,
+                Token::LEQ => a <= b,
+                Token::GTR => a > b,
+                Token::GEQ => a >= b,
+                _ => unreachable!(),
+            },
+            (Value::Complex(ar, ai), Value::Complex(br, bi)) => {
+                let r = Value::compare(ar, op, br);
+                let i = Value::compare(ai, op, bi);
+                match op {
+                    Token::EQL => r && i,
+                    Token::NEQ => !r || !i,
+                    _ => unreachable!(),
+                }
+            }
+            (Value::Str(a), Value::Str(b)) => match op {
+                Token::EQL => a == b,
+                Token::NEQ => a != b,
+                Token::LSS => a < b,
+                Token::LEQ => a <= b,
+                Token::GTR => a > b,
+                Token::GEQ => a >= b,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
     }
 
     // shift returns the result of the shift expression x op s
-    // with op == token.SHL or token.SHR (<< or >>). x must be
-    // an Int or an Unknown. If x is Unknown, the result is x.
+    // with op == Token::SHL or Token::SHR (<< or >>). x must be
+    // an Int or an Unknown. If x is Unknown, the result is Unknown.
     pub fn shift(x: &Value, op: &Token, s: usize) -> Value {
-        unimplemented!()
+        match x {
+            Value::Unknown => Value::Unknown,
+            Value::Int(i) => match op {
+                Token::SHL => Value::Int(i << s),
+                Token::SHR => Value::Int(i >> s),
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
     }
 
     pub fn str_as_string(&self) -> String {
@@ -525,10 +652,13 @@ impl Value {
                     Some(f) => (Cow::Owned(Value::Float(f.into())), y),
                     None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
                 },
-                Value::Complex(_, _) => match iv.to_f64() {
-                    Some(f) => (Cow::Owned(Value::Complex(f.into(), 0.0.into())), y),
-                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
-                },
+                Value::Complex(_, _) => (
+                    Cow::Owned(Value::Complex(
+                        Box::new(x.into_owned()),
+                        Box::new(Value::with_f64(0.0)),
+                    )),
+                    y,
+                ),
                 Value::Unknown => (x.clone(), x),
                 _ => unreachable!(),
             },
@@ -538,16 +668,25 @@ impl Value {
                     Some(f) => (Cow::Owned(Value::Float(f.into())), y),
                     None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
                 },
-                Value::Complex(_, _) => match rat_to_f64(rv) {
-                    Some(f) => (Cow::Owned(Value::Complex(f.into(), 0.0.into())), y),
-                    None => (Cow::Owned(Value::Unknown), Cow::Owned(Value::Unknown)),
-                },
+                Value::Complex(_, _) => (
+                    Cow::Owned(Value::Complex(
+                        Box::new(x.into_owned()),
+                        Box::new(Value::with_f64(0.0)),
+                    )),
+                    y,
+                ),
                 Value::Unknown => (x.clone(), x),
                 _ => unreachable!(),
             },
-            Value::Float(fv) => match &*y {
+            Value::Float(_) => match &*y {
                 Value::Float(_) => (x, y),
-                Value::Complex(_, _) => (Cow::Owned(Value::Complex(*fv, 0.0.into())), y),
+                Value::Complex(_, _) => (
+                    Cow::Owned(Value::Complex(
+                        Box::new(x.into_owned()),
+                        Box::new(Value::with_f64(0.0)),
+                    )),
+                    y,
+                ),
                 Value::Unknown => (x.clone(), x),
                 _ => unreachable!(),
             },
