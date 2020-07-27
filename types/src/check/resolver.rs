@@ -32,8 +32,9 @@ pub struct DeclInfoType {
 }
 
 pub struct DeclInfoFunc {
-    pub file_scope: ScopeKey, // scope of file containing this declaration
-    pub fdecl: FuncDeclKey,   // func declaration, or None
+    pub file_scope: ScopeKey,  // scope of file containing this declaration
+    pub fdecl: FuncDeclKey,    // func declaration, or None
+    pub deps: HashSet<ObjKey>, // deps tracks initialization expression dependencies.
 }
 
 /// DeclInfo describes a package-level const, type, var, or func declaration.
@@ -81,6 +82,7 @@ impl DeclInfo {
         DeclInfo::Func(DeclInfoFunc {
             file_scope: file_scope,
             fdecl: fdecl,
+            deps: HashSet::new(),
         })
     }
 
@@ -130,13 +132,26 @@ impl DeclInfo {
         }
     }
 
-    pub fn add_dep(&mut self, okey: ObjKey) {
+    pub fn deps(&self) -> &HashSet<ObjKey> {
+        match self {
+            DeclInfo::Const(c) => &c.deps,
+            DeclInfo::Var(v) => &v.deps,
+            DeclInfo::Func(f) => &f.deps,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn deps_mut(&mut self) -> &mut HashSet<ObjKey> {
         match self {
             DeclInfo::Const(c) => &mut c.deps,
             DeclInfo::Var(v) => &mut v.deps,
+            DeclInfo::Func(f) => &mut f.deps,
             _ => unreachable!(),
         }
-        .insert(okey);
+    }
+
+    pub fn add_dep(&mut self, okey: ObjKey) {
+        self.deps_mut().insert(okey);
     }
 }
 

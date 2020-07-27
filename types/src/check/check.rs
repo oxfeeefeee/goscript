@@ -27,8 +27,8 @@ pub struct TypeAndValue {
 /// of a multi-valued initialization expression, and the corresponding initialization
 /// expression.
 pub struct Initializer {
-    lhs: Vec<ObjKey>,
-    rhs: Expr,
+    pub lhs: Vec<ObjKey>,
+    pub rhs: Expr,
 }
 
 /// Types info holds the results of Type Checking
@@ -300,10 +300,14 @@ impl TypeAndValue {
 
 impl TypeInfo {
     pub fn record_type_and_value(&mut self, e: &Expr, mode: OperandMode, typ: TypeKey) {
+        self.record_type_and_value_with_id(e.id(), mode, typ);
+    }
+
+    pub fn record_type_and_value_with_id(&mut self, id: NodeId, mode: OperandMode, typ: TypeKey) {
         if let OperandMode::Invalid = mode {
             return;
         }
-        self.types.insert(e.id(), TypeAndValue::new(mode, typ));
+        self.types.insert(id, TypeAndValue::new(mode, typ));
     }
 
     pub fn record_builtin_type(&mut self, mode: &OperandMode, e: &Expr, sig: TypeKey) {
@@ -362,6 +366,10 @@ impl TypeInfo {
     pub fn record_scope(&mut self, node: &impl Node, scope: ScopeKey) {
         self.scopes.insert(node.id(), scope);
     }
+
+    pub fn record_init_order(&mut self, init_order: Vec<Initializer>) {
+        self.init_order = init_order;
+    }
 }
 
 impl<'a> Checker<'a> {
@@ -394,9 +402,23 @@ impl<'a> Checker<'a> {
 
     pub fn check(&mut self, files: Vec<ast::File>) -> Result<PackageKey, ()> {
         let files = self.init_files_pkg_name(files)?;
-        let mut fctx = FilesContext::new(&files);
-        self.collect_objects(&mut fctx);
-        Err(())
+        let fctx = &mut FilesContext::new(&files);
+        self.collect_objects(fctx);
+        self.package_objects(fctx);
+        fctx.process_delayed(0, self);
+        self.init_order();
+        self.unused_imports(fctx);
+        self.record_untyped(fctx);
+        Ok(self.pkg)
+    }
+
+    fn record_untyped(&mut self, fctx: &mut FilesContext) {
+        for (id, info) in fctx.untyped.drain().into_iter() {
+            if info.mode != OperandMode::Invalid {
+                self.result
+                    .record_type_and_value_with_id(id.clone(), info.mode, info.typ.unwrap());
+            }
+        }
     }
 
     pub fn errors(&self) -> &ErrorList {
