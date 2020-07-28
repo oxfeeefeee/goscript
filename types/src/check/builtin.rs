@@ -811,7 +811,7 @@ fn make_sig(
         vec![objs.new_var(0, None, "".to_string(), Some(x))]
     });
     let results = objs.new_t_tuple(rlist);
-    objs.new_t_signature(None, params, results, variadic)
+    objs.new_t_signature(None, None, params, results, variadic)
 }
 
 /// implicit_array_deref returns A if typ is of the form *A and A is an array;

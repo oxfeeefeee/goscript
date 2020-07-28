@@ -170,7 +170,7 @@ pub enum ObjColor {
 impl fmt::Display for ObjColor {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ObjColor::White => f.write_str("while"),
+            ObjColor::White => f.write_str("white"),
             ObjColor::Black => f.write_str("black"),
             ObjColor::Gray(_) => f.write_str("gray"),
         }

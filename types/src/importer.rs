@@ -48,10 +48,10 @@ pub struct ImportKey {
 }
 
 impl ImportKey {
-    pub fn new(path: String, dir: String) -> ImportKey {
+    pub fn new(path: &str, dir: &str) -> ImportKey {
         ImportKey {
-            path: path,
-            dir: dir,
+            path: path.to_string(),
+            dir: dir.to_string(),
         }
     }
 }

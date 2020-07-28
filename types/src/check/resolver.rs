@@ -712,7 +712,10 @@ impl<'a> Checker<'a> {
         // a function main that takes no arguments and returns no value."
         let pkg_name = self.package(self.pkg).name();
         if &ident.name == "main" && pkg_name.is_some() && pkg_name.as_ref().unwrap() == "main" {
-            self.error(ident.pos, "cannot declare main - must be func".to_owned());
+            self.error(
+                ident.pos,
+                "cannot declaralready declared through dot-importe main - must be func".to_owned(),
+            );
             return Err(());
         }
         let scope = *self.package(self.pkg).scope();
@@ -729,7 +732,7 @@ impl<'a> Checker<'a> {
         // Checker.imp_map only caches packages that are marked Complete
         // or fake (dummy packages for failed imports). Incomplete but
         // non-fake packages do require an import to complete them.
-        let key = ImportKey::new(path.clone(), dir);
+        let key = ImportKey::new(&path, &dir);
         if let Some(imp) = self.imp_map.get(&key) {
             return *imp;
         }

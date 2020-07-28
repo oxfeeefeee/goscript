@@ -379,7 +379,7 @@ impl<'a> Checker<'a> {
                         // declare new variable, possibly a blank (_) variable
                         let (pos, pkg, name) = (ident.pos, Some(self.pkg), ident.name.clone());
                         let okey = self.tc_objs.new_var(pos, pkg, name.clone(), None);
-                        if name == "_" {
+                        if name != "_" {
                             new_vars.push(okey);
                         }
                         okey

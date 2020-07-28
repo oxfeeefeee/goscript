@@ -388,6 +388,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         max: &Option<Expr>,
     ) -> Self::Result {
         self.visit_expr(expr)?;
+        self.f.write_char('[')?;
         if let Some(l) = low {
             self.visit_expr(l)?;
         }
@@ -411,6 +412,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
 
     fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool) -> Self::Result {
         self.visit_expr(func)?;
+        self.f.write_char('(')?;
         for (i, arg) in args.iter().enumerate() {
             if i > 0 {
                 self.f.write_str(", ")?;

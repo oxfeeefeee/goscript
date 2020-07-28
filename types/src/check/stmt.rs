@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::super::constant;
-use super::super::obj::LangObj;
+use super::super::obj::{EntityType, LangObj};
 use super::super::objects::{DeclInfoKey, ScopeKey, TypeKey};
 use super::super::operand::{Operand, OperandMode};
 use super::super::typ::{self, BasicInfo, BasicType, ChanDir, Type};
@@ -148,21 +148,26 @@ impl<'a> Checker<'a> {
 
     fn usage(&self, skey: ScopeKey) {
         let sval = &self.tc_objs.scopes[skey];
-        let mut used: Vec<&LangObj> = sval
+        let mut unused: Vec<&LangObj> = sval
             .elems()
             .iter()
             .filter_map(|(_, &okey)| {
                 let lobj = &self.tc_objs.lobjs[okey];
-                if lobj.entity_type().is_var() {
-                    Some(lobj)
-                } else {
-                    None
+                match lobj.entity_type() {
+                    EntityType::Var(var) => {
+                        if !var.used {
+                            Some(lobj)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
                 }
             })
             .collect();
-        used.sort_by(|a, b| a.pos().cmp(&b.pos()));
+        unused.sort_by(|a, b| a.pos().cmp(&b.pos()));
 
-        for lo in used.iter() {
+        for lo in unused.iter() {
             self.soft_error(lo.pos(), format!("{} declared but not used", lo.name()));
         }
         for skey in sval.children().iter() {
@@ -187,7 +192,7 @@ impl<'a> Checker<'a> {
                 Stmt::Empty(_) => Some(i),
                 _ => None,
             })
-            .unwrap_or(0);
+            .unwrap_or(list.len());
         for (i, s) in list[0..index].iter().enumerate() {
             let mut inner = *sctx;
             inner.fallthrough_ok = sctx.fallthrough_ok && i + 1 == index;

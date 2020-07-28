@@ -8,7 +8,7 @@ mod package;
 mod scope;
 
 #[macro_use]
-mod objects;
+pub mod objects;
 
 #[macro_use]
 mod typ;
@@ -22,3 +22,5 @@ mod universe;
 mod check;
 
 mod importer;
+
+pub use importer::{Config, ImportKey, Importer};

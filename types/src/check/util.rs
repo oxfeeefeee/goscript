@@ -145,8 +145,7 @@ impl<'a> Checker<'a> {
 
     pub fn dump(&self, pos: Option<Pos>, msg: &str) {
         if let Some(p) = pos {
-            let file = self.fset.file(p).unwrap();
-            let p = file.position(p);
+            let p = self.fset.position(p);
             print!("checker dump({}):{}\n", p, msg);
         } else {
             print!("checker dump:{}\n", msg);
@@ -154,8 +153,7 @@ impl<'a> Checker<'a> {
     }
 
     pub fn print_trace(&self, pos: Pos, msg: &str) {
-        let file = self.fset.file(pos).unwrap();
-        let p = file.position(pos);
+        let p = self.fset.position(pos);
         print!("{}:\t{}{}\n", p, ".  ".repeat(*self.indent.borrow()), msg);
     }
 

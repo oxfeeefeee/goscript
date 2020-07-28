@@ -254,7 +254,7 @@ impl<'a> Checker<'a> {
         let params_tuple = self.tc_objs.new_t_tuple(params);
         let results_tuple = self.tc_objs.new_t_tuple(results);
         self.tc_objs
-            .new_t_signature(recv_okey, params_tuple, results_tuple, variadic)
+            .new_t_signature(Some(skey), recv_okey, params_tuple, results_tuple, variadic)
     }
 
     /// type_internal drives type checking of types.
@@ -678,9 +678,13 @@ impl<'a> Checker<'a> {
                 let recv_key =
                     self.tc_objs
                         .new_var(pos, Some(self.pkg), "".to_string(), Some(recv_type));
-                let sig_key =
-                    self.tc_objs
-                        .new_t_signature(Some(recv_key), null_key!(), null_key!(), false);
+                let sig_key = self.tc_objs.new_t_signature(
+                    None,
+                    Some(recv_key),
+                    null_key!(),
+                    null_key!(),
+                    false,
+                );
                 let fun_key = self
                     .tc_objs
                     .new_func(pos, Some(self.pkg), name, Some(sig_key));

@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::obj::ObjSet;
+use super::obj::{LangObj, ObjSet};
 use super::objects::{ObjKey, ScopeKey, TCObjects, TypeKey};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::HashSet;
@@ -244,7 +244,7 @@ impl Type {
         match self {
             Type::Basic(b) => !b.typ().is_untyped(),
             Type::Named(_) => self.underlying_val(objs).is_typed(objs),
-            _ => false,
+            _ => true,
         }
     }
     pub fn is_untyped(&self, objs: &TCObjects) -> bool {
@@ -582,6 +582,7 @@ pub struct SignatureDetail {
 impl SignatureDetail {
     // pass in 'objs' for sanity checks
     pub fn new(
+        scope: Option<ScopeKey>,
         recv: Option<ObjKey>,
         params: TypeKey,
         results: TypeKey,
@@ -603,7 +604,7 @@ impl SignatureDetail {
             }
         }
         SignatureDetail {
-            scope: None,
+            scope: scope,
             recv: recv,
             params: params,
             results: results,
@@ -670,31 +671,30 @@ impl InterfaceDetail {
     pub fn new(
         mut methods: Vec<ObjKey>,
         mut embeddeds: Vec<TypeKey>,
-        objs: &TCObjects,
+        objs: &mut TCObjects,
     ) -> InterfaceDetail {
-        if cfg!(debug_assertions) {
-            let set = ObjSet::new();
-            let result = methods.iter().try_fold(set, |s, x| {
-                let func_obj = &objs.lobjs[*x];
-                if !func_obj.entity_type().is_func() {
-                    Err(())
-                } else if s.insert(*x, &objs).is_some() {
-                    Err(())
-                } else {
-                    let signature = &objs.types[func_obj.typ().unwrap()].try_as_signature();
-                    if let Some(sig) = signature {
-                        if sig.recv.is_none() {
-                            Err(())
-                        } else {
-                            Ok(s)
-                        }
-                    } else {
-                        Err(())
+        let set = ObjSet::new();
+        let result = methods.iter().try_fold(set, |s, x| {
+            let mobj = &objs.lobjs[*x];
+            if !mobj.entity_type().is_func() {
+                Err(())
+            } else if s.insert(*x, &objs).is_some() {
+                Err(())
+            } else {
+                let signature = objs.types[mobj.typ().unwrap()].try_as_signature_mut();
+                if let Some(sig) = signature {
+                    if sig.recv.is_none() {
+                        let var =
+                            LangObj::new_var(mobj.pos(), mobj.pkg(), "".to_string(), mobj.typ());
+                        sig.recv = Some(objs.lobjs.insert(var));
                     }
+                    Ok(s)
+                } else {
+                    Err(())
                 }
-            });
-            assert!(result.is_ok());
-        }
+            }
+        });
+        assert!(result.is_ok());
         methods.sort_by(compare_by_method_name!(&objs));
         embeddeds.sort_by(compare_by_type_name!(&objs));
         InterfaceDetail {
@@ -832,8 +832,8 @@ impl NamedDetail {
         objs: &TCObjects,
     ) -> NamedDetail {
         if cfg!(debug_assertions) && underlying.is_some() {
-            let t = &objs.types[underlying.clone().unwrap()];
-            assert!(t.try_as_named().is_some());
+            let t = &objs.types[underlying.unwrap()];
+            assert!(t.try_as_named().is_none());
         }
         //todo: where to set obj's typ to self?
         NamedDetail {
@@ -972,8 +972,7 @@ pub fn comparable(t: TypeKey, objs: &TCObjects) -> bool {
 /// it returns the incoming type for all other types. The default type
 /// for untyped nil is untyped nil.
 pub fn untyped_default_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
-    let typ = objs.types[t].try_as_basic().unwrap().typ();
-    match typ {
+    objs.types[t].try_as_basic().map_or(t, |bt| match bt.typ() {
         BasicType::UntypedBool => objs.universe().types()[&BasicType::Bool],
         BasicType::UntypedInt => objs.universe().types()[&BasicType::Int],
         BasicType::UntypedRune => *objs.universe().rune(),
@@ -981,7 +980,7 @@ pub fn untyped_default_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
         BasicType::UntypedComplex => objs.universe().types()[&BasicType::Complex128],
         BasicType::UntypedString => objs.universe().types()[&BasicType::Str],
         _ => t,
-    }
+    })
 }
 
 /// identical reports whether x and y are identical types.

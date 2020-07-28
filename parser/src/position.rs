@@ -25,8 +25,8 @@ impl fmt::Display for Position {
             if s != "" {
                 s.push(':');
             }
+            s.push_str(&self.line.to_string());
         }
-        s.push_str(&self.line.to_string());
         if self.column != 0 {
             write!(&mut s, ":{}", self.column).unwrap();
         }
@@ -197,6 +197,19 @@ impl FileSet {
             }
         }
         None
+    }
+
+    pub fn position(&self, p: Pos) -> Position {
+        if let Some(f) = self.file(p) {
+            f.position(p)
+        } else {
+            return Position {
+                filename: "non_file_name".to_string(),
+                line: 0,
+                offset: 0,
+                column: 0,
+            };
+        }
     }
 
     pub fn index_file(&mut self, i: usize) -> Option<&mut File> {

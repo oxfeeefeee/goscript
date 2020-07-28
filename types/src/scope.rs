@@ -132,11 +132,12 @@ impl Scope {
     /// Otherwise it inserts obj, sets the object's parent scope
     /// if not already set, and returns None.
     pub fn insert(self_key: ScopeKey, okey: ObjKey, objs: &mut TCObjects) -> Option<ObjKey> {
-        let scope = &objs.scopes[self_key];
+        let scope = &mut objs.scopes[self_key];
         let lang_obj = &mut objs.lobjs[okey];
         if let Some(obj) = scope.lookup(lang_obj.name()) {
             return Some(*obj);
         }
+        scope.elems.insert(lang_obj.name().clone(), okey);
         if lang_obj.parent().is_none() {
             lang_obj.set_parent(Some(self_key));
         }

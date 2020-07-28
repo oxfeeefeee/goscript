@@ -186,7 +186,7 @@ impl Universe {
         ));
         let params = objs.new_t_tuple(vec![]);
         let results = objs.new_t_tuple(vec![res]);
-        let sig = objs.new_t_signature(None, params, results, false);
+        let sig = objs.new_t_signature(None, None, params, results, false);
         let err = objs
             .lobjs
             .insert(LangObj::new_func(0, None, "Error".to_owned(), Some(sig)));
@@ -271,7 +271,7 @@ impl Universe {
 
     fn alias_types(tobjs: &mut Types) -> HashMap<BasicType, TypeKey> {
         [
-            (BasicType::Byte, BasicInfo::IsInteger, "type"),
+            (BasicType::Byte, BasicInfo::IsInteger, "byte"),
             (BasicType::Rune, BasicInfo::IsInteger, "rune"),
         ]
         .iter()

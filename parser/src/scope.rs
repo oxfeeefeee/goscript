@@ -100,13 +100,7 @@ impl Scope {
     }
 
     pub fn insert(&mut self, name: String, entity: EntityKey) -> Option<EntityKey> {
-        match self.entities.get(&name) {
-            Some(i) => Some(*i),
-            None => {
-                self.entities.insert(name, entity);
-                None
-            }
-        }
+        self.entities.insert(name, entity)
     }
 
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -85,10 +85,10 @@ impl TCObjects {
     ) -> ScopeKey {
         let scope = Scope::new(parent, pos, end, comment, is_func);
         let skey = self.scopes.insert(scope);
-        if let Some(skey) = parent {
+        if let Some(s) = parent {
             // don't add children to Universe scope
-            if skey != *self.universe().scope() {
-                self.scopes[skey].add_child(skey);
+            if s != *self.universe().scope() {
+                self.scopes[s].add_child(skey);
             }
         }
         skey
@@ -226,20 +226,20 @@ impl TCObjects {
 
     pub fn new_t_signature(
         &mut self,
+        scope: Option<ScopeKey>,
         recv: Option<ObjKey>,
         params: TypeKey,
         results: TypeKey,
         variadic: bool,
     ) -> TypeKey {
         self.types.insert(Type::Signature(SignatureDetail::new(
-            recv, params, results, variadic, self,
+            scope, recv, params, results, variadic, self,
         )))
     }
 
     pub fn new_t_interface(&mut self, methods: Vec<ObjKey>, embeddeds: Vec<TypeKey>) -> TypeKey {
-        self.types.insert(Type::Interface(InterfaceDetail::new(
-            methods, embeddeds, self,
-        )))
+        let iface = Type::Interface(InterfaceDetail::new(methods, embeddeds, self));
+        self.types.insert(iface)
     }
 
     pub fn new_t_empty_interface(&mut self) -> TypeKey {

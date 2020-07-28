@@ -360,7 +360,7 @@ impl<'a> Checker<'a> {
                     let mut vars = vec![var];
                     vars.append(&mut params_val.vars().clone());
                     let params = self.tc_objs.new_t_tuple(vars);
-                    let new_sig = self.tc_objs.new_t_signature(None, params, r, v);
+                    let new_sig = self.tc_objs.new_t_signature(None, None, params, r, v);
                     x.mode = OperandMode::Value;
                     x.typ = Some(new_sig);
 
@@ -435,7 +435,7 @@ impl<'a> Checker<'a> {
                     let lobj = &self.tc_objs.lobjs[okey];
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
                     let (p, r, v) = (sig.params(), sig.results(), sig.variadic());
-                    let new_sig = self.tc_objs.new_t_signature(None, p, r, v);
+                    let new_sig = self.tc_objs.new_t_signature(None, None, p, r, v);
                     x.typ = Some(new_sig);
 
                     self.add_decl_dep(okey);

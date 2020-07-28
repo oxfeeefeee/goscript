@@ -32,6 +32,9 @@ impl<'a> Checker<'a> {
         let mut emitted: HashSet<DeclInfoKey> = HashSet::new();
 
         loop {
+            if nodes.len() == 0 {
+                break;
+            }
             let mut first_dependant = nodes
                 .iter()
                 .enumerate()
@@ -81,9 +84,6 @@ impl<'a> Checker<'a> {
             }
             // sort nodes, shoud be fast as it's almost sorted
             nodes.sort_by(|a, b| a.1.cmp(&b.1));
-            if nodes.len() == 0 {
-                break;
-            }
         }
 
         // record the init order for variables with initializers only

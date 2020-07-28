@@ -312,13 +312,13 @@ impl<'a> Checker<'a> {
             let old = fctx.untyped.get_mut(&e.id()).unwrap();
             old.typ = Some(typ::underlying_type(t, o));
             return;
-        } else {
-            // Otherwise we have the final (typed or untyped type).
-            // Remove it from the map of yet untyped expressions.
-            fctx.untyped.remove(&e.id());
         }
 
-        let old = fctx.untyped.get(&e.id()).unwrap();
+        // Otherwise we have the final (typed or untyped type).
+        // Remove it from the map of yet untyped expressions.
+        let removed = fctx.untyped.remove(&e.id());
+        let old = removed.as_ref().unwrap();
+
         if old.is_lhs {
             // If x is the lhs of a shift, its final type must be integer.
             // We already know from the shift check that it is representable
