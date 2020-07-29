@@ -1,10 +1,10 @@
 package main
 
 const c = 100
-//var i = 1
-//var j = i + 1 + c
+var i = 1
+var j = i + 1 + c
 
-/*
+
 func longestPalindrome(s string) string {
     if len(s) <= 1 {
         return s
@@ -35,14 +35,14 @@ func longestPalindrome(s string) string {
     }
     return s[b:e+1]
 }
-*/
+
 
 func funca() {}
 
 func main() {
-    k := 3
+    k := -3.0/700000000 * 700000000
     k += 1
-    _ = k + 4
-    //l := j
+    
+    l := j
 
 }

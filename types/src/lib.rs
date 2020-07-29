@@ -19,6 +19,8 @@ mod selection;
 
 mod universe;
 
+mod display;
+
 mod check;
 
 mod importer;

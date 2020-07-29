@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::super::objects::{DeclInfoKey, ObjKey, TCObjects};
+use super::super::objects::{DeclInfoKey, ObjKey};
 use super::check::{Checker, Initializer};
 use super::resolver::DeclInfo;
 use std::cell::RefCell;
@@ -24,7 +24,7 @@ impl GraphEdges {
 
 impl<'a> Checker<'a> {
     pub fn init_order(&mut self) {
-        let (mut nodes, edges) = dependency_graph(&self.obj_map, self.tc_objs);
+        let (mut nodes, edges) = self.dependency_graph();
         nodes.sort_by(|a, b| a.1.cmp(&b.1));
         let len = nodes.len();
         let mut nodes = &mut nodes[0..len];
@@ -117,6 +117,61 @@ impl<'a> Checker<'a> {
         self.result.record_init_order(init_order);
     }
 
+    /// dependency_graph returns the object dependency graph from the given obj_map,
+    /// with any function nodes removed. The resulting graph contains only constants
+    /// and variables.
+    fn dependency_graph(&self) -> (Vec<GraphNode>, HashMap<ObjKey, GraphEdges>) {
+        // map is the dependency (Object) -> graphNode mapping
+        let map: HashMap<ObjKey, GraphEdges> = self.obj_map.iter().fold(
+            HashMap::new(),
+            |mut init: HashMap<ObjKey, GraphEdges>, (&x, _)| {
+                let decl = &self.tc_objs.decls[self.obj_map[&x]];
+                if decl.has_initializer(self.ast_objs) {
+                    let deps: HashSet<ObjKey> = decl.deps().iter().map(|z| *z).collect();
+                    init.insert(x, GraphEdges::new(Rc::new(RefCell::new(deps))));
+                }
+                init
+            },
+        );
+
+        // add the edges for the other direction
+        for (o, node) in map.iter() {
+            for s in node.succ.borrow().iter() {
+                map[s].pred.borrow_mut().insert(*o);
+            }
+        }
+
+        // remove function nodes and collect remaining graph nodes in graph
+        // (Mutually recursive functions may introduce cycles among themselves
+        // which are permitted. Yet such cycles may incorrectly inflate the dependency
+        // count for variables which in turn may not get scheduled for initialization
+        // in correct order.)
+        let nodes: Vec<GraphNode> = map
+            .iter()
+            .filter_map(|(o, node)| {
+                if self.lobj(*o).entity_type().is_func() {
+                    for p in node.pred.borrow().iter() {
+                        if p != o {
+                            for s in node.succ.borrow().iter() {
+                                if s != o {
+                                    map[p].succ.borrow_mut().insert(*s);
+                                    map[s].pred.borrow_mut().insert(*p);
+                                    map[s].pred.borrow_mut().remove(o);
+                                }
+                            }
+                            map[p].succ.borrow_mut().remove(o);
+                        }
+                    }
+                    None
+                } else {
+                    Some((*o, node.succ.borrow().len()))
+                }
+            })
+            .collect();
+
+        (nodes, map)
+    }
+
     fn report_cycle(&self, cycle: &Vec<ObjKey>) {
         let o = self.lobj(cycle[0]);
         self.error(o.pos(), format!("initialization cycle for {}", o.name()));
@@ -154,59 +209,4 @@ fn find_path(
         }
     }
     None
-}
-
-/// dependency_graph returns the object dependency graph from the given obj_map,
-/// with any function nodes removed. The resulting graph contains only constants
-/// and variables.
-fn dependency_graph(
-    obj_map: &HashMap<ObjKey, DeclInfoKey>,
-    objs: &TCObjects,
-) -> (Vec<GraphNode>, HashMap<ObjKey, GraphEdges>) {
-    // map is the dependency (Object) -> graphNode mapping
-    let map: HashMap<ObjKey, GraphEdges> = obj_map.iter().fold(
-        HashMap::new(),
-        |mut init: HashMap<ObjKey, GraphEdges>, (&x, _)| {
-            let deps: HashSet<ObjKey> = objs.decls[obj_map[&x]].deps().iter().map(|z| *z).collect();
-            init.insert(x, GraphEdges::new(Rc::new(RefCell::new(deps))));
-            init
-        },
-    );
-
-    // add the edges for the other direction
-    for (o, node) in map.iter() {
-        for s in node.succ.borrow().iter() {
-            map[s].pred.borrow_mut().insert(*o);
-        }
-    }
-
-    // remove function nodes and collect remaining graph nodes in graph
-    // (Mutually recursive functions may introduce cycles among themselves
-    // which are permitted. Yet such cycles may incorrectly inflate the dependency
-    // count for variables which in turn may not get scheduled for initialization
-    // in correct order.)
-    let nodes: Vec<GraphNode> = map
-        .iter()
-        .filter_map(|(o, node)| {
-            if objs.lobjs[*o].entity_type().is_func() {
-                for p in node.pred.borrow().iter() {
-                    if p != o {
-                        for s in node.succ.borrow().iter() {
-                            if s != o {
-                                map[p].succ.borrow_mut().insert(*s);
-                                map[s].pred.borrow_mut().insert(*p);
-                                map[s].pred.borrow_mut().remove(o);
-                            }
-                        }
-                        map[p].succ.borrow_mut().remove(o);
-                    }
-                }
-                None
-            } else {
-                Some((*o, node.succ.borrow().len()))
-            }
-        })
-        .collect();
-
-    (nodes, map)
 }

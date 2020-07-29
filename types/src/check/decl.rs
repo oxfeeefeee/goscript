@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::super::constant;
-use super::super::obj::{EntityType, ObjColor};
+use super::super::obj::{type_name_is_alias, EntityType, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
 use super::super::operand::Operand;
 use super::super::scope::Scope;
@@ -237,7 +237,7 @@ impl<'a> Checker<'a> {
                             self.decl_info(*d).as_type().alias
                         } else {
                             // function local object
-                            oval.type_name_is_alias()
+                            type_name_is_alias(*o, self.tc_objs)
                         };
                         if alias {
                             has_type_def = true;
@@ -445,6 +445,7 @@ impl<'a> Checker<'a> {
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
         let (recv, typ) = (fdecl.recv.clone(), fdecl.typ);
         let sig_key = self.func_type(recv.as_ref(), typ, fctx);
+        self.lobj_mut(okey).set_type(Some(sig_key));
 
         // check for 'init' func
         let fdecl = &self.ast_objs.fdecls[fdecl_key];

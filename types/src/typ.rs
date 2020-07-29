@@ -36,6 +36,7 @@ macro_rules! compare_by_type_name {
     }};
 }
 
+#[derive(Debug)]
 pub enum Type {
     Basic(BasicDetail),
     Array(ArrayDetail),
@@ -192,86 +193,74 @@ impl Type {
         }
     }
     pub fn is_boolean(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsBoolean,
-            Type::Named(_) => self.underlying_val(objs).is_boolean(objs),
             _ => false,
         }
     }
     pub fn is_integer(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsInteger,
-            Type::Named(_) => self.underlying_val(objs).is_integer(objs),
             _ => false,
         }
     }
     pub fn is_unsigned(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.typ().is_unsigned(),
-            Type::Named(_) => self.underlying_val(objs).is_unsigned(objs),
             _ => false,
         }
     }
     pub fn is_float(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsFloat,
-            Type::Named(_) => self.underlying_val(objs).is_float(objs),
             _ => false,
         }
     }
     pub fn is_complex(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsComplex,
-            Type::Named(_) => self.underlying_val(objs).is_complex(objs),
             _ => false,
         }
     }
     pub fn is_numeric(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info().is_numeric(),
-            Type::Named(_) => self.underlying_val(objs).is_numeric(objs),
             _ => false,
         }
     }
     pub fn is_string(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsString,
-            Type::Named(_) => self.underlying_val(objs).is_string(objs),
             _ => false,
         }
     }
     pub fn is_typed(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => !b.typ().is_untyped(),
-            Type::Named(_) => self.underlying_val(objs).is_typed(objs),
             _ => true,
         }
     }
     pub fn is_untyped(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.typ().is_untyped(),
-            Type::Named(_) => self.underlying_val(objs).is_untyped(objs),
             _ => false,
         }
     }
     pub fn is_ordered(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info().is_ordered(),
-            Type::Named(_) => self.underlying_val(objs).is_ordered(objs),
             _ => false,
         }
     }
     pub fn is_const_type(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Basic(b) => b.info().is_const_type(),
-            Type::Named(_) => self.underlying_val(objs).is_const_type(objs),
             _ => false,
         }
     }
     pub fn is_interface(&self, objs: &TCObjects) -> bool {
-        match self {
+        match self.underlying_val(objs) {
             Type::Interface(_) => true,
-            Type::Named(_) => self.underlying_val(objs).is_interface(objs),
             _ => false,
         }
     }
@@ -449,6 +438,7 @@ impl BasicDetail {
 }
 
 /// An ArrayDetail represents an array type.
+#[derive(Debug)]
 pub struct ArrayDetail {
     len: Option<u64>,
     elem: TypeKey,
@@ -476,6 +466,7 @@ impl ArrayDetail {
 }
 
 /// A Slice represents a slice type.
+#[derive(Debug)]
 pub struct SliceDetail {
     elem: TypeKey,
 }
@@ -491,6 +482,7 @@ impl SliceDetail {
 }
 
 /// A StructDetail represents a struct type
+#[derive(Debug)]
 pub struct StructDetail {
     fields: Vec<ObjKey>,               // objects ofr type LangObj::Var
     tags: Option<Vec<Option<String>>>, // None if there are no tags
@@ -528,11 +520,15 @@ impl StructDetail {
     }
 
     pub fn tag(&self, i: usize) -> Option<&String> {
-        self.tags.as_ref().unwrap()[i].as_ref()
+        self.tags
+            .as_ref()
+            .map(|x| if i < x.len() { x[i].as_ref() } else { None })
+            .flatten()
     }
 }
 
 /// A PointerDetail represents a pointer type.
+#[derive(Debug)]
 pub struct PointerDetail {
     base: TypeKey, // element type
 }
@@ -550,6 +546,7 @@ impl PointerDetail {
 /// A TupleDetail represents an ordered list of variables
 /// Tuples are used as components of signatures and to represent the type of multiple
 /// assignments; they are not first class types of Go.
+#[derive(Debug)]
 pub struct TupleDetail {
     vars: Vec<ObjKey>, // LangObj::Var
 }
@@ -660,6 +657,7 @@ impl SignatureDetail {
 }
 
 /// An InterfaceDetail represents an interface type.
+#[derive(Debug)]
 pub struct InterfaceDetail {
     methods: Vec<ObjKey>,
     embeddeds: Vec<TypeKey>,
@@ -767,6 +765,7 @@ impl InterfaceDetail {
     }
 }
 
+#[derive(Debug)]
 pub struct MapDetail {
     key: TypeKey,
     elem: TypeKey,
@@ -796,6 +795,7 @@ pub enum ChanDir {
     RecvOnly,
 }
 
+#[derive(Debug)]
 pub struct ChanDetail {
     dir: ChanDir,
     elem: TypeKey,
@@ -818,6 +818,7 @@ impl ChanDetail {
     }
 }
 
+#[derive(Debug)]
 pub struct NamedDetail {
     obj: Option<ObjKey>,         // corresponding declared object
     underlying: Option<TypeKey>, // possibly a Named during setup; never a Named once set up completely
@@ -1031,6 +1032,7 @@ fn identical_impl(
     }
     let tx = &objs.types[x];
     let ty = &objs.types[y];
+
     match (tx, ty) {
         (Type::Basic(bx), Type::Basic(by)) => bx.typ() == by.typ(),
         (Type::Array(ax), Type::Array(ay)) => {
@@ -1121,8 +1123,7 @@ fn identical_impl(
         }
         (Type::Named(nx), Type::Named(ny)) => nx.obj() == ny.obj(),
         _ => false,
-    };
-    false
+    }
 }
 
 pub fn fmt_type(t: Option<TypeKey>, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {

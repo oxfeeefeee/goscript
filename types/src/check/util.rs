@@ -1,4 +1,5 @@
 //#![allow(dead_code)]
+use super::super::display::{Display, Displayer};
 use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::{Operand, OperandMode};
@@ -7,7 +8,6 @@ use super::super::scope::Scope;
 use super::super::typ::{self, BasicType, Type};
 use super::super::universe::{Builtin, BuiltinInfo};
 use super::check::{Checker, FilesContext};
-use super::display::{Display, Displayer};
 use super::resolver::DeclInfo;
 
 use goscript_parser::objects::IdentKey;
@@ -250,14 +250,53 @@ impl<'a> Checker<'a> {
     }
 
     pub fn use_exprs(&mut self, exprs: &Vec<Expr>, fctx: &mut FilesContext) {
-        let mut x = Operand::new();
+        let x = &mut Operand::new();
         for e in exprs.iter() {
-            self.raw_expr(&mut x, &e, None, fctx);
+            self.raw_expr(x, &e, None, fctx);
         }
     }
 
-    pub fn use_lhs(&mut self, _lhs: &Vec<Expr>) {
-        unimplemented!()
+    // use_lhs is like use_exprs, but doesn't "use" top-level identifiers.
+    // It should be called instead of use_exprs if the arguments are
+    // expressions on the lhs of an assignment.
+    // The arguments must not be nil.
+    pub fn use_lhs(&mut self, lhs: &Vec<Expr>, fctx: &mut FilesContext) {
+        let x = &mut Operand::new();
+        for e in lhs.iter() {
+            let v = match Checker::unparen(e) {
+                Expr::Ident(ikey) => match &self.ast_ident(*ikey).name {
+                    s if s == "_" => None,
+                    s => Scope::lookup_parent(
+                        self.octx.scope.as_ref().unwrap(),
+                        s,
+                        None,
+                        self.tc_objs,
+                    )
+                    .map(|(_, okey)| okey)
+                    .map(|okey| {
+                        let lobj = self.lobj(okey);
+                        match lobj.entity_type() {
+                            obj::EntityType::Var(vp) => match lobj.pkg() == Some(self.pkg) {
+                                true => Some((okey, vp.used)),
+                                false => None,
+                            },
+                            _ => None,
+                        }
+                    }),
+                },
+                _ => None,
+            }
+            .flatten();
+
+            self.raw_expr(x, &e, None, fctx);
+
+            if let Some((okey, used)) = v {
+                match self.lobj_mut(okey).entity_type_mut() {
+                    obj::EntityType::Var(vp) => vp.used = used,
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 
     pub fn lookup(&self, name: &str) -> Option<ObjKey> {
@@ -360,10 +399,10 @@ impl<'a> Checker<'a> {
     }
 
     pub fn new_dis<'b>(&'b self, x: &'b impl Display) -> Displayer<'b> {
-        Displayer::new(x, self)
+        Displayer::new(x, Some(self.ast_objs), Some(self.tc_objs))
     }
 
     pub fn new_td_o<'t>(&'t self, t: &'t Option<TypeKey>) -> Displayer<'t> {
-        Displayer::new(t.as_ref().unwrap(), self)
+        Displayer::new(t.as_ref().unwrap(), Some(self.ast_objs), Some(self.tc_objs))
     }
 }

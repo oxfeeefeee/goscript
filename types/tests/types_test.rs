@@ -30,3 +30,8 @@ fn load_parse_check(dir: &str, trace: bool) -> usize {
 fn test_types_case1() {
     load_parse_check("./tests/data/case1/", true);
 }
+
+#[test]
+fn test_types_interface() {
+    load_parse_check("./tests/data/case2/", true);
+}

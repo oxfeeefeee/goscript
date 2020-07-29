@@ -270,6 +270,7 @@ impl Operand {
                 let tval = &tc_objs.types[self.typ.unwrap()];
                 if tval.is_untyped(tc_objs) {
                     f.write_str(tval.try_as_basic().unwrap().name())?;
+                    f.write_char(' ')?;
                     false
                 } else {
                     true
@@ -291,7 +292,7 @@ impl Operand {
         // <typ>
         if has_type {
             if self.typ != Some(universe.types()[&BasicType::Invalid]) {
-                f.write_str(" of type")?;
+                f.write_str(" of type ")?;
                 fmt_type(self.typ, f, tc_objs)?;
             } else {
                 f.write_str(" with invalid type")?;

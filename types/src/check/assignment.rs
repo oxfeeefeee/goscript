@@ -320,7 +320,7 @@ impl<'a> Checker<'a> {
         let ll = lhs.len();
         let result = self.unpack(rhs, ll, ll == 2, fctx);
         match result {
-            UnpackResult::Error => self.use_lhs(lhs),
+            UnpackResult::Error => self.use_lhs(lhs, fctx),
             UnpackResult::Mismatch(_) => result.use_(self, 0, fctx),
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
@@ -385,7 +385,7 @@ impl<'a> Checker<'a> {
                         okey
                     }
                 } else {
-                    self.use_lhs(&vec![x.clone()]);
+                    self.use_lhs(&vec![x.clone()], fctx);
                     let pos = x.pos(self.ast_objs);
                     self.error(pos, format!("cannot declare {}", self.new_dis(x)));
                     // dummy variable

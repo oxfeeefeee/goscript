@@ -35,7 +35,7 @@ use std::rc::Rc;
 /// and src, and eventually a non-None fun field; imported and pre-
 /// declared methods have a None scope and src, and only a non-None
 /// fun field.)
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MethodInfo {
     // scope of interface method; or None
     pub scope: Option<ScopeKey>,
@@ -54,9 +54,9 @@ impl MethodInfo {
         }
     }
 
-    pub fn with_src(fkey: FieldKey) -> MethodInfo {
+    pub fn with_scope_src(skey: ScopeKey, fkey: FieldKey) -> MethodInfo {
         MethodInfo {
-            scope: None,
+            scope: Some(skey),
             src: Some(fkey),
             fun: None,
         }
@@ -238,7 +238,7 @@ impl<'a> Checker<'a> {
                         continue; // ignore
                     }
 
-                    let m = MethodInfo::with_src(*fkey);
+                    let m = MethodInfo::with_scope_src(skey, *fkey);
                     if self.declare_in_method_set(&mut mset, m.clone(), fkey.pos(self.ast_objs)) {
                         methods.push(m);
                     }

@@ -147,12 +147,10 @@ impl<'a> Checker<'a> {
             let ed = self.new_dis(e);
             self.trace_begin(ed.pos(), &format!("{}", ed));
         }
-
         let t = self.type_internal(e, def, fctx);
         debug_assert!(typ::is_typed(t, self.tc_objs));
         self.result
             .record_type_and_value(e, OperandMode::TypeExpr, t);
-
         if self.config().trace_checker {
             let pos = e.pos(self.ast_objs);
             self.trace_end(pos, &format!("=> {}", self.new_dis(&t)));
@@ -162,7 +160,7 @@ impl<'a> Checker<'a> {
 
     /// indirect_type is like type_expr but it also breaks the (otherwise) infinite size of
     /// recursivetypes by introducing an indirection. It should be called for components of
-    /// types thatare not laid out in place in memory, such as pointer base types, slice or
+    /// types that are not laid out in place in memory, such as pointer base types, slice or
     /// map element types, function parameter types, etc.
     pub fn indirect_type(&mut self, e: &Expr, fctx: &mut FilesContext) -> TypeKey {
         fctx.push(*self.tc_objs.universe().indir());
@@ -384,7 +382,6 @@ impl<'a> Checker<'a> {
                 None
             }
         };
-
         if let Some(t) = result_t {
             t
         } else {

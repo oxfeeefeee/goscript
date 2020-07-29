@@ -373,6 +373,9 @@ impl LangObj {
     }
 
     pub fn set_color(&mut self, color: ObjColor) {
+        if color == ObjColor::Black {
+            assert!(self.typ.is_some());
+        }
         self.color = color
     }
 
@@ -417,10 +420,6 @@ impl LangObj {
             EntityType::Const(val) => *val = v,
             _ => unreachable!(),
         }
-    }
-
-    pub fn type_name_is_alias(&self) -> bool {
-        unimplemented!()
     }
 
     pub fn var_embedded(&self) -> bool {
@@ -469,6 +468,41 @@ impl LangObj {
     }
 }
 
+pub fn type_name_is_alias(okey: ObjKey, objs: &TCObjects) -> bool {
+    let lobj = &objs.lobjs[okey];
+    match lobj.entity_type {
+        EntityType::TypeName => match lobj.typ {
+            Some(t) => {
+                let ty = &objs.types[t];
+                match ty {
+                    typ::Type::Basic(detail) => {
+                        let universe = objs.universe();
+                        // unsafe.Pointer is not an alias.
+                        if lobj.pkg() == Some(*universe.unsafe_pkg()) {
+                            false
+                        } else {
+                            // Any user-defined type name for a basic type is an alias for a
+                            // basic type (because basic types are pre-declared in the Universe
+                            // scope, outside any package scope), and so is any type name with
+                            // a different name than the name of the basic type it refers to.
+                            // Additionally, we need to look for "byte" and "rune" because they
+                            // are aliases but have the same names (for better error messages).
+                            lobj.pkg().is_some()
+                                || detail.name() != lobj.name()
+                                || t == *universe.byte()
+                                || t == *universe.rune()
+                        }
+                    }
+                    typ::Type::Named(detail) => *detail.obj() != Some(okey),
+                    _ => true,
+                }
+            }
+            None => false,
+        },
+        _ => unreachable!(),
+    }
+}
+
 // ----------------------------------------------------------------------------
 // ObjSet
 //
@@ -506,8 +540,8 @@ pub fn get_id<'a>(pkg: Option<&Package>, name: &'a str) -> Cow<'a, str> {
     Cow::Owned(format!("{}.{}", path, name))
 }
 
-pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
-    let obj = &objs.lobjs[*okey];
+pub fn fmt_obj(okey: ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    let obj = &objs.lobjs[okey];
     match obj.entity_type() {
         EntityType::PkgName(imported, _) => {
             write!(f, "package {}", obj.name())?;
@@ -519,17 +553,17 @@ pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> f
         EntityType::Const(_) => {
             f.write_str("const")?;
             fmt_obj_name(okey, f, objs)?;
-            fmt_obj_type(obj, f, objs)?;
+            fmt_obj_type(okey, f, objs)?;
         }
         EntityType::TypeName => {
-            f.write_str("const")?;
+            f.write_str("type")?;
             fmt_obj_name(okey, f, objs)?;
-            fmt_obj_type(obj, f, objs)?;
+            fmt_obj_type(okey, f, objs)?;
         }
         EntityType::Var(prop) => {
             f.write_str(if prop.is_field { "field" } else { "var" })?;
             fmt_obj_name(okey, f, objs)?;
-            fmt_obj_type(obj, f, objs)?;
+            fmt_obj_type(okey, f, objs)?;
         }
         EntityType::Func(_) => {
             f.write_str("func ")?;
@@ -551,13 +585,13 @@ pub fn fmt_obj(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> f
     Ok(())
 }
 
-fn fmt_obj_name(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+fn fmt_obj_name(okey: ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
     f.write_char(' ')?;
-    let obj = &objs.lobjs[*okey];
+    let obj = &objs.lobjs[okey];
     if let Some(p) = obj.pkg {
         let pkg_val = &objs.pkgs[p];
         if let Some(k) = objs.scopes[*pkg_val.scope()].lookup(obj.name()) {
-            if k == okey {
+            if *k == okey {
                 pkg_val.fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
             }
         }
@@ -565,7 +599,8 @@ fn fmt_obj_name(okey: &ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> 
     f.write_str(obj.name())
 }
 
-fn fmt_obj_type(obj: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+fn fmt_obj_type(okey: ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+    let obj = &objs.lobjs[okey];
     if obj.typ().is_none() {
         return Ok(());
     }
@@ -575,7 +610,7 @@ fn fmt_obj_type(obj: &LangObj, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> 
         if typ_val.try_as_basic().is_some() {
             return Ok(());
         }
-        if obj.type_name_is_alias() {
+        if type_name_is_alias(okey, objs) {
             f.write_str(" =")?;
         } else {
             obj_typ = typ::underlying_type(obj_typ, objs);

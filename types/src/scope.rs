@@ -187,27 +187,3 @@ impl fmt::Display for Scope {
         self.fmt(f, 0)
     }
 }
-
-pub struct ScopeDebug<'a> {
-    scope: &'a ScopeKey,
-    objs: &'a TCObjects,
-}
-
-impl<'a> ScopeDebug<'a> {
-    fn new(scope: &'a ScopeKey, objs: &'a TCObjects) -> ScopeDebug<'a> {
-        ScopeDebug {
-            scope: scope,
-            objs: objs,
-        }
-    }
-
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, n: usize) -> fmt::Result {
-        fmt_scope_full(self.scope, f, n, self.objs)
-    }
-}
-
-impl<'a> fmt::Debug for ScopeDebug<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt(f, 0)
-    }
-}

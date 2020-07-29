@@ -1,6 +1,5 @@
 #[macro_use]
 mod util;
-mod display;
 
 mod assignment;
 mod builtin;

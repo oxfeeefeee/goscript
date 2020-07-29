@@ -136,7 +136,7 @@ impl<'a> Checker<'a> {
                 }
             }
             _ => {
-                if self.op_token(x, op, false) {
+                if !self.op_token(x, op, false) {
                     x.mode = OperandMode::Invalid;
                     return;
                 }
@@ -423,7 +423,7 @@ impl<'a> Checker<'a> {
                     // (delayed-checked) rhs operands of shifts, and as
                     // the value nil.
                     let ok = match self.otype(x.typ.unwrap()).try_as_basic().unwrap().typ() {
-                        BasicType::Bool => tval.is_boolean(o),
+                        BasicType::UntypedBool => tval.is_boolean(o),
                         BasicType::UntypedInt
                         | BasicType::UntypedRune
                         | BasicType::UntypedFloat

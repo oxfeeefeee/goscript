@@ -488,7 +488,10 @@ impl<'a> Checker<'a> {
         obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(&self.lobj(*b).order()));
 
         for o in obj_list.iter() {
-            self.add_method_decls(*o, fctx);
+            let lobj = self.lobj(*o);
+            if lobj.entity_type().is_type_name() && lobj.typ().is_some() {
+                self.add_method_decls(*o, fctx);
+            }
         }
 
         // We process non-alias declarations first, in order to avoid situations where

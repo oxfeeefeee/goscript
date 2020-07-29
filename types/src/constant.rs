@@ -47,12 +47,30 @@ impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Unknown => write!(f, "unknown"),
-            Value::Bool(b) => b.fmt(f),
-            Value::Str(s) => write!(f, "{}", short_quote_str(s, 72)),
-            Value::Int(s) => s.fmt(f),
-            Value::Rat(r) => r.fmt(f),
-            Value::Float(s) => s.fmt(f),
-            Value::Complex(r, i) => write!(f, "({} + {}i)", r, i.to_string()),
+            Value::Bool(b) => {
+                f.write_str("bool: ")?;
+                b.fmt(f)
+            }
+            Value::Str(s) => {
+                f.write_str("string: ")?;
+                write!(f, "{}", short_quote_str(s, 72))
+            }
+            Value::Int(s) => {
+                f.write_str("int: ")?;
+                s.fmt(f)
+            }
+            Value::Rat(r) => {
+                f.write_str("rat: ")?;
+                r.fmt(f)
+            }
+            Value::Float(s) => {
+                f.write_str("float: ")?;
+                s.fmt(f)
+            }
+            Value::Complex(r, i) => {
+                f.write_str("complex: ")?;
+                write!(f, "({} + {}i)", r, i)
+            }
         }
     }
 }

@@ -131,7 +131,7 @@ impl<'a> Checker<'a> {
         let ret_pos = block2.r_brace;
         let stmt = Stmt::Block(block2);
         let sig_val = self.otype(sig).try_as_signature().unwrap();
-        if sig_val.results_count(self.tc_objs) > 0 && self.is_terminating(&stmt, None) {
+        if sig_val.results_count(self.tc_objs) > 0 && !self.is_terminating(&stmt, None) {
             self.error_str(ret_pos, "missing return");
         }
 
