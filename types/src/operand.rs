@@ -174,7 +174,7 @@ impl Operand {
 
         // 'left' is an interface and 'right' implements 'left'
         if let Some(_) = ut_left.try_as_interface() {
-            if let Some((m, wrong_type)) = missing_method(ut_key_right, ut_key_left, true, objs) {
+            if let Some((m, wrong_type)) = missing_method(k_right, ut_key_left, true, objs) {
                 if let Some(re) = reason {
                     let msg = if wrong_type {
                         "wrong type for method"
@@ -533,7 +533,7 @@ impl<'a, 'b> ExprFormater<'a, 'b> {
                     Expr::Func(sig) => {
                         self.fmt_sig(&self.ast_objs.ftypes[*sig])?;
                     }
-                    _ => unreachable!(),
+                    _ => {}
                 }
             } else {
                 // named fields are separated with a blank from the field type

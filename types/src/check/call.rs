@@ -138,7 +138,7 @@ impl<'a> Checker<'a> {
         let note = &format!("argument to {}", self.new_dis(&call.func));
         for i in 0..n {
             re.get(self, x, i, fctx);
-            if x.invalid() {
+            if !x.invalid() {
                 let ellipsis = if i == n - 1 { call.ellipsis } else { None };
                 self.argument(sig, i, x, ellipsis, note, fctx);
             }

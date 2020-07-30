@@ -152,6 +152,8 @@ pub struct ObjContext {
 
 type DelayedAction = Box<dyn FnOnce(&mut Checker, &mut FilesContext)>;
 
+pub type RcIfaceInfo = Rc<RefCell<IfaceInfo>>;
+
 /// FilesContext contains information collected during type-checking
 /// of a set of package files
 pub struct FilesContext<'a> {
@@ -164,7 +166,7 @@ pub struct FilesContext<'a> {
     pub methods: HashMap<ObjKey, Vec<ObjKey>>,
     // maps interface(LangObj::TypeName) type names to corresponding
     // interface infos
-    pub ifaces: HashMap<ObjKey, Option<IfaceInfo>>,
+    pub ifaces: HashMap<ObjKey, Option<RcIfaceInfo>>,
     // map of expressions(ast::Expr) without final type
     pub untyped: HashMap<NodeId, ExprInfo>,
     // stack of delayed actions

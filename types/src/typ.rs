@@ -896,13 +896,15 @@ pub fn underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
 /// chains only exist while named types are incomplete.
 pub fn deep_underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let mut typ = &objs.types[t];
+    let mut ret = t;
     loop {
         match typ.underlying() {
             Some(ut) => {
                 typ = &objs.types[ut];
+                ret = ut;
                 continue;
             }
-            None => return t,
+            None => return ret,
         }
     }
 }

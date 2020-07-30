@@ -315,7 +315,7 @@ impl<'a> Checker<'a> {
                                                 );
                                                 let _ = self.declare_pkg_obj(name, okey, d);
                                             }
-                                            let _ = self.arity_match(vspec, true, current_vspec);
+                                            self.arity_match(vspec, true, current_vspec);
                                         }
                                         Token::VAR => {
                                             let lhs: Vec<ObjKey> = vspec
@@ -568,12 +568,7 @@ impl<'a> Checker<'a> {
     /// arity_match checks that the lhs and rhs of a const or var decl
     /// have the appropriate number of names and init exprs.
     /// set 'cst' as true for const decls, 'init' is not used for var decls.
-    pub fn arity_match(
-        &self,
-        s: &ast::ValueSpec,
-        cst: bool,
-        init: Option<&ast::ValueSpec>,
-    ) -> Result<(), ()> {
+    pub fn arity_match(&self, s: &ast::ValueSpec, cst: bool, init: Option<&ast::ValueSpec>) {
         let l = s.names.len();
         let r = if cst {
             if let Some(i) = init {
@@ -591,28 +586,23 @@ impl<'a> Checker<'a> {
                     self.ast_ident(s.names[0]).pos,
                     "missing type or init expr".to_string(),
                 );
-                return Err(());
             }
         } else if l < r {
             if init.is_none() {
                 let expr = &s.values[l];
                 let ed = self.new_dis(expr);
                 self.error(ed.pos(), format!("extra init expr {}", ed));
-                return Err(());
             } else {
                 let pos = self.ast_ident(init.unwrap().names[0]).pos;
                 self.error(
                     self.ast_ident(s.names[0]).pos,
                     format!("extra init expr at {}", self.position(pos)),
                 );
-                return Err(());
             }
         } else if l > r && (cst || r != 1) {
             let ident = self.ast_ident(s.names[r]);
             self.error(ident.pos, format!("missing init expr for {}", ident.name));
-            return Err(());
         }
-        Ok(())
     }
 
     // resolve_base_type_name returns the non-alias base type name for typ, and whether

@@ -19,11 +19,12 @@ use super::super::obj;
 use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects};
 use super::super::scope::Scope;
 use super::super::typ;
-use super::check::{Checker, FilesContext};
+use super::check::{Checker, FilesContext, RcIfaceInfo};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::{FieldKey, IdentKey, Objects as AstObjects};
 use goscript_parser::Pos;
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Write;
@@ -101,7 +102,7 @@ impl MethodInfo {
 }
 
 /// IfaceInfo describes the method set for an interface.
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct IfaceInfo {
     pub explicits: usize,
     pub methods: Vec<MethodInfo>,
@@ -157,7 +158,7 @@ impl<'a> Checker<'a> {
         tname: Option<ObjKey>,
         path: &mut Vec<ObjKey>,
         fctx: &mut FilesContext,
-    ) -> Option<IfaceInfo> {
+    ) -> Option<RcIfaceInfo> {
         if self.config().trace_checker {
             let expr = Expr::Interface(iface.clone());
             let ed = self.new_dis(&expr);
@@ -170,7 +171,7 @@ impl<'a> Checker<'a> {
             self.trace_begin(iface.interface, &msg);
         }
 
-        let end = |ret: Option<IfaceInfo>| {
+        let end = |ret: Option<RcIfaceInfo>| {
             if self.config().trace_checker {
                 let expr = Expr::Interface(iface.clone());
                 let ed = self.new_dis(&expr);
@@ -197,27 +198,26 @@ impl<'a> Checker<'a> {
         if let Some(okey) = tname {
             debug_assert!(path[path.len() - 1] == okey);
             if let Some(info) = fctx.ifaces.get(&okey) {
-                if info.is_some() {
-                    // Cow should probably work, but just clone for simplicity
-                    return end(info.clone());
-                } else {
-                    // computation started but not complete
-                    fctx.ifaces.insert(okey, None);
+                let cloned_info = info.clone();
+                if info.is_none() {
+                    // We have a cycle and use check::has_cycle to report it.
+                    // We are guaranteed that check::has_cycle also finds the
+                    // cycle because when info_from_type_lit is called, any
+                    // tname that's already in FilesContext.ifaces was also
+                    // added to the path. (But the converse is not true:
+                    // A non-None tname is always the last element in path.)
+                    let yes = self.has_cycle(okey, path, true);
+                    assert!(yes);
                 }
+                return end(cloned_info);
             } else {
-                // We have a cycle and use check.cycle to report it.
-                // We are guaranteed that check.cycle also finds the
-                // cycle because when infoFromTypeLit is called, any
-                // tname that's already in check.interfaces was also
-                // added to the path. (But the converse is not true:
-                // A non-nil tname is always the last element in path.)
-                let yes = self.has_cycle(okey, path, true);
-                assert!(yes);
+                // computation started but not complete
+                fctx.ifaces.insert(okey, None);
             }
         }
 
         let iinfo = if iface.methods.list.len() == 0 {
-            IfaceInfo::new_empty()
+            Rc::new(RefCell::new(IfaceInfo::new_empty()))
         } else {
             let mut mset = HashMap::new();
             let mut methods = vec![];
@@ -267,13 +267,13 @@ impl<'a> Checker<'a> {
             // collect methods of embedded interfaces
             for (i, e) in embeddeds.into_iter().enumerate() {
                 let pos = positions[i];
-                for m in e.methods.into_iter() {
+                for m in e.borrow().methods.iter() {
                     if self.declare_in_method_set(&mut mset, m.clone(), pos) {
-                        methods.push(m);
+                        methods.push(m.clone());
                     }
                 }
             }
-            IfaceInfo::new(explicites, methods)
+            Rc::new(RefCell::new(IfaceInfo::new(explicites, methods)))
         };
 
         // mark check.interfaces as complete
@@ -294,7 +294,7 @@ impl<'a> Checker<'a> {
         name: IdentKey,
         path: &mut Vec<ObjKey>,
         fctx: &mut FilesContext,
-    ) -> Option<IfaceInfo> {
+    ) -> Option<RcIfaceInfo> {
         // A single call of info_from_type_name handles a sequence of (possibly
         // recursive) type declarations connected via unqualified type names.
         // The general scenario looks like this:
@@ -329,7 +329,6 @@ impl<'a> Checker<'a> {
             if &obj::EntityType::TypeName != tname_val.entity_type() {
                 break;
             }
-
             // We have a type name. It may be predeclared (error type),
             // imported (dot import), or declared by a type declaration.
             // It may not be an interface (e.g., predeclared type int).
@@ -430,7 +429,7 @@ impl<'a> Checker<'a> {
         &self,
         skey: ScopeKey,
         sel: &ast::SelectorExpr,
-    ) -> Option<IfaceInfo> {
+    ) -> Option<RcIfaceInfo> {
         if let Some(name) = sel.expr.try_as_ident() {
             let ident = self.ast_ident(*name);
             if let Some((_, obj1)) =
@@ -459,8 +458,8 @@ impl<'a> Checker<'a> {
         None
     }
 
-    /// infoFromType computes the method set for the given interface type.
-    fn info_from_type(&self, iface: &typ::InterfaceDetail) -> IfaceInfo {
+    /// info_from_type computes the method set for the given interface type.
+    fn info_from_type(&self, iface: &typ::InterfaceDetail) -> RcIfaceInfo {
         let all_methods_ref = iface.all_methods();
         let all_methods = all_methods_ref.as_ref().unwrap();
         let all_methods_len = all_methods.len();
@@ -471,7 +470,7 @@ impl<'a> Checker<'a> {
             .map(|x| MethodInfo::with_fun(*x))
             .collect();
         if all_methods_len == iface.methods().len() {
-            return IfaceInfo::new(all_methods_len, mis);
+            return Rc::new(RefCell::new(IfaceInfo::new(all_methods_len, mis)));
         }
 
         // there are embedded method, put them after explicite methods
@@ -487,6 +486,6 @@ impl<'a> Checker<'a> {
             })
             .collect();
         mis.append(&mut embedded);
-        IfaceInfo::new(iface.methods().len(), mis)
+        Rc::new(RefCell::new(IfaceInfo::new(iface.methods().len(), mis)))
     }
 }

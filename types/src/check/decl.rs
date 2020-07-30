@@ -125,7 +125,7 @@ impl<'a> Checker<'a> {
                         self.octx.decl = Some(dkey);
                         let cd = d.as_var();
                         let (lhs, typ, init) = (cd.lhs.clone(), cd.typ.clone(), cd.init.clone());
-                        self.var_decl(okey, &lhs, &typ, &init, fctx);
+                        self.var_decl(okey, lhs.as_ref(), &typ, &init, fctx);
                     }
                     EntityType::TypeName => {
                         let cd = d.as_type();
@@ -328,7 +328,7 @@ impl<'a> Checker<'a> {
     pub fn var_decl(
         &mut self,
         okey: ObjKey,
-        lhs: &Option<Vec<ObjKey>>,
+        lhs: Option<&Vec<ObjKey>>,
         typ: &Option<Expr>,
         init: &Option<Expr>,
         fctx: &mut FilesContext,
@@ -562,11 +562,10 @@ impl<'a> Checker<'a> {
                     match spec {
                         ast::Spec::Value(vs) => {
                             let vspec = &**vs;
-                            match gdecl.token {
+                            let top = fctx.delayed_count();
+                            let mut current_vspec = None;
+                            let lhs: Vec<ObjKey> = match gdecl.token {
                                 Token::CONST => {
-                                    let top = fctx.delayed_count();
-
-                                    let mut current_vspec = None;
                                     if vspec.typ.is_some() || vspec.values.len() > 0 {
                                         last_full_const_spec = Some(spec.clone());
                                         current_vspec = Some(vspec);
@@ -583,8 +582,8 @@ impl<'a> Checker<'a> {
                                         }
                                     }
 
-                                    // declare all constants
-                                    let lhs: Vec<ObjKey> = vspec
+                                    // all lhs
+                                    vspec
                                         .names
                                         .clone()
                                         .into_iter()
@@ -610,28 +609,10 @@ impl<'a> Checker<'a> {
                                             self.const_decl(okey, &typ, &init, fctx);
                                             okey
                                         })
-                                        .collect();
-
-                                    let _ = self.arity_match(vspec, true, current_vspec);
-
-                                    // process function literals in init expressions before scope changes
-                                    fctx.process_delayed(top, self);
-
-                                    // spec: "The scope of a constant or variable identifier declared
-                                    // inside a function begins at the end of the ConstSpec or VarSpec
-                                    // (ShortVarDecl for short variable declarations) and ends at the
-                                    // end of the innermost containing block."
-                                    for (i, name) in vspec.names.iter().enumerate() {
-                                        self.declare(
-                                            self.octx.scope.unwrap(),
-                                            Some(*name),
-                                            lhs[i],
-                                            spec_end,
-                                        );
-                                    }
+                                        .collect()
                                 }
                                 Token::VAR => {
-                                    let lhs: Vec<ObjKey> = vspec
+                                    let vars: Vec<ObjKey> = vspec
                                         .names
                                         .iter()
                                         .map(|x| {
@@ -647,30 +628,50 @@ impl<'a> Checker<'a> {
                                     let n_to_1 = vspec.values.len() == 1 && vspec.names.len() > 1;
                                     if n_to_1 {
                                         self.var_decl(
-                                            lhs[0],
-                                            &Some(lhs),
+                                            vars[0],
+                                            Some(&vars),
                                             &vspec.typ.clone(),
                                             &Some(vspec.values[0].clone()),
                                             fctx,
                                         );
                                     } else {
-                                        for (i, okey) in lhs.iter().enumerate() {
+                                        for (i, okey) in vars.iter().enumerate() {
                                             self.var_decl(
                                                 *okey,
-                                                &None,
+                                                None,
                                                 &vspec.typ.clone(),
                                                 &vspec.values.get(i).map(|x| x.clone()),
                                                 fctx,
                                             );
                                         }
                                     }
+                                    vars
                                 }
                                 _ => {
                                     self.invalid_ast(
                                         spec_pos,
                                         &format!("invalid token {}", gdecl.token),
                                     );
+                                    vec![]
                                 }
+                            };
+
+                            self.arity_match(vspec, gdecl.token == Token::CONST, current_vspec);
+
+                            // process function literals in init expressions before scope changes
+                            fctx.process_delayed(top, self);
+
+                            // spec: "The scope of a constant or variable identifier declared
+                            // inside a function begins at the end of the ConstSpec or VarSpec
+                            // (ShortVarDecl for short variable declarations) and ends at the
+                            // end of the innermost containing block."
+                            for (i, name) in vspec.names.iter().enumerate() {
+                                self.declare(
+                                    self.octx.scope.unwrap(),
+                                    Some(*name),
+                                    lhs[i],
+                                    spec_end,
+                                );
                             }
                         }
                         ast::Spec::Type(ts) => {

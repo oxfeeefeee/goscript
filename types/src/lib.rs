@@ -1,4 +1,5 @@
 /// Goscirpt's type checker
+/// This is a port of the offical Go 1.12 type checker
 /// A lot of comments are directly taken from Go source file.
 ///
 mod constant;

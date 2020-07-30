@@ -573,7 +573,7 @@ impl<'a> Checker<'a> {
                 if field.names.len() == 0 {
                     let texpr = field.typ.clone();
                     let ty = checker.indirect_type(&texpr, fctx);
-                    // typ should be a named type denoting an interface
+                    // ty should be a named type denoting an interface
                     // (the parser will make sure it's a named type but
                     // constructed ASTs may be wrong).
                     if ty == checker.invalid_type() {
@@ -619,7 +619,7 @@ impl<'a> Checker<'a> {
         };
         let mut info =
             self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, &mut path, fctx);
-        if info.is_none() || info.as_ref().unwrap().is_empty() {
+        if info.is_none() || info.as_ref().unwrap().as_ref().borrow().is_empty() {
             // we got an error or the empty interface - exit early
             self.otype_interface_mut(itype).set_empty_complete();
             return itype;
@@ -641,8 +641,9 @@ impl<'a> Checker<'a> {
         fctx.later(Box::new(f));
 
         // collect methods
-        let info_mut = info.as_mut().unwrap();
-        let mut sig_fix: Vec<&mut MethodInfo> = vec![];
+        let mut info_mut = info.as_mut().unwrap().borrow_mut();
+        let explicits = info_mut.explicits;
+        let mut sig_fix: Vec<MethodInfo> = vec![];
         for (i, mut minfo) in info_mut.methods.iter_mut().enumerate() {
             let fun = if minfo.fun.is_none() {
                 let name_key = self.ast_objs.fields[minfo.src.unwrap()].names[0];
@@ -687,17 +688,18 @@ impl<'a> Checker<'a> {
                     .new_func(pos, Some(self.pkg), name, Some(sig_key));
                 minfo.fun = Some(fun_key);
                 self.result.record_def(name_key, Some(fun_key));
-                sig_fix.push(minfo);
+                sig_fix.push(minfo.clone());
                 fun_key
             } else {
                 minfo.fun.unwrap()
             };
             let itype_val = self.otype_interface_mut(itype);
-            if i < info_mut.explicits {
+            if i < explicits {
                 itype_val.methods_mut().push(fun);
             }
             itype_val.all_methods_push(fun);
         }
+        drop(info_mut);
 
         // fix signatures now that we have collected all methods
         let invalid_type = self.invalid_type();

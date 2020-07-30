@@ -1,42 +1,52 @@
 package main
 
-
+type aint interface {
+	ok() int
+	ok1() int8
+	ok2() int16
+	ok3() int32
+}
 
 type geometry interface {
-    area() float64
-    perim() float64
+	area() float64
+	perim() float64
+	//ok() int64
+	//m() interface{ geometry }
 }
-/*
+
 type rect struct {
-    width, height float64
+	width, height float64
 }
 type circle struct {
-    radius float64
+	radius float64
+	rect
 }
 
 func (r rect) area() float64 {
-    return r.width * r.height
+	return r.width * r.height
 }
 func (r rect) perim() float64 {
-    return 2*r.width + 2*r.height
+	return 2*r.width + 2*r.height
 }
 
 func (c circle) area() float64 {
-    return 3.14 * c.radius * c.radius
+	return 3.14*c.radius*c.radius + c.width + c.a
 }
 func (c circle) perim() float64 {
-    return 2 * 3.14 * c.radius
+	return 2 * 3.14 * c.radius
 }
 
-func measure(g geometry) {
-    
+func measure(g geometry) float64 {
+	return g.area()
 }
 
 func main() {
-    r := rect{width: 3, height: 4}
-    c := circle{radius: 5}
+	r := rect{width: 3, height: 4}
+	c := circle{radius: 5}
 
-    measure(r)
-    measure(c)
+	var ttt geometry
+	var ttt2 rect
+	ttt2 = r
+	ttt = r
+	t := measure(r)
 }
-*/

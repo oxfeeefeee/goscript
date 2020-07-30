@@ -85,7 +85,7 @@ impl MethodSet {
                     add_to_method_set(
                         &mut mset,
                         detail.methods(),
-                        et.indices.as_ref().unwrap(),
+                        et.indices.as_ref().unwrap_or(&vec![]),
                         et.indirect,
                         et.multiples,
                         objs,
@@ -117,7 +117,7 @@ impl MethodSet {
                         add_to_method_set(
                             &mut mset,
                             detail.all_methods().as_ref().unwrap(),
-                            et.indices.as_ref().unwrap(),
+                            et.indices.as_ref().unwrap_or(&vec![]),
                             true,
                             et.multiples,
                             objs,
@@ -510,6 +510,7 @@ fn concat_vec(list: Option<Vec<usize>>, i: usize) -> Option<Vec<usize>> {
     Some(result)
 }
 
+#[derive(Debug)]
 struct EmbeddedType {
     typ: TypeKey,
     indices: Option<Vec<usize>>, // lazy init
