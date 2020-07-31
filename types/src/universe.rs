@@ -68,6 +68,8 @@ pub struct Universe {
     // p followed by indir, indicating that there's an indirection *p.
     // Indirections are used to break type cycles.
     indir: ObjKey,
+    // guard_sig is a empty signature type used to guard against func cycles
+    guard_sig: TypeKey,
     types: HashMap<BasicType, TypeKey>,
     builtins: HashMap<Builtin, BuiltinInfo>,
 }
@@ -98,6 +100,7 @@ impl Universe {
         let slice_of_bytes = objs.new_t_slice(byte);
         let no_value_tuple = objs.new_t_tuple(vec![]);
         let indir = objs.new_type_name(0, None, "*".to_string(), None);
+        let guard_sig = objs.new_t_signature(None, None, no_value_tuple, no_value_tuple, false);
         Universe {
             scope: uskey,
             unsafe_: unsafe_,
@@ -107,6 +110,7 @@ impl Universe {
             slice_of_bytes: slice_of_bytes,
             no_value_tuple: no_value_tuple,
             indir: indir,
+            guard_sig: guard_sig,
             types: types,
             builtins: builtins,
         }
@@ -152,6 +156,10 @@ impl Universe {
         &self.indir
     }
 
+    pub fn guard_sig(&self) -> &TypeKey {
+        &self.guard_sig
+    }
+
     fn def_universe_unsafe(objs: &mut TCObjects) -> (ScopeKey, PackageKey) {
         let uskey = objs
             .scopes
@@ -163,7 +171,7 @@ impl Universe {
             "package unsafe".to_owned(),
             false,
         ));
-        let mut pkg = Package::new("unsafe".to_owned(), pkg_skey);
+        let mut pkg = Package::new("unsafe".to_owned(), Some("unsafe".to_owned()), pkg_skey);
         pkg.mark_complete();
         (uskey, objs.pkgs.insert(pkg))
     }

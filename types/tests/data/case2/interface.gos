@@ -11,7 +11,7 @@ type geometry interface {
 	area() float64
 	perim() float64
 	//ok() int64
-	//m() interface{ geometry }
+	m() interface{ geometry }
 }
 
 type rect struct {
@@ -30,7 +30,7 @@ func (r rect) perim() float64 {
 }
 
 func (c circle) area() float64 {
-	return 3.14*c.radius*c.radius + c.width + c.a
+	return 3.14*c.radius*c.radius + c.width 
 }
 func (c circle) perim() float64 {
 	return 2 * 3.14 * c.radius

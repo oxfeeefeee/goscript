@@ -41,7 +41,7 @@ impl Config {
 /// importer must always return the same package (but given two different import paths,
 /// an importer may still return the same package by mapping them to the same package
 /// paths).
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 pub struct ImportKey {
     pub path: String,
     pub dir: String,
@@ -91,6 +91,9 @@ impl<'a> Importer<'a> {
     }
 
     pub fn import(&mut self, key: &'a ImportKey) -> Result<PackageKey, ()> {
+        if key.path == "unsafe" {
+            return Ok(*self.tc_objs.universe().unsafe_pkg());
+        }
         let pb = self.validate_path(key)?;
         let path = pb.0.as_path();
         let import_path = pb.1;

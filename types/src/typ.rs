@@ -591,7 +591,7 @@ impl SignatureDetail {
                 let typ = &objs.types[params];
                 match typ {
                     Type::Tuple(t) => {
-                        assert!(t.vars.len() > 1);
+                        assert!(t.vars.len() > 0);
                         let okey = t.vars[t.vars.len() - 1];
                         let tkey = &objs.lobjs[okey].typ().unwrap();
                         assert!(objs.types[*tkey].try_as_slice().is_some());

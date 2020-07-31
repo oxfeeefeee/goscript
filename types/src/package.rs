@@ -15,10 +15,10 @@ pub struct Package {
 }
 
 impl Package {
-    pub fn new(path: String, scope: ScopeKey) -> Package {
+    pub fn new(path: String, name: Option<String>, scope: ScopeKey) -> Package {
         Package {
             path: path,
-            name: None,
+            name: name,
             scope: scope,
             complete: false,
             imports: Vec::new(),

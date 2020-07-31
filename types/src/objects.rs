@@ -102,7 +102,7 @@ impl TCObjects {
             format!("package {}", path),
             false,
         );
-        let pkg = Package::new(path, skey);
+        let pkg = Package::new(path, None, skey);
         self.pkgs.insert(pkg)
     }
 

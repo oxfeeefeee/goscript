@@ -214,19 +214,20 @@ impl<'a> Checker<'a> {
                                         self.package_mut(self.pkg).add_import(imp);
                                     }
 
-                                    // see if local name overrides imported package name
-                                    let name = if ispec.name.is_some() {
-                                        self.package(imp).name().clone().unwrap()
-                                    } else {
-                                        let ident = &self.ast_ident(ispec.name.unwrap());
-                                        if ident.name == "init" {
-                                            self.error(
-                                                ident.pos,
-                                                "cannot declare init - must be func".to_owned(),
-                                            );
-                                        }
-                                        ident.name.clone()
-                                    };
+                                    let name = ispec.name.map_or(
+                                        self.package(imp).name().clone().unwrap(),
+                                        |x| {
+                                            // see if local name overrides imported package name
+                                            let ident = &self.ast_ident(x);
+                                            if ident.name == "init" {
+                                                self.error(
+                                                    ident.pos,
+                                                    "cannot declare init - must be func".to_owned(),
+                                                );
+                                            }
+                                            ident.name.clone()
+                                        },
+                                    );
 
                                     let pkg_name_obj = self.tc_objs.new_pkg_name(
                                         spec_pos,
@@ -234,10 +235,9 @@ impl<'a> Checker<'a> {
                                         name.to_owned(),
                                         imp,
                                     );
-                                    if ispec.name.is_some() {
+                                    if let Some(n) = ispec.name {
                                         // in a dot-import, the dot represents the package
-                                        self.result
-                                            .record_def(ispec.name.unwrap(), Some(pkg_name_obj));
+                                        self.result.record_def(n, Some(pkg_name_obj));
                                     } else {
                                         self.result.record_implicit(spec, pkg_name_obj);
                                     }
@@ -343,7 +343,7 @@ impl<'a> Checker<'a> {
                                             } else {
                                                 None
                                             };
-                                            for (i, name) in vspec.names.iter().rev().enumerate() {
+                                            for (i, name) in vspec.names.iter().enumerate() {
                                                 let di = if n_to_1 {
                                                     n_to_1_di.unwrap()
                                                 } else {
@@ -674,9 +674,9 @@ impl<'a> Checker<'a> {
         let result = &path[1..path.len() - 1];
         let mut illegal_chars: Vec<char> = r##"!"#$%&'()*,:;<=>?[\]^{|}`"##.chars().collect();
         illegal_chars.push('\u{FFFD}');
-        if let Some(c) = illegal_chars
-            .iter()
-            .find(|&x| x.is_ascii_graphic() || x.is_whitespace() || result.contains(*x))
+        if let Some(c) = result
+            .chars()
+            .find(|&x| !x.is_ascii_graphic() || x.is_whitespace() || illegal_chars.contains(&x))
         {
             self.error(pos, format!("invalid character: {}", c));
             return Err(());

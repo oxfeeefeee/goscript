@@ -792,25 +792,23 @@ impl<'a> Parser<'a> {
         FieldList::new(lparen, params, rparen)
     }
 
-    fn parse_result(&mut self, scope: ScopeKey) -> FieldList {
+    fn parse_result(&mut self, scope: ScopeKey) -> Option<FieldList> {
         self.trace_begin("Result");
 
         let ret = if self.token == Token::LPAREN {
-            self.parse_parameters(scope, false)
+            Some(self.parse_parameters(scope, false))
         } else {
-            if let Some(t) = self.try_type() {
+            self.try_type().map(|t|{
                 let field = new_field!(self, vec![], t, None);
                 FieldList::new(None, vec![field], None)
-            } else {
-                FieldList::new(None, vec![], None)
-            }
+            })
         };
 
         self.trace_end();
         ret
     }
 
-    fn parse_signature(&mut self, scope: ScopeKey) -> (FieldList, FieldList) {
+    fn parse_signature(&mut self, scope: ScopeKey) -> (FieldList, Option<FieldList>) {
         self.trace_begin("Signature");
 
         let params = self.parse_parameters(scope, true);
@@ -828,7 +826,7 @@ impl<'a> Parser<'a> {
         let (params, results) = self.parse_signature(scope);
 
         self.trace_end();
-        (FuncType::new(Some(pos), params, Some(results)), scope)
+        (FuncType::new(Some(pos), params, results), scope)
     }
 
     // method spec in interface
@@ -842,7 +840,7 @@ impl<'a> Parser<'a> {
             idents = vec![*ident.unwrap()];
             let scope = new_scope!(self, self.top_scope);
             let (params, results) = self.parse_signature(scope);
-            typ = Expr::box_func_type(FuncType::new(None, params, Some(results)), &mut self.objects);
+            typ = Expr::box_func_type(FuncType::new(None, params, results), &mut self.objects);
         } else {
             // embedded interface
             self.resolve(&typ);
@@ -2407,7 +2405,7 @@ impl<'a> Parser<'a> {
         let typ = self.objects.ftypes.insert(FuncType{
             func: Some(pos),
             params: params,
-            results: Some(results),
+            results: results,
         });
         let decl = self.objects.fdecls.insert(FuncDecl{
             recv: recv,

@@ -171,7 +171,7 @@ impl<'a> Checker<'a> {
                         if self.invalid_type_cycle(okey, fctx) {
                             // Don't set obj.typ to Typ[Invalid] here
                             // because plenty of code type-asserts that
-                            // functions have a *Signature type. Grey
+                            // functions have a Signature type. Grey
                             // functions have their type set to an empty
                             // signature which makes it impossible to
                             // initialize a variable with the function.
@@ -239,7 +239,7 @@ impl<'a> Checker<'a> {
                             // function local object
                             type_name_is_alias(*o, self.tc_objs)
                         };
-                        if alias {
+                        if !alias {
                             has_type_def = true;
                         }
                     }
@@ -393,7 +393,6 @@ impl<'a> Checker<'a> {
         fctx: &mut FilesContext,
     ) {
         debug_assert!(self.lobj(okey).typ().is_none());
-
         if alias {
             let invalid = self.invalid_type();
             self.lobj_mut(okey).set_type(Some(invalid));
@@ -440,6 +439,9 @@ impl<'a> Checker<'a> {
         // func declarations cannot use iota
         debug_assert!(self.octx.iota.is_none());
 
+        let guard_sig = Some(*self.tc_objs.universe().guard_sig());
+        self.lobj_mut(okey).set_type(guard_sig);
+
         let d = &self.tc_objs.decls[dkey].as_func();
         let fdecl_key = d.fdecl;
         let fdecl = &self.ast_objs.fdecls[fdecl_key];
@@ -485,24 +487,24 @@ impl<'a> Checker<'a> {
         debug_assert!(!self.decl_info(self.obj_map[&okey]).as_type().alias);
 
         let mut mset: HashMap<String, ObjKey> = HashMap::new();
-        // LangObj.typ() can only be Some(Type::Named)?
-        // see original go code
         let type_key = self.lobj(okey).typ().unwrap();
-        let named = self.otype(type_key).try_as_named().unwrap();
-        if let Some(struc) = self.otype(named.underlying()).try_as_struct() {
-            for f in struc.fields().iter() {
-                if self.lobj(*f).name() != "_" {
-                    assert!(self.insert_obj_to_set(&mut mset, *f).is_none());
+        // type could be invalid
+        if let Some(named) = self.otype(type_key).try_as_named() {
+            if let Some(struc) = self.otype(named.underlying()).try_as_struct() {
+                for f in struc.fields().iter() {
+                    if self.lobj(*f).name() != "_" {
+                        assert!(self.insert_obj_to_set(&mut mset, *f).is_none());
+                    }
                 }
             }
-        }
-        // if we allow Check.check be called multiple times; additional package files
-        // may add methods to already type-checked types. Add pre-existing methods
-        // so that we can detect redeclarations.
-        for m in named.methods().iter() {
-            let lobj = self.lobj(*m);
-            assert!(lobj.name() != "_");
-            assert!(self.insert_obj_to_set(&mut mset, *m).is_none());
+            // if we allow Check.check be called multiple times; additional package files
+            // may add methods to already type-checked types. Add pre-existing methods
+            // so that we can detect redeclarations.
+            for m in named.methods().iter() {
+                let lobj = self.lobj(*m);
+                assert!(lobj.name() != "_");
+                assert!(self.insert_obj_to_set(&mut mset, *m).is_none());
+            }
         }
 
         // get valid methods
@@ -541,9 +543,10 @@ impl<'a> Checker<'a> {
         // append valid methods
         self.tc_objs.types[type_key]
             .try_as_named_mut()
-            .unwrap()
-            .methods_mut()
-            .append(&mut valids);
+            .and_then::<(), _>(|x| {
+                x.methods_mut().append(&mut valids);
+                None
+            });
     }
 
     pub fn decl_stmt(&mut self, decl: ast::Decl, fctx: &mut FilesContext) {

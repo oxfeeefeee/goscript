@@ -35,3 +35,13 @@ fn test_types_case1() {
 fn test_types_interface() {
     load_parse_check("./tests/data/case2/", true);
 }
+
+#[test]
+fn test_types_cycles() {
+    load_parse_check("./tests/data/case3/", true);
+}
+
+#[test]
+fn test_types_decl() {
+    load_parse_check("./tests/data/case4/", true);
+}

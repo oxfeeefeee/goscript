@@ -340,7 +340,7 @@ impl<'a> Checker<'a> {
                 break;
             }
             // Abort and report an error if we have a general cycle.
-            if self.has_cycle(tname, &path, false) {
+            if self.has_cycle(tname, &path, true) {
                 break;
             }
 
