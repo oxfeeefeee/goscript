@@ -1,0 +1,6 @@
+package simple
+
+var a = 1
+var c = b + d
+var b  = 3
+var d = a + 1

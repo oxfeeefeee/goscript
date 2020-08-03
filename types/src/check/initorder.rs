@@ -1,11 +1,12 @@
 #![allow(dead_code)]
-use super::super::objects::{DeclInfoKey, ObjKey};
+use super::super::objects::{DeclInfoKey, ObjKey, TCObjects};
 use super::check::{Checker, Initializer};
 use super::resolver::DeclInfo;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+#[derive(Debug)]
 struct GraphEdges {
     pred: Rc<RefCell<HashSet<ObjKey>>>,
     succ: Rc<RefCell<HashSet<ObjKey>>>,
@@ -52,7 +53,7 @@ impl<'a> Checker<'a> {
                 // the cycle will be broken (dependency count will be reduced
                 // below), and so the remaining nodes in the cycle don't trigger
                 // another error (unless they are part of multiple cycles).
-                if let Some(cycle) = find_path(&edges, obj, obj, visited) {
+                if let Some(cycle) = find_path(&self.obj_map, obj, obj, visited, self.tc_objs) {
                     self.report_cycle(&cycle);
                 }
                 // Ok to continue, but the variable initialization order
@@ -124,8 +125,8 @@ impl<'a> Checker<'a> {
         // map is the dependency (Object) -> graphNode mapping
         let map: HashMap<ObjKey, GraphEdges> = self.obj_map.iter().fold(
             HashMap::new(),
-            |mut init: HashMap<ObjKey, GraphEdges>, (&x, _)| {
-                let decl = &self.tc_objs.decls[self.obj_map[&x]];
+            |mut init: HashMap<ObjKey, GraphEdges>, (&x, &decl_key)| {
+                let decl = &self.tc_objs.decls[decl_key];
                 if decl.has_initializer(self.ast_objs) {
                     let deps: HashSet<ObjKey> = decl.deps().iter().map(|z| *z).collect();
                     init.insert(x, GraphEdges::new(Rc::new(RefCell::new(deps))));
@@ -137,7 +138,10 @@ impl<'a> Checker<'a> {
         // add the edges for the other direction
         for (o, node) in map.iter() {
             for s in node.succ.borrow().iter() {
-                map[s].pred.borrow_mut().insert(*o);
+                let decl = &self.tc_objs.decls[self.obj_map[s]];
+                if decl.has_initializer(self.ast_objs) {
+                    map[s].pred.borrow_mut().insert(*o);
+                }
             }
         }
 
@@ -189,21 +193,23 @@ impl<'a> Checker<'a> {
 /// such that there is a path of object dependencies from 'from' to 'to'.
 /// If there is no such path, the result is None.
 fn find_path(
-    edges: &HashMap<ObjKey, GraphEdges>,
+    map: &HashMap<ObjKey, DeclInfoKey>,
     from: ObjKey,
     to: ObjKey,
     visited: &mut HashSet<ObjKey>,
+    tc_objs: &TCObjects,
 ) -> Option<Vec<ObjKey>> {
     if visited.contains(&from) {
         return None;
     }
     visited.insert(from);
 
-    for &d in edges[&from].succ.borrow().iter() {
+    let decl = &tc_objs.decls[map[&from]];
+    for &d in decl.deps().iter() {
         if d == to {
             return Some(vec![d]);
         }
-        if let Some(mut p) = find_path(edges, d, to, visited) {
+        if let Some(mut p) = find_path(map, d, to, visited, tc_objs) {
             p.push(d);
             return Some(p);
         }

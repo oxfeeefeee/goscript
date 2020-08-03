@@ -20,6 +20,8 @@ fn load_parse_check(dir: &str, trace: bool) -> usize {
     let key = types::ImportKey::new("./", dir);
     importer.import(&key).unwrap();
 
+    el.sort();
+    sel.sort();
     print!("{}", el);
     print!("{}", sel);
 
@@ -44,4 +46,19 @@ fn test_types_cycles() {
 #[test]
 fn test_types_decl() {
     load_parse_check("./tests/data/case4/", true);
+}
+
+#[test]
+fn test_types_decl1() {
+    load_parse_check("./tests/data/case5/", true);
+}
+
+#[test]
+fn test_types_init() {
+    load_parse_check("./tests/data/case6/", true);
+}
+
+#[test]
+fn test_types_simple() {
+    load_parse_check("./tests/data/simple/", true);
 }

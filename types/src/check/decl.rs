@@ -301,7 +301,7 @@ impl<'a> Checker<'a> {
             let tval = &self.tc_objs.types[t];
             if !tval.is_const_type(self.tc_objs) {
                 let invalid_type = self.invalid_type();
-                if tval.underlying().unwrap_or(t) == invalid_type {
+                if tval.underlying().unwrap_or(t) != invalid_type {
                     self.error(
                         e.pos(self.ast_objs),
                         format!("invalid constant type {}", self.new_dis(&t)),

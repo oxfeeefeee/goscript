@@ -60,7 +60,7 @@ impl<'a> Scanner<'a> {
         self.semi1 = self.semi2;
         self.semi2 = false;
         self.skip_whitespace();
-        let pos = self.offset;
+        let pos = self.file().pos(self.offset);
         let token = match self.peek_char() {
             Some(&ch) if is_letter(ch) => {
                 let t = self.scan_identifier();

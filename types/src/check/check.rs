@@ -447,7 +447,6 @@ impl<'a> Checker<'a> {
     /// init files and package name
     fn init_files_pkg_name(&mut self, files: Vec<ast::File>) -> Result<Vec<ast::File>, ()> {
         let mut result = Vec::with_capacity(files.len());
-        //let pkg_val = &mut self.tc_objs.pkgs[self.pkg];
         let mut pkg_name: Option<String> = None;
         for f in files.into_iter() {
             let ident = &self.ast_objs.idents[f.name];
@@ -473,6 +472,7 @@ impl<'a> Checker<'a> {
                 return Err(());
             }
         }
+        self.tc_objs.pkgs[self.pkg].set_name(pkg_name.unwrap());
         Ok(result)
     }
 

@@ -156,7 +156,7 @@ impl<'a> Checker<'a> {
         skey: ScopeKey,
         iface: &Rc<ast::InterfaceType>,
         tname: Option<ObjKey>,
-        path: &mut Vec<ObjKey>,
+        path: &Vec<ObjKey>,
         fctx: &mut FilesContext,
     ) -> Option<RcIfaceInfo> {
         if self.config().trace_checker {
@@ -292,7 +292,7 @@ impl<'a> Checker<'a> {
         &self,
         skey: ScopeKey,
         name: IdentKey,
-        path: &mut Vec<ObjKey>,
+        path: &Vec<ObjKey>,
         fctx: &mut FilesContext,
     ) -> Option<RcIfaceInfo> {
         // A single call of info_from_type_name handles a sequence of (possibly
@@ -344,8 +344,6 @@ impl<'a> Checker<'a> {
                 break;
             }
 
-            path.push(tname);
-
             // If tname is a package-level type declaration, it must be
             // in the obj_map. Follow the RHS of that declaration if so.
             // The RHS may be a literal type (likely case), or another
@@ -367,11 +365,13 @@ impl<'a> Checker<'a> {
                     }
                     Expr::Interface(iface) => {
                         // type tname interface{...}
+                        let mut p = path.clone();
+                        p.push(tname);
                         return self.info_from_type_lit(
                             decl.file_scope,
                             iface,
                             Some(tname),
-                            path,
+                            &p,
                             fctx,
                         );
                     }

@@ -192,7 +192,7 @@ impl FileSet {
 
     pub fn file(&self, p: Pos) -> Option<&File> {
         for f in self.files.iter() {
-            if f.base < p && f.base + f.size >= p {
+            if f.base <= p && f.base + f.size >= p {
                 return Some(f.borrow());
             }
         }

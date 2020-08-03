@@ -949,7 +949,6 @@ impl<'a> CodeGen<'a> {
         match expr {
             Expr::BasicLit(lit) => self.get_const_value(typ, lit),
             _ => {
-                dbg!(expr);
                 self.errors.add_str(
                     expr.pos(self.ast_objs),
                     "complex constant not supported yet",

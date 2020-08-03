@@ -611,14 +611,13 @@ impl<'a> Checker<'a> {
         fctx.later(Box::new(f));
 
         // compute method set
-        let (tname, mut path) = if let Some(d) = def {
+        let (tname, path) = if let Some(d) = def {
             let t = *self.otype(d).try_as_named().unwrap().obj();
             (t, vec![t.unwrap()])
         } else {
             (None, vec![])
         };
-        let mut info =
-            self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, &mut path, fctx);
+        let mut info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, &path, fctx);
         if info.is_none() || info.as_ref().unwrap().as_ref().borrow().is_empty() {
             // we got an error or the empty interface - exit early
             self.otype_interface_mut(itype).set_empty_complete();

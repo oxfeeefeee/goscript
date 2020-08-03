@@ -241,12 +241,13 @@ impl<'a> Checker<'a> {
                 let ident = self.ast_ident(*ikey);
                 if let Some(okey) = self.lookup(&ident.name) {
                     let lobj = &mut self.tc_objs.lobjs[okey];
+                    let lobj_pkg = lobj.pkg();
                     match lobj.entity_type_mut() {
-                        EntityType::PkgName(pkey, used) => {
-                            debug_assert_eq!(self.pkg, *pkey);
+                        EntityType::PkgName(imported, used) => {
+                            debug_assert_eq!(self.pkg, lobj_pkg.unwrap());
                             self.result.record_use(*ikey, okey);
                             *used = true;
-                            let pkg = &self.tc_objs.pkgs[lobj.pkg_name_imported()];
+                            let pkg = &self.tc_objs.pkgs[*imported];
                             let sel_name = &self.ast_objs.idents[e.sel].name;
                             let exp_op = self.tc_objs.scopes[*pkg.scope()].lookup(sel_name);
                             if exp_op.is_none() {

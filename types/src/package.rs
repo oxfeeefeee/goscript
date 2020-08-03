@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 /// A Package describes a Go package.
+#[derive(Debug)]
 pub struct Package {
     path: String,
     name: Option<String>,

@@ -535,7 +535,7 @@ impl<'a> Checker<'a> {
                 let obj_val = self.lobj(*okey);
                 match obj_val.entity_type() {
                     EntityType::PkgName(pkey, used) => {
-                        if *used {
+                        if !*used {
                             let (path, base) = self.pkg_path_and_name(*pkey);
                             if obj_val.name() == base {
                                 self.soft_error(

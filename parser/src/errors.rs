@@ -6,23 +6,19 @@ use std::rc::Rc;
 #[derive(Clone, Debug)]
 struct Error {
     pos: position::Position,
+    order: usize, // display order
     msg: String,
 }
 
 #[derive(Clone, Debug)]
-struct ErrorListImpl {
-    errs: Vec<Error>,
-}
-
-#[derive(Clone, Debug)]
 pub struct ErrorList {
-    imp: Rc<RefCell<ErrorListImpl>>,
+    errors: Rc<RefCell<Vec<Error>>>,
 }
 
 impl fmt::Display for ErrorList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Result: {} errors\n", self.imp.borrow().errs.len())?;
-        for e in self.imp.borrow().errs.iter() {
+        write!(f, "Result: {} errors\n", self.errors.borrow().len())?;
+        for e in self.errors.borrow().iter() {
             write!(f, "{} {}\n", e.pos, e.msg)?;
         }
         Ok(())
@@ -32,16 +28,36 @@ impl fmt::Display for ErrorList {
 impl ErrorList {
     pub fn new() -> ErrorList {
         ErrorList {
-            imp: Rc::new(RefCell::new(ErrorListImpl { errs: vec![] })),
+            errors: Rc::new(RefCell::new(vec![])),
         }
     }
 
     pub fn add(&self, p: position::Position, msg: String) {
-        self.imp.borrow_mut().errs.push(Error { pos: p, msg: msg });
+        let order = if msg.starts_with('\t') {
+            self.errors
+                .borrow()
+                .iter()
+                .rev()
+                .find(|x| !x.msg.starts_with('\t'))
+                .unwrap()
+                .pos
+                .offset
+        } else {
+            p.offset
+        };
+        self.errors.borrow_mut().push(Error {
+            pos: p,
+            order: order,
+            msg: msg,
+        });
     }
 
     pub fn len(&self) -> usize {
-        self.imp.borrow().errs.len()
+        self.errors.borrow().len()
+    }
+
+    pub fn sort(&mut self) {
+        self.errors.borrow_mut().sort_by_key(|e| e.order);
     }
 }
 

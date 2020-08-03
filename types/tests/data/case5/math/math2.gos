@@ -1,0 +1,4 @@
+package math
+
+const Pi2 = 6.28
+
