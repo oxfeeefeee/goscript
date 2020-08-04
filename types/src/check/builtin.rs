@@ -67,7 +67,7 @@ impl<'a> Checker<'a> {
                         }
                     }
                     UnpackResult::Nothing => {} // do nothing
-                    UnpackResult::Mismatch(_) => {
+                    UnpackResult::Mismatch(_, _) => {
                         let msg = if nargs < binfo.arg_count {
                             Some("not enough")
                         } else if nargs > binfo.arg_count && !binfo.variadic {

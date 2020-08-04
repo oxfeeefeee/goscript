@@ -755,7 +755,7 @@ impl<'a> Checker<'a> {
         let path = pkg_val.path();
         if let Some((i, _)) = path.match_indices('/').next() {
             if i > 0 {
-                return (&path, &path[0..i]);
+                return (&path, &path[i + 1..]);
             }
         }
         (&path, &path)

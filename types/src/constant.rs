@@ -210,16 +210,28 @@ impl Value {
                     _ => false,
                 }
             }
-            BasicInfo::IsBoolean => base.info() == BasicInfo::IsBoolean,
-            BasicInfo::IsString => base.info() == BasicInfo::IsString,
+            BasicInfo::IsBoolean => match self {
+                Value::Bool(_) => true,
+                _ => false,
+            },
+            BasicInfo::IsString => match self {
+                Value::Str(_) => true,
+                _ => false,
+            },
             _ => false,
         }
     }
 
     pub fn to_int(&self) -> Cow<Value> {
         let f64_to_int = |x| -> Cow<Value> {
-            match BigInt::from_f64(x) {
-                Some(v) => Cow::Owned(Value::Int(v)),
+            match BigRational::from_f64(x) {
+                Some(v) => {
+                    if v.is_integer() {
+                        Cow::Owned(Value::Int(v.to_integer()))
+                    } else {
+                        Cow::Owned(Value::Unknown)
+                    }
+                }
                 None => Cow::Owned(Value::Unknown),
             }
         };
@@ -412,6 +424,10 @@ impl Value {
                     let bcad = sub(&bc, &ad);
                     Value::Complex(bx(div(&acbd, &s)), bx(div(&bcad, &s)))
                 }
+                _ => unreachable!(),
+            },
+            (Value::Str(a), Value::Str(b)) => match op {
+                Token::ADD => Value::Str(format!("{}{}", a, b)),
                 _ => unreachable!(),
             },
             _ => unreachable!(),

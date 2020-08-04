@@ -358,7 +358,14 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
         self.f.write_char('(')?;
-        self.visit_expr(clit.typ.as_ref().unwrap())?;
+        match &clit.typ {
+            Some(t) => {
+                self.visit_expr(t)?;
+            }
+            None => {
+                self.f.write_str("(bad expr)")?;
+            }
+        }
         self.f.write_str(" literal)")
     }
 
@@ -407,7 +414,14 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
     fn visit_expr_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>) -> Self::Result {
         self.visit_expr(expr)?;
         self.f.write_str(".(")?;
-        self.visit_expr(typ.as_ref().unwrap())?;
+        match &typ {
+            Some(t) => {
+                self.visit_expr(t)?;
+            }
+            None => {
+                self.f.write_str("(bad expr)")?;
+            }
+        }
         self.f.write_char(')')
     }
 

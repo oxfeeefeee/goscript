@@ -272,10 +272,9 @@ impl<'a> Checker<'a> {
         };
         match result {
             UnpackResult::Error => invalidate_lhs(),
-            UnpackResult::Mismatch(exprs) => {
+            UnpackResult::Mismatch(exprs, rl) => {
                 invalidate_lhs();
                 result.use_(self, 0, fctx);
-                let rl = exprs.len();
                 if let Some(p) = return_pos {
                     self.error(
                         p,
@@ -321,7 +320,13 @@ impl<'a> Checker<'a> {
         let result = self.unpack(rhs, ll, ll == 2, fctx);
         match result {
             UnpackResult::Error => self.use_lhs(lhs, fctx),
-            UnpackResult::Mismatch(_) => result.use_(self, 0, fctx),
+            UnpackResult::Mismatch(rhs, rhs_count) => {
+                result.use_(self, 0, fctx);
+                self.error(
+                    rhs[0].pos(self.ast_objs),
+                    format!("cannot assign {} values to {} variables", rhs_count, ll),
+                );
+            }
             UnpackResult::Tuple(_, _)
             | UnpackResult::CommaOk(_, _)
             | UnpackResult::Mutliple(_)

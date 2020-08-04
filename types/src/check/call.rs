@@ -68,7 +68,7 @@ impl<'a> Checker<'a> {
                     let sig_results = sig.results();
                     let result = self.unpack(&e.args, e.args.len(), false, fctx);
                     match result {
-                        UnpackResult::Nothing | UnpackResult::Mismatch(_) | UnpackResult::Error => {
+                        UnpackResult::Mismatch(_, _) | UnpackResult::Error => {
                             x.mode = OperandMode::Invalid
                         }
                         _ => {

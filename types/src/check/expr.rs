@@ -100,13 +100,16 @@ impl<'a> Checker<'a> {
     fn unary(&mut self, x: &mut Operand, e: Option<Expr>, op: &Token) {
         match op {
             Token::AND => {
-                // spec: "As an exception to the addressability
-                // requirement x may also be a composite literal."
-                if let Expr::CompositeLit(_) = Checker::unparen(x.expr.as_ref().unwrap()) {
-                    if x.mode != OperandMode::Variable {
-                        let xd = self.new_dis(x);
-                        self.invalid_op(xd.pos(), &format!("cannot take address of {}", xd));
-                        return;
+                // spec: "As an exception to the addressability requirement
+                // x may also be a composite literal."
+                match Checker::unparen(x.expr.as_ref().unwrap()) {
+                    Expr::CompositeLit(_) => {}
+                    _ => {
+                        if x.mode != OperandMode::Variable {
+                            let xd = self.new_dis(x);
+                            self.invalid_op(xd.pos(), &format!("cannot take address of {}", xd));
+                            return;
+                        }
                     }
                 }
                 x.mode = OperandMode::Value;
@@ -489,7 +492,7 @@ impl<'a> Checker<'a> {
         let u = o.universe();
         let (xtype, ytype) = (x.typ.unwrap(), y.typ.unwrap());
         let (xtval, ytval) = (self.otype(xtype), self.otype(ytype));
-        let emsg = if x.assignable_to(ytype, None, o) || x.assignable_to(xtype, None, o) {
+        let emsg = if x.assignable_to(ytype, None, o) || y.assignable_to(xtype, None, o) {
             let defined = match op {
                 Token::EQL | Token::NEQ => {
                     (xtval.comparable(o) && ytval.comparable(o))
@@ -735,7 +738,7 @@ impl<'a> Checker<'a> {
             // only report an error if we have valid types
             // (otherwise we had an error reported elsewhere already)
             let invalid = Some(self.invalid_type());
-            if x.typ == invalid && y.typ == invalid {
+            if x.typ != invalid && y.typ != invalid {
                 let xd = self.new_td_o(&x.typ);
                 let yd = self.new_td_o(&y.typ);
                 self.invalid_op(xd.pos(), &format!("mismatched types {} and {}", xd, yd));
@@ -863,12 +866,16 @@ impl<'a> Checker<'a> {
         let (_, max) = elems.iter().fold((0, 0), |(index, max), e| {
             let (valid_index, eval) = if let Expr::KeyValue(kv) = e {
                 let i = self.index(&kv.key, length, fctx);
-                let kv_index = if i.is_ok() && i.unwrap().is_some() {
-                    i.unwrap()
+                let kv_index = if i.is_ok() {
+                    if let Some(index) = i.unwrap() {
+                        Some(index)
+                    } else {
+                        let pos = e.pos(self.ast_objs);
+                        let kd = self.new_dis(&kv.key);
+                        self.error(pos, format!("index {} must be integer constant", kd));
+                        None
+                    }
                 } else {
-                    let pos = e.pos(self.ast_objs);
-                    let kd = self.new_dis(&kv.key);
-                    self.error(pos, format!("index {} must be integer constant", kd));
                     None
                 };
                 (kv_index, &kv.val)
@@ -1112,7 +1119,7 @@ impl<'a> Checker<'a> {
                                         continue;
                                     }
                                     self.expr(x, e, fctx);
-                                    if i > fields.len() {
+                                    if i >= fields.len() {
                                         let pos = x.pos(self.ast_objs);
                                         self.error_str(pos, "too many values in struct literal");
                                         break; // cannot continue

@@ -21,13 +21,14 @@ macro_rules! error_operand {
     };
 }
 
+#[derive(Debug)]
 pub enum UnpackResult<'a> {
     Tuple(Option<Expr>, Vec<Option<TypeKey>>), // rhs is a tuple
     CommaOk(Option<Expr>, [TypeKey; 2]),       // rhs returns comma_ok
     Mutliple(&'a Vec<Expr>),                   // N to N
     Single(Operand),                           // 1 to 1
     Nothing,                                   // nothing to unpack
-    Mismatch(&'a Vec<Expr>),                   // M to N (M != N)
+    Mismatch(&'a Vec<Expr>, usize),            // M to N (M != N)
     Error,                                     // errors when trying to unpack
 }
 
@@ -53,7 +54,7 @@ impl<'a> UnpackResult<'a> {
                 x.typ = sx.typ;
             }
             UnpackResult::Nothing => unreachable!(),
-            UnpackResult::Mismatch(_) => unreachable!(),
+            UnpackResult::Mismatch(_, _) => unreachable!(),
             UnpackResult::Error => unreachable!(),
         }
     }
@@ -61,7 +62,7 @@ impl<'a> UnpackResult<'a> {
     pub fn use_(&self, checker: &mut Checker, from: usize, fctx: &mut FilesContext) {
         let exprs = match self {
             UnpackResult::Mutliple(exprs) => exprs,
-            UnpackResult::Mismatch(exprs) => exprs,
+            UnpackResult::Mismatch(exprs, _) => exprs,
             _ => {
                 return;
             }
@@ -221,7 +222,7 @@ impl<'a> Checker<'a> {
     ) -> UnpackResult<'b> {
         if rhs.len() != 1 {
             return if lhs_len != rhs.len() {
-                UnpackResult::Mismatch(rhs)
+                UnpackResult::Mismatch(rhs, rhs.len())
             } else if lhs_len == 0 {
                 UnpackResult::Nothing
             } else {
@@ -236,7 +237,11 @@ impl<'a> Checker<'a> {
         }
 
         if let Some(t) = self.otype(x.typ.unwrap()).try_as_tuple() {
-            let types = t.vars().iter().map(|x| self.lobj(*x).typ()).collect();
+            let types: Vec<Option<TypeKey>> =
+                t.vars().iter().map(|x| self.lobj(*x).typ()).collect();
+            if types.len() != lhs_len {
+                return UnpackResult::Mismatch(rhs, types.len());
+            }
             return UnpackResult::Tuple(x.expr.clone(), types);
         } else if x.mode == OperandMode::MapIndex || x.mode == OperandMode::CommaOk {
             if allow_comma_ok {
@@ -246,6 +251,9 @@ impl<'a> Checker<'a> {
             x.mode = OperandMode::Value;
         }
 
+        if lhs_len != 1 {
+            return UnpackResult::Mismatch(rhs, 1);
+        }
         UnpackResult::Single(x)
     }
 
@@ -265,7 +273,7 @@ impl<'a> Checker<'a> {
         for e in lhs.iter() {
             let v = match Checker::unparen(e) {
                 Expr::Ident(ikey) => match &self.ast_ident(*ikey).name {
-                    s if s == "_" => None,
+                    s if s == "_" => continue,
                     s => Scope::lookup_parent(
                         self.octx.scope.as_ref().unwrap(),
                         s,

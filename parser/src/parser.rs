@@ -2470,7 +2470,8 @@ impl<'a> Parser<'a> {
 
     pub fn parse_file(&mut self) -> Option<File> {
         self.trace_begin("File");
-
+        
+        let err_count = self.errors.len();
         let pos = self.expect(&Token::PACKAGE);
         // Go spec: The package clause is not a declaration;
 	    // the package name does not appear in any scope.
@@ -2482,7 +2483,7 @@ impl<'a> Parser<'a> {
 
         // Don't bother parsing the rest if we had errors parsing the package clause.
 	    // Likely not a Go source file at all.
-	    if self.errors.len() > 0 {
+	    if self.errors.len() > err_count {
             self.trace_end();
             return None
         }

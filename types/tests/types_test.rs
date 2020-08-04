@@ -59,6 +59,16 @@ fn test_types_init() {
 }
 
 #[test]
+fn test_types_expr() {
+    load_parse_check("./tests/data/case7/", true);
+}
+
+#[test]
+fn test_types_stmt() {
+    load_parse_check("./tests/data/case8/", true);
+}
+
+#[test]
 fn test_types_simple() {
     load_parse_check("./tests/data/simple/", true);
 }

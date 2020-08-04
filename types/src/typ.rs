@@ -383,7 +383,8 @@ impl BasicInfo {
 
     pub fn is_const_type(&self) -> bool {
         match self {
-            BasicInfo::IsInteger
+            BasicInfo::IsBoolean
+            | BasicInfo::IsInteger
             | BasicInfo::IsFloat
             | BasicInfo::IsComplex
             | BasicInfo::IsString => true,

@@ -1,0 +1,20 @@
+// Copyright 2012 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// statements
+
+package stmt0
+
+func assignments0() (int, int) {
+	var a, b, c int
+	var ch chan int
+	f0 := func() {}
+	f1 := func() int { return 1 }
+	f2 := func() (int, int) { return 1, 2 }
+	f3 := func() (int, int, int) { return 1, 2, 3 }
+
+	a = f2 /* ERROR "cannot assign [1-9]+ values to [1-9]+ variables" */ ()
+	a, b = f2()
+	a, b, c = f2 /* ERROR "cannot assign [1-9]+ values to [1-9]+ variables" */ ()
+}
