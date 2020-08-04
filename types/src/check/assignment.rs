@@ -263,7 +263,12 @@ impl<'a> Checker<'a> {
     ) {
         let invalid_type = self.invalid_type();
         let ll = lhs.len();
-        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_some(), fctx);
+        // requires return_pos.is_none for this:
+        // func() (int, bool) {
+        //    var m map[int]int
+        //    return /* ERROR "wrong number of return values" */ m[0]
+        // }
+        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_none(), fctx);
 
         let mut invalidate_lhs = || {
             for okey in lhs.iter() {
