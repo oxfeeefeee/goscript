@@ -43,7 +43,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn error(&self, msg: &str) {
-        errors::FilePosErrors::new(self.file, self.errors).add_str(self.offset, msg);
+        errors::FilePosErrors::new(self.file, self.errors).add_str(self.offset, msg, false);
     }
 
     fn position(&self) -> position::Position {

@@ -1,6 +1,15 @@
-package simple
+// Copyright 2012 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
-var a = 1
-var c = b + d
-var b  = 3
-var d = a + 1
+// statements
+
+package stmt0
+
+
+func _(x, y int) (z int) {
+L:	for {
+		for { break L }
+		return
+	}
+} /* ERROR "missing return" */

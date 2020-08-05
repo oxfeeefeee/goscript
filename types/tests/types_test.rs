@@ -13,19 +13,16 @@ fn load_parse_check(dir: &str, trace: bool) -> usize {
     let fs = &mut fe::FileSet::new();
     let asto = &mut fe::objects::Objects::new();
     let el = &mut fe::errors::ErrorList::new();
-    let sel = &mut fe::errors::ErrorList::new();
     let tco = &mut types::objects::TCObjects::new();
 
-    let importer = &mut types::Importer::new(&config, fs, pkgs, asto, tco, el, sel, 0);
+    let importer = &mut types::Importer::new(&config, fs, pkgs, asto, tco, el, 0);
     let key = types::ImportKey::new("./", dir);
     importer.import(&key).unwrap();
 
     el.sort();
-    sel.sort();
     print!("{}", el);
-    print!("{}", sel);
 
-    el.len() + sel.len()
+    el.len()
 }
 
 #[test]
@@ -44,7 +41,7 @@ fn test_types_cycles() {
 }
 
 #[test]
-fn test_types_decl() {
+fn test_types_decl0() {
     load_parse_check("./tests/data/case4/", true);
 }
 
@@ -66,6 +63,16 @@ fn test_types_expr() {
 #[test]
 fn test_types_stmt() {
     load_parse_check("./tests/data/case8/", true);
+}
+
+#[test]
+fn test_types_stmt1() {
+    load_parse_check("./tests/data/case9/", true);
+}
+
+#[test]
+fn test_types_goto() {
+    load_parse_check("./tests/data/goto/", true);
 }
 
 #[test]

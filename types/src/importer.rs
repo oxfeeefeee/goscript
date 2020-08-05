@@ -63,7 +63,6 @@ pub struct Importer<'a> {
     ast_objs: &'a mut AstObjects,
     tc_objs: &'a mut TCObjects,
     errors: &'a ErrorList,
-    soft_errors: &'a ErrorList,
     pos: position::Pos,
 }
 
@@ -75,7 +74,6 @@ impl<'a> Importer<'a> {
         ast_objs: &'a mut AstObjects,
         tc_objs: &'a mut TCObjects,
         errors: &'a ErrorList,
-        soft_errors: &'a ErrorList,
         pos: position::Pos,
     ) -> Importer<'a> {
         Importer {
@@ -85,7 +83,6 @@ impl<'a> Importer<'a> {
             ast_objs: ast_objs,
             tc_objs: tc_objs,
             errors: errors,
-            soft_errors: soft_errors,
             pos: pos,
         }
     }
@@ -105,7 +102,6 @@ impl<'a> Importer<'a> {
             self.ast_objs,
             self.fset,
             self.errors,
-            self.soft_errors,
             self.pkgs,
             pkg,
             self.config,
@@ -190,7 +186,7 @@ impl<'a> Importer<'a> {
 
     fn error(&self, err: String) {
         let pos_file = self.fset.file(self.pos).unwrap();
-        FilePosErrors::new(pos_file, self.errors).add(self.pos, err);
+        FilePosErrors::new(pos_file, self.errors).add(self.pos, err, false);
     }
 }
 

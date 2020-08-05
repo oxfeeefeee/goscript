@@ -6,8 +6,9 @@ use std::rc::Rc;
 #[derive(Clone, Debug)]
 struct Error {
     pos: position::Position,
-    order: usize, // display order
     msg: String,
+    soft: bool,
+    order: usize, // display order
 }
 
 #[derive(Clone, Debug)]
@@ -32,7 +33,7 @@ impl ErrorList {
         }
     }
 
-    pub fn add(&self, p: position::Position, msg: String) {
+    pub fn add(&self, p: position::Position, msg: String, soft: bool) {
         let order = if msg.starts_with('\t') {
             self.errors
                 .borrow()
@@ -47,8 +48,9 @@ impl ErrorList {
         };
         self.errors.borrow_mut().push(Error {
             pos: p,
-            order: order,
             msg: msg,
+            soft: soft,
+            order: order,
         });
     }
 
@@ -75,12 +77,12 @@ impl<'a> FilePosErrors<'a> {
         }
     }
 
-    pub fn add(&self, pos: position::Pos, msg: String) {
+    pub fn add(&self, pos: position::Pos, msg: String, soft: bool) {
         let p = self.file.position(pos);
-        self.elist.add(p, msg);
+        self.elist.add(p, msg, soft);
     }
 
-    pub fn add_str(&self, pos: position::Pos, s: &str) {
-        self.add(pos, s.to_string());
+    pub fn add_str(&self, pos: position::Pos, s: &str, soft: bool) {
+        self.add(pos, s.to_string(), soft);
     }
 }

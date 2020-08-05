@@ -193,12 +193,12 @@ impl<'a> Checker<'a> {
                 // If the lhs is an identifier denoting a variable v, this assignment
                 // is not a 'use' of v. Remember current value of v.used and restore
                 // after evaluating the lhs via check.expr.
-                if let Some(okey) = self.octx.lookup(name, self.tc_objs) {
+                if let Some(okey) = self.lookup(name) {
                     // It's ok to mark non-local variables, but ignore variables
                     // from other packages to avoid potential race conditions with
                     // dot-imported variables.
-                    if let EntityType::Var(prop) = self.lobj(*okey).entity_type() {
-                        v = Some(*okey);
+                    if let EntityType::Var(prop) = self.lobj(okey).entity_type() {
+                        v = Some(okey);
                         v_used = prop.used;
                     }
                 }
@@ -268,7 +268,7 @@ impl<'a> Checker<'a> {
         //    var m map[int]int
         //    return /* ERROR "wrong number of return values" */ m[0]
         // }
-        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_none(), fctx);
+        let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_none(), false, fctx);
 
         let mut invalidate_lhs = || {
             for okey in lhs.iter() {
@@ -322,7 +322,7 @@ impl<'a> Checker<'a> {
 
     pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>, fctx: &mut FilesContext) {
         let ll = lhs.len();
-        let result = self.unpack(rhs, ll, ll == 2, fctx);
+        let result = self.unpack(rhs, ll, ll == 2, false, fctx);
         match result {
             UnpackResult::Error => self.use_lhs(lhs, fctx),
             UnpackResult::Mismatch(rhs, rhs_count) => {

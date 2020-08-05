@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 type F64 = ordered_float::OrderedFloat<f64>;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct StmtContext {
     break_ok: bool,
     continue_ok: bool,
@@ -189,8 +189,8 @@ impl<'a> Checker<'a> {
             .enumerate()
             .rev()
             .find_map(|(i, x)| match x {
-                Stmt::Empty(_) => Some(i),
-                _ => None,
+                Stmt::Empty(_) => None,
+                _ => Some(i + 1),
             })
             .unwrap_or(list.len());
         for (i, s) in list[0..index].iter().enumerate() {
@@ -356,9 +356,10 @@ impl<'a> Checker<'a> {
                     self.error_str(pos, "\tprevious case");
                     return None;
                 }
-                seen.insert(t, e.pos(self.ast_objs));
+                let pos = e.pos(self.ast_objs);
+                seen.insert(t, pos);
                 if let Some(t) = t {
-                    self.type_assertion(x, xtype, t);
+                    self.type_assertion(Some(pos), x, xtype, t);
                 }
                 Some(t)
             })
@@ -525,9 +526,9 @@ impl<'a> Checker<'a> {
                         // spec: "Implementation restriction: A compiler may disallow an empty expression
                         // list in a "return" statement if a different entity (constant, type, or variable)
                         // with the same name as a result parameter is in scope at the place of the return."
-                        for okey in res.vars().iter() {
-                            let lobj = self.lobj(*okey);
-                            if let Some(alt) = self.octx.lookup(lobj.name(), self.tc_objs) {
+                        for &okey in res.vars().iter() {
+                            let lobj = self.lobj(okey);
+                            if let Some(alt) = self.lookup(lobj.name()) {
                                 if alt == okey {
                                     continue;
                                 }
@@ -538,7 +539,7 @@ impl<'a> Checker<'a> {
                                         lobj.name()
                                     ),
                                 );
-                                let (altd, objd) = (self.new_dis(alt), self.new_dis(okey));
+                                let (altd, objd) = (self.new_dis(&alt), self.new_dis(&okey));
                                 self.error(altd.pos(), format!("\tinner declaration of {}", objd));
                                 // ok to continue
                             }
@@ -654,7 +655,7 @@ impl<'a> Checker<'a> {
                         self.case_values(x, &cc.list, &mut seen, fctx);
                         self.open_scope(stmt, "case".to_string());
                         let mut inner2 = inner_ctx.clone();
-                        if i + 1 < cc.body.len() {
+                        if i + 1 < ss.body.list.len() {
                             inner2.fallthrough_ok = true;
                         } else {
                             inner2.final_switch_case = true;
@@ -815,7 +816,7 @@ impl<'a> Checker<'a> {
                         _ => continue, // error reported before
                     };
                     // clause.Comm must be a SendStmt, RecvStmt, or default case
-                    let is_recv = |e: &Expr| match e {
+                    let is_recv = |e: &Expr| match Checker::unparen(e) {
                         Expr::Unary(ue) => ue.op == Token::ARROW,
                         _ => false,
                     };

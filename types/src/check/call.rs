@@ -66,7 +66,8 @@ impl<'a> Checker<'a> {
                 let sig_key = typ::underlying_type(x.typ.unwrap(), self.tc_objs);
                 if let Some(sig) = self.otype(sig_key).try_as_signature() {
                     let sig_results = sig.results();
-                    let result = self.unpack(&e.args, e.args.len(), false, fctx);
+                    let variadic = sig.variadic();
+                    let result = self.unpack(&e.args, e.args.len(), false, variadic, fctx);
                     match result {
                         UnpackResult::Mismatch(_, _) | UnpackResult::Error => {
                             x.mode = OperandMode::Invalid

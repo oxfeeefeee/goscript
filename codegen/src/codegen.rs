@@ -949,7 +949,7 @@ impl<'a> CodeGen<'a> {
         match expr {
             Expr::BasicLit(lit) => self.get_const_value(typ, lit),
             _ => {
-                self.errors.add_str(
+                self.add_error_str(
                     expr.pos(self.ast_objs),
                     "complex constant not supported yet",
                 );
@@ -984,7 +984,7 @@ impl<'a> CodeGen<'a> {
                     (GosValue::Int(_), Token::FLOAT(f)) => {
                         let fval = f.as_str().parse::<f64>().unwrap();
                         if fval.fract() != 0.0 {
-                            self.errors.add(
+                            self.add_error(
                                 blit.pos,
                                 format!("constant {} truncated to integer", f.as_str()),
                             );
@@ -992,8 +992,7 @@ impl<'a> CodeGen<'a> {
                         } else if (fval.round() as isize) > std::isize::MAX
                             || (fval.round() as isize) < std::isize::MIN
                         {
-                            self.errors
-                                .add(blit.pos, format!("{} overflows int", f.as_str()));
+                            self.add_error(blit.pos, format!("{} overflows int", f.as_str()));
                             Err(())
                         } else {
                             Ok(GosValue::Int(fval.round() as isize))
@@ -1002,8 +1001,7 @@ impl<'a> CodeGen<'a> {
                     (GosValue::Int(_), Token::INT(ilit)) => match ilit.as_str().parse::<isize>() {
                         Ok(i) => Ok(GosValue::Int(i)),
                         Err(_) => {
-                            self.errors
-                                .add(blit.pos, format!("{} overflows int", ilit.as_str()));
+                            self.add_error(blit.pos, format!("{} overflows int", ilit.as_str()));
                             Err(())
                         }
                     },
@@ -1024,7 +1022,7 @@ impl<'a> CodeGen<'a> {
                         &mut self.objects.strings,
                     )),
                     (_, _) => {
-                        self.errors.add_str(blit.pos, "invalid constant literal");
+                        self.add_error_str(blit.pos, "invalid constant literal");
                         Err(())
                     }
                 }
@@ -1213,19 +1211,27 @@ impl<'a> CodeGen<'a> {
         })
     }
 
+    fn add_error(&self, pos: position::Pos, msg: String) {
+        self.errors.add(pos, msg, false);
+    }
+
+    fn add_error_str(&self, pos: position::Pos, msg: &str) {
+        self.errors.add_str(pos, msg, false);
+    }
+
     fn error_undefined(&self, pos: position::Pos, name: &String) {
-        self.errors.add(pos, format!("undefined: {}", name));
+        self.add_error(pos, format!("undefined: {}", name));
     }
 
     fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
-        self.errors.add(
+        self.add_error(
             pos,
             format!("assignment mismatch: {} variables but {} values", l, r),
         )
     }
 
     fn error_type(&self, pos: position::Pos, msg: &str) {
-        self.errors.add(
+        self.add_error(
             pos,
             format!(
                 "type error(should be caught by Type Checker when it's in place): {}",

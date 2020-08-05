@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Debug)]
 struct Block {
     parent: Option<Rc<RefCell<Block>>>, // enclosing block
     lstmt: Option<LabeledStmtKey>,      // labeled statement to which this block belongs
@@ -241,8 +242,8 @@ impl<'a> Checker<'a> {
                         .map(|x| x.clone())
                         .collect();
                 }
-                self.stmt_branches(all, block, &lable_stmt, ctx);
                 ctx.lstmt = Some(*lkey);
+                self.stmt_branches(all, block, &lable_stmt, ctx);
             }
             Stmt::Branch(bs) => {
                 if let Some(label) = bs.label {

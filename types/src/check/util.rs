@@ -218,12 +218,20 @@ impl<'a> Checker<'a> {
         rhs: &'b Vec<Expr>,
         lhs_len: usize,
         allow_comma_ok: bool,
+        variadic: bool,
         fctx: &mut FilesContext,
     ) -> UnpackResult<'b> {
+        let mismatch = |rhs_len: usize| {
+            if variadic {
+                rhs_len + 1 < lhs_len
+            } else {
+                rhs_len != lhs_len
+            }
+        };
         if rhs.len() != 1 {
-            return if lhs_len != rhs.len() {
+            return if mismatch(rhs.len()) {
                 UnpackResult::Mismatch(rhs, rhs.len())
-            } else if lhs_len == 0 {
+            } else if rhs.len() == 0 {
                 UnpackResult::Nothing
             } else {
                 UnpackResult::Mutliple(rhs)
@@ -239,7 +247,7 @@ impl<'a> Checker<'a> {
         if let Some(t) = self.otype(x.typ.unwrap()).try_as_tuple() {
             let types: Vec<Option<TypeKey>> =
                 t.vars().iter().map(|x| self.lobj(*x).typ()).collect();
-            if types.len() != lhs_len {
+            if mismatch(types.len()) {
                 return UnpackResult::Mismatch(rhs, types.len());
             }
             return UnpackResult::Tuple(x.expr.clone(), types);
@@ -251,7 +259,7 @@ impl<'a> Checker<'a> {
             x.mode = OperandMode::Value;
         }
 
-        if lhs_len != 1 {
+        if mismatch(1) {
             return UnpackResult::Mismatch(rhs, 1);
         }
         UnpackResult::Single(x)

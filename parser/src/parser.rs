@@ -1,4 +1,3 @@
-use std::fmt;
 use std::collections::HashMap;
 use super::position;
 use super::token::{Token, LOWEST_PREC};
@@ -8,6 +7,14 @@ use super::scope::*;
 use super::ast::*;
 use super::objects::*;
 use std::rc::Rc;
+
+// Parsing modes for parseSimpleStmt.
+#[derive(PartialEq, Eq)]
+enum ParseSimpleMode {
+    Basic,
+    LabelOk,
+    RangeOk,
+}
 
 pub struct Parser<'a> {
     objects: &'a mut Objects,
@@ -143,12 +150,10 @@ impl<'a> Parser<'a> {
                 match scope.insert(ident.name.clone(), entity) {
                     Some(prev_decl) => {
                         let p =  entity!(self, prev_decl).pos(&self.objects);
-                        let mut buf = String::new();
-                        fmt::write(&mut buf, format_args!(
+                        self.error_string(ident.pos, format!(
                             "{} redeclared in this block\n\tprevious declaration at {}",
                             ident.name, 
-                            self.file().position(p))).unwrap();
-                        self.error_string(ident.pos, buf);
+                            self.file().position(p)));
                     },
                     _ => {},
                 }
@@ -254,8 +259,7 @@ impl<'a> Parser<'a> {
         }
         let f = self.file();
         let p = f.position(pos);
-        let mut buf = String::new();
-        fmt::write(&mut buf, format_args!("{:5}:{:3}:", p.line, p.column)).unwrap();
+        let mut buf = format!("{:5}:{:3}:", p.line, p.column);
         for _ in 0..self.indent {
             buf.push_str("..");
         }
@@ -297,7 +301,7 @@ impl<'a> Parser<'a> {
     }
 
     fn error_string(&self, pos: position::Pos, msg: String) {
-        FilePosErrors::new(self.file(), self.errors).add(pos, msg);
+        FilePosErrors::new(self.file(), self.errors).add(pos, msg, false);
     }
 
     fn error_expected(&self, pos: position::Pos, msg: &str) {
@@ -1566,17 +1570,12 @@ impl<'a> Parser<'a> {
 
     // ----------------------------------------------------------------------------
     // Statements
-    
-    // Parsing modes for parseSimpleStmt.
-    const PSS_BASIC: usize = 1;
-    const PSS_LABEL_OK: usize = 2;
-    const PSS_RANGE_OK: usize = 3;
 
     // parseSimpleStmt returns true as 2nd result if it parsed the assignment
     // of a range clause (with mode == rangeOk). The returned statement is an
     // assignment with a right-hand side that is a single unary expression of
     // the form "range x". No guarantees are given for the left-hand side.
-    fn parse_simple_stmt(&mut self, mode: usize) -> (Stmt, bool) {
+    fn parse_simple_stmt(&mut self, mode: ParseSimpleMode) -> (Stmt, bool) {
         self.trace_begin("SimpleStmt");
         let ret: Stmt;
         let mut is_range = false;
@@ -1591,7 +1590,7 @@ impl<'a> Parser<'a> {
                 let (mut pos, token) = (self.pos, self.token.clone());
                 self.next();
                 let y: Vec<Expr>;
-                if mode == Parser::PSS_RANGE_OK && self.token == Token::RANGE &&
+                if mode == ParseSimpleMode::RangeOk && self.token == Token::RANGE &&
                     (token == Token::DEFINE || token == Token::ASSIGN) {
                     pos = self.pos;
                     self.next();
@@ -1616,25 +1615,37 @@ impl<'a> Parser<'a> {
                         // labeled statement
                         let colon = self.pos;
                         self.next();
-                        if mode == Parser::PSS_LABEL_OK {
-                            if let Expr::Ident(ident) = x0 {
+                        let ident = match mode {
+                            ParseSimpleMode::LabelOk => match x0 {
+                                Expr::Ident(ident) => Some(ident),
+                                _ => None
+                            }
+                            _ => None,
+                        };
+                        match ident {
+                            Some(ident) => {
                                 // Go spec: The scope of a label is the body of the 
                                 // function in which it is declared and excludes the
                                 // body of any nested function.
-                                let s = self.parse_stmt();
+                                //
+                                // wuhao todo: this messes up the declaration order! if the next stmt
+                                // contains an exact same label, the error message would be wrong
+                                // like this:
+                                // 
+                                // L1:
+                                // L1:
+                                let s = self.parse_stmt(); 
                                 let ls = LabeledStmt::arena_new(
                                     &mut self.objects, ident, colon, s);
                                 self.declare(
                                     DeclObj::LabeledStmt(ls), EntityData::NoData,
                                     EntityKind::Lbl, &self.label_scope.unwrap());
-                                Stmt::Labeled(ls.clone())
-                            } else {
+                                Stmt::Labeled(ls)
+                            }
+                            None => {
                                 self.error(colon, "illegal label declaration");
                                 Stmt::new_bad(x0.pos(&self.objects), colon + 1)
                             }
-                        } else {
-                            self.error(colon, "illegal label declaration");
-                            Stmt::new_bad(x0.pos(&self.objects), colon + 1)
                         }
                     },
                     Token::ARROW => {
@@ -1786,7 +1797,7 @@ impl<'a> Parser<'a> {
                     self.error(self.pos,
                         "var declaration not allowed in 'IF' initializer");
                 }
-                Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
+                Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0)
             }
         };
 
@@ -1801,7 +1812,7 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::SEMICOLON(true.into()));
             }
             if self.token != Token::LBRACE {
-                Some(self.parse_simple_stmt(Parser::PSS_BASIC).0)
+                Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0)
             } else {
                 None
             }
@@ -1939,7 +1950,7 @@ impl<'a> Parser<'a> {
             let bak_lev = self.expr_level;
             self.expr_level = -1;
             if let Token::SEMICOLON(_) = self.token {} else {
-                s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                s2 = Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0);
             }
             if let Token::SEMICOLON(_) = self.token {
                 self.next();
@@ -1958,7 +1969,7 @@ impl<'a> Parser<'a> {
                     // If we don't have a type switch, s2 must be an expression.
                     // Having the extra nested but empty scope won't affect it.
                     self.open_scope();
-                    s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                    s2 = Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0);
                     self.close_scope();
                 }
             }
@@ -2019,10 +2030,11 @@ impl<'a> Parser<'a> {
                         lhs.truncate(2);
                     }
                     let pos = self.pos;
+                    let token = self.token.clone();
                     self.next();
                     let rhs = self.parse_rhs();
                     let ass = Stmt::new_assign(
-                        &mut self.objects, lhs, pos, self.token.clone(), vec![rhs]);
+                        &mut self.objects, lhs, pos, token, vec![rhs]);
                     if self.token == Token::DEFINE {
                         self.short_var_decl(&ass);
                     }
@@ -2087,7 +2099,7 @@ impl<'a> Parser<'a> {
                 },
                 Token::SEMICOLON(_) => {},
                 _ => {
-                    let ss = self.parse_simple_stmt(Parser::PSS_RANGE_OK);
+                    let ss = self.parse_simple_stmt(ParseSimpleMode::RangeOk);
                     s2 = Some(ss.0);
                     is_range = ss.1;
                 }
@@ -2097,11 +2109,11 @@ impl<'a> Parser<'a> {
                     self.next();
                     s1 = s2.take();
                     if let Token::SEMICOLON(_) = self.token {} else {
-                        s2 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                        s2 = Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0);
                     }
                     self.expect_semi();
                     if self.token != Token::LBRACE {
-                        s3 = Some(self.parse_simple_stmt(Parser::PSS_BASIC).0);
+                        s3 = Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0);
                     }
                 }
             }
@@ -2175,7 +2187,7 @@ impl<'a> Parser<'a> {
             Token::MAP | Token::CHAN | Token::INTERFACE | // composite types
 		    Token::ADD | Token::SUB | Token::MUL | Token::AND |
             Token::XOR | Token::ARROW | Token::NOT => { // unary operators
-                let s = self.parse_simple_stmt(Parser::PSS_LABEL_OK).0;
+                let s = self.parse_simple_stmt(ParseSimpleMode::LabelOk).0;
                 if let Stmt::Labeled(_) = s {} else {self.expect_semi();}
                 s
             },

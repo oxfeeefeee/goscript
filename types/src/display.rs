@@ -26,7 +26,7 @@ pub trait Display {
     ) -> fmt::Result;
 
     fn position(&self, _: Option<&AstObjects>, _: Option<&TCObjects>) -> Pos {
-        0
+        unreachable!()
     }
 }
 

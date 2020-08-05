@@ -56,7 +56,7 @@ impl<'a> Checker<'a> {
             // arguments require special handling
             Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => None,
             _ => {
-                let result = self.unpack(&call.args, binfo.arg_count, false, fctx);
+                let result = self.unpack(&call.args, binfo.arg_count, false, binfo.variadic, fctx);
                 match result {
                     UnpackResult::Tuple(_, _)
                     | UnpackResult::Mutliple(_)
@@ -636,7 +636,8 @@ impl<'a> Checker<'a> {
                 }
 
                 x.mode = OperandMode::NoValue;
-                record(self, None, &params, true);
+                // note: not variadic
+                record(self, None, &params, false);
             }
             Builtin::Recover => {
                 // recover() interface{}

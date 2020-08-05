@@ -35,7 +35,7 @@ impl<'a> Checker<'a> {
             Stmt::Switch(ss) => self.is_terminating_switch(&ss.body, label),
             Stmt::TypeSwitch(tss) => self.is_terminating_switch(&tss.body, label),
             Stmt::Select(ss) => !ss.body.list.iter().any(|x| match x {
-                Stmt::Case(cc) => {
+                Stmt::Comm(cc) => {
                     !self.is_terminating_list(&cc.body, None)
                         || self.has_break_list(&cc.body, label, true)
                 }

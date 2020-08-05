@@ -182,8 +182,6 @@ pub struct Checker<'a> {
     pub ast_objs: &'a mut AstObjects,
     // errors
     errors: &'a ErrorList,
-    // errors
-    soft_errors: &'a ErrorList,
     // files in this package
     pub fset: &'a mut FileSet,
     // all packages checked so far
@@ -218,9 +216,9 @@ impl ObjContext {
         }
     }
 
-    pub fn lookup<'a>(&self, name: &str, tc_objs: &'a TCObjects) -> Option<&'a ObjKey> {
-        tc_objs.scopes[self.scope.unwrap()].lookup(name)
-    }
+    //pub fn lookup<'a>(&self, name: &str, tc_objs: &'a TCObjects) -> Option<&'a ObjKey> {
+    //    tc_objs.scopes[self.scope.unwrap()].lookup(name)
+    //}
 }
 
 impl FilesContext<'_> {
@@ -380,7 +378,6 @@ impl<'a> Checker<'a> {
         ast_objs: &'a mut AstObjects,
         fset: &'a mut FileSet,
         errors: &'a ErrorList,
-        soft_errors: &'a ErrorList,
         pkgs: &'a mut HashMap<String, PackageKey>,
         pkg: PackageKey,
         cfg: &'a Config,
@@ -390,7 +387,6 @@ impl<'a> Checker<'a> {
             ast_objs: ast_objs,
             fset: fset,
             errors: errors,
-            soft_errors: soft_errors,
             all_pkgs: pkgs,
             pkg: pkg,
             obj_map: HashMap::new(),
@@ -439,7 +435,6 @@ impl<'a> Checker<'a> {
             self.ast_objs,
             self.tc_objs,
             self.errors,
-            self.soft_errors,
             pos,
         )
     }
@@ -477,23 +472,23 @@ impl<'a> Checker<'a> {
     }
 
     pub fn error(&self, pos: Pos, err: String) {
-        self.error_impl(self.errors, pos, err);
+        self.error_impl(pos, err, false);
     }
 
     pub fn error_str(&self, pos: Pos, err: &str) {
-        self.error_impl(self.errors, pos, err.to_string());
+        self.error_impl(pos, err.to_string(), false);
     }
 
     pub fn soft_error(&self, pos: Pos, err: String) {
-        self.error_impl(self.soft_errors, pos, err);
+        self.error_impl(pos, err, true);
     }
 
     pub fn soft_error_str(&self, pos: Pos, err: &str) {
-        self.error_impl(self.soft_errors, pos, err.to_string());
+        self.error_impl(pos, err.to_string(), true);
     }
 
-    fn error_impl(&self, errs: &ErrorList, pos: Pos, err: String) {
+    fn error_impl(&self, pos: Pos, err: String, soft: bool) {
         let file = self.fset.file(pos).unwrap();
-        FilePosErrors::new(file, errs).add(pos, err);
+        FilePosErrors::new(file, self.errors).add(pos, err, soft);
     }
 }

@@ -7,7 +7,7 @@ use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext};
 use super::stmt::BodyContainer;
 use goscript_parser::ast::Node;
-use goscript_parser::{Expr, Token};
+use goscript_parser::{Expr, Pos, Token};
 use std::collections::{HashMap, HashSet};
 
 ///Basic algorithm:
@@ -741,7 +741,10 @@ impl<'a> Checker<'a> {
             if x.typ != invalid && y.typ != invalid {
                 let xd = self.new_td_o(&x.typ);
                 let yd = self.new_td_o(&y.typ);
-                self.invalid_op(xd.pos(), &format!("mismatched types {} and {}", xd, yd));
+                self.invalid_op(
+                    x.pos(self.ast_objs),
+                    &format!("mismatched types {} and {}", xd, yd),
+                );
             }
             x.mode = OperandMode::Invalid;
             return;
@@ -1476,7 +1479,7 @@ impl<'a> Checker<'a> {
                 if t == self.invalid_type() {
                     return on_err(x);
                 }
-                self.type_assertion(x, xtype, t);
+                self.type_assertion(None, x, xtype, t);
                 x.mode = OperandMode::CommaOk;
                 x.typ = Some(t)
             }
@@ -1546,11 +1549,11 @@ impl<'a> Checker<'a> {
     }
 
     /// type_assertion checks that x.(T) is legal; xtyp must be the type of x.
-    pub fn type_assertion(&self, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
+    pub fn type_assertion(&self, pos: Option<Pos>, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
         if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self.tc_objs) {
             let dx = self.new_dis(x);
             self.error(
-                dx.pos(),
+                pos.unwrap_or_else(|| dx.pos()),
                 format!(
                     "{} cannot have dynamic type {} ({} {})",
                     dx,
