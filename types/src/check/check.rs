@@ -122,6 +122,7 @@ impl TypeInfo {
 }
 
 /// ExprInfo stores information about an untyped expression.
+#[derive(Debug)]
 pub struct ExprInfo {
     pub is_lhs: bool,
     pub mode: OperandMode,

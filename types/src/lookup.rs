@@ -484,7 +484,10 @@ fn ptr_recv(lo: &obj::LangObj, objs: &TCObjects) -> bool {
     // If a method's receiver type is set, use that as the source of truth for the receiver.
     // Caution: Checker.func_decl (decl.rs) marks a function by setting its type to an empty
     // signature. We may reach here before the signature is fully set up: we must explicitly
-    // check if the receiver is set (we cannot just look for non-nil f.typ).
+    // check if the receiver is set (we cannot just look for non-None lo.typ).
+    if lo.typ().is_none() {
+        return false;
+    }
     if let Some(sig) = objs.types[lo.typ().unwrap()].try_as_signature() {
         if let Some(re) = sig.recv() {
             let t = objs.lobjs[*re].typ().unwrap();

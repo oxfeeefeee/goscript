@@ -141,10 +141,22 @@ impl<'a> Importer<'a> {
             self.error(format!("failed to locate path: {}", key.path));
             return Err(());
         }
-        Ok((path, import_path))
+        match path.canonicalize() {
+            Ok(p) => Ok((p, import_path)),
+            Err(_) => {
+                self.error(format!("failed to canonicalize path: {}", key.path));
+                return Err(());
+            }
+        }
     }
 
     fn parse_dir(&mut self, path: &Path) -> Result<Vec<ast::File>, ()> {
+        let working_dir = self
+            .config
+            .get_working_dir()
+            .ok()
+            .map(|x| x.canonicalize().ok())
+            .flatten();
         match read_content(path) {
             Ok(contents) => {
                 if contents.len() == 0 {
@@ -152,9 +164,17 @@ impl<'a> Importer<'a> {
                     Err(())
                 } else {
                     let mut afiles = vec![];
-                    for (name, content) in contents.iter() {
+                    for (path_buf, content) in contents.into_iter() {
+                        // try get short display name for the file
+                        let p = path_buf.as_path();
+                        let full_name = match &working_dir {
+                            Some(wd) => p.strip_prefix(wd).unwrap_or(p),
+                            None => p,
+                        }
+                        .to_string_lossy()
+                        .to_string();
                         let mut pfile = self.fset.add_file(
-                            name,
+                            full_name,
                             Some(self.fset.base()),
                             content.chars().count(),
                         );
@@ -162,7 +182,7 @@ impl<'a> Importer<'a> {
                             self.ast_objs,
                             &mut pfile,
                             self.errors,
-                            content,
+                            &content,
                             self.config.trace_parser,
                         )
                         .parse_file();
@@ -190,18 +210,16 @@ impl<'a> Importer<'a> {
     }
 }
 
-fn read_content(path: &Path) -> io::Result<Vec<(String, String)>> {
+fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     let mut result = vec![];
-    for entry in fs::read_dir(path)? {
+    for entry in fs::read_dir(p)? {
         let entry = entry?;
         let path = entry.path();
         if !path.is_dir() {
             if let Some(ext) = path.extension() {
                 if ext == "gos" || ext == "go" {
-                    result.push((
-                        path.as_path().to_string_lossy().to_string(),
-                        fs::read_to_string(path)?,
-                    ))
+                    let content = fs::read_to_string(path.as_path())?;
+                    result.push((path, content))
                 }
             }
         }

@@ -74,10 +74,10 @@ pub struct Operand {
 
 impl Operand {
     pub fn new() -> Operand {
-        Operand::new_with(OperandMode::Invalid, None, None)
+        Operand::with(OperandMode::Invalid, None, None)
     }
 
-    pub fn new_with(mode: OperandMode, expr: Option<ast::Expr>, typ: Option<TypeKey>) -> Operand {
+    pub fn with(mode: OperandMode, expr: Option<ast::Expr>, typ: Option<TypeKey>) -> Operand {
         Operand {
             mode: mode,
             expr: expr,

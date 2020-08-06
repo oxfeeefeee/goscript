@@ -76,6 +76,11 @@ fn test_types_goto() {
 }
 
 #[test]
+fn test_types_label() {
+    load_parse_check("./tests/data/label/", true);
+}
+
+#[test]
 fn test_types_simple() {
     load_parse_check("./tests/data/simple/", true);
 }

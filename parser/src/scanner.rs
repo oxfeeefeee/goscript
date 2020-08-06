@@ -784,7 +784,7 @@ mod test {
     #[test]
     fn test_scanner() {
         let mut fs = FileSet::new();
-        let f = fs.add_file("testfile1.gs", None, 1000);
+        let f = fs.add_file("testfile1.gs".to_string(), None, 1000);
 
         //let src = " \"|a string \\t nttttt|\" 'a' 'aa' '\t' `d\\n\r\r\r\naaa` 3.14e6 2.33e-10 025 028 0xaa 0x break\n 333++ > >= ! abc if else 0 ... . .. .23";
         let src = r#"

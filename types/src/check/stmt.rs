@@ -171,7 +171,11 @@ impl<'a> Checker<'a> {
             self.soft_error(lo.pos(), format!("{} declared but not used", lo.name()));
         }
         for skey in sval.children().iter() {
-            self.usage(*skey);
+            // Don't go inside function literal scopes a second time;
+            // they are handled explicitly by func_body.
+            if !self.tc_objs.scopes[*skey].is_func() {
+                self.usage(*skey);
+            }
         }
     }
 

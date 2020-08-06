@@ -104,7 +104,7 @@ impl<'a> Parser<'a> {
                     let ident = ident!(self, i);
                     if scope.look_up(&ident.name).is_none() {
                         let s = format!("label {} undefined", ident.name);
-                        self.error_string(self.pos, s);
+                        self.error(self.pos, s);
                     }
                 }
             }
@@ -150,7 +150,7 @@ impl<'a> Parser<'a> {
                 match scope.insert(ident.name.clone(), entity) {
                     Some(prev_decl) => {
                         let p =  entity!(self, prev_decl).pos(&self.objects);
-                        self.error_string(ident.pos, format!(
+                        self.error(ident.pos, format!(
                             "{} redeclared in this block\n\tprevious declaration at {}",
                             ident.name, 
                             self.file().position(p)));
@@ -195,7 +195,7 @@ impl<'a> Parser<'a> {
             }
         }
         if n == 0 {
-            self.error(list[0].pos(&self.objects), 
+            self.error_str(list[0].pos(&self.objects), 
                 "no new variables on left side of :=")
         }
     }
@@ -296,12 +296,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn error(&self, pos: position::Pos, s: &str) {
-        self.error_string(pos, s.to_string());
+    fn error_str(&self, pos: position::Pos, s: &str) {
+        FilePosErrors::new(self.file(), self.errors).parser_add_str(pos, s);
     }
 
-    fn error_string(&self, pos: position::Pos, msg: String) {
-        FilePosErrors::new(self.file(), self.errors).add(pos, msg, false);
+    fn error(&self, pos: position::Pos, msg: String) {
+        FilePosErrors::new(self.file(), self.errors).parser_add(pos, msg);
     }
 
     fn error_expected(&self, pos: position::Pos, msg: &str) {
@@ -318,7 +318,7 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-        self.error_string(pos, mstr);
+        self.error(pos, mstr);
     }
 
     fn expect(&mut self, token: &Token) -> position::Pos {
@@ -336,7 +336,7 @@ impl<'a> Parser<'a> {
         if let Token::SEMICOLON(real) = token {
             if !*real.as_bool() {
                 let msg = format!("missing ',' before newline in {}", context);
-                self.error_string(self.pos, msg);
+                self.error(self.pos, msg);
                 self.next();
             }
         }
@@ -369,7 +369,7 @@ impl<'a> Parser<'a> {
                 if !*real.as_bool() {msg.push_str(" before newline");}
             }
             msg = format!("{} in {}", msg, context);
-            self.error_string(self.pos, msg);
+            self.error(self.pos, msg);
             true
         } else {
             false
@@ -693,7 +693,7 @@ impl<'a> Parser<'a> {
                     t
                     
                 } else {
-                    self.error(pos, "'...' parameter is missing type");
+                    self.error_str(pos, "'...' parameter is missing type");
                     Expr::new_bad(pos, self.pos)
                 };
                 return Some(Expr::new_ellipsis(pos, Some(typ)));
@@ -1133,11 +1133,11 @@ impl<'a> Parser<'a> {
             let slice3 = ncolons == 2;
             if slice3 { // 3-index slices
                 if indices[1].is_none() {
-                    self.error(colons[0], "2nd index required in 3-index slice");
+                    self.error_str(colons[0], "2nd index required in 3-index slice");
                     indices[1] = Some(Expr::new_bad(colons[0] + 1, colons[1]))
                 }
                 if indices[2].is_none() {
-                    self.error(colons[1], "3rd index required in 3-index slice");
+                    self.error_str(colons[1], "3rd index required in 3-index slice");
                     indices[2] = Some(Expr::new_bad(colons[1] + 1, colons[2]))
                 }
             }
@@ -1154,7 +1154,7 @@ impl<'a> Parser<'a> {
         } else {
             // the logic here differs from the original go code
             if indices[0].is_none() {
-                self.error(lbrack, "expression for index value required");
+                self.error_str(lbrack, "expression for index value required");
                 indices[0] = Some(Expr::new_bad(lbrack + 1, rbrack));
             }
             let index = indices.into_iter().nth(0).unwrap().unwrap();
@@ -1358,7 +1358,7 @@ impl<'a> Parser<'a> {
             Expr::Array(array) => {
                 if let Some(expr) = &array.len {
                     if let Expr::Ellipsis(ell) = expr {
-                        self.error(ell.pos, 
+                        self.error_str(ell.pos, 
                             "expected array length, found '...'");
                         return Expr::new_bad(unparenx.pos(&self.objects),
                             self.safe_pos(unparenx.end(&self.objects))); 
@@ -1643,7 +1643,7 @@ impl<'a> Parser<'a> {
                                 Stmt::Labeled(ls)
                             }
                             None => {
-                                self.error(colon, "illegal label declaration");
+                                self.error_str(colon, "illegal label declaration");
                                 Stmt::new_bad(x0.pos(&self.objects), colon + 1)
                             }
                         }
@@ -1678,7 +1678,7 @@ impl<'a> Parser<'a> {
         } else {
             if !x.is_bad() {
                 // only report error if it's a new one
-                self.error_string(self.safe_pos(x.end(&self.objects)), 
+                self.error(self.safe_pos(x.end(&self.objects)), 
                     format!("function must be invoked in {} statement", call_type))
             }
             None
@@ -1769,7 +1769,7 @@ impl<'a> Parser<'a> {
                         let stri = format!(
                             "expected {}, found {} {}", want, found, extra);
                         let pos = stmt.pos(&self.objects);
-                        self.error_string(pos, stri);
+                        self.error(pos, stri);
                         Some(Expr::new_bad(
                             pos, self.safe_pos(stmt.end(&self.objects))))
                     }
@@ -1781,7 +1781,7 @@ impl<'a> Parser<'a> {
 
     fn parse_if_header(&mut self) -> (Option<Stmt>, Expr) {
         if self.token == Token::LBRACE {
-            self.error(self.pos, "missing condition in if statement");
+            self.error_str(self.pos, "missing condition in if statement");
             return (None, Expr::new_bad(self.pos, self.pos))
         }
 
@@ -1794,7 +1794,7 @@ impl<'a> Parser<'a> {
                 // accept potential variable declaration but complain
                 if self.token == Token::VAR {
                     self.next();
-                    self.error(self.pos,
+                    self.error_str(self.pos,
                         "var declaration not allowed in 'IF' initializer");
                 }
                 Some(self.parse_simple_stmt(ParseSimpleMode::Basic).0)
@@ -1829,7 +1829,7 @@ impl<'a> Parser<'a> {
                 } else {
                     "unexpected newline, expecting { after if clause"
                 };
-                self.error(pos, msg);
+                self.error_str(pos, msg);
             }
             Expr::new_bad(self.pos, self.pos)
         };
@@ -1923,7 +1923,7 @@ impl<'a> Parser<'a> {
                             Token::ASSIGN => {
                                 // permit v = x.(type) but complain
                                 let s = "expected ':=', found '='";
-                                self.error(ass.token_pos, s);
+                                self.error_str(ass.token_pos, s);
                                 true
                             },
                             Token::DEFINE => true,
@@ -2261,7 +2261,7 @@ impl<'a> Parser<'a> {
                 let litstr: &String = lit.as_ref();
                 if !Parser::is_valid_import(litstr) {
                     let msg = format!("{}{}", "invalid import path: ", litstr); 
-                    self.error_string(pos, msg);
+                    self.error(pos, msg);
                 }
                 let token = self.token.clone();
                 self.next();
@@ -2303,12 +2303,12 @@ impl<'a> Parser<'a> {
         match keyword {
             Token::VAR => {
                 if typ.is_none() && values.len() == 0 {
-                    self_.error(pos, "missing variable type or initialization");
+                    self_.error_str(pos, "missing variable type or initialization");
                 }
             },
             Token::CONST => {
                 if values.len() == 0 && (iota == 0 || typ.is_some()) {
-                    self_.error(pos, "missing constant value");
+                    self_.error_str(pos, "missing constant value");
                 }
             }
             _ => {}
@@ -2489,7 +2489,7 @@ impl<'a> Parser<'a> {
 	    // the package name does not appear in any scope.
         let ident = self.parse_ident();
         if ident!(self, ident).name == "_" {
-            self.error(self.pos, "invalid package name _");
+            self.error_str(self.pos, "invalid package name _");
         }
         self.expect_semi();
 
@@ -2549,7 +2549,7 @@ mod test {
 	#[test]
 	fn test_parser () {
         let mut fs = position::FileSet::new();
-        let f = fs.add_file("testfile1.gs", None, 1000);
+        let f = fs.add_file("testfile1.gs".to_string(), None, 1000);
 
         let s1 = r###"
         func (p *someobj) testFunc(a, b *int) (i int) {

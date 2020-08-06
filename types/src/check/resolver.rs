@@ -356,6 +356,8 @@ impl<'a> Checker<'a> {
                                                 };
                                                 let _ = self.declare_pkg_obj(*name, lhs[i], di);
                                             }
+
+                                            self.arity_match(vspec, false, None);
                                         }
                                         _ => self.error(
                                             spec_pos,

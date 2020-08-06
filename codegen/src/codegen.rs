@@ -1303,7 +1303,7 @@ impl<'a> CodeGen<'a> {
         let mut fset = FileSet::new();
         let el = ErrorList::new();
         let src = fs::read_to_string(path).expect("read file err: ");
-        let pfile = fset.add_file(path, None, src.chars().count());
+        let pfile = fset.add_file(path.to_string(), None, src.chars().count());
         let afile = Parser::new(&mut astobjs, pfile, &el, &src, trace).parse_file();
         if el.len() > 0 {
             print!("parsing failed:\n");

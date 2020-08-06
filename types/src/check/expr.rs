@@ -285,12 +285,12 @@ impl<'a> Checker<'a> {
                 // never get "materialized" into a typed value. If
                 // left in the untyped map, they will be processed
                 // at the end of the type check.
-                if old.typ.is_none() {
+                if old.mode.constant_val().is_none() {
                     self.update_expr_type(&u.expr, t, final_, fctx);
                 }
             }
             Expr::Binary(b) => {
-                if old.typ.is_none() {
+                if old.mode.constant_val().is_none() {
                     if Checker::is_comparison(&b.op) {
                         // The result type is independent of operand types
                         // and the operand types must have final types.
@@ -331,7 +331,7 @@ impl<'a> Checker<'a> {
                 let td = self.new_dis(&t);
                 self.invalid_op(
                     ed.pos(),
-                    &format!("shifted operand {} (type {}) must be integer", ed, td),
+                    &format!("shifted operand {} (type {}) must be integer1", ed, td),
                 );
                 return;
             }
@@ -339,10 +339,9 @@ impl<'a> Checker<'a> {
             // still must check that it is representable as the specific
             // int type requested
         }
-        let mode_clone = old.mode.clone();
-        if let OperandMode::Constant(_) = &old.mode {
+        if old.mode.constant_val().is_some() {
             // If x is a constant, it must be representable as a value of typ.
-            let mut c = Operand::new_with(old.mode.clone(), Some(e.clone()), old.typ);
+            let mut c = Operand::with(old.mode.clone(), Some(e.clone()), old.typ);
             self.convert_untyped(&mut c, t, fctx);
             if c.invalid() {
                 return;
@@ -350,7 +349,7 @@ impl<'a> Checker<'a> {
         }
 
         // Everything's fine, record final type and value for x.
-        self.result.record_type_and_value(e, mode_clone, t);
+        self.result.record_type_and_value(e, old.mode.clone(), t);
     }
 
     /// update_expr_val updates the value of x to val.
@@ -574,7 +573,12 @@ impl<'a> Checker<'a> {
             xt_integer || (xt_untyped && x_const.is_some() && x_const.as_ref().unwrap().is_int());
         if !lhs_ok {
             let xd = self.new_dis(x);
-            self.error(xd.pos(), format!("shifted operand {} must be integer", xd));
+            self.invalid_op(
+                xd.pos(),
+                &format!("shifted operand {} must be integer2", xd),
+            );
+            x.mode = OperandMode::Invalid;
+            return;
         }
 
         // spec: "The right operand in a shift expression must have unsigned
@@ -629,7 +633,7 @@ impl<'a> Checker<'a> {
                     x.typ = Some(self.basic_type(BasicType::UntypedInt));
                 }
                 // x is a constant so xval != nil and it must be of Int kind.
-                *xv = Value::shift(xv, op, s as usize);
+                *xv = Value::shift(xv.to_int().as_ref(), op, s as usize);
                 // Typed constants must be representable in
                 // their type after each constant operation.
                 if typ::is_typed(x.typ.unwrap(), self.tc_objs) {
@@ -683,7 +687,10 @@ impl<'a> Checker<'a> {
 
         if !typ::is_integer(x.typ.unwrap(), self.tc_objs) {
             let xd = self.new_dis(x);
-            self.invalid_op(xd.pos(), &format!("shifted operand {} must be integer", xd));
+            self.invalid_op(
+                xd.pos(),
+                &format!("shifted operand {} must be integer3", xd),
+            );
             x.mode = OperandMode::Value;
             return;
         }

@@ -8,7 +8,8 @@ struct Error {
     pos: position::Position,
     msg: String,
     soft: bool,
-    order: usize, // display order
+    by_parser: bool, // reported by parser (not type checker)
+    order: usize,    // display order
 }
 
 #[derive(Clone, Debug)]
@@ -20,7 +21,8 @@ impl fmt::Display for ErrorList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Result: {} errors\n", self.errors.borrow().len())?;
         for e in self.errors.borrow().iter() {
-            write!(f, "{} {}\n", e.pos, e.msg)?;
+            let p = if e.by_parser { "[Parser]" } else { "[TC]" };
+            write!(f, "{} {}  {}\n", p, e.pos, e.msg)?;
         }
         Ok(())
     }
@@ -33,7 +35,7 @@ impl ErrorList {
         }
     }
 
-    pub fn add(&self, p: position::Position, msg: String, soft: bool) {
+    pub fn add(&self, p: position::Position, msg: String, soft: bool, by_parser: bool) {
         let order = if msg.starts_with('\t') {
             self.errors
                 .borrow()
@@ -50,6 +52,7 @@ impl ErrorList {
             pos: p,
             msg: msg,
             soft: soft,
+            by_parser: by_parser,
             order: order,
         });
     }
@@ -79,10 +82,19 @@ impl<'a> FilePosErrors<'a> {
 
     pub fn add(&self, pos: position::Pos, msg: String, soft: bool) {
         let p = self.file.position(pos);
-        self.elist.add(p, msg, soft);
+        self.elist.add(p, msg, soft, false);
     }
 
     pub fn add_str(&self, pos: position::Pos, s: &str, soft: bool) {
         self.add(pos, s.to_string(), soft);
+    }
+
+    pub fn parser_add(&self, pos: position::Pos, msg: String) {
+        let p = self.file.position(pos);
+        self.elist.add(p, msg, false, true);
+    }
+
+    pub fn parser_add_str(&self, pos: position::Pos, s: &str) {
+        self.parser_add(pos, s.to_string());
     }
 }

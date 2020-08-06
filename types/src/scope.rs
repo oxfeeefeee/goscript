@@ -73,6 +73,10 @@ impl Scope {
         self.end = e;
     }
 
+    pub fn is_func(&self) -> bool {
+        self.is_func
+    }
+
     pub fn contains(&self, pos: position::Pos) -> bool {
         self.pos <= pos && pos <= self.end
     }

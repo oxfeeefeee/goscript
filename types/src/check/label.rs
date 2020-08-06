@@ -241,8 +241,9 @@ impl<'a> Checker<'a> {
                         })
                         .map(|x| x.clone())
                         .collect();
+
+                    ctx.lstmt = Some(*lkey);
                 }
-                ctx.lstmt = Some(*lkey);
                 self.stmt_branches(all, block, &lable_stmt, ctx);
             }
             Stmt::Branch(bs) => {

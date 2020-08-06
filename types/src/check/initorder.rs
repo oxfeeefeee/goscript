@@ -12,7 +12,11 @@ struct GraphEdges {
     succ: Rc<RefCell<HashSet<ObjKey>>>,
 }
 
-type GraphNode = (ObjKey, usize);
+struct GraphNode {
+    obj: ObjKey,
+    ndeps: usize,
+    pos: usize,
+}
 
 impl GraphEdges {
     fn new(succ: Rc<RefCell<HashSet<ObjKey>>>) -> GraphEdges {
@@ -26,7 +30,7 @@ impl GraphEdges {
 impl<'a> Checker<'a> {
     pub fn init_order(&mut self) {
         let (mut nodes, edges) = self.dependency_graph();
-        nodes.sort_by(|a, b| a.1.cmp(&b.1));
+        nodes.sort_by(|a, b| a.ndeps.cmp(&b.ndeps)); // sort by n_deps
         let len = nodes.len();
         let mut nodes = &mut nodes[0..len];
         let mut order: Vec<ObjKey> = vec![];
@@ -39,12 +43,12 @@ impl<'a> Checker<'a> {
             let mut first_dependant = nodes
                 .iter()
                 .enumerate()
-                .find(|(_, &n)| n.1 > 0)
+                .find(|(_, n)| n.ndeps > 0)
                 .map_or(nodes.len(), |(i, _)| i);
             if first_dependant == 0 {
                 // we have a cycle with the first node
                 let visited = &mut HashSet::new();
-                let obj = nodes[0].0;
+                let obj = nodes[0].obj;
                 // If obj is not part of the cycle (e.g., obj->b->c->d->c),
                 // cycle will be nil. Don't report anything in that case since
                 // the cycle is reported when the algorithm gets to an object
@@ -63,8 +67,7 @@ impl<'a> Checker<'a> {
                 first_dependant = 1;
             }
 
-            let mut indep: Vec<ObjKey> =
-                nodes[0..first_dependant].iter().map(|(o, _)| *o).collect();
+            let mut indep: Vec<ObjKey> = nodes[0..first_dependant].iter().map(|n| n.obj).collect();
             indep.sort_by(|a, b| self.lobj(*a).order().cmp(&self.lobj(*b).order()));
             order.append(&mut indep);
 
@@ -73,7 +76,7 @@ impl<'a> Checker<'a> {
                 nodes[0..first_dependant]
                     .iter()
                     .fold(HashMap::new(), |mut init, x| {
-                        for p in edges[&x.0].pred.borrow().iter() {
+                        for p in edges[&x.obj].pred.borrow().iter() {
                             *init.entry(*p).or_insert(0) += 1;
                         }
                         init
@@ -81,10 +84,10 @@ impl<'a> Checker<'a> {
             // remove resolved nodes
             nodes = &mut nodes[first_dependant..];
             for n in nodes.iter_mut() {
-                n.1 -= *to_sub.get(&n.0).unwrap_or(&0);
+                n.ndeps -= *to_sub.get(&n.obj).unwrap_or(&0);
             }
             // sort nodes, shoud be fast as it's almost sorted
-            nodes.sort_by(|a, b| a.1.cmp(&b.1));
+            nodes.sort_by(|a, b| a.ndeps.cmp(&b.ndeps));
         }
 
         // record the init order for variables with initializers only
@@ -150,7 +153,7 @@ impl<'a> Checker<'a> {
         // which are permitted. Yet such cycles may incorrectly inflate the dependency
         // count for variables which in turn may not get scheduled for initialization
         // in correct order.)
-        let nodes: Vec<GraphNode> = map
+        let mut nodes: Vec<GraphNode> = map
             .iter()
             .filter_map(|(o, node)| {
                 if self.lobj(*o).entity_type().is_func() {
@@ -168,11 +171,16 @@ impl<'a> Checker<'a> {
                     }
                     None
                 } else {
-                    Some((*o, node.succ.borrow().len()))
+                    Some(GraphNode {
+                        obj: *o,
+                        ndeps: node.succ.borrow().len(),
+                        pos: self.lobj(*o).pos(),
+                    })
                 }
             })
             .collect();
 
+        nodes.sort_by(|a, b| a.pos.cmp(&b.pos)); // sort by pos
         (nodes, map)
     }
 

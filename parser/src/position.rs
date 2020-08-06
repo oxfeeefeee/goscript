@@ -46,9 +46,9 @@ pub struct File {
 }
 
 impl File {
-    pub fn new(name: &str) -> File {
+    pub fn new(name: String) -> File {
         File {
-            name: name.to_string(),
+            name: name,
             base: 0,
             size: 0,
             lines: vec![0],
@@ -229,7 +229,7 @@ impl FileSet {
         }
     }
 
-    pub fn add_file(&mut self, name: &str, base: Option<usize>, size: usize) -> &mut File {
+    pub fn add_file(&mut self, name: String, base: Option<usize>, size: usize) -> &mut File {
         let real_base = if let Some(b) = base { b } else { self.base };
         if real_base < self.base {
             panic!("illegal base");
@@ -280,7 +280,7 @@ mod test {
         };
         print!("this is the position: {} ", p);
         let mut fs = FileSet::new();
-        let mut f = File::new("test.gs");
+        let mut f = File::new("test.gs".to_string());
         f.size = 12345;
         f.add_line(123);
         f.add_line(133);
@@ -290,9 +290,9 @@ mod test {
         print!("\nfile after merge: {:?}", f);
 
         {
-            fs.add_file("testfile1.gs", None, 222);
-            fs.add_file("testfile2.gs", None, 222);
-            fs.add_file("testfile3.gs", None, 222);
+            fs.add_file("testfile1.gs".to_string(), None, 222);
+            fs.add_file("testfile2.gs".to_string(), None, 222);
+            fs.add_file("testfile3.gs".to_string(), None, 222);
             print!("\nset {:?}", fs);
         }
 
