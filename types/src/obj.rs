@@ -373,9 +373,7 @@ impl LangObj {
     }
 
     pub fn set_color(&mut self, color: ObjColor) {
-        if color == ObjColor::Black {
-            assert!(self.typ.is_some());
-        }
+        assert!(color != ObjColor::White);
         self.color = color
     }
 

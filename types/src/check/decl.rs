@@ -313,6 +313,7 @@ impl<'a> Checker<'a> {
                 self.octx.iota = None;
                 return;
             }
+            self.lobj_mut(okey).set_type(Some(t));
         }
 
         let mut x = Operand::new();

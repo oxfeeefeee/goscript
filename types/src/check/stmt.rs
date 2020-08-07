@@ -375,6 +375,13 @@ impl<'a> Checker<'a> {
         let begin_scope = self.octx.scope;
         let begin_delayed_count = fctx.delayed_count();
 
+        self.stmt_impl(stmt, ctx, fctx);
+
+        fctx.process_delayed(begin_delayed_count, self);
+        debug_assert_eq!(begin_scope, self.octx.scope);
+    }
+
+    fn stmt_impl(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext) {
         let mut inner_ctx = ctx.clone();
         inner_ctx.fallthrough_ok = false;
         inner_ctx.final_switch_case = false;
@@ -1042,8 +1049,5 @@ impl<'a> Checker<'a> {
             }
             _ => self.error_str(stmt.pos(self.ast_objs), "invalid statement"),
         }
-
-        fctx.process_delayed(begin_delayed_count, self);
-        debug_assert_eq!(begin_scope, self.octx.scope);
     }
 }

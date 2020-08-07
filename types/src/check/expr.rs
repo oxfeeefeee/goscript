@@ -519,6 +519,7 @@ impl<'a> Checker<'a> {
             let xd = self.new_dis(x.expr.as_ref().unwrap());
             let yd = self.new_dis(y.expr.as_ref().unwrap());
             self.error(pos, format!("cannot compare {} {} {} ({})", xd, op, yd, m));
+            x.mode = OperandMode::Invalid;
             return;
         }
 

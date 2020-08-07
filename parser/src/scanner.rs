@@ -77,7 +77,7 @@ impl<'a> Scanner<'a> {
                 self.semi2 = true;
                 self.scan_number(ch)
             }
-            // we only reach here if s.insertSemi was
+            // we only reach here if s.semi1 was
             // set in the first place and exited early
             // from skip_whitespace()
             Some('\n') => {
@@ -150,6 +150,7 @@ impl<'a> Scanner<'a> {
                             self.semi1 = false;
                             Token::SEMICOLON(false.into())
                         } else {
+                            self.semi2 = self.semi1; // preserve insert semi info
                             self.scan_comment(ch.unwrap())
                         }
                     }
@@ -394,6 +395,7 @@ impl<'a> Scanner<'a> {
                         }
                     }
                     None => {
+                        self.error("comment not terminated");
                         break;
                     }
                 }

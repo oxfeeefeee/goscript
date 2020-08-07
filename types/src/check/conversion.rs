@@ -50,6 +50,8 @@ impl<'a> Checker<'a> {
             let xd = self.new_dis(x);
             let td = self.new_dis(&t);
             self.error(xd.pos(), format!("cannot convert {} to {}", xd, td));
+            x.mode = OperandMode::Invalid;
+            return;
         }
 
         // The conversion argument types are final. For untyped values the

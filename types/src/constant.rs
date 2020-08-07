@@ -460,7 +460,7 @@ impl Value {
                 Value::Int(i) => {
                     let mut v = !i;
                     if prec > 0 {
-                        v = v & (!(BigInt::from_i64(-1).unwrap() << prec));
+                        v = v & (!(BigInt::from_i64(-1).unwrap() << prec * 8));
                     }
                     Value::Int(v)
                 }
