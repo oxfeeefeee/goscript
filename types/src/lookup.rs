@@ -155,8 +155,8 @@ impl MethodSet {
         let mut list: Vec<Selection> = mset_base
             .into_iter()
             .filter_map(|(_, m)| match m {
-                MethodCollision::Method(mut sel) => {
-                    sel.init(objs);
+                MethodCollision::Method(sel) => {
+                    //sel.init(objs);
                     Some(sel)
                 }
                 MethodCollision::Collision => None,
@@ -628,6 +628,7 @@ fn add_to_method_set(
                         *okey,
                         concat_vec(Some(indices.clone()), i).unwrap(),
                         indirect,
+                        objs,
                     )),
                 );
                 continue;

@@ -696,8 +696,14 @@ impl<'a> Checker<'a> {
                         }
                     };
 
-                    let selection =
-                        Selection::new(SelectionKind::FieldVal, Some(base), obj, indices, false);
+                    let selection = Selection::new(
+                        SelectionKind::FieldVal,
+                        Some(base),
+                        obj,
+                        indices,
+                        false,
+                        self.tc_objs,
+                    );
                     self.result.record_selection(selx, selection);
 
                     // todo: not sure if Offsetof will ever be used in goscript

@@ -346,8 +346,14 @@ impl<'a> Checker<'a> {
             // method expression
             match self.lobj(okey).entity_type() {
                 EntityType::Func(_) => {
-                    let selection =
-                        Selection::new(SelectionKind::MethodExpr, x.typ, okey, indices, indirect);
+                    let selection = Selection::new(
+                        SelectionKind::MethodExpr,
+                        x.typ,
+                        okey,
+                        indices,
+                        indirect,
+                        self.tc_objs,
+                    );
                     self.result.record_selection(e, selection);
 
                     // the receiver type becomes the type of the first function
@@ -384,8 +390,14 @@ impl<'a> Checker<'a> {
             let lobj = &self.tc_objs.lobjs[okey];
             match lobj.entity_type() {
                 EntityType::Var(_) => {
-                    let selection =
-                        Selection::new(SelectionKind::FieldVal, x.typ, okey, indices, indirect);
+                    let selection = Selection::new(
+                        SelectionKind::FieldVal,
+                        x.typ,
+                        okey,
+                        indices,
+                        indirect,
+                        self.tc_objs,
+                    );
                     self.result.record_selection(e, selection);
                     x.mode = if x.mode == OperandMode::Variable || indirect {
                         OperandMode::Variable
@@ -395,8 +407,14 @@ impl<'a> Checker<'a> {
                     x.typ = lobj.typ();
                 }
                 EntityType::Func(_) => {
-                    let selection =
-                        Selection::new(SelectionKind::MethodVal, x.typ, okey, indices, indirect);
+                    let selection = Selection::new(
+                        SelectionKind::MethodVal,
+                        x.typ,
+                        okey,
+                        indices,
+                        indirect,
+                        self.tc_objs,
+                    );
                     self.result.record_selection(e, selection);
 
                     if cfg!(debug_assertions) {

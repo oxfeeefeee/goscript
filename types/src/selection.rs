@@ -37,7 +37,7 @@ pub struct Selection {
     indices: Vec<usize>,   // path from x to x.f
     indirect: bool,        // set if there was any pointer indirection on the path
     typ: Option<TypeKey>,  // evaluation delayed
-    id: Option<String>,    // evaluation delayed
+    id: String,
 }
 
 impl Selection {
@@ -47,6 +47,7 @@ impl Selection {
         obj: ObjKey,
         indices: Vec<usize>,
         indirect: bool,
+        objs: &TCObjects,
     ) -> Selection {
         Selection {
             kind: kind,
@@ -55,13 +56,12 @@ impl Selection {
             indices: indices,
             indirect: indirect,
             typ: None,
-            id: None,
+            id: objs.lobjs[obj].id(objs).to_string(),
         }
     }
 
-    pub fn init(&mut self, objs: &mut TCObjects) {
+    pub fn init_type(&mut self, objs: &mut TCObjects) {
         self.typ = Some(self.eval_type(objs));
-        self.id = Some(objs.lobjs[self.obj].id(objs).to_string());
     }
 
     pub fn kind(&self) -> &SelectionKind {
@@ -81,9 +81,8 @@ impl Selection {
         self.typ.unwrap()
     }
 
-    /// id must be called after init is called
     pub fn id(&self) -> &String {
-        self.id.as_ref().unwrap()
+        &self.id
     }
 
     /// indices describes the path from x to f in x.f.
