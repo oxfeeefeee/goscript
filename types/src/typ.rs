@@ -578,7 +578,6 @@ pub struct SignatureDetail {
 }
 
 impl SignatureDetail {
-    // pass in 'objs' for sanity checks
     pub fn new(
         scope: Option<ScopeKey>,
         recv: Option<ObjKey>,
@@ -587,7 +586,8 @@ impl SignatureDetail {
         variadic: bool,
         objs: &TCObjects,
     ) -> SignatureDetail {
-        if cfg!(debug_assertions) {
+        // doesn't apply to append(s, str...), disabled
+        if false && cfg!(debug_assertions) {
             if variadic {
                 let typ = &objs.types[params];
                 match typ {
@@ -645,7 +645,12 @@ impl SignatureDetail {
     }
 
     pub fn params_count(&self, objs: &TCObjects) -> usize {
-        objs.types[self.params].try_as_tuple().unwrap().vars().len()
+        let l = objs.types[self.params].try_as_tuple().unwrap().vars().len();
+        if self.variadic {
+            l - 1
+        } else {
+            l
+        }
     }
 
     pub fn results_count(&self, objs: &TCObjects) -> usize {
@@ -666,7 +671,6 @@ pub struct InterfaceDetail {
 }
 
 impl InterfaceDetail {
-    // pass in 'objs' for sanity checks
     pub fn new(
         mut methods: Vec<ObjKey>,
         mut embeddeds: Vec<TypeKey>,

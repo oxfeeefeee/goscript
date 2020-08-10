@@ -17,7 +17,7 @@ fn load_parse_check(dir: &str, trace: bool) -> usize {
 
     let importer = &mut types::Importer::new(&config, fs, pkgs, asto, tco, el, 0);
     let key = types::ImportKey::new("./", dir);
-    importer.import(&key).unwrap();
+    let _ = importer.import(&key);
 
     el.sort();
     print!("{}", el);

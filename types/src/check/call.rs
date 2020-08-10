@@ -56,8 +56,8 @@ impl<'a> Checker<'a> {
                 x.expr = expr;
                 // a non-constant result implies a function call
                 self.octx.has_call_or_recv = match x.mode {
-                    OperandMode::Invalid | OperandMode::Constant(_) => true,
-                    _ => false,
+                    OperandMode::Invalid | OperandMode::Constant(_) => false,
+                    _ => true,
                 };
                 self.tc_objs.universe().builtins()[&id].kind
             }
@@ -67,14 +67,14 @@ impl<'a> Checker<'a> {
                 if let Some(sig) = self.otype(sig_key).try_as_signature() {
                     let sig_results = sig.results();
                     let variadic = sig.variadic();
-                    let result = self.unpack(&e.args, e.args.len(), false, variadic, fctx);
+                    let pcount = sig.params_count(self.tc_objs);
+                    let result = self.unpack(&e.args, pcount, false, variadic, fctx);
                     match result {
-                        UnpackResult::Mismatch(_, _) | UnpackResult::Error => {
-                            x.mode = OperandMode::Invalid
-                        }
+                        UnpackResult::Error => x.mode = OperandMode::Invalid,
                         _ => {
+                            let (count, _) = result.rhs_count();
                             let re = UnpackedResultLeftovers::new(&result, None);
-                            self.arguments(x, e, sig_key, &re, e.args.len(), fctx);
+                            self.arguments(x, e, sig_key, &re, count, fctx);
                         }
                     }
 

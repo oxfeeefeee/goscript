@@ -101,7 +101,8 @@ impl Value {
             Token::INT(ilit) => int_from_literal(ilit.as_str()),
             Token::FLOAT(flit) => float_from_literal(flit.as_str()),
             Token::IMAG(imlit) => {
-                let v = float_from_literal(&imlit.as_str()[..(imlit.as_str().len() - 2)]);
+                let s = imlit.as_str();
+                let v = float_from_literal(&s[..(s.len() - 1)]);
                 if let Value::Float(_) = &v {
                     Value::Complex(Box::new(Value::with_f64(0.0)), Box::new(v))
                 } else {

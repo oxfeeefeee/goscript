@@ -98,15 +98,16 @@ impl<'a> Checker<'a> {
         if lhs.typ() == Some(invalid_type) {
             return;
         }
+
+        // If the lhs doesn't have a type yet, use the type of x.
+        let lhs = self.lobj_mut(lhskey);
+        if lhs.typ().is_none() {
+            lhs.set_type(x.typ);
+        }
         // rhs must be a constant
         if let OperandMode::Constant(_) = &x.mode {
             debug_assert!(typ::is_const_type(x.typ.unwrap(), self.tc_objs));
-            // If the lhs doesn't have a type yet, use the type of x.
-            let lhs = self.lobj_mut(lhskey);
-            if lhs.typ().is_none() {
-                lhs.set_type(x.typ);
-            }
-            let t = lhs.typ().clone();
+            let t = self.lobj(lhskey).typ();
             self.assignment(x, t, "constant declaration", fctx);
             if x.mode != OperandMode::Invalid {
                 self.lobj_mut(lhskey)
@@ -275,39 +276,43 @@ impl<'a> Checker<'a> {
                 self.lobj_mut(*okey).set_type(Some(invalid_type));
             }
         };
+
         match result {
             UnpackResult::Error => invalidate_lhs(),
-            UnpackResult::Mismatch(exprs, rl) => {
-                invalidate_lhs();
-                result.use_(self, 0, fctx);
-                if let Some(p) = return_pos {
-                    self.error(
-                        p,
-                        format!("wrong number of return values (want {}, got {})", ll, rl),
-                    )
-                } else {
-                    self.error(
-                        exprs[0].pos(self.ast_objs),
-                        format!("cannot initialize {} variables with {} values", ll, rl),
-                    )
-                }
-            }
-            UnpackResult::Tuple(_, _)
+            UnpackResult::Tuple(_, _, _)
             | UnpackResult::CommaOk(_, _)
-            | UnpackResult::Mutliple(_)
-            | UnpackResult::Single(_)
-            | UnpackResult::Nothing => {
-                let context = if return_pos.is_some() {
-                    "return statement"
-                } else {
-                    "assignment"
-                };
-                for (i, l) in lhs.iter().enumerate() {
-                    let mut x = Operand::new();
-                    result.get(self, &mut x, i, fctx);
-                    self.init_var(*l, &mut x, context, fctx);
+            | UnpackResult::Mutliple(_, _)
+            | UnpackResult::Single(_, _)
+            | UnpackResult::Nothing(_) => match result.rhs_count() {
+                (count, std::cmp::Ordering::Greater) | (count, std::cmp::Ordering::Less) => {
+                    invalidate_lhs();
+                    result.use_(self, 0, fctx);
+                    if let Some(p) = return_pos {
+                        self.error(
+                            p,
+                            format!("wrong number of return values (want {}, got {})", ll, count),
+                        )
+                    } else {
+                        self.error(
+                            rhs[0].pos(self.ast_objs),
+                            format!("cannot initialize {} variables with {} values", ll, count),
+                        )
+                    }
+                    return;
                 }
-            }
+                _ => {
+                    let context = if return_pos.is_some() {
+                        "return statement"
+                    } else {
+                        "assignment"
+                    };
+                    for (i, l) in lhs.iter().enumerate() {
+                        let mut x = Operand::new();
+                        result.get(self, &mut x, i, fctx);
+                        self.init_var(*l, &mut x, context, fctx);
+                    }
+                }
+            },
         }
         if let UnpackResult::CommaOk(e, types) = result {
             self.result.record_comma_ok_types(
@@ -325,24 +330,27 @@ impl<'a> Checker<'a> {
         let result = self.unpack(rhs, ll, ll == 2, false, fctx);
         match result {
             UnpackResult::Error => self.use_lhs(lhs, fctx),
-            UnpackResult::Mismatch(rhs, rhs_count) => {
-                result.use_(self, 0, fctx);
-                self.error(
-                    rhs[0].pos(self.ast_objs),
-                    format!("cannot assign {} values to {} variables", rhs_count, ll),
-                );
-            }
-            UnpackResult::Tuple(_, _)
+            UnpackResult::Tuple(_, _, _)
             | UnpackResult::CommaOk(_, _)
-            | UnpackResult::Mutliple(_)
-            | UnpackResult::Single(_)
-            | UnpackResult::Nothing => {
-                for (i, l) in lhs.iter().enumerate() {
-                    let mut x = Operand::new();
-                    result.get(self, &mut x, i, fctx);
-                    self.assign_var(l, &mut x, fctx);
+            | UnpackResult::Mutliple(_, _)
+            | UnpackResult::Single(_, _)
+            | UnpackResult::Nothing(_) => match result.rhs_count() {
+                (count, std::cmp::Ordering::Greater) | (count, std::cmp::Ordering::Less) => {
+                    result.use_(self, 0, fctx);
+                    self.error(
+                        rhs[0].pos(self.ast_objs),
+                        format!("cannot assign {} values to {} variables", count, ll),
+                    );
+                    return;
                 }
-            }
+                _ => {
+                    for (i, l) in lhs.iter().enumerate() {
+                        let mut x = Operand::new();
+                        result.get(self, &mut x, i, fctx);
+                        self.assign_var(l, &mut x, fctx);
+                    }
+                }
+            },
         }
         if let UnpackResult::CommaOk(e, types) = result {
             self.result.record_comma_ok_types(

@@ -574,10 +574,7 @@ impl<'a> Checker<'a> {
             xt_integer || (xt_untyped && x_const.is_some() && x_const.as_ref().unwrap().is_int());
         if !lhs_ok {
             let xd = self.new_dis(x);
-            self.invalid_op(
-                xd.pos(),
-                &format!("shifted operand {} must be integer2", xd),
-            );
+            self.invalid_op(xd.pos(), &format!("shifted operand {} must be integer", xd));
             x.mode = OperandMode::Invalid;
             return;
         }
@@ -1586,7 +1583,7 @@ impl<'a> Checker<'a> {
         };
         if let Some(m) = msg {
             let xd = self.new_dis(x);
-            self.error(xd.pos(), format!("{} {}", m, xd));
+            self.error(xd.pos(), format!("{} {}", xd, m));
             x.mode = OperandMode::Invalid;
         }
     }

@@ -10,6 +10,7 @@ use super::check::{Checker, FilesContext};
 use super::util::{UnpackResult, UnpackedResultLeftovers};
 use goscript_parser::ast::{CallExpr, Expr, Node};
 use goscript_parser::Token;
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;
 
@@ -41,54 +42,70 @@ impl<'a> Checker<'a> {
         // false for the evaluation of x so that we can check it afterwards.
         // Note: We must do this _before_ calling unpack because unpack evaluates the
         //       first argument before we even call arg(x, 0)!
-        if id == Builtin::Len || id == Builtin::Cap {
-            let hcor = self.octx.has_call_or_recv;
-            let f = move |checker: &mut Checker, _: &mut FilesContext| {
-                checker.octx.has_call_or_recv = hcor;
+        let hcor_backup = if id == Builtin::Len || id == Builtin::Cap {
+            Some(self.octx.has_call_or_recv)
+        } else {
+            None
+        };
+        self.octx.has_call_or_recv = false;
+
+        let report_mismatch = |checker: &Checker, ord, rcount| {
+            let msg = match ord {
+                std::cmp::Ordering::Less => "not enough",
+                std::cmp::Ordering::Greater => "too many",
+                std::cmp::Ordering::Equal => return,
             };
-            fctx.later(Box::new(f));
-            self.octx.has_call_or_recv = false;
-        }
+
+            let expr = Expr::Call(call.clone());
+            let ed = checker.new_dis(&expr);
+            checker.invalid_op(
+                call.r_paren,
+                &format!(
+                    "{} arguments for {} (expected {}, found {})",
+                    msg, &ed, binfo.arg_count, rcount
+                ),
+            );
+        };
 
         // determine actual arguments
         let nargs = call.args.len();
         let unpack_result = match id {
             // arguments require special handling
-            Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => None,
+            Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => {
+                let ord = nargs.cmp(&binfo.arg_count);
+                let ord = if binfo.variadic && ord == Ordering::Greater {
+                    Ordering::Equal
+                } else {
+                    ord
+                };
+                if ord != std::cmp::Ordering::Equal {
+                    report_mismatch(self, ord, nargs);
+                    return false;
+                }
+                None
+            }
             _ => {
                 let result = self.unpack(&call.args, binfo.arg_count, false, binfo.variadic, fctx);
+                if result.is_err() {
+                    return false;
+                }
+                let (count, ord) = result.rhs_count();
+                if ord != std::cmp::Ordering::Equal {
+                    report_mismatch(self, ord, count);
+                    return false;
+                }
                 match result {
-                    UnpackResult::Tuple(_, _)
-                    | UnpackResult::Mutliple(_)
-                    | UnpackResult::Single(_) => {
+                    UnpackResult::Tuple(_, _, _)
+                    | UnpackResult::Mutliple(_, _)
+                    | UnpackResult::Single(_, _) => {
                         result.get(self, x, 0, fctx);
                         if x.invalid() {
                             return false;
                         }
                     }
-                    UnpackResult::Nothing => {} // do nothing
-                    UnpackResult::Mismatch(_, _) => {
-                        let msg = if nargs < binfo.arg_count {
-                            Some("not enough")
-                        } else if nargs > binfo.arg_count && !binfo.variadic {
-                            Some("too many")
-                        } else {
-                            None
-                        };
-                        if let Some(m) = msg {
-                            let expr = Expr::Call(call.clone());
-                            let ed = self.new_dis(&expr);
-                            self.invalid_op(
-                                call.r_paren,
-                                &format!(
-                                    "{} arguments for {} (expected {}, found {})",
-                                    m, &ed, binfo.arg_count, nargs
-                                ),
-                            );
-                        }
-                    }
+                    UnpackResult::Nothing(_) => {} // do nothing
                     UnpackResult::CommaOk(_, _) => unreachable!(),
-                    UnpackResult::Error => return false,
+                    UnpackResult::Error => unreachable!(),
                 }
                 Some(result)
             }
@@ -209,6 +226,8 @@ impl<'a> Checker<'a> {
                     }
                     _ => OperandMode::Invalid,
                 };
+
+                self.octx.has_call_or_recv = hcor_backup.unwrap();
 
                 if mode == OperandMode::Invalid && ty != invalid_type {
                     let dis = self.new_dis(x);
@@ -826,10 +845,9 @@ fn make_sig(
 fn implicit_array_deref(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let ty = &objs.types[t];
     if let Some(detail) = ty.try_as_pointer() {
-        if let Some(under) = objs.types[detail.base()].underlying() {
-            if objs.types[under].try_as_array().is_some() {
-                return under;
-            }
+        let base = typ::underlying_type(detail.base(), objs);
+        if objs.types[base].try_as_array().is_some() {
+            return base;
         }
     }
     t

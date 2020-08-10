@@ -9,6 +9,7 @@ use super::super::typ::{self, BasicType, Type};
 use super::super::universe::{Builtin, BuiltinInfo};
 use super::check::{Checker, FilesContext};
 use super::resolver::DeclInfo;
+use std::cmp::Ordering;
 
 use goscript_parser::objects::IdentKey;
 use goscript_parser::{ast, ast::Expr, position::Pos, position::Position};
@@ -23,19 +24,18 @@ macro_rules! error_operand {
 
 #[derive(Debug)]
 pub enum UnpackResult<'a> {
-    Tuple(Option<Expr>, Vec<Option<TypeKey>>), // rhs is a tuple
-    CommaOk(Option<Expr>, [TypeKey; 2]),       // rhs returns comma_ok
-    Mutliple(&'a Vec<Expr>),                   // N to N
-    Single(Operand),                           // 1 to 1
-    Nothing,                                   // nothing to unpack
-    Mismatch(&'a Vec<Expr>, usize),            // M to N (M != N)
-    Error,                                     // errors when trying to unpack
+    Tuple(Option<Expr>, Vec<Option<TypeKey>>, Ordering), // rhs is a tuple
+    CommaOk(Option<Expr>, [TypeKey; 2]),                 // rhs returns comma_ok
+    Mutliple(&'a Vec<Expr>, Ordering),                   // N to N
+    Single(Operand, Ordering),                           // 1 to 1
+    Nothing(Ordering),                                   // nothing to unpack
+    Error,                                               // errors when trying to unpack
 }
 
 impl<'a> UnpackResult<'a> {
     pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize, fctx: &mut FilesContext) {
         match self {
-            UnpackResult::Tuple(expr, types) => {
+            UnpackResult::Tuple(expr, types, _) => {
                 x.mode = OperandMode::Value;
                 x.expr = expr.clone();
                 x.typ = types[i];
@@ -45,24 +45,35 @@ impl<'a> UnpackResult<'a> {
                 x.expr = expr.clone();
                 x.typ = Some(types[i]);
             }
-            UnpackResult::Mutliple(exprs) => {
+            UnpackResult::Mutliple(exprs, _) => {
                 checker.multi_expr(x, &exprs[i], fctx);
             }
-            UnpackResult::Single(sx) => {
+            UnpackResult::Single(sx, _) => {
                 x.mode = sx.mode.clone();
                 x.expr = sx.expr.clone();
                 x.typ = sx.typ;
             }
-            UnpackResult::Nothing => unreachable!(),
-            UnpackResult::Mismatch(_, _) => unreachable!(),
+            UnpackResult::Nothing(_) => unreachable!(),
+            UnpackResult::Error => unreachable!(),
+        }
+    }
+
+    // rhs_count return the var count of rhs, and if it less than or equal to or matchs
+    // the required count
+    pub fn rhs_count(&self) -> (usize, Ordering) {
+        match self {
+            UnpackResult::Tuple(_, types, ord) => (types.len(), *ord),
+            UnpackResult::CommaOk(_, types) => (types.len(), Ordering::Equal),
+            UnpackResult::Mutliple(exprs, ord) => (exprs.len(), *ord),
+            UnpackResult::Single(_, ord) => (1, *ord),
+            UnpackResult::Nothing(ord) => (0, *ord),
             UnpackResult::Error => unreachable!(),
         }
     }
 
     pub fn use_(&self, checker: &mut Checker, from: usize, fctx: &mut FilesContext) {
         let exprs = match self {
-            UnpackResult::Mutliple(exprs) => exprs,
-            UnpackResult::Mismatch(exprs, _) => exprs,
+            UnpackResult::Mutliple(exprs, _) => exprs,
             _ => {
                 return;
             }
@@ -73,8 +84,16 @@ impl<'a> UnpackResult<'a> {
             checker.multi_expr(&mut x, &exprs[i], fctx);
         }
     }
+
+    pub fn is_err(&self) -> bool {
+        match self {
+            UnpackResult::Error => true,
+            _ => false,
+        }
+    }
 }
 
+#[derive(Debug)]
 pub struct UnpackedResultLeftovers<'a> {
     pub leftovers: &'a UnpackResult<'a>,
     pub consumed: Option<&'a Vec<Operand>>,
@@ -221,20 +240,20 @@ impl<'a> Checker<'a> {
         variadic: bool,
         fctx: &mut FilesContext,
     ) -> UnpackResult<'b> {
-        let mismatch = |rhs_len: usize| {
-            if variadic {
-                rhs_len + 1 < lhs_len
+        let do_match = |rhs_len: usize| {
+            let order = rhs_len.cmp(&lhs_len);
+            if variadic && order == Ordering::Greater {
+                Ordering::Equal
             } else {
-                rhs_len != lhs_len
+                order
             }
         };
         if rhs.len() != 1 {
-            return if mismatch(rhs.len()) {
-                UnpackResult::Mismatch(rhs, rhs.len())
-            } else if rhs.len() == 0 {
-                UnpackResult::Nothing
+            let matching = do_match(rhs.len());
+            return if rhs.len() == 0 {
+                UnpackResult::Nothing(matching)
             } else {
-                UnpackResult::Mutliple(rhs)
+                UnpackResult::Mutliple(rhs, matching)
             };
         }
 
@@ -247,10 +266,8 @@ impl<'a> Checker<'a> {
         if let Some(t) = self.otype(x.typ.unwrap()).try_as_tuple() {
             let types: Vec<Option<TypeKey>> =
                 t.vars().iter().map(|x| self.lobj(*x).typ()).collect();
-            if mismatch(types.len()) {
-                return UnpackResult::Mismatch(rhs, types.len());
-            }
-            return UnpackResult::Tuple(x.expr.clone(), types);
+            let matching = do_match(types.len());
+            return UnpackResult::Tuple(x.expr.clone(), types, matching);
         } else if x.mode == OperandMode::MapIndex || x.mode == OperandMode::CommaOk {
             if allow_comma_ok {
                 let types = [x.typ.unwrap(), self.basic_type(BasicType::UntypedBool)];
@@ -259,10 +276,7 @@ impl<'a> Checker<'a> {
             x.mode = OperandMode::Value;
         }
 
-        if mismatch(1) {
-            return UnpackResult::Mismatch(rhs, 1);
-        }
-        UnpackResult::Single(x)
+        UnpackResult::Single(x, do_match(1))
     }
 
     pub fn use_exprs(&mut self, exprs: &Vec<Expr>, fctx: &mut FilesContext) {
