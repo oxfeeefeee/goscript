@@ -1,15 +1,23 @@
 use super::position;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
-struct Error {
-    pos: position::Position,
-    msg: String,
-    soft: bool,
+pub struct Error {
+    pub pos: position::Position,
+    pub msg: String,
+    pub soft: bool,
     by_parser: bool, // reported by parser (not type checker)
     order: usize,    // display order
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let p = if self.by_parser { "[Parser]" } else { "[TC]" };
+        write!(f, "{} {}  {}\n", p, self.pos, self.msg)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -21,8 +29,7 @@ impl fmt::Display for ErrorList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Result: {} errors\n", self.errors.borrow().len())?;
         for e in self.errors.borrow().iter() {
-            let p = if e.by_parser { "[Parser]" } else { "[TC]" };
-            write!(f, "{} {}  {}\n", p, e.pos, e.msg)?;
+            e.fmt(f)?;
         }
         Ok(())
     }
@@ -63,6 +70,10 @@ impl ErrorList {
 
     pub fn sort(&mut self) {
         self.errors.borrow_mut().sort_by_key(|e| e.order);
+    }
+
+    pub fn borrow(&self) -> Ref<Vec<Error>> {
+        self.errors.borrow()
     }
 }
 

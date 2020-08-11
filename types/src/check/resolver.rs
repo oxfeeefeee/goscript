@@ -590,7 +590,7 @@ impl<'a> Checker<'a> {
                 );
             }
         } else if l < r {
-            if init.is_none() {
+            if l < s.values.len() {
                 let expr = &s.values[l];
                 let ed = self.new_dis(expr);
                 self.error(ed.pos(), format!("extra init expr {}", ed));

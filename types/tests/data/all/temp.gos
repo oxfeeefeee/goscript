@@ -2,14 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// statements
+// builtin calls
 
-package stmt0
+package builtins
 
 
-func _(x, y int) (z int) {
-L:	for {
-		for { break L }
-		return
-	}
-} /* ERROR "missing return" */
+func close1() {
+	const _ int = complex /* ERROR int */ (1.1, 0)
+	const _ float32 = complex /* ERROR float32 */ (1, 3)
+}

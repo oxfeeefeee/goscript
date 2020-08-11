@@ -5,7 +5,7 @@ pub const LOWEST_PREC: usize = 0; // non-operators
 pub const UNARY_PREC: usize = 6;
 pub const HIGHEST_PREC: usize = 7;
 
-#[derive(Hash, Eq, PartialEq, Clone, Debug)]
+#[derive(Hash, Eq, PartialEq, Clone)]
 pub enum Token {
 	// Special tokens
 	NONE,
@@ -339,12 +339,27 @@ impl fmt::Display for Token {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		let text = self.text();
 		match self {
-			Token::IDENT(l) => write!(f, "{} {}", text, l.as_str()),
-			Token::INT(l) => write!(f, "{} {}", text, l.as_str()),
-			Token::FLOAT(l) => write!(f, "{} {}", text, l.as_str()),
-			Token::IMAG(l) => write!(f, "{} {}", text, l.as_str()),
-			Token::CHAR(l) => write!(f, "{} {}", text, l.as_str()),
-			Token::STRING(l) => write!(f, "{} {}", text, l.as_str()),
+			Token::IDENT(l)
+			| Token::INT(l)
+			| Token::FLOAT(l)
+			| Token::IMAG(l)
+			| Token::CHAR(l)
+			| Token::STRING(l) => f.write_str(l.as_str()),
+			_ => write!(f, "{}", text),
+		}
+	}
+}
+
+impl fmt::Debug for Token {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		let text = self.text();
+		match self {
+			Token::IDENT(l)
+			| Token::INT(l)
+			| Token::FLOAT(l)
+			| Token::IMAG(l)
+			| Token::CHAR(l)
+			| Token::STRING(l) => write!(f, "{} {}", text, l.as_str()),
 			Token::SEMICOLON(real) if !*real.as_bool() => write!(f, "\"{}(inserted)\"", text),
 			token if token.is_operator() || token.is_keyword() => write!(f, "\"{}\"", text),
 			_ => write!(f, "{}", text),

@@ -254,7 +254,7 @@ impl<'a> Checker<'a> {
                         );
                         return false;
                     }
-                    x.mode = OperandMode::Value;
+                    x.mode = OperandMode::NoValue;
 
                     record(self, None, &vec![tkey], false);
                 } else {
@@ -344,7 +344,7 @@ impl<'a> Checker<'a> {
                 // if both arguments are constants, the result is a constant
                 match (&mut x.mode, &y.mode) {
                     (OperandMode::Constant(vx), OperandMode::Constant(vy)) => {
-                        *vx = Value::binary_op(vx, &Token::ADD, vy);
+                        *vx = Value::binary_op(vx, &Token::ADD, &vy.to_float().make_imag());
                     }
                     _ => {
                         x.mode = OperandMode::Value;
@@ -455,6 +455,7 @@ impl<'a> Checker<'a> {
                             );
                             return false;
                         }
+                        x.mode = OperandMode::NoValue;
                         record(self, None, &vec![mtype, key], false);
                     }
                     None => {

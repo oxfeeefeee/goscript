@@ -44,7 +44,7 @@ impl Config {
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub struct ImportKey {
     pub path: String,
-    pub dir: String,
+    pub dir: String, // makes a difference only when importing local files
 }
 
 impl ImportKey {
@@ -212,17 +212,29 @@ impl<'a> Importer<'a> {
 
 fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     let mut result = vec![];
-    for entry in fs::read_dir(p)? {
-        let entry = entry?;
-        let path = entry.path();
-        if !path.is_dir() {
-            if let Some(ext) = path.extension() {
-                if ext == "gos" || ext == "go" {
-                    let content = fs::read_to_string(path.as_path())?;
-                    result.push((path, content))
-                }
+    let mut read = |path: PathBuf| -> io::Result<()> {
+        if let Some(ext) = path.extension() {
+            if ext == "gos" || ext == "go" {
+                let content = fs::read_to_string(path.as_path())?;
+                result.push((path, content))
             }
         }
+        Ok(())
+    };
+
+    if p.is_dir() {
+        for entry in fs::read_dir(p)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                read(path)?;
+            }
+        }
+    } else if p.is_file() {
+        read(p.to_path_buf())?;
+    }
+    if result.len() == 0 {
+        return Err(io::Error::new(io::ErrorKind::Other, "no file/dir found"));
     }
     Ok(result)
 }

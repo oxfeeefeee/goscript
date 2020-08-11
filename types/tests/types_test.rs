@@ -2,7 +2,7 @@ extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 use std::collections::HashMap;
 
-fn load_parse_check(dir: &str, trace: bool) -> usize {
+fn load_parse_check(path: &str, trace: bool) -> usize {
     let pkgs = &mut HashMap::new();
     let config = types::Config {
         work_dir: Some("./".to_string()),
@@ -16,7 +16,7 @@ fn load_parse_check(dir: &str, trace: bool) -> usize {
     let tco = &mut types::objects::TCObjects::new();
 
     let importer = &mut types::Importer::new(&config, fs, pkgs, asto, tco, el, 0);
-    let key = types::ImportKey::new("./", dir);
+    let key = types::ImportKey::new(path, "./");
     let _ = importer.import(&key);
 
     el.sort();
@@ -82,5 +82,5 @@ fn test_types_label() {
 
 #[test]
 fn test_types_simple() {
-    load_parse_check("./tests/data/simple/", true);
+    load_parse_check("./tests/data/simple/simple.gos", true);
 }

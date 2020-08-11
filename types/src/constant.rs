@@ -291,6 +291,19 @@ impl Value {
         }
     }
 
+    // make_imag returns the Complex value x*i;
+    // x must be Int, Float, or Unknown.
+    // If x is Unknown, the result is Unknown.
+    pub fn make_imag(&self) -> Value {
+        match self {
+            Value::Int(_) | Value::Float(_) | Value::Rat(_) => {
+                Value::Complex(Box::new(Value::with_f64(0.0)), Box::new(self.clone()))
+            }
+            Value::Unknown => Value::Unknown,
+            _ => panic!(format!("{} not Int or Float", self)),
+        }
+    }
+
     /// real returns the real part of x, which must be a numeric or unknown value.
     /// If x is Unknown, the result is Unknown.
     pub fn real(&self) -> Value {
