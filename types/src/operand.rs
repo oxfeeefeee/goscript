@@ -452,7 +452,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
 
     fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
         self.visit_expr(left)?;
-        op.fmt(self.f)?;
+        self.f.write_fmt(format_args!(" {} ", op))?;
         self.visit_expr(right)
     }
 

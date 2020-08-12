@@ -700,17 +700,14 @@ impl<'a> Checker<'a> {
         // spec: "A package-scope or file-scope identifier with name init
         // may only be declared to be a function with this (func()) signature."
         if &ident.name == "init" {
-            self.error(ident.pos, "cannot declare init - must be func".to_owned());
+            self.error_str(ident.pos, "cannot declare init - must be func");
             return Err(());
         }
         // spec: "The main package must have package name main and declare
         // a function main that takes no arguments and returns no value."
         let pkg_name = self.package(self.pkg).name();
         if &ident.name == "main" && pkg_name.is_some() && pkg_name.as_ref().unwrap() == "main" {
-            self.error(
-                ident.pos,
-                "cannot declaralready declared through dot-importe main - must be func".to_owned(),
-            );
+            self.error_str(ident.pos, "cannot declare main - must be func");
             return Err(());
         }
         let scope = *self.package(self.pkg).scope();

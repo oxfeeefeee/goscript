@@ -79,7 +79,7 @@ impl<'a> Checker<'a> {
                     if !self.is_terminating_list(&cc.body, None)
                         || self.has_break_list(&cc.body, label, true)
                     {
-                        return true;
+                        return false;
                     }
                 }
                 _ => unreachable!(),

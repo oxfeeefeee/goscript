@@ -214,7 +214,7 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     let mut result = vec![];
     let mut read = |path: PathBuf| -> io::Result<()> {
         if let Some(ext) = path.extension() {
-            if ext == "gos" || ext == "go" {
+            if ext == "gos" || ext == "go" || ext == "src" {
                 let content = fs::read_to_string(path.as_path())?;
                 result.push((path, content))
             }
@@ -223,12 +223,17 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     };
 
     if p.is_dir() {
+        let mut paths = vec![];
         for entry in fs::read_dir(p)? {
             let entry = entry?;
             let path = entry.path();
             if !path.is_dir() {
-                read(path)?;
+                paths.push(path);
             }
+        }
+        paths.sort_by(|a, b| a.as_os_str().cmp(b.as_os_str()));
+        for p in paths.into_iter() {
+            read(p)?;
         }
     } else if p.is_file() {
         read(p.to_path_buf())?;

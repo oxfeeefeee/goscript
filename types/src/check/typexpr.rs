@@ -809,10 +809,7 @@ impl<'a> Checker<'a> {
                 Expr::Star(_) => None,
                 _ => Checker::embedded_field_ident(&s.expr),
             },
-            Expr::Selector(s) => match s.expr {
-                Expr::Ident(i) => Some(i),
-                _ => unreachable!(),
-            },
+            Expr::Selector(s) => Some(s.sel),
             _ => None,
         }
     }

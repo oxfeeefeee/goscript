@@ -229,7 +229,7 @@ func selects() {
 }
 
 func gos() {
-	go 1 /* ERROR HERE "function must be invoked" */
+	go 1 /*ERROR HERE "function must be invoked" */
 	go int /* ERROR "go requires function call, not conversion" */ (0)
 	go gos()
 	var c chan int
@@ -238,7 +238,7 @@ func gos() {
 }
 
 func defers() {
-	defer 1 /* ERROR HERE "function must be invoked" */
+	defer 1 /*ERROR HERE "function must be invoked" */
 	defer int /* ERROR "defer requires function call, not conversion" */ (0)
 	defer defers()
 	var c chan int
@@ -623,10 +623,10 @@ func switches2() {
 	type B bool
 	var b B = true
 	switch x == x {
-	case b /* ERROR "mismatched types B and bool" */ :
+	case b /* ERROR "mismatched types" */ :
 	}
 	switch {
-	case b /* ERROR "mismatched types B and bool" */ :
+	case b /* ERROR "mismatched types" */ :
 	}
 }
 
@@ -717,7 +717,7 @@ func typeswitches() {
 	case T:
 	case T1 /* ERROR "missing method m" */ :
 	case T2 /* ERROR "wrong type for method m" */ :
-	case I2 /* STRICT "wrong type for method m" */ : // only an error in strict mode (issue 8561)
+	case I2 /* ERROR "wrong type for method m" */ : // only an error in strict mode (issue 8561)
 	}
 }
 
@@ -755,7 +755,7 @@ func typeswitch2() {
 	switch A(nil).(type) {
 	case A:
 	case B:
-	case C /* STRICT "cannot have dynamic type" */: // only an error in strict mode (issue 8561)
+	case C /* ERROR "cannot have dynamic type" */: // only an error in strict mode (issue 8561)
 	}
 }
 

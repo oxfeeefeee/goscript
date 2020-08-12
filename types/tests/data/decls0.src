@@ -62,7 +62,7 @@ type (
 
 type (
 	p1 pi.foo /* ERROR "no field or method foo" */
-	//p2 unsafe.Pointer
+	p2 unsafe.Pointer
 )
 
 

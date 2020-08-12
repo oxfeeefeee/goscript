@@ -354,6 +354,14 @@ impl BasicType {
             _ => false,
         }
     }
+
+    pub fn real_type(&self) -> BasicType {
+        match self {
+            BasicType::Byte => BasicType::Uint8,
+            BasicType::Rune => BasicType::Int32,
+            _ => *self,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1041,7 +1049,7 @@ fn identical_impl(
     let ty = &objs.types[y];
 
     match (tx, ty) {
-        (Type::Basic(bx), Type::Basic(by)) => bx.typ() == by.typ(),
+        (Type::Basic(bx), Type::Basic(by)) => bx.typ().real_type() == by.typ().real_type(),
         (Type::Array(ax), Type::Array(ay)) => {
             ax.len() == ay.len() && identical_impl(ax.elem(), ay.elem(), cmp_tags, dup, objs)
         }

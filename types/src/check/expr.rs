@@ -108,6 +108,7 @@ impl<'a> Checker<'a> {
                         if x.mode != OperandMode::Variable {
                             let xd = self.new_dis(x);
                             self.invalid_op(xd.pos(), &format!("cannot take address of {}", xd));
+                            x.mode = OperandMode::Invalid;
                             return;
                         }
                     }
@@ -311,7 +312,7 @@ impl<'a> Checker<'a> {
         // If the new type is not final and still untyped, just
         // update the recorded type.
         let o = &self.tc_objs;
-        if !final_ && typ::is_typed(t, o) {
+        if !final_ && typ::is_untyped(t, o) {
             let old = fctx.untyped.get_mut(&e.id()).unwrap();
             old.typ = Some(typ::underlying_type(t, o));
             return;
@@ -331,7 +332,7 @@ impl<'a> Checker<'a> {
                 let td = self.new_dis(&t);
                 self.invalid_op(
                     ed.pos(),
-                    &format!("shifted operand {} (type {}) must be integer1", ed, td),
+                    &format!("shifted operand {} (type {}) must be integer", ed, td),
                 );
                 return;
             }
@@ -685,10 +686,7 @@ impl<'a> Checker<'a> {
 
         if !typ::is_integer(x.typ.unwrap(), self.tc_objs) {
             let xd = self.new_dis(x);
-            self.invalid_op(
-                xd.pos(),
-                &format!("shifted operand {} must be integer3", xd),
-            );
+            self.invalid_op(xd.pos(), &format!("shifted operand {} must be integer", xd));
             x.mode = OperandMode::Value;
             return;
         }
@@ -1008,7 +1006,7 @@ impl<'a> Checker<'a> {
             Expr::FuncLit(fl) => {
                 let t = self.type_expr(&Expr::Func(fl.typ), fctx);
                 if let Some(_) = self.otype(t).try_as_signature() {
-                    let decl = self.octx.decl.unwrap();
+                    let decl = self.octx.decl;
                     let body = BodyContainer::FuncLitExpr(e.clone());
                     let iota = self.octx.iota.clone();
                     let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
@@ -1460,6 +1458,7 @@ impl<'a> Checker<'a> {
                     if let (Some(a), Some(b)) = (p[0], p[1]) {
                         if a < b {
                             self.error(se.r_brack, format!("invalid slice indices: {} > {}", b, a));
+                            break; // only report one error
                         }
                     }
                 }
@@ -1517,7 +1516,7 @@ impl<'a> Checker<'a> {
                 if x.invalid() {
                     return on_err(x);
                 }
-                self.unary(x, Some(ue.expr.clone()), &ue.op);
+                self.unary(x, Some(e.clone()), &ue.op);
                 if x.invalid() {
                     return on_err(x);
                 }

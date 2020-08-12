@@ -4,7 +4,7 @@
 
 // initialization cycles
 
-package init
+package init0
 
 // initialization cycles (we don't know the types)
 const (

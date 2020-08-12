@@ -93,7 +93,7 @@ impl BodyContainer {
 impl<'a> Checker<'a> {
     pub fn func_body(
         &mut self,
-        di: DeclInfoKey,
+        di: Option<DeclInfoKey>,
         name: &str,
         sig: TypeKey,
         body: BodyContainer,
@@ -113,7 +113,7 @@ impl<'a> Checker<'a> {
         scope.set_end(end);
 
         let mut octx = ObjContext::new();
-        octx.decl = Some(di);
+        octx.decl = di;
         octx.scope = Some(scope_key);
         octx.iota = iota;
         octx.sig = Some(sig);

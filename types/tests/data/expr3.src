@@ -19,9 +19,9 @@ func indexes() {
 	_ = a[- /* ERROR "negative" */ 1]
 	_ = a[- /* ERROR "negative" */ 1 :]
 	_ = a[: - /* ERROR "negative" */ 1]
-	_ = a[: /* ERROR "2nd index required" */ : /* ERROR "3rd index required" */ ]
-	_ = a[0: /* ERROR "2nd index required" */ : /* ERROR "3rd index required" */ ]
-	_ = a[0: /* ERROR "2nd index required" */ :10]
+	_ = a[: /* ERROR"2nd index required" */ : /* ERROR"3rd index required" */ ]
+	_ = a[0: /* ERROR"2nd index required" */ : /* ERROR"3rd index required" */ ]
+	_ = a[0: /* ERROR"2nd index required" */ :10]
 	_ = a[:10:10]
 
 	var a0 int
@@ -86,7 +86,7 @@ func indexes() {
 	_ = s[: 1 /* ERROR "overflows" */ <<100]
 	_ = s[1 /* ERROR "overflows" */ <<100 :]
 	_ = s[1 /* ERROR "overflows" */ <<100 : 1 /* ERROR "overflows" */ <<100]
-	_ = s[: /* ERROR "2nd index required" */ :  /* ERROR "3rd index required" */ ]
+	_ = s[: /*ERROR "2nd index required" */ :  /* ERROR"3rd index required" */ ]
 	_ = s[:10:10]
 	_ = s[10:0:10] /* ERROR "invalid slice indices" */
 	_ = s[0:10:0] /* ERROR "invalid slice indices" */
@@ -207,7 +207,7 @@ func struct_literals() {
 	_ = time.Time{}
 	_ = time.Time{sec /* ERROR "unknown field" */ : 0}
 	_ = time.Time{
-		0 /* ERROR implicit assignment to unexported field wall in time.Time literal */,
+		0 /* ERROR implicit assignment to unexported field wall in ./time.Time literal */,
 		0 /* ERROR implicit assignment */ ,
 		nil /* ERROR implicit assignment */ ,
 	}
@@ -231,7 +231,7 @@ func array_literals() {
 	_ = A1{5: 5, 6, 7, 3: 3, 4}
 	_ = A1{5: 5, 6, 7, 3: 3, 4, 5 /* ERROR "duplicate index" */ }
 	_ = A1{10 /* ERROR "index .* out of bounds" */ : 10, 10 /* ERROR "index .* out of bounds" */ : 10}
-	_ = A1{5: 5, 6, 7, 3: 3, 1 /* ERROR "overflows" */ <<100: 4, 5 /* ERROR "duplicate index" */ }
+	_ = A1{5: 5, 6, 7, 3: 3, 1 /* ERROR "overflows" */ <<100: 4, 5 /* ERROR"duplicate index" */ }
 	_ = A1{5: 5, 6, 7, 4: 4, 1 /* ERROR "overflows" */ <<100: 4}
 	_ = A1{2.0}
 	_ = A1{2.1 /* ERROR "truncated" */ }
@@ -297,7 +297,7 @@ func slice_literals() {
 	_ = S0{5: 5, 6, 7, 3: 3, 4}
 	_ = S0{5: 5, 6, 7, 3: 3, 4, 5 /* ERROR "duplicate index" */ }
 	_ = S0{10: 10, 10 /* ERROR "duplicate index" */ : 10}
-	_ = S0{5: 5, 6, 7, 3: 3, 1 /* ERROR "overflows" */ <<100: 4, 5 /* ERROR "duplicate index" */ }
+	_ = S0{5: 5, 6, 7, 3: 3, 1 /* ERROR "overflows" */ <<100: 4, 5 /*ERROR "duplicate index" */ }
 	_ = S0{5: 5, 6, 7, 4: 4, 1 /* ERROR "overflows" */ <<100: 4}
 	_ = S0{2.0}
 	_ = S0{2.1 /* ERROR "truncated" */ }
@@ -460,7 +460,7 @@ func type_asserts() {
 	_ = t.(*T)
 	_ = t /* ERROR "missing method m" */ .(T1)
 	_ = t /* ERROR "wrong type for method m" */ .(T2)
-	_ = t /* STRICT "wrong type for method m" */ .(I2) // only an error in strict mode (issue 8561)
+	_ = t /* ERROR "wrong type for method m" */ .(I2) // only an error in strict mode (issue 8561)
 
 	// e doesn't statically have an m, but may have one dynamically.
 	_ = e.(I2)

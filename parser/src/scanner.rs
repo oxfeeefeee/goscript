@@ -748,8 +748,8 @@ impl<'a> Scanner<'a> {
 fn digit_val(ch: char) -> u32 {
     match ch {
         c if c >= '0' && c <= '9' => ch as u32 - '0' as u32,
-        c if c >= 'a' && c <= 'f' => ch as u32 - 'a' as u32,
-        c if c >= 'A' && c <= 'F' => ch as u32 - 'A' as u32,
+        c if c >= 'a' && c <= 'f' => ch as u32 - 'a' as u32 + 10,
+        c if c >= 'A' && c <= 'F' => ch as u32 - 'A' as u32 + 10,
         _ => 16,
     }
 }

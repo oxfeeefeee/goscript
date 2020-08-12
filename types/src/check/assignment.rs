@@ -128,10 +128,10 @@ impl<'a> Checker<'a> {
     ) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
-        if x.invalid() || x.typ == Some(invalid_type) {
-            lhs.set_type(Some(invalid_type));
-        }
-        if lhs.typ() == Some(invalid_type) {
+        if x.invalid() || x.typ == Some(invalid_type) || lhs.typ() == Some(invalid_type) {
+            if lhs.typ().is_none() {
+                lhs.set_type(Some(invalid_type));
+            }
             return None;
         }
         // If the lhs doesn't have a type yet, use the type of x.
@@ -139,7 +139,7 @@ impl<'a> Checker<'a> {
             let xt = x.typ.unwrap();
             let lhs_type = if typ::is_untyped(xt, self.tc_objs) {
                 // convert untyped types to default types
-                if xt == invalid_type {
+                if xt == self.basic_type(typ::BasicType::UntypedNil) {
                     self.error(
                         x.pos(self.ast_objs),
                         format!("use of untyped nil in {}", msg),
@@ -270,10 +270,12 @@ impl<'a> Checker<'a> {
         //    return /* ERROR "wrong number of return values" */ m[0]
         // }
         let result = self.unpack(rhs, ll, ll == 2 && return_pos.is_none(), false, fctx);
-
         let mut invalidate_lhs = || {
             for okey in lhs.iter() {
-                self.lobj_mut(*okey).set_type(Some(invalid_type));
+                let lobj = self.lobj_mut(*okey);
+                if lobj.typ().is_none() {
+                    lobj.set_type(Some(invalid_type));
+                }
             }
         };
 

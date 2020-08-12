@@ -152,3 +152,15 @@ type (
 	T16 map[[len(T16 /* ERROR cycle */ {1:2})]int]int
 	T17 map[int][len(T17 /* ERROR cycle */ {1:2})]int
 )
+
+
+// Test case for types depending on function literals (see also #22992).
+type T20 chan [unsafe.Sizeof(func(ch T20){ _ = <-ch })]byte
+type T22 = chan [unsafe.Sizeof(func(ch T20){ _ = <-ch })]byte
+
+func _() {
+	type T0 func(T0)
+	type T1 /* ERROR cycle */ = func(T1)
+	type T2 chan [unsafe.Sizeof(func(ch T2){ _ = <-ch })]byte
+	type T3 /* ERROR cycle */ = chan [unsafe.Sizeof(func(ch T3){ _ = <-ch })]byte
+}

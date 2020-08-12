@@ -469,7 +469,7 @@ impl<'a> Checker<'a> {
             let name = lobj.name().clone();
             let body = BodyContainer::FuncDecl(fdecl_key);
             let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
-                checker.func_body(dkey, &name, sig_key, body, None, fctx);
+                checker.func_body(Some(dkey), &name, sig_key, body, None, fctx);
             };
             fctx.later(Box::new(f));
         }
@@ -516,8 +516,10 @@ impl<'a> Checker<'a> {
                 // to it must be unique."
                 let mobj = self.lobj(*m);
                 assert!(mobj.name() != "_");
-                if self.insert_obj_to_set(&mut mset, *m).is_some() {
-                    match mobj.entity_type() {
+                let alt = self.insert_obj_to_set(&mut mset, *m);
+                if let Some(alt) = alt {
+                    let alt_obj = self.lobj(alt);
+                    match alt_obj.entity_type() {
                         EntityType::Var(_) => self.error(
                             mobj.pos(),
                             format!("field and method with the same name {}", mobj.name()),
@@ -534,7 +536,7 @@ impl<'a> Checker<'a> {
                         }
                         _ => unreachable!(),
                     }
-                    self.report_alt_decl(*m);
+                    self.report_alt_decl(alt);
                     false
                 } else {
                     true

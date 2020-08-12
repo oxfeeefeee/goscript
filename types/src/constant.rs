@@ -48,27 +48,27 @@ impl fmt::Display for Value {
         match self {
             Value::Unknown => write!(f, "unknown"),
             Value::Bool(b) => {
-                f.write_str("bool: ")?;
+                //f.write_str("bool: ")?;
                 b.fmt(f)
             }
             Value::Str(s) => {
-                f.write_str("string: ")?;
+                //f.write_str("string: ")?;
                 write!(f, "{}", short_quote_str(s, 72))
             }
             Value::Int(s) => {
-                f.write_str("int: ")?;
+                //f.write_str("int: ")?;
                 s.fmt(f)
             }
             Value::Rat(r) => {
-                f.write_str("rat: ")?;
+                //f.write_str("rat: ")?;
                 r.fmt(f)
             }
             Value::Float(s) => {
-                f.write_str("float: ")?;
+                //f.write_str("float: ")?;
                 s.fmt(f)
             }
             Value::Complex(r, i) => {
-                f.write_str("complex: ")?;
+                //f.write_str("complex: ")?;
                 write!(f, "({} + {}i)", r, i)
             }
         }
@@ -166,12 +166,12 @@ impl Value {
                         BasicType::Int => ival.to_isize().is_some(),
                         BasicType::Int8 => ival.to_i8().is_some(),
                         BasicType::Int16 => ival.to_i16().is_some(),
-                        BasicType::Int32 => ival.to_i32().is_some(),
+                        BasicType::Int32 | BasicType::Rune => ival.to_i32().is_some(),
                         BasicType::Int64 => ival.to_i64().is_some(),
                         BasicType::Uint | BasicType::Uintptr => ival.to_usize().is_some(),
                         BasicType::Uint8 | BasicType::Byte => ival.to_u8().is_some(),
                         BasicType::Uint16 => ival.to_u16().is_some(),
-                        BasicType::Uint32 | BasicType::Rune => ival.to_u32().is_some(),
+                        BasicType::Uint32 => ival.to_u32().is_some(),
                         BasicType::Uint64 => ival.to_u64().is_some(),
                         BasicType::UntypedInt => true,
                         _ => unreachable!(),

@@ -627,8 +627,9 @@ impl<'a> Parser<'a> {
         // Tag
         let token = self.token.clone();
         let tag = if let Token::STRING(_) = token {
+            let t = Some(Expr::new_basic_lit(self.pos, self.token.clone()));
             self.next();
-            Some(Expr::new_basic_lit(self.pos, self.token.clone()))
+            t
         } else {
             None
         };

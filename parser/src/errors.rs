@@ -8,8 +8,8 @@ pub struct Error {
     pub pos: position::Position,
     pub msg: String,
     pub soft: bool,
-    by_parser: bool, // reported by parser (not type checker)
-    order: usize,    // display order
+    pub by_parser: bool, // reported by parser (not type checker)
+    order: usize,        // display order
 }
 
 impl fmt::Display for Error {

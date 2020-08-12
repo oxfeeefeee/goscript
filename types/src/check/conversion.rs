@@ -25,8 +25,7 @@ impl<'a> Checker<'a> {
             if clone.representable(basic, Some(v)) {
                 true
             } else if typ::is_integer(xtype, o) && tval.is_string(o) {
-                // todo: not exactly the same of the go version
-                let mut s = "?".to_string();
+                let mut s = "\u{FFFD}".to_string();
                 let (i, exact) = v.int_as_i64();
                 if exact {
                     if let Some(c) = char::from_u32(i as u32) {
@@ -111,17 +110,17 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // "x's type and T are both integer or floating point types"
+        // "x's type and t are both integer or floating point types"
         if (vval.is_integer(o) || vval.is_float(o)) && (tval.is_integer(o) || tval.is_float(o)) {
             return true;
         }
 
-        // "x's type and T are both complex types"
+        // "x's type and t are both complex types"
         if vval.is_complex(o) || tval.is_complex(o) {
             return true;
         }
 
-        // "x is an integer or a slice of bytes or runes and T is a string type"
+        // "x is an integer or a slice of bytes or runes and t is a string type"
         if (vval.is_integer(o) || self.is_bytes_or_runes(vuval)) && tval.is_string(o) {
             return true;
         }
