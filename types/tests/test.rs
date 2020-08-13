@@ -161,12 +161,12 @@ fn test_auto() {
     test_file("./tests/data/constdecl.gos", trace);
     test_file("./tests/data/conversions.gos", trace);
     test_file("./tests/data/conversions2.gos", trace);
-    //test_file("./tests/data/cycles.gos", trace);
-    //test_file("./tests/data/cycles1.gos", true);
-    //test_file("./tests/data/cycles2.gos", true);
-    //test_file("./tests/data/cycles3.gos", true);
-    //test_file("./tests/data/cycles4.gos", true);
-    //test_file("./tests/data/cycles5.gos", true);
+    test_file("./tests/data/cycles.gos", trace);
+    test_file("./tests/data/cycles1.gos", trace);
+    test_file("./tests/data/cycles2.gos", trace);
+    test_file("./tests/data/cycles3.gos", trace);
+    test_file("./tests/data/cycles4.gos", trace);
+    test_file("./tests/data/cycles5.gos", trace);
     test_file("./tests/data/decls0.src", trace);
     test_file("./tests/data/decls1.src", trace);
     test_file("./tests/data/decls2/", trace);

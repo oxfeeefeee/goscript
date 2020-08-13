@@ -8,12 +8,12 @@ use std::fmt;
 use std::fmt::Write;
 
 macro_rules! lookup_on_found {
-    ($indices:ident, $i:ident, $target:ident, $et:ident, $indirect:ident, $found:expr) => {
+    ($indices:ident, $i:ident, $target:expr, $et:ident, $indirect:ident, $found:expr) => {
         $indices = concat_vec($indices, $i);
         if $target.is_some() || $et.multiples {
             return LookupResult::Ambiguous($indices.unwrap());
         }
-        $target = Some($found);
+        *$target = Some($found);
         $indirect = $et.indirect;
     };
 }
@@ -414,8 +414,8 @@ fn lookup_field_or_method_impl(
                 }
                 seen_mut.insert(et.typ);
                 // look for a matching attached method
-                if let Some((i, okey)) = lookup_method(detail.methods(), pkg, name, objs) {
-                    lookup_on_found!(indices, i, target, et, indirect, okey);
+                if let Some((i, &okey)) = lookup_method(detail.methods(), pkg, name, objs) {
+                    lookup_on_found!(indices, i, &mut target, et, indirect, okey);
                     continue; // we can't have a matching field or interface method
                 }
                 // continue with underlying type
@@ -423,10 +423,10 @@ fn lookup_field_or_method_impl(
             }
             match tobj {
                 typ::Type::Struct(detail) => {
-                    for (i, f) in detail.fields().iter().enumerate() {
-                        let fobj = &objs.lobjs[*f];
+                    for (i, &f) in detail.fields().iter().enumerate() {
+                        let fobj = &objs.lobjs[f];
                         if fobj.same_id(pkg, name, objs) {
-                            lookup_on_found!(indices, i, target, et, indirect, f);
+                            lookup_on_found!(indices, i, &mut target, et, indirect, f);
                             continue; // we can't have a matching field or interface method
                         }
                         // Collect embedded struct fields for searching the next
@@ -455,8 +455,10 @@ fn lookup_field_or_method_impl(
                     }
                 }
                 typ::Type::Interface(detail) => {
-                    if let Some((i, okey)) = lookup_method(detail.methods(), pkg, name, objs) {
-                        lookup_on_found!(indices, i, target, et, indirect, okey);
+                    let all = detail.all_methods();
+                    if let Some((i, &okey)) = lookup_method(all.as_ref().unwrap(), pkg, name, objs)
+                    {
+                        lookup_on_found!(indices, i, &mut target, et, indirect, okey);
                     }
                 }
                 _ => {}
@@ -468,11 +470,11 @@ fn lookup_field_or_method_impl(
             //        contains m and the argument list can be assigned to the parameter
             //        list of m. If x is addressable and &x's method set contains m, x.m()
             //        is shorthand for (&x).m()".
-            let lobj = &objs.lobjs[*okey];
+            let lobj = &objs.lobjs[okey];
             if lobj.entity_type().is_func() && ptr_recv(lobj, objs) && !indirect && !addressable {
                 return LookupResult::BadMethodReceiver;
             }
-            return LookupResult::Entry(*okey, indices.unwrap(), indirect);
+            return LookupResult::Entry(okey, indices.unwrap(), indirect);
         }
         current = consolidate_multiples(next, objs);
     }

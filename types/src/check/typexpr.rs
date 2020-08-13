@@ -617,7 +617,7 @@ impl<'a> Checker<'a> {
         } else {
             (None, vec![])
         };
-        let mut info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, &path, fctx);
+        let info = self.info_from_type_lit(self.octx.scope.unwrap(), iface, tname, &path, fctx);
         if info.is_none() || info.as_ref().unwrap().as_ref().borrow().is_empty() {
             // we got an error or the empty interface - exit early
             self.otype_interface_mut(itype).set_empty_complete();
@@ -640,12 +640,12 @@ impl<'a> Checker<'a> {
         fctx.later(Box::new(f));
 
         // collect methods
-        let mut info_mut = info.as_mut().unwrap().borrow_mut();
-        let explicits = info_mut.explicits;
+        let info_ref = info.as_ref().unwrap().as_ref().borrow();
+        let explicits = info_ref.explicits;
         let mut sig_fix: Vec<MethodInfo> = vec![];
-        for (i, mut minfo) in info_mut.methods.iter_mut().enumerate() {
-            let fun = if minfo.fun.is_none() {
-                let name_key = self.ast_objs.fields[minfo.src.unwrap()].names[0];
+        for (i, minfo) in info_ref.methods.iter().enumerate() {
+            let fun = if minfo.func().is_none() {
+                let name_key = self.ast_objs.fields[minfo.src().unwrap()].names[0];
                 let ident = self.ast_ident(name_key);
                 let name = ident.name.clone();
                 let pos = ident.pos;
@@ -675,22 +675,23 @@ impl<'a> Checker<'a> {
                 let recv_key =
                     self.tc_objs
                         .new_var(pos, Some(self.pkg), "".to_string(), Some(recv_type));
+                let empty_tuple = *self.tc_objs.universe().no_value_tuple();
                 let sig_key = self.tc_objs.new_t_signature(
                     None,
                     Some(recv_key),
-                    null_key!(),
-                    null_key!(),
+                    empty_tuple,
+                    empty_tuple,
                     false,
                 );
                 let fun_key = self
                     .tc_objs
                     .new_func(pos, Some(self.pkg), name, Some(sig_key));
-                minfo.fun = Some(fun_key);
+                minfo.set_func(fun_key);
                 self.result.record_def(name_key, Some(fun_key));
                 sig_fix.push(minfo.clone());
                 fun_key
             } else {
-                minfo.fun.unwrap()
+                minfo.func().unwrap()
             };
             let itype_val = self.otype_interface_mut(itype);
             if i < explicits {
@@ -698,7 +699,7 @@ impl<'a> Checker<'a> {
             }
             itype_val.all_methods_push(fun);
         }
-        drop(info_mut);
+        drop(info_ref);
 
         // fix signatures now that we have collected all methods
         let invalid_type = self.invalid_type();
@@ -707,13 +708,13 @@ impl<'a> Checker<'a> {
             // (possibly embedded) methods must be type-checked within their scope and
             // type-checking them must not affect the current context
             self.octx = ObjContext::new();
-            self.octx.scope = minfo.scope;
-            let ftype = self.ast_objs.fields[minfo.src.unwrap()].typ.clone();
+            self.octx.scope = minfo.scope();
+            let ftype = self.ast_objs.fields[minfo.src().unwrap()].typ.clone();
             let ty = self.indirect_type(&ftype, fctx);
             if let Some(sig) = self.otype(ty).try_as_signature() {
                 let sig_copy = *sig;
                 // update signature, but keep recv that was set up before
-                let old = self.otype_signature_mut(self.lobj(minfo.fun.unwrap()).typ().unwrap());
+                let old = self.otype_signature_mut(self.lobj(minfo.func().unwrap()).typ().unwrap());
                 let recv = *old.recv(); // save recv
                 *old = sig_copy;
                 old.set_recv(recv); // restore recv

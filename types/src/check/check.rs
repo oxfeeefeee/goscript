@@ -153,7 +153,7 @@ pub struct ObjContext {
 
 type DelayedAction = Box<dyn FnOnce(&mut Checker, &mut FilesContext)>;
 
-pub type RcIfaceInfo = Rc<RefCell<IfaceInfo>>;
+pub type RcIfaceInfo = Rc<IfaceInfo>;
 
 /// FilesContext contains information collected during type-checking
 /// of a set of package files

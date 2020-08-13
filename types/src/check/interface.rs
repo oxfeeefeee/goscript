@@ -38,29 +38,54 @@ use std::rc::Rc;
 /// fun field.)
 #[derive(Clone, Debug)]
 pub struct MethodInfo {
+    data: Rc<RefCell<MethodInfoData>>,
+}
+
+#[derive(Debug)]
+struct MethodInfoData {
     // scope of interface method; or None
-    pub scope: Option<ScopeKey>,
+    scope: Option<ScopeKey>,
     // syntax tree representation of interface method; or None
-    pub src: Option<FieldKey>,
+    src: Option<FieldKey>,
     // corresponding fully type-checked method type(LangObj::Func); or None
-    pub fun: Option<ObjKey>,
+    func: Option<ObjKey>,
 }
 
 impl MethodInfo {
     pub fn with_fun(fun: ObjKey) -> MethodInfo {
         MethodInfo {
-            scope: None,
-            src: None,
-            fun: Some(fun),
+            data: Rc::new(RefCell::new(MethodInfoData {
+                scope: None,
+                src: None,
+                func: Some(fun),
+            })),
         }
     }
 
     pub fn with_scope_src(skey: ScopeKey, fkey: FieldKey) -> MethodInfo {
         MethodInfo {
-            scope: Some(skey),
-            src: Some(fkey),
-            fun: None,
+            data: Rc::new(RefCell::new(MethodInfoData {
+                scope: Some(skey),
+                src: Some(fkey),
+                func: None,
+            })),
         }
+    }
+
+    pub fn scope(&self) -> Option<ScopeKey> {
+        self.data.borrow().scope
+    }
+
+    pub fn src(&self) -> Option<FieldKey> {
+        self.data.borrow().src
+    }
+
+    pub fn func(&self) -> Option<ObjKey> {
+        self.data.borrow().func
+    }
+
+    pub fn set_func(&self, func: ObjKey) {
+        self.data.borrow_mut().func = Some(func);
     }
 
     pub fn fmt(
@@ -69,19 +94,19 @@ impl MethodInfo {
         tc_objs: &TCObjects,
         ast_objs: &AstObjects,
     ) -> fmt::Result {
-        let s = if let Some(okey) = self.fun {
+        let s = if let Some(okey) = self.func() {
             tc_objs.lobjs[okey].name()
         } else {
-            &ast_objs.idents[ast_objs.fields[self.src.unwrap()].names[0]].name
+            &ast_objs.idents[ast_objs.fields[self.src().unwrap()].names[0]].name
         };
         f.write_str(s)
     }
 
     pub fn pos(&self, tc_objs: &TCObjects, ast_objs: &AstObjects) -> Pos {
-        if let Some(okey) = self.fun {
+        if let Some(okey) = self.func() {
             tc_objs.lobjs[okey].pos()
         } else {
-            self.src.unwrap().pos(ast_objs)
+            self.src().unwrap().pos(ast_objs)
         }
     }
 
@@ -91,11 +116,11 @@ impl MethodInfo {
         tc_objs: &'a TCObjects,
         ast_objs: &'a AstObjects,
     ) -> Cow<'a, str> {
-        if let Some(okey) = self.fun {
+        if let Some(okey) = self.func() {
             tc_objs.lobjs[okey].id(tc_objs)
         } else {
             let pkg = Some(&tc_objs.pkgs[pkey]);
-            let name = &ast_objs.idents[ast_objs.fields[self.src.unwrap()].names[0]].name;
+            let name = &ast_objs.idents[ast_objs.fields[self.src().unwrap()].names[0]].name;
             obj::get_id(pkg, name)
         }
     }
@@ -217,7 +242,7 @@ impl<'a> Checker<'a> {
         }
 
         let iinfo = if iface.methods.list.len() == 0 {
-            Rc::new(RefCell::new(IfaceInfo::new_empty()))
+            Rc::new(IfaceInfo::new_empty())
         } else {
             let mut mset = HashMap::new();
             let mut methods = vec![];
@@ -267,13 +292,13 @@ impl<'a> Checker<'a> {
             // collect methods of embedded interfaces
             for (i, e) in embeddeds.into_iter().enumerate() {
                 let pos = positions[i];
-                for m in e.borrow().methods.iter() {
+                for m in e.methods.iter() {
                     if self.declare_in_method_set(&mut mset, m.clone(), pos) {
                         methods.push(m.clone());
                     }
                 }
             }
-            Rc::new(RefCell::new(IfaceInfo::new(explicites, methods)))
+            Rc::new(IfaceInfo::new(explicites, methods))
         };
 
         // mark check.interfaces as complete
@@ -318,6 +343,7 @@ impl<'a> Checker<'a> {
         // Remember the path length to detect "type name only" cycles.
         let start = path.len();
 
+        let mut cur_path = path.clone();
         let mut ident = self.ast_ident(name);
         loop {
             let lookup = Scope::lookup_parent(&skey, &ident.name, self.octx.pos, self.tc_objs);
@@ -336,13 +362,15 @@ impl<'a> Checker<'a> {
 
             // Abort but don't report an error if we have a "type name only"
             // cycle (see big function comment).
-            if self.has_cycle(tname, &path[start..], false) {
+            if self.has_cycle(tname, &cur_path[start..], false) {
                 break;
             }
             // Abort and report an error if we have a general cycle.
-            if self.has_cycle(tname, &path, true) {
+            if self.has_cycle(tname, &cur_path, true) {
                 break;
             }
+
+            cur_path.push(tname);
 
             // If tname is a package-level type declaration, it must be
             // in the obj_map. Follow the RHS of that declaration if so.
@@ -365,13 +393,11 @@ impl<'a> Checker<'a> {
                     }
                     Expr::Interface(iface) => {
                         // type tname interface{...}
-                        let mut p = path.clone();
-                        p.push(tname);
                         return self.info_from_type_lit(
                             decl.file_scope,
                             iface,
                             Some(tname),
-                            &p,
+                            &cur_path,
                             fctx,
                         );
                     }
@@ -470,7 +496,7 @@ impl<'a> Checker<'a> {
             .map(|x| MethodInfo::with_fun(*x))
             .collect();
         if all_methods_len == iface.methods().len() {
-            return Rc::new(RefCell::new(IfaceInfo::new(all_methods_len, mis)));
+            return Rc::new(IfaceInfo::new(all_methods_len, mis));
         }
 
         // there are embedded method, put them after explicite methods
@@ -486,6 +512,6 @@ impl<'a> Checker<'a> {
             })
             .collect();
         mis.append(&mut embedded);
-        Rc::new(RefCell::new(IfaceInfo::new(iface.methods().len(), mis)))
+        Rc::new(IfaceInfo::new(iface.methods().len(), mis))
     }
 }

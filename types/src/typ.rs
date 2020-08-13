@@ -1162,6 +1162,7 @@ fn fmt_type_impl(
     if visited.get(&tkey).is_some() {
         return tkey.fmt(f);
     }
+    visited.insert(tkey);
     let typ = &objs.types[tkey];
     match typ {
         Type::Basic(detail) => {
