@@ -2235,12 +2235,16 @@ impl<'a> Parser<'a> {
     // ----------------------------------------------------------------------------
     // Declarations
 
-    // todo
-    fn is_valid_import(_lit: &str) -> bool {
-        const _ILLEGAL_CHARS: &str = 
-            concat!(r##"!"#$%&'()*,:;<=>?[\]^{|}`"##, "\u{FFFD}");
-        
-        true
+    fn is_valid_import(path: &str) -> bool {
+        if path.len() < 3 || (!path.starts_with('"') || !path.ends_with('"')) {
+            return false
+        }
+        let result = &path[1..path.len() - 1];
+        let mut illegal_chars: Vec<char> = r##"!"#$%&'()*,:;<=>?[\]^{|}`"##.chars().collect();
+        illegal_chars.push('\u{FFFD}');
+        result
+            .chars()
+            .find(|&x| !x.is_ascii_graphic() || x.is_whitespace() || illegal_chars.contains(&x)).is_none()
     }
 
     fn parse_import_spec(&mut self, _: &Token, _: isize) -> SpecKey {

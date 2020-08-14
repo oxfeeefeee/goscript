@@ -169,7 +169,7 @@ fn test_auto() {
     test_file("./tests/data/cycles5.gos", trace);
     test_file("./tests/data/decls0.src", trace);
     test_file("./tests/data/decls1.src", trace);
-    test_file("./tests/data/decls2/", trace);
+    test_file("./tests/data/decls2", trace);
     test_file("./tests/data/decls3.src", trace);
     test_file("./tests/data/decls4.src", trace);
     test_file("./tests/data/decls5.src", trace);
@@ -178,11 +178,14 @@ fn test_auto() {
     test_file("./tests/data/expr2.src", trace);
     test_file("./tests/data/expr3.src", trace);
     test_file("./tests/data/gotos.src", trace);
+    test_file("./tests/data/importdecl0", trace);
+    test_file("./tests/data/importdecl1", trace);
 
     test_file("./tests/data/init0.src", trace);
     test_file("./tests/data/init1.src", trace);
     test_file("./tests/data/init2.src", trace);
 
+    test_file("./tests/data/issues.src", trace);
     test_file("./tests/data/labels.src", trace);
     test_file("./tests/data/methodsets.src", trace);
     test_file("./tests/data/shifts.src", trace);

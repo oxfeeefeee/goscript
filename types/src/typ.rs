@@ -1183,7 +1183,7 @@ fn fmt_type_impl(
             fmt_type_impl(Some(detail.elem), f, visited, objs)?;
         }
         Type::Struct(detail) => {
-            f.write_str("struct{{")?;
+            f.write_str("struct{")?;
             for (i, key) in detail.fields().iter().enumerate() {
                 if i > 0 {
                     f.write_str("; ")?;
@@ -1197,7 +1197,7 @@ fn fmt_type_impl(
                     write!(f, " {}", tag)?;
                 }
             }
-            f.write_str("}}")?;
+            f.write_str("}")?;
         }
         Type::Pointer(detail) => {
             f.write_char('*')?;
@@ -1211,7 +1211,7 @@ fn fmt_type_impl(
             fmt_signature_impl(t.unwrap(), f, visited, objs)?;
         }
         Type::Interface(detail) => {
-            f.write_str("interface{{")?;
+            f.write_str("interface{")?;
             for (i, k) in detail.methods().iter().enumerate() {
                 if i > 0 {
                     f.write_str("; ")?;

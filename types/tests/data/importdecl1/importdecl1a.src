@@ -6,7 +6,7 @@
 
 package importdecl1
 
-import "go/ast"
+import "../time"
 import . "unsafe"
 
 var _ Pointer // use dot-imported package unsafe
@@ -17,6 +17,6 @@ type A interface {
 	// Methods m1, m2 must be type-checked in this file scope
 	// even when embedded in an interface in a different
 	// file of the same package.
-	m1() ast.Node
+	m1() time.Time
 	m2() Pointer
 }

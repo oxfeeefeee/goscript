@@ -68,7 +68,7 @@ impl<'a> Checker<'a> {
         };
 
         // determine actual arguments
-        let nargs = call.args.len();
+        let mut nargs = call.args.len();
         let unpack_result = match id {
             // arguments require special handling
             Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => {
@@ -90,6 +90,7 @@ impl<'a> Checker<'a> {
                     return false;
                 }
                 let (count, ord) = result.rhs_count();
+                nargs = count;
                 if ord != std::cmp::Ordering::Equal {
                     report_mismatch(self, ord, count);
                     return false;

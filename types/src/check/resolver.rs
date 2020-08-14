@@ -197,14 +197,19 @@ impl<'a> Checker<'a> {
                             match spec {
                                 ast::Spec::Import(is) => {
                                     let ispec = &**is;
-                                    let path = if let Ok(p) = self.valid_import_path(&ispec.path) {
-                                        p
-                                    } else {
-                                        continue;
+                                    let path = match self.valid_import_path(&ispec.path) {
+                                        Ok(p) => p,
+                                        Err(e) => {
+                                            self.error(
+                                                ispec.path.pos,
+                                                format!("invalid import path ({})", e),
+                                            );
+                                            continue;
+                                        }
                                     };
                                     let dir = self.file_dir(file);
                                     let imp =
-                                        self.import_package(ispec.path.pos, path.to_owned(), dir);
+                                        self.import_package(ispec.path.pos, path.to_string(), dir);
 
                                     // add package to list of explicit imports
                                     // (this functionality is provided as a convenience
@@ -220,9 +225,9 @@ impl<'a> Checker<'a> {
                                             // see if local name overrides imported package name
                                             let ident = &self.ast_ident(x);
                                             if ident.name == "init" {
-                                                self.error(
+                                                self.error_str(
                                                     ident.pos,
-                                                    "cannot declare init - must be func".to_owned(),
+                                                    "cannot declare init - must be func",
                                                 );
                                             }
                                             ident.name.clone()
@@ -666,12 +671,10 @@ impl<'a> Checker<'a> {
         None
     }
 
-    fn valid_import_path(&self, blit: &'a ast::BasicLit) -> Result<&'a str, ()> {
+    fn valid_import_path(&self, blit: &'a ast::BasicLit) -> Result<&'a str, String> {
         let path = blit.token.get_literal();
-        let pos = blit.pos;
         if path.len() < 3 || (!path.starts_with('"') || !path.ends_with('"')) {
-            self.error(pos, format!("invalid import path: {}", path));
-            return Err(());
+            return Err("empty string".to_string());
         }
         let result = &path[1..path.len() - 1];
         let mut illegal_chars: Vec<char> = r##"!"#$%&'()*,:;<=>?[\]^{|}`"##.chars().collect();
@@ -680,8 +683,7 @@ impl<'a> Checker<'a> {
             .chars()
             .find(|&x| !x.is_ascii_graphic() || x.is_whitespace() || illegal_chars.contains(&x))
         {
-            self.error(pos, format!("invalid character: {}", c));
-            return Err(());
+            return Err(format!("invalid character: {}", c));
         }
         Ok(result)
     }

@@ -1,0 +1,35 @@
+// Copyright 2013 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package importdecl0
+
+import ()
+
+
+import "../math" /* ERROR "imported but not used" */
+import m /* ERROR "imported but not used as m" */ "../math"
+import _ "../math"
+
+
+import "../time"
+import f1 "../time"
+import f2 "../time"
+
+// imported package name may conflict with local objects
+type time /* ERROR "time already declared" */ int
+
+// dot-imported exported objects may conflict with local objects
+type Time /* ERROR "Time already declared through dot-import of package" */ struct{}
+
+var _ = time.Time{} // use "fmt"
+
+func _() {
+	_ = f1.Time{} // use "fmt"
+}
+
+func _() {
+	_ = func() {
+		_ = f2.Time{} // use "fmt"
+	}
+}
