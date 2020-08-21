@@ -18,6 +18,7 @@ use std::rc::Rc;
 
 /// TypeAndValue reports the type and value (for constants, stored in 'mode')
 /// of the corresponding expression.
+#[derive(Debug)]
 pub struct TypeAndValue {
     mode: OperandMode,
     typ: TypeKey,
@@ -26,12 +27,14 @@ pub struct TypeAndValue {
 /// An Initializer describes a package-level variable, or a list of variables in case
 /// of a multi-valued initialization expression, and the corresponding initialization
 /// expression.
+#[derive(Debug)]
 pub struct Initializer {
     pub lhs: Vec<ObjKey>,
     pub rhs: Expr,
 }
 
 /// Types info holds the results of Type Checking
+#[derive(Debug)]
 pub struct TypeInfo {
     /// 'types' maps expressions to their types, and for constant
     /// expressions, also their values. Invalid expressions are
@@ -50,7 +53,7 @@ pub struct TypeInfo {
     /// identifier z in a variable declaration 'var z int' is found
     /// only in the Defs map, and identifiers denoting packages in
     /// qualified identifiers are collected in the Uses map.
-    types: HashMap<NodeId, TypeAndValue>,
+    pub types: HashMap<NodeId, TypeAndValue>,
     /// 'defs' maps identifiers to the objects they define (including
     /// package names, dots "." of dot-imports, and blank "_" identifiers).
     /// For identifiers that do not denote objects (e.g., the package name
@@ -60,23 +63,23 @@ pub struct TypeInfo {
     /// For an embedded field, Defs returns the field it defines.
     ///
     /// Invariant: defs[id] == None || defs[id].pos() == id.pos()
-    defs: HashMap<IdentKey, Option<ObjKey>>,
+    pub defs: HashMap<IdentKey, Option<ObjKey>>,
     /// 'uses' maps identifiers to the objects they denote.
     ///
     /// For an embedded field, 'uses' returns the TypeName it denotes.
     ///
     /// Invariant: uses[id].pos() != id.pos()
-    uses: HashMap<IdentKey, ObjKey>,
+    pub uses: HashMap<IdentKey, ObjKey>,
     /// 'implicits' maps nodes to their implicitly declared objects, if any.
     /// The following node and object types may appear:
     ///     node               declared object
     ///     ImportSpec    PkgName for imports without renames
     ///     CaseClause    type-specific Object::Var for each type switch case clause (incl. default)
     ///     Field         anonymous parameter Object::Var
-    implicits: HashMap<NodeId, ObjKey>,
+    pub implicits: HashMap<NodeId, ObjKey>,
     /// 'selections' maps selector expressions (excluding qualified identifiers)
     /// to their corresponding selections.
-    selections: HashMap<NodeId, Selection>,
+    pub selections: HashMap<NodeId, Selection>,
     /// 'scopes' maps ast::Nodes to the scopes they define. Package scopes are not
     /// associated with a specific node but with all files belonging to a package.
     /// Thus, the package scope can be found in the type-checked Package object.
@@ -98,13 +101,15 @@ pub struct TypeInfo {
     ///     CommClause
     ///     ForStmt
     ///     RangeStmt
-    scopes: HashMap<NodeId, ScopeKey>,
+    pub scopes: HashMap<NodeId, ScopeKey>,
     /// 'init_order' is the list of package-level initializers in the order in which
     /// they must be executed. Initializers referring to variables related by an
     /// initialization dependency appear in topological order, the others appear
     /// in source order. Variables without an initialization expression do not
     /// appear in this list.
-    init_order: Vec<Initializer>,
+    pub init_order: Vec<Initializer>,
+    /// oxfeeefeee: pares result of the package, to be used by code gen
+    pub ast_files: Vec<ast::File>,
 }
 
 impl TypeInfo {
@@ -117,6 +122,7 @@ impl TypeInfo {
             selections: HashMap::new(),
             scopes: HashMap::new(),
             init_order: Vec::new(),
+            ast_files: Vec::new(),
         }
     }
 }
@@ -187,6 +193,9 @@ pub struct Checker<'a> {
     pub fset: &'a mut FileSet,
     // all packages checked so far
     pub all_pkgs: &'a mut HashMap<String, PackageKey>,
+    // all results, i.e. including results collected from
+    // previously created Checker instances
+    all_results: &'a mut HashMap<PackageKey, TypeInfo>,
     // this package
     pub pkg: PackageKey,
     // maps package-level objects and (non-interface) methods to declaration info
@@ -380,6 +389,7 @@ impl<'a> Checker<'a> {
         fset: &'a mut FileSet,
         errors: &'a ErrorList,
         pkgs: &'a mut HashMap<String, PackageKey>,
+        all_results: &'a mut HashMap<PackageKey, TypeInfo>,
         pkg: PackageKey,
         cfg: &'a Config,
     ) -> Checker<'a> {
@@ -389,6 +399,7 @@ impl<'a> Checker<'a> {
             fset: fset,
             errors: errors,
             all_pkgs: pkgs,
+            all_results: all_results,
             pkg: pkg,
             obj_map: HashMap::new(),
             imp_map: HashMap::new(),
@@ -399,15 +410,18 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn check(&mut self, files: Vec<ast::File>) -> Result<PackageKey, ()> {
-        let files = self.init_files_pkg_name(files)?;
+    pub fn check(mut self, mut files: Vec<ast::File>) -> Result<PackageKey, ()> {
+        self.check_files_pkg_name(&files)?;
         let fctx = &mut FilesContext::new(&files);
         self.collect_objects(fctx);
         self.package_objects(fctx);
-        fctx.process_delayed(0, self);
+        fctx.process_delayed(0, &mut self);
         self.init_order();
         self.unused_imports(fctx);
         self.record_untyped(fctx);
+
+        std::mem::swap(&mut self.result.ast_files, &mut files);
+        self.all_results.insert(self.pkg, self.result);
         Ok(self.pkg)
     }
 
@@ -433,6 +447,7 @@ impl<'a> Checker<'a> {
             self.config,
             self.fset,
             self.all_pkgs,
+            self.all_results,
             self.ast_objs,
             self.tc_objs,
             self.errors,
@@ -440,11 +455,10 @@ impl<'a> Checker<'a> {
         )
     }
 
-    /// init files and package name
-    fn init_files_pkg_name(&mut self, files: Vec<ast::File>) -> Result<Vec<ast::File>, ()> {
-        let mut result = Vec::with_capacity(files.len());
+    /// check files' package name
+    fn check_files_pkg_name(&mut self, files: &Vec<ast::File>) -> Result<(), ()> {
         let mut pkg_name: Option<String> = None;
-        for f in files.into_iter() {
+        for f in files.iter() {
             let ident = &self.ast_objs.idents[f.name];
             if pkg_name.is_none() {
                 if ident.name == "_" {
@@ -452,11 +466,8 @@ impl<'a> Checker<'a> {
                     return Err(());
                 } else {
                     pkg_name = Some(ident.name.clone());
-                    result.push(f);
                 }
-            } else if &ident.name == pkg_name.as_ref().unwrap() {
-                result.push(f);
-            } else {
+            } else if &ident.name != pkg_name.as_ref().unwrap() {
                 self.error(
                     f.package,
                     format!(
@@ -469,7 +480,7 @@ impl<'a> Checker<'a> {
             }
         }
         self.tc_objs.pkgs[self.pkg].set_name(pkg_name.unwrap());
-        Ok(result)
+        Ok(())
     }
 
     pub fn error(&self, pos: Pos, err: String) {

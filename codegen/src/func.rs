@@ -7,7 +7,6 @@ use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
-use goscript_parser::errors::FilePosErrors;
 use goscript_parser::objects::Objects as AstObjects;
 
 /// LeftHandSide represents the left hand side of an assign stmt
@@ -22,12 +21,7 @@ pub enum LeftHandSide {
 }
 
 pub trait FuncGen {
-    fn add_params<'e>(
-        &mut self,
-        fl: &FieldList,
-        o: &AstObjects,
-        _errors: &FilePosErrors<'e>,
-    ) -> Result<usize, ()>;
+    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()>;
 
     fn emit_load(&mut self, index: EntIndex);
 
@@ -55,12 +49,7 @@ pub trait FuncGen {
 }
 
 impl FuncGen for FunctionVal {
-    fn add_params<'e>(
-        &mut self,
-        fl: &FieldList,
-        o: &AstObjects,
-        _errors: &FilePosErrors<'e>,
-    ) -> Result<usize, ()> {
+    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()> {
         let re = fl
             .list
             .iter()

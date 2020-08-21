@@ -793,8 +793,8 @@ func assert1() {
 	var x int
 	assert() /* ERROR not enough arguments */
 	assert(1, 2) /* ERROR too many arguments */
-	assert("foo" /* ERROR boolean constant */ )
-	assert(x /* ERROR boolean constant */)
+	//assert("foo" /*ERROR boolean constant */ )
+	assert(x /* ERROR invalid argument */)
 	assert(true)
 	assert /* ERROR failed */ (false)
 	_ = assert(true)
@@ -807,8 +807,8 @@ func assert2() {
 	f1 := func() (x bool) { return }
 	f2 := func() (x bool) { return }
 	assert(f0 /* ERROR used as value */ ())
-	assert(f1 /* ERROR boolean constant */ ())
-	assert(f2 /* ERROR boolean constant */ ())
+	assert(f1 /*ERROR boolean constant */ ())
+	assert(f2 /*ERROR boolean constant */ ())
 }
 
 // self-testing only

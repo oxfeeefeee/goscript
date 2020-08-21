@@ -4,11 +4,11 @@ func f1() {
     var j int
     var s = map[int]int{123:10, 258:20}
     var s2 = map[int]int{1:100, 2:200}
-    for k, v := range s {
+    for _, v := range s {
         j += v
-        for k2, v2 := range s2{
+        for _, v2 := range s2{
             j += v2
-            for k, v := range s {
+            for _, v := range s {
                 j += v
             }
         }
@@ -25,6 +25,7 @@ func f2() {
     assert(j == 1000)
 }
 
+/*
 func f3() {
     i := 0
     i += 'a'
@@ -33,13 +34,13 @@ func f3() {
     i += 'd'
     var j, k, j2, k2 int
     for _, c := range "abcd" {
-        j += c
+        j += int(c)
     }
     for i := range "abcd" {
         k += i
     }
     for i, c := range "abcd" {
-        j2 += c
+        j2 += int(c)
         k2 += i
     }
 
@@ -48,16 +49,17 @@ func f3() {
     assert(j2 == j)
     assert(k2 == k)
 }
+*/
 
 func range_set() {
     s := []int{1, 2}
-    for i, v := range s {
+    for i, _ := range s {
         s[i] = 5
     }
     assert(s[0] == 5)
 
     var s1 = map[int]int{1:2, 3: 888}
-    for i, v := range s1 {
+    for i, _ := range s1 {
         s1[i] = 100
     }
     assert(s1[0] == 0)
@@ -68,7 +70,7 @@ func range_set() {
 func main() {
    f1()
    f2()
-   f3()
+   //f3()
 
    range_set()
 

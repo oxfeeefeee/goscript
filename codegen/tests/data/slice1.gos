@@ -12,11 +12,11 @@ func f2() {
     var j int
     var s = []int{10, 20}
     var s2 = []int{100, 200}
-    for k, v := range s {
+    for _, v := range s {
         j += v
-        for k2, v2 := range s2{
+        for _, v2 := range s2{
             j += v2
-            for k, v := range s {
+            for _, v := range s {
                 j += v
             }
         }

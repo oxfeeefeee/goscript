@@ -11,7 +11,6 @@ use std::rc::Rc;
 #[derive(Clone, Debug)]
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
-    pub package_indices: HashMap<String, OpIndex>,
     pub packages: Vec<PackageKey>,
     pub entry: FunctionKey,
 }

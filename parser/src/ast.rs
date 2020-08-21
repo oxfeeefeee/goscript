@@ -7,7 +7,7 @@ use std::hash::Hash;
 use std::rc::Rc;
 
 /// NodeId can be used as key of HashMaps
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub enum NodeId {
     Address(usize),
     IdentExpr(IdentKey),

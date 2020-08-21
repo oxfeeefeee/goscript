@@ -753,10 +753,10 @@ impl<'a> Checker<'a> {
             Builtin::Assert => {
                 // assert(pred) causes a typechecker error if pred is false.
                 // The result of assert is the value of pred if there is no error.
-                // todo: make it work in runtime
+                // oxfeefeee: minor change to make it work at runtime
                 let default_err = || {
                     let xd = self.new_dis(x);
-                    self.invalid_arg(xd.pos(), &format!("{} is not a boolean constant", xd));
+                    self.invalid_arg(xd.pos(), &format!("{} is not a boolean", xd));
                     false
                 };
                 match &x.mode {
@@ -785,10 +785,15 @@ impl<'a> Checker<'a> {
                         }
                     }
                     _ => {
-                        return default_err();
+                        let tkey = x.typ.unwrap();
+                        if !typ::is_boolean(tkey, self.tc_objs) {
+                            return default_err();
+                        }
+                        // only record when the argument is not constant
+                        x.mode = OperandMode::NoValue;
+                        record(self, None, &vec![tkey], false);
                     }
                 }
-                // result is constant - no need to record signature
             }
             Builtin::Trace => {
                 // trace(x, y, z, ...) dumps the positions, expressions, and

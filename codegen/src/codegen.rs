@@ -2,25 +2,20 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fs;
-use std::pin::Pin;
 
 use super::func::*;
 
-use goscript_vm::ds::{EntIndex, PackageVal, UpValue};
+use goscript_vm::ds::{EntIndex, UpValue};
 use goscript_vm::null_key;
 use goscript_vm::opcode::*;
 use goscript_vm::value::*;
-use goscript_vm::vm::ByteCode;
 
 use goscript_parser::ast::*;
-use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
-use goscript_parser::position;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
-use goscript_parser::{FileSet, Parser};
+use goscript_types::{TCObjects, TypeInfo};
 
 macro_rules! current_func_mut {
     ($owner:ident) => {
@@ -55,15 +50,14 @@ impl BuiltInFunc {
 
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
-    objects: Pin<Box<VMObjects>>,
+    objects: &'a mut VMObjects,
     ast_objs: &'a AstObjects,
-    package_indices: HashMap<String, OpIndex>,
-    packages: Vec<PackageKey>,
-    current_pkg: PackageKey,
+    tc_objs: &'a TCObjects,
+    ti: &'a TypeInfo,
+    pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     built_in_funcs: Vec<BuiltInFunc>,
     built_in_vals: HashMap<&'static str, Opcode>,
-    errors: &'a FilePosErrors<'a>,
     blank_ident: IdentKey,
 }
 
@@ -178,7 +172,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                     Ok(())
                 } else {
-                    self.error_undefined(ident.pos, &ident.name);
                     Err(())
                 };
             }
@@ -333,7 +326,6 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 }
                 Spec::Value(vs) => {
                     if gdecl.token == Token::VAR {
-                        let pos = self.ast_objs.idents[vs.names[0]].pos;
                         let lhs = vs
                             .names
                             .iter()
@@ -343,7 +335,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                                 ))
                             })
                             .collect::<Result<Vec<LeftHandSide>, ()>>()?;
-                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None, pos)?;
+                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None)?;
                     } else {
                         assert!(gdecl.token == Token::CONST);
                         self.gen_def_const(&vs.names, &vs.values, &vs.typ)?;
@@ -380,7 +372,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         } else {
             let fval = GosValue::Function(self.gen_func_def(func, stmt)?);
             let ident = &self.ast_objs.idents[decl.name];
-            let pkg = &mut self.objects.packages[self.current_pkg];
+            let pkg = &mut self.objects.packages[self.pkg_key];
             let index = pkg.add_member(ident.entity_key().unwrap(), fval);
             if ident.name == "main" {
                 pkg.set_main_func(index);
@@ -583,7 +575,14 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 }
 
 impl<'a> CodeGen<'a> {
-    pub fn new(aobjects: &'a AstObjects, err: &'a FilePosErrors, bk: IdentKey) -> CodeGen<'a> {
+    pub fn new(
+        vmo: &'a mut VMObjects,
+        asto: &'a AstObjects,
+        tco: &'a TCObjects,
+        ti: &'a TypeInfo,
+        pkg: PackageKey,
+        bk: IdentKey,
+    ) -> CodeGen<'a> {
         let funcs = vec![
             BuiltInFunc::new("new", Opcode::NEW, 1, false),
             BuiltInFunc::new("make", Opcode::MAKE, 2, true),
@@ -597,15 +596,14 @@ impl<'a> CodeGen<'a> {
         vals.insert("false", Opcode::PUSH_FALSE);
         vals.insert("nil", Opcode::PUSH_NIL);
         CodeGen {
-            objects: Box::pin(VMObjects::new()),
-            ast_objs: aobjects,
-            package_indices: HashMap::new(),
-            packages: Vec::new(),
-            current_pkg: null_key!(),
+            objects: vmo,
+            ast_objs: asto,
+            tc_objs: tco,
+            ti: ti,
+            pkg_key: pkg,
             func_stack: Vec::new(),
             built_in_funcs: funcs,
             built_in_vals: vals,
-            errors: err,
             blank_ident: bk,
         }
     }
@@ -617,7 +615,6 @@ impl<'a> CodeGen<'a> {
             if let Some(op) = self.built_in_vals.get(&*id.name) {
                 return Ok(EntIndex::BuiltIn(*op));
             } else {
-                self.error_undefined(id.pos, &id.name);
                 return Err(());
             }
         }
@@ -653,7 +650,7 @@ impl<'a> CodeGen<'a> {
             return Ok(index);
         }
         // 3. try the package level
-        let pkg = &self.objects.packages[self.current_pkg];
+        let pkg = &self.objects.packages[self.pkg_key];
         if let Some(index) = pkg.get_member_index(&entity_key) {
             return Ok(EntIndex::PackageMember(*index));
         }
@@ -691,8 +688,6 @@ impl<'a> CodeGen<'a> {
         typ: &Option<Expr>,
     ) -> Result<(), ()> {
         if names.len() != values.len() {
-            let ident = &self.ast_objs.idents[names[0]];
-            self.error_mismatch(ident.pos, names.len(), values.len());
             return Err(());
         }
         for i in 0..names.len() {
@@ -718,7 +713,6 @@ impl<'a> CodeGen<'a> {
         range: Option<&Expr>,
     ) -> Result<Option<usize>, ()> {
         let is_def = *token == Token::DEFINE;
-        let pos = lhs_exprs[0].pos(&self.ast_objs);
         let lhs = lhs_exprs
             .iter()
             .map(|expr| match expr {
@@ -770,7 +764,7 @@ impl<'a> CodeGen<'a> {
             }
             Ok(None)
         } else {
-            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, range, pos)
+            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, range)
         }
     }
 
@@ -780,7 +774,6 @@ impl<'a> CodeGen<'a> {
         values: &Vec<Expr>,
         typ: &Option<Expr>,
         range: Option<&Expr>,
-        pos: position::Pos,
     ) -> Result<Option<usize>, ()> {
         let mut range_marker = None;
         // handle the right hand side
@@ -811,11 +804,9 @@ impl<'a> CodeGen<'a> {
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0])?;
             } else {
-                self.error_mismatch(pos, lhs.len(), values.len());
                 return Err(());
             }
         } else {
-            self.error_mismatch(pos, lhs.len(), values.len());
             return Err(());
         }
 
@@ -905,7 +896,7 @@ impl<'a> CodeGen<'a> {
                 .get_type_val(&self.objects)
                 .is_variadic();
         let fkey = *GosValue::new_function(
-            self.current_pkg.clone(),
+            self.pkg_key.clone(),
             *ftype.as_type(),
             variadic,
             false,
@@ -914,10 +905,10 @@ impl<'a> CodeGen<'a> {
         .as_function();
         let mut func = &mut self.objects.functions[fkey];
         func.ret_count = match &typ.results {
-            Some(fl) => func.add_params(&fl, self.ast_objs, self.errors)?,
+            Some(fl) => func.add_params(&fl, self.ast_objs)?,
             None => 0,
         };
-        func.param_count = func.add_params(&typ.params, self.ast_objs, self.errors)?;
+        func.param_count = func.add_params(&typ.params, self.ast_objs)?;
 
         self.func_stack.push(fkey.clone());
         // process function body
@@ -948,13 +939,7 @@ impl<'a> CodeGen<'a> {
     ) -> Result<GosValue, ()> {
         match expr {
             Expr::BasicLit(lit) => self.get_const_value(typ, lit),
-            _ => {
-                self.add_error_str(
-                    expr.pos(self.ast_objs),
-                    "complex constant not supported yet",
-                );
-                Err(())
-            }
+            _ => Err(()),
         }
     }
 
@@ -984,15 +969,10 @@ impl<'a> CodeGen<'a> {
                     (GosValue::Int(_), Token::FLOAT(f)) => {
                         let fval = f.as_str().parse::<f64>().unwrap();
                         if fval.fract() != 0.0 {
-                            self.add_error(
-                                blit.pos,
-                                format!("constant {} truncated to integer", f.as_str()),
-                            );
                             Err(())
                         } else if (fval.round() as isize) > std::isize::MAX
                             || (fval.round() as isize) < std::isize::MIN
                         {
-                            self.add_error(blit.pos, format!("{} overflows int", f.as_str()));
                             Err(())
                         } else {
                             Ok(GosValue::Int(fval.round() as isize))
@@ -1000,10 +980,7 @@ impl<'a> CodeGen<'a> {
                     }
                     (GosValue::Int(_), Token::INT(ilit)) => match ilit.as_str().parse::<isize>() {
                         Ok(i) => Ok(GosValue::Int(i)),
-                        Err(_) => {
-                            self.add_error(blit.pos, format!("{} overflows int", ilit.as_str()));
-                            Err(())
-                        }
+                        Err(_) => Err(()),
                     },
                     (GosValue::Int(_), Token::CHAR(c)) => Ok(GosValue::Int(
                         c.as_str().chars().skip(1).next().unwrap() as isize,
@@ -1021,10 +998,7 @@ impl<'a> CodeGen<'a> {
                         s.as_str().to_string(),
                         &mut self.objects.strings,
                     )),
-                    (_, _) => {
-                        self.add_error_str(blit.pos, "invalid constant literal");
-                        Err(())
-                    }
+                    (_, _) => Err(()),
                 }
             }
         }
@@ -1044,7 +1018,7 @@ impl<'a> CodeGen<'a> {
                                 Ok(func.const_val(i.into()).clone())
                             }
                             EntIndex::PackageMember(i) => {
-                                let pkg = &self.objects.packages[self.current_pkg];
+                                let pkg = &self.objects.packages[self.pkg_key];
                                 Ok(*pkg.member(i))
                             }
                             _ => unreachable!(),
@@ -1211,116 +1185,22 @@ impl<'a> CodeGen<'a> {
         })
     }
 
-    fn add_error(&self, pos: position::Pos, msg: String) {
-        self.errors.add(pos, msg, false);
-    }
-
-    fn add_error_str(&self, pos: position::Pos, msg: &str) {
-        self.errors.add_str(pos, msg, false);
-    }
-
-    fn error_undefined(&self, pos: position::Pos, name: &String) {
-        self.add_error(pos, format!("undefined: {}", name));
-    }
-
-    fn error_mismatch(&self, pos: position::Pos, l: usize, r: usize) {
-        self.add_error(
-            pos,
-            format!("assignment mismatch: {} variables but {} values", l, r),
-        )
-    }
-
-    fn error_type(&self, pos: position::Pos, msg: &str) {
-        self.add_error(
-            pos,
-            format!(
-                "type error(should be caught by Type Checker when it's in place): {}",
-                msg
-            ),
-        )
-    }
-
-    fn gen(&mut self, f: File) -> Result<(), ()> {
-        let pkg_name = &self.ast_objs.idents[f.name].name;
-        let pkg_val = PackageVal::new(pkg_name.clone());
-        let pkey = self.objects.packages.insert(pkg_val);
+    pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
+        let pkey = self.pkg_key;
         let ftype = self.objects.default_closure_type.unwrap();
         let fkey = *GosValue::new_function(pkey, *ftype.as_type(), false, true, &mut self.objects)
             .as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
-
-        self.packages.push(pkey);
-        let index = self.packages.len() as i16 - 1;
-        self.package_indices.insert(pkg_name.clone(), index);
-        self.current_pkg = pkey;
-
-        self.func_stack.push(fkey.clone());
-        for d in f.decls.iter() {
-            self.visit_decl(d)?;
+        self.pkg_key = pkey;
+        self.func_stack.push(fkey);
+        for f in files.iter() {
+            for d in f.decls.iter() {
+                let _ = self.visit_decl(d);
+            }
         }
         let func = &mut self.objects.functions[fkey];
         func.emit_return_init_pkg(index);
         self.func_stack.pop();
-        Ok(())
-    }
-
-    // generate the entry function for ByteCode
-    fn gen_entry(&mut self) -> FunctionKey {
-        // import the 0th pkg and call the main function of the pkg
-        let ftype = self.objects.default_closure_type.unwrap();
-        let fkey = *GosValue::new_function(
-            null_key!(),
-            *ftype.as_type(),
-            false,
-            false,
-            &mut self.objects,
-        )
-        .as_function();
-        let func = &mut self.objects.functions[fkey];
-        func.emit_import(0);
-        func.emit_code(Opcode::PUSH_IMM);
-        func.emit_data(-1);
-        func.emit_load_field();
-        func.emit_pre_call();
-        func.emit_call(false);
-        func.emit_return();
-        fkey
-    }
-
-    pub fn into_byte_code(mut self) -> ByteCode {
-        let entry = self.gen_entry();
-        ByteCode {
-            objects: self.objects,
-            package_indices: self.package_indices,
-            packages: self.packages,
-            entry: entry,
-        }
-    }
-
-    pub fn load_parse_gen(path: &str, trace: bool) -> Result<ByteCode, usize> {
-        let mut astobjs = AstObjects::new();
-        let mut fset = FileSet::new();
-        let el = ErrorList::new();
-        let src = fs::read_to_string(path).expect("read file err: ");
-        let pfile = fset.add_file(path.to_string(), None, src.chars().count());
-        let afile = Parser::new(&mut astobjs, pfile, &el, &src, trace).parse_file();
-        if el.len() > 0 {
-            print!("parsing failed:\n");
-            print!("\n<- {} ->\n", el);
-            return Err(el.len());
-        }
-
-        let pos_err = FilePosErrors::new(pfile, &el);
-        let blank_ident = astobjs.idents.insert(Ident::blank(0));
-        let mut code_gen = CodeGen::new(&mut astobjs, &pos_err, blank_ident);
-        let re = code_gen.gen(afile.unwrap());
-        if re.is_err() {
-            print!("code gen failed:\n");
-            print!("\n<- {} ->\n", el);
-            Err(el.len())
-        } else {
-            Ok(code_gen.into_byte_code())
-        }
     }
 }

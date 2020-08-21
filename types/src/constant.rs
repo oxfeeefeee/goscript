@@ -573,6 +573,14 @@ impl Value {
         }
     }
 
+    pub fn bool_as_bool(&self) -> bool {
+        match self {
+            Value::Bool(b) => *b,
+            Value::Unknown => false,
+            _ => panic!("not a bool"),
+        }
+    }
+
     pub fn str_as_string(&self) -> String {
         match self {
             Value::Str(s) => quote_str(s),

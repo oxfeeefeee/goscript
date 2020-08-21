@@ -9,7 +9,7 @@ mod package;
 mod scope;
 
 #[macro_use]
-pub mod objects;
+mod objects;
 
 #[macro_use]
 mod typ;
@@ -26,4 +26,8 @@ mod check;
 
 mod importer;
 
+pub use check::{DeclInfo, TypeInfo};
 pub use importer::{Config, ImportKey, Importer};
+pub use obj::EntityType;
+pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+pub use typ::BasicType;

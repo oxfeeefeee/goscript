@@ -70,15 +70,17 @@ fn test_file(path: &str, trace: bool) {
     let fs = &mut fe::FileSet::new();
     let asto = &mut fe::objects::Objects::new();
     let el = &mut fe::errors::ErrorList::new();
-    let tco = &mut types::objects::TCObjects::new();
+    let tco = &mut types::TCObjects::new();
+    let results = &mut HashMap::new();
 
-    let importer = &mut types::Importer::new(&config, fs, pkgs, asto, tco, el, 0);
+    let importer = &mut types::Importer::new(&config, fs, pkgs, results, asto, tco, el, 0);
     let key = types::ImportKey::new(path, "./");
     let _ = importer.import(&key);
 
     if trace {
         el.sort();
         print!("{}", el);
+        dbg!(results);
     }
 
     let mut expected_errs = parse_comment_errors(path).unwrap();

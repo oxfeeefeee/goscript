@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::check::check::Checker;
+use super::check::check::{Checker, TypeInfo};
 use super::objects::{PackageKey, TCObjects};
 use goscript_parser::ast;
 use goscript_parser::errors::{ErrorList, FilePosErrors};
@@ -19,7 +19,7 @@ pub struct Config {
     pub base_path: Option<String>,
     // print debug info in parser
     pub trace_parser: bool,
-    // print debug info in parser
+    // print debug info in checker
     pub trace_checker: bool,
 }
 
@@ -60,6 +60,7 @@ pub struct Importer<'a> {
     config: &'a Config,
     fset: &'a mut FileSet,
     pkgs: &'a mut HashMap<String, PackageKey>,
+    all_results: &'a mut HashMap<PackageKey, TypeInfo>,
     ast_objs: &'a mut AstObjects,
     tc_objs: &'a mut TCObjects,
     errors: &'a ErrorList,
@@ -71,6 +72,7 @@ impl<'a> Importer<'a> {
         config: &'a Config,
         fset: &'a mut FileSet,
         pkgs: &'a mut HashMap<String, PackageKey>,
+        all_results: &'a mut HashMap<PackageKey, TypeInfo>,
         ast_objs: &'a mut AstObjects,
         tc_objs: &'a mut TCObjects,
         errors: &'a ErrorList,
@@ -80,6 +82,7 @@ impl<'a> Importer<'a> {
             config: config,
             fset: fset,
             pkgs: pkgs,
+            all_results: all_results,
             ast_objs: ast_objs,
             tc_objs: tc_objs,
             errors: errors,
@@ -103,6 +106,7 @@ impl<'a> Importer<'a> {
             self.fset,
             self.errors,
             self.pkgs,
+            self.all_results,
             pkg,
             self.config,
         )

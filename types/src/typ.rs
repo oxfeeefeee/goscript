@@ -493,7 +493,7 @@ impl SliceDetail {
 /// A StructDetail represents a struct type
 #[derive(Debug)]
 pub struct StructDetail {
-    fields: Vec<ObjKey>,               // objects ofr type LangObj::Var
+    fields: Vec<ObjKey>,               // objects of type LangObj::Var
     tags: Option<Vec<Option<String>>>, // None if there are no tags
 }
 

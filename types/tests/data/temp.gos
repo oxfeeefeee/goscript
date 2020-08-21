@@ -1,21 +1,12 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
 
-package p
+package importdecl1
 
-type (
-	A interface {
-		AB
-	}
-	B interface {
-		b() interface {
-			AB
-		}
-	}
-	AB interface {
-		A
-		B
-	}
-)
+import _ "./math"
 
+func a() bool {
+	return 0 == 1
+}
+
+func fff() {
+	assert(a())
+}

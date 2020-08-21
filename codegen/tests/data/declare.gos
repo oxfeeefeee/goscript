@@ -3,7 +3,7 @@ package main
 func main() {
 
 	const i, j int = 1.0, 2
-	var a,b,c int = 30,40, 50
+	var _,_,c int = 30,40, 50
 	var l int
 	k := i + j
 	k = k  + c + l

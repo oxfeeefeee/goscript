@@ -564,7 +564,7 @@ impl PackageVal {
         self.var_mapping = None
     }
 
-    // pass negative index for main func
+    // negative index for main func
     pub fn member(&self, i: OpIndex) -> &GosValue {
         if i >= 0 {
             &self.members[i as usize]

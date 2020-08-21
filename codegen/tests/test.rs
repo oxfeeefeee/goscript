@@ -3,18 +3,33 @@
 #[macro_use]
 extern crate time_test;
 extern crate goscript_codegen as cg;
+extern crate goscript_parser as fe;
+extern crate goscript_types as types;
 extern crate goscript_vm as vm;
 
 fn load_parse_gen(path: &str, trace: bool) -> usize {
-    let result = cg::codegen::CodeGen::load_parse_gen(path, trace);
-    if let Ok(bc) = result {
+    let config = types::Config {
+        work_dir: Some("./".to_string()),
+        base_path: None,
+        trace_parser: trace,
+        trace_checker: trace,
+    };
+    let fs = &mut fe::FileSet::new();
+    let el = &mut fe::errors::ErrorList::new();
+    let code = cg::util::parse_check_gen(path, &config, fs, el);
+    if let Ok(bc) = code {
         let mut vm = vm::vm::GosVM::new(bc);
         vm.run();
         0
     } else {
-        result.unwrap_err()
+        if trace {
+            el.sort();
+            print!("{}", el);
+        }
+        code.unwrap_err()
     }
 }
+
 #[test]
 fn test_bcase1() {
     let err_cnt = load_parse_gen("./tests/data/case1.gos", true);

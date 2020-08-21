@@ -20,12 +20,12 @@ func main() {
     s1.i = 1
     s2.i = s1.i + 2
 
-    _, a := 2, s2.i
+    _, _ = 2, s2.i
     var b int
     b, s2.i = 8, 9
     c := s2.i
     d := afunc(b, c)
     s1.i = d
-    e := s1.Inc()
+    _ = s1.Inc()
 }
 // 3, 8, 9

@@ -10,6 +10,7 @@ use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
 use goscript_parser::{Pos, Token};
 use std::collections::HashSet;
 
+#[derive(Debug)]
 pub struct DeclInfoConst {
     pub file_scope: ScopeKey,  // scope of file containing this declaration
     pub typ: Option<Expr>,     // type, or None
@@ -17,6 +18,7 @@ pub struct DeclInfoConst {
     pub deps: HashSet<ObjKey>, // deps tracks initialization expression dependencies.
 }
 
+#[derive(Debug)]
 pub struct DeclInfoVar {
     pub file_scope: ScopeKey,     // scope of file containing this declaration
     pub lhs: Option<Vec<ObjKey>>, // lhs of n:1 variable declarations, or None
@@ -25,12 +27,14 @@ pub struct DeclInfoVar {
     pub deps: HashSet<ObjKey>,    // deps tracks initialization expression dependencies.
 }
 
+#[derive(Debug)]
 pub struct DeclInfoType {
     pub file_scope: ScopeKey, // scope of file containing this declaration
     pub typ: Expr,            // type
     pub alias: bool,          // type alias declaration
 }
 
+#[derive(Debug)]
 pub struct DeclInfoFunc {
     pub file_scope: ScopeKey,  // scope of file containing this declaration
     pub fdecl: FuncDeclKey,    // func declaration, or None
@@ -38,6 +42,7 @@ pub struct DeclInfoFunc {
 }
 
 /// DeclInfo describes a package-level const, type, var, or func declaration.
+#[derive(Debug)]
 pub enum DeclInfo {
     Const(DeclInfoConst),
     Var(DeclInfoVar),
