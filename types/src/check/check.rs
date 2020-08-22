@@ -20,8 +20,8 @@ use std::rc::Rc;
 /// of the corresponding expression.
 #[derive(Debug)]
 pub struct TypeAndValue {
-    mode: OperandMode,
-    typ: TypeKey,
+    pub mode: OperandMode,
+    pub typ: TypeKey,
 }
 
 /// An Initializer describes a package-level variable, or a list of variables in case

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 use super::func::*;
+use super::util;
 
 use goscript_vm::ds::{EntIndex, UpValue};
 use goscript_vm::null_key;
@@ -270,7 +271,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
-        let val = self.get_or_gen_type(arr)?;
+        let val = self.get_or_gen_type2(arr)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -321,11 +322,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
-                    let typ = self.get_or_gen_type(&ts.typ)?;
+                    let typ = self.get_or_gen_type2(&ts.typ)?;
                     self.current_func_add_const_def(ident_key.unwrap(), typ);
                 }
-                Spec::Value(vs) => {
-                    if gdecl.token == Token::VAR {
+                Spec::Value(vs) => match &gdecl.token {
+                    Token::VAR => {
                         let lhs = vs
                             .names
                             .iter()
@@ -336,11 +337,10 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                             })
                             .collect::<Result<Vec<LeftHandSide>, ()>>()?;
                         self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None)?;
-                    } else {
-                        assert!(gdecl.token == Token::CONST);
-                        self.gen_def_const(&vs.names, &vs.values, &vs.typ)?;
                     }
-                }
+                    Token::CONST => self.gen_def_const(&vs.names, &vs.values, &vs.typ)?,
+                    _ => unreachable!(),
+                },
             }
         }
         Ok(())
@@ -619,7 +619,7 @@ impl<'a> CodeGen<'a> {
             }
         }
 
-        // 1. try local frist
+        // 1. try local first
         let entity_key = id.entity_key().unwrap();
         let local = current_func_mut!(self)
             .entity_index(&entity_key)
@@ -663,13 +663,14 @@ impl<'a> CodeGen<'a> {
         ikey: &IdentKey,
         is_def: bool,
     ) -> Result<EntIndex, ()> {
-        let ident = self.ast_objs.idents[*ikey].clone();
-        let func = current_func_mut!(self);
+        let ident = &self.ast_objs.idents[*ikey];
         if ident.is_blank() {
-            Ok(EntIndex::Blank)
-        } else if is_def {
-            let ident_key = ident.entity.into_key();
-            let index = func.add_local(ident_key.clone());
+            return Ok(EntIndex::Blank);
+        }
+        if is_def {
+            let func = current_func_mut!(self);
+            let ident_key = ident.entity.clone().into_key();
+            let index = func.add_local(ident_key);
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
@@ -890,7 +891,7 @@ impl<'a> CodeGen<'a> {
     fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> Result<FunctionKey, ()> {
         let ftype = self.get_or_gen_type_func(typ)?;
         let type_val = ftype.get_type_val(&self.objects);
-        let params = type_val.get_closure_params();
+        let params = type_val.get_sig_params();
         let variadic = params.len() > 0
             && params[params.len() - 1]
                 .get_type_val(&self.objects)
@@ -910,7 +911,7 @@ impl<'a> CodeGen<'a> {
         };
         func.param_count = func.add_params(&typ.params, self.ast_objs)?;
 
-        self.func_stack.push(fkey.clone());
+        self.func_stack.push(fkey);
         // process function body
         self.visit_stmt_block(body)?;
         // it will not be executed if it's redundant
@@ -1002,6 +1003,12 @@ impl<'a> CodeGen<'a> {
                 }
             }
         }
+    }
+
+    fn get_or_gen_type2(&mut self, expr: &Expr) -> Result<GosValue, ()> {
+        let typ = self.ti.types.get(&expr.id()).unwrap().typ;
+        let val = util::type_from_tc(typ, self.tc_objs, self.objects);
+        Ok(val)
     }
 
     fn get_or_gen_type(&mut self, expr: &Expr) -> Result<GosValue, ()> {
@@ -1196,7 +1203,9 @@ impl<'a> CodeGen<'a> {
         self.func_stack.push(fkey);
         for f in files.iter() {
             for d in f.decls.iter() {
-                let _ = self.visit_decl(d);
+                if let Err(_) = self.visit_decl(d) {
+                    dbg!("error when generating");
+                }
             }
         }
         let func = &mut self.objects.functions[fkey];

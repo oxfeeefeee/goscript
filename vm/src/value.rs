@@ -300,7 +300,10 @@ impl GosValue {
             (GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
             (GosValue::Str(sa), GosValue::Str(sb)) => objs.strings[*sa].cmp(&objs.strings[*sb]),
             (GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
-            _ => unimplemented!(),
+            _ => {
+                dbg!(self, b);
+                unimplemented!()
+            }
         }
     }
 }
@@ -310,7 +313,7 @@ impl GosValue {
 #[derive(Clone, Debug)]
 pub enum GosTypeData {
     None,
-    Closure(Vec<GosValue>, Vec<GosValue>),
+    Signature(Vec<GosValue>, Vec<GosValue>),
     Slice(GosValue),
     Map(GosValue, GosValue),
     Interface(Vec<GosValue>),
@@ -368,7 +371,7 @@ impl GosType {
     ) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Closure(null_key!()),
-            data: GosTypeData::Closure(params, results),
+            data: GosTypeData::Signature(params, results),
         };
         GosValue::Type(objs.types.insert(typ))
     }
@@ -450,8 +453,8 @@ impl GosType {
         &self.zero_val
     }
 
-    pub fn closure_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
-        if let GosTypeData::Closure(params, returns) = &self.data {
+    pub fn sig_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
+        if let GosTypeData::Signature(params, returns) = &self.data {
             (params, returns)
         } else {
             unreachable!();
@@ -475,8 +478,8 @@ impl GosType {
         }
     }
 
-    pub fn get_closure_params(&self) -> &Vec<GosValue> {
-        if let GosTypeData::Closure(params, _) = &self.data {
+    pub fn get_sig_params(&self) -> &Vec<GosValue> {
+        if let GosTypeData::Signature(params, _) = &self.data {
             &params
         } else {
             unreachable!()
