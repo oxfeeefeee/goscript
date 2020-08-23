@@ -24,6 +24,15 @@ pub struct TypeAndValue {
     pub typ: TypeKey,
 }
 
+impl TypeAndValue {
+    pub fn get_const_val(&self) -> &Value {
+        match &self.mode {
+            OperandMode::Constant(v) => v,
+            _ => unreachable!(),
+        }
+    }
+}
+
 /// An Initializer describes a package-level variable, or a list of variables in case
 /// of a multi-valued initialization expression, and the corresponding initialization
 /// expression.

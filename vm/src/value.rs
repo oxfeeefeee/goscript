@@ -108,7 +108,8 @@ impl VMObjects {
         let stype = GosType::new_str(&mut objs);
         objs.basic_types.insert("string", stype);
         // default_closure_type is used by manually assembiled functions
-        objs.default_closure_type = Some(GosType::new_closure(vec![], vec![], &mut objs));
+        objs.default_closure_type =
+            Some(GosType::new_closure(None, vec![], vec![], false, &mut objs));
         objs
     }
 
@@ -311,9 +312,17 @@ impl GosValue {
 // ----------------------------------------------------------------------------
 // GosType
 #[derive(Clone, Debug)]
+pub struct SigTypeData {
+    pub recv: Option<GosValue>,
+    pub params: Vec<GosValue>,
+    pub results: Vec<GosValue>,
+    pub variadic: bool,
+}
+
+#[derive(Clone, Debug)]
 pub enum GosTypeData {
     None,
-    Signature(Vec<GosValue>, Vec<GosValue>),
+    Signature(SigTypeData),
     Slice(GosValue),
     Map(GosValue, GosValue),
     Interface(Vec<GosValue>),
@@ -365,13 +374,20 @@ impl GosType {
     }
 
     pub fn new_closure(
+        recv: Option<GosValue>,
         params: Vec<GosValue>,
         results: Vec<GosValue>,
+        variadic: bool,
         objs: &mut VMObjects,
     ) -> GosValue {
         let typ = GosType {
             zero_val: GosValue::Closure(null_key!()),
-            data: GosTypeData::Signature(params, results),
+            data: GosTypeData::Signature(SigTypeData {
+                recv: recv,
+                params: params,
+                results: results,
+                variadic: variadic,
+            }),
         };
         GosValue::Type(objs.types.insert(typ))
     }
@@ -453,9 +469,9 @@ impl GosType {
         &self.zero_val
     }
 
-    pub fn sig_type_data(&self) -> (&Vec<GosValue>, &Vec<GosValue>) {
-        if let GosTypeData::Signature(params, returns) = &self.data {
-            (params, returns)
+    pub fn sig_type_data(&self) -> &SigTypeData {
+        if let GosTypeData::Signature(stdata) = &self.data {
+            stdata
         } else {
             unreachable!();
         }
@@ -473,14 +489,6 @@ impl GosType {
     pub fn get_struct_member(&self, index: OpIndex) -> &GosValue {
         if let GosTypeData::Struct(members, _) = &self.data {
             &members[index as usize]
-        } else {
-            unreachable!()
-        }
-    }
-
-    pub fn get_sig_params(&self) -> &Vec<GosValue> {
-        if let GosTypeData::Signature(params, _) = &self.data {
-            &params
         } else {
             unreachable!()
         }

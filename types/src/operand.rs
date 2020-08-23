@@ -346,11 +346,11 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         Ok(())
     }
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Self::Result {
+    fn visit_expr_basic_lit(&mut self, blit: &BasicLit, _: NodeId) -> Self::Result {
         blit.token.fmt(self.f)
     }
 
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result {
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit, _: NodeId) -> Self::Result {
         self.f.write_char('(')?;
         self.visit_expr_func_type(&flit.typ)?;
         self.f.write_str(" literal)")

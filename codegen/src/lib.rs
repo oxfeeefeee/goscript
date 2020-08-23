@@ -1,6 +1,7 @@
 mod func;
+mod types;
 
 pub mod codegen;
-pub mod util;
+pub mod entry;
+pub use entry::parse_check_gen;
 pub use goscript_types::Config;
-pub use util::parse_check_gen;

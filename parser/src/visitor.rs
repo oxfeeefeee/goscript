@@ -11,9 +11,9 @@ pub trait ExprVisitor {
 
     fn visit_expr_ellipsis(&mut self, els: &Option<Expr>) -> Self::Result;
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Self::Result;
+    fn visit_expr_basic_lit(&mut self, blit: &BasicLit, id: NodeId) -> Self::Result;
 
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result;
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) -> Self::Result;
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result;
 
@@ -118,8 +118,8 @@ pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
         Expr::Bad(e) => v.visit_bad_expr(e.as_ref()),
         Expr::Ident(e) => v.visit_expr_ident(e),
         Expr::Ellipsis(e) => v.visit_expr_ellipsis(&e.as_ref().elt),
-        Expr::BasicLit(e) => v.visit_expr_basic_lit(e.as_ref()),
-        Expr::FuncLit(e) => v.visit_expr_func_lit(e.as_ref()),
+        Expr::BasicLit(e) => v.visit_expr_basic_lit(e.as_ref(), expr.id()),
+        Expr::FuncLit(e) => v.visit_expr_func_lit(e.as_ref(), expr.id()),
         Expr::CompositeLit(e) => v.visit_expr_composit_lit(e.as_ref()),
         Expr::Paren(e) => v.visit_expr_paren(&e.as_ref().expr),
         Expr::Selector(e) => {

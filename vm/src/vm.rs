@@ -467,7 +467,7 @@ impl Fiber {
                     // init return values
                     if next_func.ret_count > 0 {
                         let type_key = next_func.typ;
-                        let (_, rs) = &objs.types[type_key].sig_type_data();
+                        let rs = &objs.types[type_key].sig_type_data().results;
                         let mut returns = rs
                             .iter()
                             .map(|x| x.get_type_val(&objs).zero_val.clone())

@@ -16,7 +16,7 @@ fn load_parse_gen(path: &str, trace: bool) -> usize {
     };
     let fs = &mut fe::FileSet::new();
     let el = &mut fe::errors::ErrorList::new();
-    let code = cg::util::parse_check_gen(path, &config, fs, el);
+    let code = cg::entry::parse_check_gen(path, &config, fs, el);
     if let Ok(bc) = code {
         let mut vm = vm::vm::GosVM::new(bc);
         vm.run();

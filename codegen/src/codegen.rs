@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 
 use super::func::*;
-use super::util;
+use super::types;
 
 use goscript_vm::ds::{EntIndex, UpValue};
 use goscript_vm::null_key;
@@ -79,8 +79,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         unreachable!();
     }
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit) -> Self::Result {
-        let val = self.get_const_value(None, &blit)?;
+    fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) -> Self::Result {
+        let val = self.get_const_value(id)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -88,8 +88,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     /// Add function as a const and then generate a closure of it
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit) -> Self::Result {
-        let fkey = self.gen_func_def(&self.ast_objs.ftypes[flit.typ], &flit.body)?;
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) -> Self::Result {
+        let vm_ftype = self.gen_type_by_node_id(id);
+        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
         func.emit_load(i);
@@ -271,7 +272,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
-        let val = self.get_or_gen_type2(arr)?;
+        let val = self.gen_type_by_node_id(arr.id());
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -322,7 +323,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
-                    let typ = self.get_or_gen_type2(&ts.typ)?;
+                    let typ = self.gen_type_by_node_id(ts.typ.id());
                     self.current_func_add_const_def(ident_key.unwrap(), typ);
                 }
                 Spec::Value(vs) => match &gdecl.token {
@@ -338,7 +339,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                             .collect::<Result<Vec<LeftHandSide>, ()>>()?;
                         self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None)?;
                     }
-                    Token::CONST => self.gen_def_const(&vs.names, &vs.values, &vs.typ)?,
+                    Token::CONST => self.gen_def_const(&vs.names, &vs.values)?,
                     _ => unreachable!(),
                 },
             }
@@ -351,26 +352,21 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if decl.body.is_none() {
             unimplemented!()
         }
+        let vm_ftype = self.gen_def_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
-        let func = &self.ast_objs.ftypes[decl.typ];
+        let fval =
+            GosValue::Function(self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
-            // insert receiver at be beginning of the params
-            let mut ftype = func.clone();
-            let mut fields = self_ident.clone();
-            fields.list.append(&mut ftype.params.list);
-            ftype.params = fields;
-            let fval = GosValue::Function(self.gen_func_def(&ftype, stmt)?);
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let type_val = self.get_or_gen_type(&field.typ)?;
+            let type_val = self.get_use_type(&field.typ);
             let mut typ = type_val.get_type_val_mut(&mut self.objects);
             if let GosTypeData::Boxed(b) = typ.data {
                 typ = &mut self.objects.types[*b.as_type()];
             }
             typ.add_struct_member(name.clone(), fval);
         } else {
-            let fval = GosValue::Function(self.gen_func_def(func, stmt)?);
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
             let index = pkg.add_member(ident.entity_key().unwrap(), fval);
@@ -682,18 +678,13 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_def_const(
-        &mut self,
-        names: &Vec<IdentKey>,
-        values: &Vec<Expr>,
-        typ: &Option<Expr>,
-    ) -> Result<(), ()> {
+    fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) -> Result<(), ()> {
         if names.len() != values.len() {
             return Err(());
         }
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
-            let val = self.value_from_basic_literal(typ.as_ref(), &values[i])?;
+            let val = self.get_const_value(values[i].id())?;
             let ident_key = ident.entity.into_key();
             self.current_func_add_const_def(ident_key.unwrap(), val);
         }
@@ -888,14 +879,17 @@ impl<'a> CodeGen<'a> {
         Ok(())
     }
 
-    fn gen_func_def(&mut self, typ: &FuncType, body: &BlockStmt) -> Result<FunctionKey, ()> {
-        let ftype = self.get_or_gen_type_func(typ)?;
+    fn gen_func_def(
+        &mut self,
+        ftype: GosValue,
+        fkey: FuncTypeKey,
+        recv: Option<FieldList>,
+        body: &BlockStmt,
+    ) -> Result<FunctionKey, ()> {
+        let typ = &self.ast_objs.ftypes[fkey];
         let type_val = ftype.get_type_val(&self.objects);
-        let params = type_val.get_sig_params();
-        let variadic = params.len() > 0
-            && params[params.len() - 1]
-                .get_type_val(&self.objects)
-                .is_variadic();
+        let sig_type_data = type_val.sig_type_data();
+        let variadic = sig_type_data.variadic;
         let fkey = *GosValue::new_function(
             self.pkg_key.clone(),
             *ftype.as_type(),
@@ -909,8 +903,14 @@ impl<'a> CodeGen<'a> {
             Some(fl) => func.add_params(&fl, self.ast_objs)?,
             None => 0,
         };
-        func.param_count = func.add_params(&typ.params, self.ast_objs)?;
-
+        func.param_count = match recv {
+            Some(recv) => {
+                let mut fields = recv;
+                fields.list.append(&mut typ.params.list.clone());
+                func.add_params(&fields, self.ast_objs)?
+            }
+            None => func.add_params(&typ.params, self.ast_objs)?,
+        };
         self.func_stack.push(fkey);
         // process function body
         self.visit_stmt_block(body)?;
@@ -927,191 +927,64 @@ impl<'a> CodeGen<'a> {
                 Expr::Array(_) | Expr::Map(_) | Expr::Struct(_) => {
                     self.value_from_comp_literal(type_expr, expr)
                 }
-                _ => self.value_from_basic_literal(typ, expr),
+                _ => self.get_const_value(expr.id()),
             },
-            None => self.value_from_basic_literal(None, expr),
+            None => self.get_const_value(expr.id()),
         }
     }
 
-    fn value_from_basic_literal(
-        &mut self,
-        typ: Option<&Expr>,
-        expr: &Expr,
-    ) -> Result<GosValue, ()> {
-        match expr {
-            Expr::BasicLit(lit) => self.get_const_value(typ, lit),
-            _ => Err(()),
-        }
+    fn get_const_value(&mut self, id: NodeId) -> Result<GosValue, ()> {
+        let typ_val = self.ti.types.get(&id).unwrap();
+        let const_val = typ_val.get_const_val();
+        Ok(types::get_const_value(
+            typ_val.typ,
+            const_val,
+            self.tc_objs,
+            self.objects,
+        ))
     }
 
-    // this is a simplified version of Go's constant evaluation, which needs to be implemented
-    // as part of the Type Checker
-    fn get_const_value(&mut self, typ: Option<&Expr>, blit: &BasicLit) -> Result<GosValue, ()> {
-        match typ {
-            None => {
-                let val = match &blit.token {
-                    Token::INT(i) => GosValue::Int(i.as_str().parse::<isize>().unwrap()),
-                    Token::FLOAT(f) => GosValue::Float64(f.as_str().parse::<f64>().unwrap()),
-                    Token::IMAG(_) => unimplemented!(),
-                    Token::CHAR(c) => {
-                        GosValue::Int(c.as_str().chars().skip(1).next().unwrap() as isize)
-                    }
-                    Token::STRING(s) => GosValue::new_str(
-                        s.as_str()[1..s.as_str().len() - 1].to_string(),
-                        &mut self.objects.strings,
-                    ),
-                    _ => unreachable!(),
-                };
-                Ok(val)
-            }
-            Some(t) => {
-                let type_val = self.get_type_default(t)?;
-                match (type_val, &blit.token) {
-                    (GosValue::Int(_), Token::FLOAT(f)) => {
-                        let fval = f.as_str().parse::<f64>().unwrap();
-                        if fval.fract() != 0.0 {
-                            Err(())
-                        } else if (fval.round() as isize) > std::isize::MAX
-                            || (fval.round() as isize) < std::isize::MIN
-                        {
-                            Err(())
-                        } else {
-                            Ok(GosValue::Int(fval.round() as isize))
-                        }
-                    }
-                    (GosValue::Int(_), Token::INT(ilit)) => match ilit.as_str().parse::<isize>() {
-                        Ok(i) => Ok(GosValue::Int(i)),
-                        Err(_) => Err(()),
-                    },
-                    (GosValue::Int(_), Token::CHAR(c)) => Ok(GosValue::Int(
-                        c.as_str().chars().skip(1).next().unwrap() as isize,
-                    )),
-                    (GosValue::Float64(_), Token::FLOAT(f)) => {
-                        Ok(GosValue::Float64(f.as_str().parse::<f64>().unwrap()))
-                    }
-                    (GosValue::Float64(_), Token::INT(i)) => {
-                        Ok(GosValue::Float64(i.as_str().parse::<f64>().unwrap()))
-                    }
-                    (GosValue::Float64(_), Token::CHAR(c)) => Ok(GosValue::Float64(
-                        c.as_str().chars().skip(1).next().unwrap() as isize as f64,
-                    )),
-                    (GosValue::Str(_), Token::STRING(s)) => Ok(GosValue::new_str(
-                        s.as_str().to_string(),
-                        &mut self.objects.strings,
-                    )),
-                    (_, _) => Err(()),
-                }
-            }
-        }
+    fn gen_type_by_node_id(&mut self, id: NodeId) -> GosValue {
+        let typ = self.ti.types.get(&id).unwrap().typ;
+        types::type_from_tc(typ, self.tc_objs, self.objects)
     }
 
-    fn get_or_gen_type2(&mut self, expr: &Expr) -> Result<GosValue, ()> {
-        let typ = self.ti.types.get(&expr.id()).unwrap().typ;
-        let val = util::type_from_tc(typ, self.tc_objs, self.objects);
-        Ok(val)
+    fn gen_def_type(&mut self, ikey: IdentKey) -> GosValue {
+        let obj = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()];
+        let typ = obj.typ().unwrap();
+        types::type_from_tc(typ, self.tc_objs, self.objects)
     }
 
-    fn get_or_gen_type(&mut self, expr: &Expr) -> Result<GosValue, ()> {
-        match expr {
-            Expr::Ident(ikey) => {
-                let ident = &self.ast_objs.idents[*ikey];
-                match self.objects.basic_type(&ident.name) {
-                    Some(val) => Ok(val.clone()),
-                    None => {
-                        let i = self.resolve_ident(ikey)?;
-                        match i {
-                            EntIndex::Const(i) => {
-                                let func = current_func_mut!(self);
-                                Ok(func.const_val(i.into()).clone())
-                            }
-                            EntIndex::PackageMember(i) => {
-                                let pkg = &self.objects.packages[self.pkg_key];
-                                Ok(*pkg.member(i))
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                }
-            }
-            Expr::Array(atype) => {
-                let vtype = self.get_or_gen_type(&atype.elt)?;
-                Ok(GosType::new_slice(vtype, &mut self.objects))
-            }
-            Expr::Map(mtype) => {
-                let ktype = self.get_or_gen_type(&mtype.key)?;
-                let vtype = self.get_or_gen_type(&mtype.val)?;
-                Ok(GosType::new_map(ktype, vtype, &mut self.objects))
-            }
-            Expr::Struct(stype) => {
-                let mut fields = Vec::new();
-                let mut map = HashMap::<String, OpIndex>::new();
-                let mut i = 0;
-                for f in stype.fields.list.iter() {
-                    let field = &self.ast_objs.fields[*f];
-                    let typ = self.get_or_gen_type(&field.typ)?;
-                    for name in &field.names {
-                        fields.push(typ);
-                        map.insert(self.ast_objs.idents[*name].name.clone(), i);
-                        i += 1;
-                    }
-                }
-                Ok(GosType::new_struct(fields, map, &mut self.objects))
-            }
-            Expr::Interface(itype) => {
-                let methods = itype
-                    .methods
-                    .list
-                    .iter()
-                    .map(|x| {
-                        let field = &self.ast_objs.fields[*x];
-                        self.get_or_gen_type(&field.typ)
-                    })
-                    .collect::<Result<Vec<GosValue>, ()>>()?;
-                Ok(GosType::new_interface(methods, &mut self.objects))
-            }
-            Expr::Func(ftype_key) => {
-                let ftype = &self.ast_objs.ftypes[*ftype_key];
-                self.get_or_gen_type_func(ftype)
-            }
-            Expr::Star(sexpr) => {
-                let inner = self.get_or_gen_type(&sexpr.expr)?;
-                Ok(GosType::new_boxed(inner, &mut self.objects))
-            }
-            Expr::Ellipsis(eexpr) => {
-                let elt = self.get_or_gen_type(eexpr.elt.as_ref().unwrap())?;
-                Ok(GosType::new_variadic(elt, &mut self.objects))
-            }
-            Expr::Chan(_ctype) => unimplemented!(),
+    fn get_use_type(&mut self, expr: &Expr) -> GosValue {
+        let ikey = match expr {
+            Expr::Star(s) => *s.expr.try_as_ident().unwrap(),
+            Expr::Ident(i) => *i,
             _ => unreachable!(),
-        }
-    }
-
-    fn get_or_gen_type_func(&mut self, ftype: &FuncType) -> Result<GosValue, ()> {
-        let params = ftype
-            .params
-            .list
-            .iter()
-            .map(|x| {
-                let field = &self.ast_objs.fields[*x];
-                self.get_or_gen_type(&field.typ)
-            })
-            .collect::<Result<Vec<GosValue>, ()>>()?;
-        let results = match &ftype.results {
-            Some(re) => re
-                .list
-                .iter()
-                .map(|x| {
-                    let field = &self.ast_objs.fields[*x];
-                    self.get_or_gen_type(&field.typ)
-                })
-                .collect::<Result<Vec<GosValue>, ()>>()?,
-            None => Vec::new(),
         };
-        Ok(GosType::new_closure(params, results, &mut self.objects))
+
+        let obj = &self.tc_objs.lobjs[self.ti.uses[&ikey]];
+        let typ = obj.typ().unwrap();
+        match self.tc_objs.types[typ].try_as_basic() {
+            Some(_) => types::type_from_tc(typ, self.tc_objs, self.objects),
+            None => {
+                let i = self.resolve_ident(&ikey).unwrap();
+                match i {
+                    EntIndex::Const(i) => {
+                        let func = current_func_mut!(self);
+                        func.const_val(i.into()).clone()
+                    }
+                    EntIndex::PackageMember(i) => {
+                        let pkg = &self.objects.packages[self.pkg_key];
+                        *pkg.member(i)
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
-        let typ = self.get_or_gen_type(expr)?;
+        let typ = self.get_use_type(expr);
         let typ_val = &self.objects.types[*typ.as_type()];
         Ok(typ_val.zero_val().clone())
     }
