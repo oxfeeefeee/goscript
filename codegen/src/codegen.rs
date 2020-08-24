@@ -89,7 +89,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) -> Self::Result {
-        let vm_ftype = self.gen_type_by_node_id(id);
+        let vm_ftype = self.gen_type_meta_by_node_id(id);
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
@@ -272,7 +272,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
-        let val = self.gen_type_by_node_id(arr.id());
+        let val = self.gen_type_meta_by_node_id(arr.id());
         let func = current_func_mut!(self);
         let i = func.add_const(None, val);
         func.emit_load(i);
@@ -323,7 +323,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
-                    let typ = self.gen_type_by_node_id(ts.typ.id());
+                    let typ = self.gen_type_meta_by_node_id(ts.typ.id());
                     self.current_func_add_const_def(ident_key.unwrap(), typ);
                 }
                 Spec::Value(vs) => match &gdecl.token {
@@ -352,7 +352,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if decl.body.is_none() {
             unimplemented!()
         }
-        let vm_ftype = self.gen_def_type(decl.name);
+        let vm_ftype = self.gen_def_type_meta(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fval =
             GosValue::Function(self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?);
@@ -360,12 +360,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let type_val = self.get_use_type(&field.typ);
-            let mut typ = type_val.get_type_val_mut(&mut self.objects);
-            if let GosTypeData::Boxed(b) = typ.data {
-                typ = &mut self.objects.types[*b.as_type()];
+            let meta_val = self.get_type_meta(&field.typ);
+            let mut meta = meta_val.get_meta_val_mut(&mut self.objects);
+            if let MetadataType::Boxed(b) = meta.typ.clone() {
+                meta = &mut self.objects.metas[*b.as_meta()];
             }
-            typ.add_struct_member(name.clone(), fval);
+            meta.add_struct_member(name.clone(), fval);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
@@ -788,7 +788,7 @@ impl<'a> CodeGen<'a> {
             let val = self.get_type_default(&typ.as_ref().unwrap())?;
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
-                let i = func.add_const(None, val);
+                let i = func.add_const(None, val.clone());
                 func.emit_load(i);
             }
         } else if values.len() == 1 {
@@ -881,18 +881,18 @@ impl<'a> CodeGen<'a> {
 
     fn gen_func_def(
         &mut self,
-        ftype: GosValue,
+        fmeta: GosValue,
         fkey: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
     ) -> Result<FunctionKey, ()> {
         let typ = &self.ast_objs.ftypes[fkey];
-        let type_val = ftype.get_type_val(&self.objects);
-        let sig_type_data = type_val.sig_type_data();
-        let variadic = sig_type_data.variadic;
+        let meta_val = fmeta.get_meta_val(&self.objects);
+        let sig_metadata = meta_val.sig_metadata();
+        let variadic = sig_metadata.variadic;
         let fkey = *GosValue::new_function(
             self.pkg_key.clone(),
-            *ftype.as_type(),
+            *fmeta.as_meta(),
             variadic,
             false,
             &mut self.objects,
@@ -944,18 +944,18 @@ impl<'a> CodeGen<'a> {
         ))
     }
 
-    fn gen_type_by_node_id(&mut self, id: NodeId) -> GosValue {
+    fn gen_type_meta_by_node_id(&mut self, id: NodeId) -> GosValue {
         let typ = self.ti.types.get(&id).unwrap().typ;
         types::type_from_tc(typ, self.tc_objs, self.objects)
     }
 
-    fn gen_def_type(&mut self, ikey: IdentKey) -> GosValue {
+    fn gen_def_type_meta(&mut self, ikey: IdentKey) -> GosValue {
         let obj = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()];
         let typ = obj.typ().unwrap();
         types::type_from_tc(typ, self.tc_objs, self.objects)
     }
 
-    fn get_use_type(&mut self, expr: &Expr) -> GosValue {
+    fn get_type_meta(&mut self, expr: &Expr) -> GosValue {
         let ikey = match expr {
             Expr::Star(s) => *s.expr.try_as_ident().unwrap(),
             Expr::Ident(i) => *i,
@@ -975,7 +975,7 @@ impl<'a> CodeGen<'a> {
                     }
                     EntIndex::PackageMember(i) => {
                         let pkg = &self.objects.packages[self.pkg_key];
-                        *pkg.member(i)
+                        pkg.member(i).clone()
                     }
                     _ => unreachable!(),
                 }
@@ -984,9 +984,9 @@ impl<'a> CodeGen<'a> {
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
-        let typ = self.get_use_type(expr);
-        let typ_val = &self.objects.types[*typ.as_type()];
-        Ok(typ_val.zero_val().clone())
+        let meta = self.get_type_meta(expr);
+        let meta_val = &self.objects.metas[*meta.as_meta()];
+        Ok(meta_val.zero_val().clone())
     }
 
     fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> Result<GosValue, ()> {
@@ -1027,7 +1027,7 @@ impl<'a> CodeGen<'a> {
                 let val = self.get_type_default(&map.val)?;
                 let map = GosValue::new_map(val, &mut self.objects);
                 for kv in key_vals.iter() {
-                    self.objects.maps[*map.as_map()].insert(kv.0, kv.1);
+                    self.objects.maps[*map.as_map()].insert(kv.0.clone(), kv.1.clone());
                 }
                 Ok(map)
             }
@@ -1037,7 +1037,7 @@ impl<'a> CodeGen<'a> {
 
     fn current_func_add_const_def(&mut self, entity: EntityKey, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
-        let index = func.add_const(Some(entity.clone()), cst);
+        let index = func.add_const(Some(entity.clone()), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
@@ -1049,7 +1049,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_push_ident_str(&mut self, ident: &IdentKey) {
         let name = self.ast_objs.idents[*ident].name.clone();
-        let gos_val = GosValue::new_str(name, &mut self.objects.strings);
+        let gos_val = GosValue::new_str(name);
         let func = current_func_mut!(self);
         let index = func.add_const(None, gos_val);
         func.emit_load(index);
@@ -1067,8 +1067,8 @@ impl<'a> CodeGen<'a> {
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
         let pkey = self.pkg_key;
-        let ftype = self.objects.default_closure_type.unwrap();
-        let fkey = *GosValue::new_function(pkey, *ftype.as_type(), false, true, &mut self.objects)
+        let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
+        let fkey = *GosValue::new_function(pkey, *fmeta.as_meta(), false, true, &mut self.objects)
             .as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));

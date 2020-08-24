@@ -40,10 +40,10 @@ impl<'a> EntryGen<'a> {
     // generate the entry function for ByteCode
     fn gen_entry_func(&mut self, main_idx: OpIndex) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
-        let ftype = self.objects.default_closure_type.unwrap();
+        let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
         let fkey = *GosValue::new_function(
             null_key!(),
-            *ftype.as_type(),
+            *fmeta.as_meta(),
             false,
             false,
             &mut self.objects,

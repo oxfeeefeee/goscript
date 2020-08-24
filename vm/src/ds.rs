@@ -1,6 +1,6 @@
 use super::opcode::{CodeData, OpIndex, Opcode};
-use super::value::{BoxedKey, FunctionKey, GosTypeData, GosValue, PackageKey, TypeKey, VMObjects};
-use std::cell::{Cell, Ref, RefCell, RefMut};
+use super::value::{BoxedKey, FunctionKey, GosValue, MetaKey, MetadataType, PackageKey, VMObjects};
+use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -16,35 +16,37 @@ use goscript_parser::objects::EntityKey;
 
 #[derive(Clone, Debug)]
 pub struct StringVal {
-    pub dark: bool,
     // strings are readony, so unlike slices and maps, Rc is enough
     data: Rc<String>,
 }
 
 impl StringVal {
+    #[inline]
     pub fn with_str(s: String) -> StringVal {
-        StringVal {
-            dark: false,
-            data: Rc::new(s),
-        }
+        StringVal { data: Rc::new(s) }
     }
 
+    #[inline]
     pub fn data_as_ref(&self) -> &String {
         self.data.as_ref()
     }
 
+    #[inline]
     pub fn clone_data(&self) -> Rc<String> {
         self.data.clone()
     }
 
+    #[inline]
     pub fn into_string(self) -> String {
         Rc::try_unwrap(self.data).unwrap()
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.data.as_ref().len()
     }
 
+    #[inline]
     pub fn get_byte(&self, i: usize) -> u8 {
         self.data.as_ref().as_bytes()[i]
     }
@@ -57,10 +59,7 @@ impl StringVal {
         assert!(bi <= ei && ei <= self_len);
         // todo: efficient slice-like string
         let sub = self.data.as_ref()[bi..ei].to_owned();
-        StringVal {
-            dark: false,
-            data: Rc::new(sub),
-        }
+        StringVal { data: Rc::new(sub) }
     }
 }
 
@@ -123,7 +122,7 @@ impl Hash for HashKey {
             GosValue::Bool(b) => b.hash(state),
             GosValue::Int(i) => i.hash(state),
             GosValue::Float64(f) => f.to_bits().hash(state),
-            GosValue::Str(s) => self.objs().strings[*s].data.hash(state),
+            GosValue::Str(s) => s.data.hash(state),
             /*
             GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
             GosValue::Map(_) => {unreachable!()}
@@ -139,13 +138,13 @@ impl Hash for HashKey {
     }
 }
 
-pub type GosHashMap = HashMap<HashKey, Cell<GosValue>>;
+pub type GosHashMap = HashMap<HashKey, RefCell<GosValue>>;
 
 #[derive(Clone)]
 pub struct MapVal {
     pub dark: bool,
     objs: *const VMObjects,
-    default_val: Cell<GosValue>,
+    default_val: RefCell<GosValue>,
     // Why not Rc or no wrapper at all?
     // - Sometimes we need to copy it out of VMObjects, so we need a wapper
     // - If the underlying data is not read-only, you cannot simply use Rc
@@ -167,7 +166,7 @@ impl MapVal {
         MapVal {
             dark: false,
             objs: objs,
-            default_val: Cell::new(default_val),
+            default_val: RefCell::new(default_val),
             map: Rc::new(RefCell::new(HashMap::new())),
         }
     }
@@ -182,17 +181,19 @@ impl MapVal {
         }
     }
 
+    #[inline]
     pub fn insert(&mut self, key: GosValue, val: GosValue) -> Option<GosValue> {
         let hk = self.hash_key(key);
         self.map
             .borrow_mut()
-            .insert(hk, Cell::new(val))
+            .insert(hk, RefCell::new(val))
             .map(|x| x.into_inner())
     }
 
+    #[inline]
     pub fn get(&self, key: &GosValue) -> GosValue {
         let hk = HashKey {
-            val: *key,
+            val: key.clone(),
             objs: self.objs,
         };
         let mref = self.map.borrow();
@@ -203,6 +204,7 @@ impl MapVal {
         cell.clone().into_inner()
     }
 
+    #[inline]
     pub fn hash_key(&self, key: GosValue) -> HashKey {
         HashKey {
             val: key,
@@ -212,9 +214,10 @@ impl MapVal {
 
     /// touch_key makes sure there is a value for the 'key', a default value is set if
     /// the value is empty
+    #[inline]
     pub fn touch_key(&self, key: &GosValue) {
         let hk = HashKey {
-            val: *key,
+            val: key.clone(),
             objs: self.objs,
         };
         if self.map.borrow().get(&hk).is_none() {
@@ -222,18 +225,22 @@ impl MapVal {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.map.borrow().len()
     }
 
+    #[inline]
     pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
         self.map.borrow_mut()
     }
 
+    #[inline]
     pub fn borrow_data(&self) -> Ref<GosHashMap> {
         self.map.borrow()
     }
 
+    #[inline]
     pub fn clone_data(&self) -> Rc<RefCell<GosHashMap>> {
         self.map.clone()
     }
@@ -242,7 +249,7 @@ impl MapVal {
 // ----------------------------------------------------------------------------
 // SliceVal
 
-pub type GosVec = Vec<Cell<GosValue>>;
+pub type GosVec = Vec<RefCell<GosValue>>;
 
 #[derive(Clone, Debug)]
 pub struct SliceVal {
@@ -264,7 +271,7 @@ impl<'a> SliceVal {
             vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
         };
         for _ in 0..len {
-            val.push(*default_val);
+            val.push(default_val.clone());
         }
         val
     }
@@ -276,7 +283,7 @@ impl<'a> SliceVal {
             end: val.len(),
             soft_cap: val.len(),
             vec: Rc::new(RefCell::new(
-                val.into_iter().map(|x| Cell::new(x)).collect(),
+                val.into_iter().map(|x| RefCell::new(x)).collect(),
             )),
         }
     }
@@ -293,32 +300,39 @@ impl<'a> SliceVal {
         }
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.end - self.begin
     }
 
+    #[inline]
     pub fn cap(&self) -> usize {
         self.soft_cap - self.begin
     }
 
+    #[inline]
     pub fn borrow(&self) -> SliceRef {
         SliceRef::new(self)
     }
 
+    #[inline]
     pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
         self.vec.borrow_mut()
     }
 
+    #[inline]
     pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
         self.vec.borrow()
     }
 
+    #[inline]
     pub fn push(&mut self, val: GosValue) {
         self.try_grow_vec(self.len() + 1);
-        self.vec.borrow_mut().push(Cell::new(val));
+        self.vec.borrow_mut().push(RefCell::new(val));
         self.end += 1;
     }
 
+    #[inline]
     pub fn append(&mut self, vals: &mut GosVec) {
         let new_len = self.len() + vals.len();
         self.try_grow_vec(new_len);
@@ -326,6 +340,7 @@ impl<'a> SliceVal {
         self.end = self.begin + new_len;
     }
 
+    #[inline]
     pub fn get(&self, i: usize) -> Option<GosValue> {
         if let Some(val) = self.vec.borrow().get(self.begin + i) {
             Some(val.clone().into_inner())
@@ -334,10 +349,12 @@ impl<'a> SliceVal {
         }
     }
 
+    #[inline]
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow_mut()[self.begin + i] = Cell::new(val);
+        self.vec.borrow_mut()[self.begin + i].replace(val);
     }
 
+    #[inline]
     pub fn slice(&self, begin: Option<usize>, end: Option<usize>, max: Option<usize>) -> SliceVal {
         let self_len = self.len();
         let self_cap = self.cap();
@@ -387,10 +404,10 @@ pub struct SliceRef<'a> {
     end: usize,
 }
 
-pub type SliceIter<'a> = std::iter::Take<std::iter::Skip<std::slice::Iter<'a, Cell<GosValue>>>>;
+pub type SliceIter<'a> = std::iter::Take<std::iter::Skip<std::slice::Iter<'a, RefCell<GosValue>>>>;
 
 pub type SliceEnumIter<'a> =
-    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::slice::Iter<'a, Cell<GosValue>>>>>;
+    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::slice::Iter<'a, RefCell<GosValue>>>>>;
 
 impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceVal) -> SliceRef {
@@ -416,7 +433,8 @@ impl<'a> SliceRef<'a> {
             .enumerate()
     }
 
-    pub fn get(&self, i: usize) -> Option<&Cell<GosValue>> {
+    #[inline]
+    pub fn get(&self, i: usize) -> Option<&RefCell<GosValue>> {
         self.vec_ref.get(self.begin + i)
     }
 }
@@ -427,14 +445,14 @@ impl<'a> SliceRef<'a> {
 #[derive(Clone, Debug)]
 pub struct StructVal {
     pub dark: bool,
-    pub typ: TypeKey,
+    pub meta: MetaKey,
     pub fields: Vec<GosValue>,
 }
 
 impl StructVal {
     pub fn field_method_index(&self, name: &String, objs: &VMObjects) -> OpIndex {
-        let t = &objs.types[self.typ];
-        if let GosTypeData::Struct(_, map) = &t.data {
+        let t = &objs.metas[self.meta];
+        if let MetadataType::Struct(_, map) = &t.typ {
             map[name] as OpIndex
         } else {
             unreachable!()
@@ -446,7 +464,13 @@ impl StructVal {
 // InterfaceVal
 
 #[derive(Clone, Debug)]
-pub struct InterfaceVal {}
+pub struct InterfaceVal {
+    pub dark: bool,
+    pub meta: MetaKey,
+    pub obj: GosValue,             // the Named object behind the interface
+    pub obj_type: Option<MetaKey>, // the type of the named object
+    pub mapping: Vec<OpIndex>,     // mapping from interface's methods to object's methods
+}
 
 // ----------------------------------------------------------------------------
 // ChannelVal
@@ -614,7 +638,7 @@ impl From<EntIndex> for OpIndex {
 pub struct FunctionVal {
     objs: *const VMObjects,
     pub package: PackageKey,
-    pub typ: TypeKey,
+    pub meta: MetaKey,
     pub code: Vec<CodeData>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<UpValue>,
@@ -632,14 +656,14 @@ impl FunctionVal {
     pub fn new(
         objs: &VMObjects,
         package: PackageKey,
-        typ: TypeKey,
+        meta: MetaKey,
         variadic: bool,
         ctor: bool,
     ) -> FunctionVal {
         FunctionVal {
             objs: objs,
             package: package,
-            typ: typ,
+            meta: meta,
             code: Vec::new(),
             consts: Vec::new(),
             up_ptrs: Vec::new(),
@@ -740,6 +764,7 @@ impl FunctionVal {
 
 #[cfg(test)]
 mod test {
+    use super::super::value::*;
     use super::*;
     use std::mem;
 
@@ -747,9 +772,11 @@ mod test {
     fn test_size() {
         dbg!(mem::size_of::<HashMap<HashKey, GosValue>>());
         dbg!(mem::size_of::<String>());
+        dbg!(mem::size_of::<Rc<String>>());
         dbg!(mem::size_of::<SliceVal>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
+        dbg!(mem::size_of::<SliceKey>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

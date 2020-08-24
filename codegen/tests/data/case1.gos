@@ -2,6 +2,7 @@ package main
 
 const a = 1 + 2
 
+
 func main() {
     var i = a
     assert(i == 3)

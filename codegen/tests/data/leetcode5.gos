@@ -58,11 +58,14 @@ func longestPalindrome2(s string) string {
 
 
 func main() {
-    
+    //j := 10
     s := "ZnVuYyBsb25nZXN0UGFsaW5kcm9tZShzIHN0cmaabbaabbaabbluZykgc3RyaW5nIHsKICAgIGlmIGxlbihzKSA8PSAxIHsKICAgICAgICByZXR1cm4gcwogICAgfQogICAgCiAgICB0YWJsZSA6PaaabbbaaabbbaaaSBtYWtlKFtdW11ib29"
     for i := 0; i < 2; i++ {
         s = s + s
+        //j += j
+        //j -= j/2
     }
+    //assert(j == 10)
 	result := longestPalindrome2(s)
 	assert(result == "aaabbbaaabbbaaa")
     

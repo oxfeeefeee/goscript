@@ -3,7 +3,7 @@ use super::ds::{ClosureVal, GosHashMap, HashKey, SliceEnumIter, SliceRef, UpValu
 use super::opcode::*;
 use super::value::*;
 use super::vm_util;
-use std::cell::{Cell, Ref, RefCell};
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -178,9 +178,11 @@ impl Fiber {
         range_vars!(mr15, mp15, mi15, lr15, lp15, li15, sr15, sp15, si15);
 
         let mut total_inst = 0;
+        //let mut stats: HashMap<Opcode, usize> = HashMap::new();
         loop {
-            total_inst += 1;
             let inst = code[frame.pc].unwrap_code();
+            total_inst += 1;
+            //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
             frame.pc += 1;
             //dbg!(inst);
             match inst {
@@ -232,11 +234,11 @@ impl Fiber {
                 | Opcode::LOAD_LOCAL14
                 | Opcode::LOAD_LOCAL15 => {
                     let index = inst.load_local_index();
-                    stack.push(stack[offset_uint!(stack_base, index)]);
+                    stack.push(stack[offset_uint!(stack_base, index)].clone());
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = offset_uint!(stack_base, read_index!(code, frame));
-                    stack.push(stack[index]);
+                    stack.push(stack[index].clone());
                 }
                 Opcode::STORE_LOCAL => {
                     let index = offset_uint!(stack_base, read_index!(code, frame));
@@ -307,19 +309,16 @@ impl Fiber {
                         }
                         GosValue::Map(mkey) => (&objs.maps[*mkey]).get(&ind).clone(),
                         GosValue::Str(s) => {
-                            let string = &objs.strings[*s];
-                            GosValue::Int(string.get_byte(*ind.as_int() as usize) as isize)
+                            GosValue::Int(s.get_byte(*ind.as_int() as usize) as isize)
                         }
                         GosValue::Struct(skey) => {
                             let sval = &objs.structs[*skey];
                             match ind {
-                                GosValue::Int(i) => sval.fields[i as usize],
+                                GosValue::Int(i) => sval.fields[i as usize].clone(),
                                 GosValue::Str(s) => {
-                                    let str_val = &objs.strings[s];
-                                    let index =
-                                        sval.field_method_index(str_val.data_as_ref(), objs);
+                                    let index = sval.field_method_index(s.data_as_ref(), objs);
                                     if index < sval.fields.len() as OpIndex {
-                                        sval.fields[index as usize]
+                                        sval.fields[index as usize].clone()
                                     } else {
                                         bind_method!(sval, val, index, objs)
                                     }
@@ -329,7 +328,7 @@ impl Fiber {
                         }
                         GosValue::Package(pkey) => {
                             let pkg = &objs.packages[*pkey];
-                            *pkg.member(*ind.as_int() as OpIndex)
+                            pkg.member(*ind.as_int() as OpIndex).clone()
                         }
                         _ => unreachable!(),
                     };
@@ -376,11 +375,9 @@ impl Fiber {
                                     let target = &mut objs.structs[*s].fields[i as usize];
                                     set_store_op_val!(target, op, val, is_op_set);
                                 }
-                                GosValue::Str(skey) => {
-                                    let str_val = &objs.strings[skey];
+                                GosValue::Str(sval) => {
                                     let struct_val = &objs.structs[*s];
-                                    let i =
-                                        struct_val.field_method_index(str_val.data_as_ref(), objs);
+                                    let i = struct_val.field_method_index(sval.data_as_ref(), objs);
                                     let target = &mut objs.structs[*s].fields[i as usize];
                                     set_store_op_val!(target, op, val, is_op_set);
                                 }
@@ -393,7 +390,7 @@ impl Fiber {
                 Opcode::LOAD_THIS_PKG_FIELD => {
                     let index = read_index!(code, frame);
                     let pkg = &objs.packages[func.package];
-                    stack.push(*pkg.member(index));
+                    stack.push(pkg.member(index).clone());
                 }
                 Opcode::STORE_THIS_PKG_FIELD => {
                     let index = read_index!(code, frame);
@@ -433,7 +430,7 @@ impl Fiber {
                     vm_util::store_xxx_op(&mut objs.boxed[*store.as_boxed()], op, operand);
                 }
 
-                Opcode::ADD => vm_util::add(stack, &mut objs.strings),
+                Opcode::ADD => vm_util::add(stack),
                 Opcode::SUB => vm_util::sub(stack),
                 Opcode::MUL => vm_util::mul(stack),
                 Opcode::QUO => vm_util::quo(stack),
@@ -466,11 +463,11 @@ impl Fiber {
                     let next_func = &objs.functions[func_key];
                     // init return values
                     if next_func.ret_count > 0 {
-                        let type_key = next_func.typ;
-                        let rs = &objs.types[type_key].sig_type_data().results;
+                        let meta_key = next_func.meta;
+                        let rs = &objs.metas[meta_key].sig_metadata().results;
                         let mut returns = rs
                             .iter()
-                            .map(|x| x.get_type_val(&objs).zero_val.clone())
+                            .map(|x| x.get_meta_val(&objs).zero_val.clone())
                             .collect();
                         stack.append(&mut returns);
                     }
@@ -579,6 +576,12 @@ impl Fiber {
                     self.frames.pop();
                     if self.frames.is_empty() {
                         dbg!(total_inst);
+                        /*let mut s = stats
+                            .iter()
+                            .map(|(&k, &v)| (k, v))
+                            .collect::<Vec<(Opcode, usize)>>();
+                        s.sort_by(|a, b| b.1.cmp(&a.1));
+                        dbg!(s); */
                         break;
                     }
                     frame = self.frames.last_mut().unwrap();
@@ -614,7 +617,7 @@ impl Fiber {
                 Opcode::RANGE => {
                     let offset = read_index!(code, frame);
                     let len = stack.len();
-                    let t = stack[len - 2];
+                    let t = &stack[len - 2].clone();
                     let mut mark = *stack[len - 1].as_int();
                     if mark < 0 {
                         mark = range_slot;
@@ -707,9 +710,7 @@ impl Fiber {
                         GosValue::Slice(sl) => GosValue::Slice(
                             objs.slices.insert(objs.slices[sl].slice(begin, end, max)),
                         ),
-                        GosValue::Str(s) => {
-                            GosValue::Str(objs.strings.insert(objs.strings[s].slice(begin, end)))
-                        }
+                        GosValue::Str(s) => GosValue::Str(s.slice(begin, end)),
                         _ => unreachable!(),
                     };
                     stack.push(result);
@@ -744,10 +745,10 @@ impl Fiber {
                 }
                 Opcode::MAKE => {
                     let index = read_index!(code, frame);
-                    let typ = stack[offset_uint!(stack.len(), index - 1)];
-                    let type_val = &objs.types[*typ.as_type()];
-                    let val = match type_val.data {
-                        GosTypeData::Slice(vtype) => {
+                    let meta = &stack[offset_uint!(stack.len(), index - 1)];
+                    let metadata = &objs.metas[*meta.as_meta()];
+                    let val = match &metadata.typ {
+                        MetadataType::Slice(vmeta) => {
                             let (cap, len) = match index {
                                 -2 => (
                                     *stack.pop().unwrap().as_int() as usize,
@@ -759,11 +760,11 @@ impl Fiber {
                                 }
                                 _ => unreachable!(),
                             };
-                            let vtype_val = &objs.types[*vtype.as_type()];
-                            GosValue::new_slice(len, cap, vtype_val.zero_val(), &mut objs.slices)
+                            let vmetadata = &objs.metas[*vmeta.as_meta()];
+                            GosValue::new_slice(len, cap, vmetadata.zero_val(), &mut objs.slices)
                         }
-                        GosTypeData::Map(_k, _v) => unimplemented!(),
-                        GosTypeData::Channel(_st) => unimplemented!(),
+                        MetadataType::Map(_k, _v) => unimplemented!(),
+                        MetadataType::Channel(_st) => unimplemented!(),
                         _ => unreachable!(),
                     };
                     stack.pop();
@@ -776,8 +777,8 @@ impl Fiber {
                     GosValue::Map(mkey) => {
                         stack.push(GosValue::Int(objs.maps[mkey].len() as isize));
                     }
-                    GosValue::Str(skey) => {
-                        stack.push(GosValue::Int(objs.strings[skey].len() as isize));
+                    GosValue::Str(sval) => {
+                        stack.push(GosValue::Int(sval.len() as isize));
                     }
                     _ => unreachable!(),
                 },

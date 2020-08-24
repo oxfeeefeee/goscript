@@ -4,7 +4,7 @@ use std::fmt;
 
 pub type OpIndex = i16;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Opcode {
     // push pop load store
     PUSH_CONST = 100,
@@ -33,6 +33,7 @@ pub enum Opcode {
     STORE_LOCAL,    // stores the value on the top of the stack to local
     STORE_LOCAL_NT, // stores the value that is not on the top of the stack
     STORE_LOCAL_OP, // stores value with an operation. for +=/-= etc.
+    // STORE_INTERFACE
     LOAD_UPVALUE = 230,
     STORE_UPVALUE,
     STORE_UPVALUE_NT,

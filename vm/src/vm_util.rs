@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::opcode::*;
-use super::value::{BoxedObjs, GosValue, StringObjs, VMObjects};
+use super::value::{BoxedObjs, GosValue, VMObjects};
 use std::cmp::Ordering;
 
 macro_rules! offset_uint {
@@ -38,7 +38,7 @@ macro_rules! bind_method {
     ($sval:ident, $val:ident, $index:ident, $objs:ident) => {
         GosValue::Closure(
             $objs.closures.insert(ClosureVal {
-                func: *$objs.types[$sval.typ]
+                func: *$objs.metas[$sval.meta]
                     .get_struct_member($index)
                     .as_function(),
                 receiver: Some($val.clone()),
@@ -79,7 +79,7 @@ macro_rules! duplicate {
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => $val.clone(),
             GosValue::Package(_) => $val.clone(),
-            GosValue::Type(_) => $val.clone(),
+            GosValue::Meta(_) => $val.clone(),
         }
     };
 }
@@ -114,14 +114,12 @@ macro_rules! set_store_op_val {
 
 macro_rules! set_ref_store_op_val {
     ($target:expr, $op:ident, $val:ident, $is_xxx_op_set:expr) => {{
-        let mut old_val = $target.get();
-        let new_val = if $is_xxx_op_set {
+        if $is_xxx_op_set {
+            let mut old_val = $target.borrow_mut();
             vm_util::store_xxx_op(&mut old_val, $op.unwrap(), &$val);
-            old_val
         } else {
-            $val
-        };
-        $target.set(new_val);
+            $target.replace($val);
+        }
     }};
 }
 
@@ -190,7 +188,7 @@ macro_rules! range_vars {
         $s_ref:ident, $s_ptr:ident, $s_iter:ident) => {
         let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
         let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
-        let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, Cell<GosValue>>> = None;
+        let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, RefCell<GosValue>>> = None;
         let mut $l_ref: Option<SliceVal> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
@@ -206,7 +204,7 @@ macro_rules! range_init {
         $str_ref:ident, $str_ptr:ident, $str_iter:ident) => {{
         match $target {
             GosValue::Map(m) => {
-                let map = $objs.maps[m].clone_data();
+                let map = $objs.maps[*m].clone_data();
                 $map_ref.replace(map);
                 let r = $map_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
@@ -215,7 +213,7 @@ macro_rules! range_init {
                 $map_iter = Some(mapref.iter());
             }
             GosValue::Slice(sl) => {
-                let slice = $objs.slices[sl].clone();
+                let slice = $objs.slices[*sl].clone();
                 $slice_ref.replace(slice);
                 let r = $slice_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
@@ -224,7 +222,7 @@ macro_rules! range_init {
                 $slice_iter = Some(sliceref.enumerate());
             }
             GosValue::Str(s) => {
-                let string = $objs.strings[s].clone_data();
+                let string = s.clone_data();
                 $str_ref.replace(string);
                 let r = $str_ref.as_ref().unwrap().clone();
                 let p = Box::into_raw(Box::new(r));
@@ -238,7 +236,7 @@ macro_rules! range_init {
 }
 
 macro_rules! range_body {
-    ($target:ident, $stack:ident, 
+    ($target:expr, $stack:ident, 
         $map_ptr:ident, $map_iter:ident,
         $slice_ptr:ident, $slice_iter:ident,
         $str_ptr:ident, $str_iter:ident) => {{
@@ -308,15 +306,15 @@ macro_rules! range_body {
     }};
 }
 
-pub fn add(stack: &mut Vec<GosValue>, strings: &mut StringObjs) {
+pub fn add(stack: &mut Vec<GosValue>) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     let c = match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia + ib),
         (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa + fb),
         (GosValue::Str(s0), GosValue::Str(s1)) => {
-            let mut s = strings[s0].data_as_ref().clone();
-            s.push_str(&strings[s1].data_as_ref());
-            GosValue::new_str(s, strings)
+            let mut s = s0.data_as_ref().clone();
+            s.push_str(&s1.data_as_ref());
+            GosValue::new_str(s)
         }
         _ => unreachable!(),
     };
@@ -389,7 +387,7 @@ pub fn unary_ref(stack: &mut Vec<GosValue>, boxeds: &mut BoxedObjs) {
 
 pub fn unary_deref(stack: &mut Vec<GosValue>, boxeds: &BoxedObjs) {
     let val = stack.pop().unwrap();
-    stack.push(boxeds[*val.as_boxed()]);
+    stack.push(boxeds[*val.as_boxed()].clone());
 }
 
 pub fn logical_and(stack: &mut Vec<GosValue>) {
