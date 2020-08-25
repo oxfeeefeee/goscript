@@ -149,7 +149,7 @@ pub fn new_meta(metas: &mut MetaObjs, t: Metadata) -> GosValue {
 
 // ----------------------------------------------------------------------------
 // GosValue
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GosValue {
     Nil,
     Bool(bool),
@@ -167,6 +167,8 @@ pub enum GosValue {
     // below are not visible to users, they are "values" not "variables"
     Function(FunctionKey),
     Package(PackageKey),
+    // use arena instead of Rc for better copying performance
+    // at the expense of accessing performance
     Meta(MetaKey),
 }
 

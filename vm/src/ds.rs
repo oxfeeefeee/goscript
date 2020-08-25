@@ -351,7 +351,7 @@ impl<'a> SliceVal {
 
     #[inline]
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow_mut()[self.begin + i].replace(val);
+        self.vec.borrow()[self.begin + i].replace(val);
     }
 
     #[inline]
@@ -488,7 +488,7 @@ pub enum UpValue {
     /// Parent CallFrame is still alive, pointing to a local variable
     Open(FunctionKey, OpIndex), // (what func is the var defined, the index of the var)
     // Parent CallFrame is released, pointing to a Boxed value in the global pool
-    Closed(BoxedKey),
+    Closed(GosValue),
 }
 
 /// ClosureVal is a variable containing a pinter to a function and
@@ -511,10 +511,10 @@ impl ClosureVal {
         }
     }
 
-    pub fn close_upvalue(&mut self, func: FunctionKey, index: OpIndex, boxed: BoxedKey) {
+    pub fn close_upvalue(&mut self, func: FunctionKey, index: OpIndex, val: &GosValue) {
         for i in 0..self.upvalues.len() {
             if self.upvalues[i] == UpValue::Open(func, index) {
-                self.upvalues[i] = UpValue::Closed(boxed);
+                self.upvalues[i] = UpValue::Closed(val.clone());
             }
         }
     }

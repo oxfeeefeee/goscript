@@ -191,7 +191,7 @@ impl Fiber {
                     let gos_val = &consts[index as usize];
                     let val = match gos_val {
                         // Slice/Map are special cases here because, they are stored literal,
-                        // and when it gets "duplicated", the underlying rust vec is not copied
+                        // and when it gets cloned, the underlying rust vec is not copied
                         // which leads to all function calls shares the same vec instance
                         GosValue::Slice(s) => {
                             let slice = objs.slices[*s].deep_clone();
@@ -265,8 +265,7 @@ impl Fiber {
                             stack.push(stack[stack_ptr].clone());
                             frame = self.frames.last_mut().unwrap();
                         }
-                        UpValue::Closed(key) => {
-                            let val = &objs.boxed[*key];
+                        UpValue::Closed(val) => {
                             stack.push(val.clone());
                         }
                     }
@@ -276,7 +275,8 @@ impl Fiber {
                     let offset = inst.offset(Opcode::STORE_UPVALUE);
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
                     let is_op_set = *inst == Opcode::STORE_UPVALUE_OP;
-                    match &objs.closures[frame.callable.closure()].upvalues[index as usize] {
+                    let closure_key = frame.callable.closure();
+                    match &objs.closures[closure_key].upvalues[index as usize] {
                         UpValue::Open(f, ind) => {
                             drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), objs, f);
@@ -284,8 +284,11 @@ impl Fiber {
                             set_store_op_val!(&mut stack[stack_ptr], op, val, is_op_set);
                             frame = self.frames.last_mut().unwrap();
                         }
-                        UpValue::Closed(key) => {
-                            set_store_op_val!(&mut objs.boxed[*key], op, val, is_op_set);
+                        UpValue::Closed(_) => {
+                            match &mut objs.closures[closure_key].upvalues[index as usize] {
+                                UpValue::Open(_, _) => unreachable!(),
+                                UpValue::Closed(v) => set_store_op_val!(v, op, val, is_op_set),
+                            }
                         }
                     }
                 }
@@ -502,6 +505,8 @@ impl Fiber {
                         pack_variadic!(stack, index, objs);
                     }
 
+                    // todo: clone parameters
+
                     // allocate placeholders for local variables
                     for _ in 0..func.local_count() {
                         stack.push(GosValue::Nil);
@@ -535,12 +540,11 @@ impl Fiber {
                             if referrers.len() == 0 {
                                 continue;
                             }
-                            let val = stack[stack_base + *ind as usize].clone();
-                            let bkey = objs.boxed.insert(val);
+                            let val = &stack[stack_base + *ind as usize];
                             let func = frame.callable.func(objs);
                             for r in referrers.iter() {
                                 let cls_val = &mut objs.closures[*r];
-                                cls_val.close_upvalue(func, *ind, bkey);
+                                cls_val.close_upvalue(func, *ind, val);
                             }
                         }
                     }
