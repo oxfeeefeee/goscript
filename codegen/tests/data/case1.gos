@@ -1,9 +1,12 @@
 package main
 
-const a = 1 + 2
+
 
 
 func main() {
-    var i = a
-    assert(i == 3)
+    a := "abc"
+    b := "ab"
+    c := a[0:2]
+    
+    assert(b == c)
 }

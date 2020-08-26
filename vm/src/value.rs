@@ -9,6 +9,7 @@ use slotmap::{new_key_type, DenseSlotMap};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -51,7 +52,7 @@ new_key_type! { pub struct IterKey; }
 pub type InterfaceObjs = DenseSlotMap<InterfaceKey, InterfaceVal>;
 pub type ClosureObjs = DenseSlotMap<ClosureKey, ClosureVal>;
 pub type StringObjs = DenseSlotMap<StringKey, StringVal>;
-pub type SliceObjs = DenseSlotMap<SliceKey, SliceVal>;
+pub type SliceObjs = Vec<Weak<SliceVal>>;
 pub type MapObjs = DenseSlotMap<MapKey, MapVal>;
 pub type StructObjs = DenseSlotMap<StructKey, StructVal>;
 pub type ChannelObjs = DenseSlotMap<ChannelKey, ChannelVal>;
@@ -74,16 +75,18 @@ pub struct VMObjects {
     pub metas: MetaObjs,
     pub basic_types: HashMap<&'static str, GosValue>,
     pub default_sig_meta: Option<GosValue>,
-    pub str_zero_val: StringVal,
+    pub str_zero_val: Rc<StringVal>,
+    pub slice_zero_val: Rc<SliceVal>,
 }
 
 impl VMObjects {
     pub fn new() -> VMObjects {
-        let str_zero_val = StringVal::with_str("".to_string());
+        let str_zero_val = Rc::new(StringVal::with_str("".to_string()));
+        let slice_zero_val = Rc::new(SliceVal::new(0, 0, &GosValue::Nil));
         let mut objs = VMObjects {
             interfaces: new_objects!(),
             closures: new_objects!(),
-            slices: new_objects!(),
+            slices: vec![],
             maps: new_objects!(),
             structs: new_objects!(),
             channels: new_objects!(),
@@ -94,6 +97,7 @@ impl VMObjects {
             basic_types: HashMap::new(),
             default_sig_meta: None,
             str_zero_val: str_zero_val,
+            slice_zero_val: slice_zero_val,
         };
         let btype = Metadata::new_bool(&mut objs);
         objs.basic_types.insert("bool", btype);
@@ -115,15 +119,19 @@ impl VMObjects {
 }
 
 pub fn new_str(s: String) -> GosValue {
-    GosValue::Str(StringVal::with_str(s))
+    GosValue::Str(Rc::new(StringVal::with_str(s)))
 }
 
 pub fn new_slice(slices: &mut SliceObjs, len: usize, cap: usize, dval: &GosValue) -> GosValue {
-    GosValue::Slice(slices.insert(SliceVal::new(len, cap, dval)))
+    let s = Rc::new(SliceVal::new(len, cap, dval));
+    slices.push(Rc::downgrade(&s));
+    GosValue::Slice(s)
 }
 
 pub fn with_slice_val(slices: &mut SliceObjs, val: Vec<GosValue>) -> GosValue {
-    GosValue::Slice(slices.insert(SliceVal::with_data(val)))
+    let s = Rc::new(SliceVal::with_data(val));
+    slices.push(Rc::downgrade(&s));
+    GosValue::Slice(s)
 }
 
 pub fn new_map(objs: &mut VMObjects, default_val: GosValue) -> GosValue {
@@ -156,10 +164,10 @@ pub enum GosValue {
     Int(isize),
     Float64(f64), // becasue in Go there is no "float", just float64
     Complex64(f32, f32),
-    Str(StringVal), // "String" is taken
+    Str(Rc<StringVal>), // "String" is taken
     Boxed(BoxedKey),
     Closure(ClosureKey),
-    Slice(SliceKey),
+    Slice(Rc<SliceVal>),
     Map(MapKey),
     Interface(InterfaceKey),
     Struct(StructKey),
@@ -238,7 +246,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &SliceKey {
+    pub fn as_slice(&self) -> &Rc<SliceVal> {
         unwrap_gos_val!(Slice, self)
     }
 
@@ -390,7 +398,7 @@ impl Metadata {
 
     pub fn new_slice(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let typ = Metadata {
-            zero_val: GosValue::Slice(null_key!()),
+            zero_val: GosValue::Slice(objs.slice_zero_val.clone()),
             typ: MetadataType::Slice(vtype),
         };
         GosValue::Meta(objs.metas.insert(typ))
@@ -507,7 +515,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             | GosValue::Complex64(_, _) => self.val.fmt(f),
             GosValue::Str(k) => k.fmt(f),
             GosValue::Closure(k) => self.objs.closures[*k].fmt(f),
-            GosValue::Slice(k) => self.objs.slices[*k].fmt(f),
+            GosValue::Slice(k) => k.fmt(f),
             GosValue::Map(k) => self.objs.maps[*k].fmt(f),
             GosValue::Interface(k) => self.objs.interfaces[*k].fmt(f),
             GosValue::Struct(k) => self.objs.structs[*k].fmt(f),
@@ -516,6 +524,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             GosValue::Function(k) => self.objs.functions[*k].fmt(f),
             GosValue::Package(k) => self.objs.packages[*k].fmt(f),
             GosValue::Meta(k) => self.objs.metas[*k].fmt(f),
+            //_ => unreachable!(),
         }
     }
 }

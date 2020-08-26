@@ -1,6 +1,5 @@
-pub mod opcode;
-
 pub mod ds;
+pub mod opcode;
 
 pub mod value;
 

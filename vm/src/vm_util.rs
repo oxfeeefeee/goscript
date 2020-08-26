@@ -70,7 +70,7 @@ macro_rules! duplicate {
             | GosValue::Str(_)
             | GosValue::Boxed(_)
             | GosValue::Closure(_) => $val.clone(),
-            GosValue::Slice(k) => GosValue::Slice($objs.slices.insert($objs.slices[*k].clone())),
+            GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
             GosValue::Map(k) => GosValue::Map($objs.maps.insert($objs.maps[*k].clone())),
             GosValue::Interface(_) => unimplemented!(),
             GosValue::Struct(k) => {
@@ -80,6 +80,7 @@ macro_rules! duplicate {
             GosValue::Function(_) => $val.clone(),
             GosValue::Package(_) => $val.clone(),
             GosValue::Meta(_) => $val.clone(),
+            //_ => unreachable!(),
         }
     };
 }
@@ -189,12 +190,12 @@ macro_rules! range_vars {
         let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
         let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
         let mut $m_iter: Option<std::collections::hash_map::Iter<HashKey, RefCell<GosValue>>> = None;
-        let mut $l_ref: Option<SliceVal> = None;
+        let mut $l_ref: Option<Rc<SliceVal>> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
-        let mut $s_ref: Option<Rc<String>> = None;
-        let mut $s_ptr: Option<*mut Rc<String>> = None;
-        let mut $s_iter: Option<std::iter::Enumerate<std::str::Chars>> = None;
+        let mut $s_ref: Option<Rc<StringVal>> = None;
+        let mut $s_ptr: Option<*mut Rc<StringVal>> = None;
+        let mut $s_iter: Option<StringEnumIter> = None;
     };
 }
 
@@ -213,22 +214,22 @@ macro_rules! range_init {
                 $map_iter = Some(mapref.iter());
             }
             GosValue::Slice(sl) => {
-                let slice = $objs.slices[*sl].clone();
+                let slice = sl.clone();
                 $slice_ref.replace(slice);
                 let r = $slice_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
                 $slice_ptr = Some(p);
                 let sliceref = unsafe { p.as_ref().unwrap() };
-                $slice_iter = Some(sliceref.enumerate());
+                $slice_iter = Some(sliceref.iter().enumerate());
             }
             GosValue::Str(s) => {
-                let string = s.clone_data();
+                let string = s.clone();
                 $str_ref.replace(string);
                 let r = $str_ref.as_ref().unwrap().clone();
                 let p = Box::into_raw(Box::new(r));
                 $str_ptr = Some(p);
                 let strref = unsafe { p.as_ref().unwrap() };
-                $str_iter = Some(strref.chars().enumerate());
+                $str_iter = Some(strref.iter().enumerate());
             }
             _ => unreachable!(),
         }
@@ -292,7 +293,7 @@ macro_rules! range_body {
                     // release the pointer
                     if let Some(p) = $str_ptr {
                         unsafe {
-                            drop(Box::<Rc<String>>::from_raw(p));
+                            drop(Box::<Rc<StringVal>>::from_raw(p));
                         }
                         $str_ptr = None
                     }
@@ -306,14 +307,15 @@ macro_rules! range_body {
     }};
 }
 
+#[inline]
 pub fn add(stack: &mut Vec<GosValue>) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     let c = match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia + ib),
         (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa + fb),
         (GosValue::Str(s0), GosValue::Str(s1)) => {
-            let mut s = s0.data_as_ref().clone();
-            s.push_str(&s1.data_as_ref());
+            let mut s = s0.as_str().to_string();
+            s.push_str(&s1.as_str());
             GosValue::new_str(s)
         }
         _ => unreachable!(),
@@ -321,34 +323,42 @@ pub fn add(stack: &mut Vec<GosValue>) {
     stack.push(c);
 }
 
+#[inline]
 pub fn sub(stack: &mut Vec<GosValue>) {
     int_float_binary_op!(stack, -);
 }
 
+#[inline]
 pub fn mul(stack: &mut Vec<GosValue>) {
     int_float_binary_op!(stack, *);
 }
 
+#[inline]
 pub fn quo(stack: &mut Vec<GosValue>) {
     int_float_binary_op!(stack, /);
 }
 
+#[inline]
 pub fn rem(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, %);
 }
 
+#[inline]
 pub fn and(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, &);
 }
 
+#[inline]
 pub fn or(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, |);
 }
 
+#[inline]
 pub fn xor(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, ^);
 }
 
+#[inline]
 pub fn and_not(stack: &mut Vec<GosValue>) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(match (a, b) {
@@ -357,82 +367,99 @@ pub fn and_not(stack: &mut Vec<GosValue>) {
     });
 }
 
+#[inline]
 pub fn shl(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, <<);
 }
 
+#[inline]
 pub fn shr(stack: &mut Vec<GosValue>) {
     int_binary_op!(stack, >>);
 }
 
+#[inline]
 pub fn unary_and(stack: &mut Vec<GosValue>) {
     let i: isize = 0;
     int_unary_op!(stack, i, +);
 }
 
+#[inline]
 pub fn unary_sub(stack: &mut Vec<GosValue>) {
     let i: isize = 0;
     int_unary_op!(stack, i, -);
 }
 
+#[inline]
 pub fn unary_xor(stack: &mut Vec<GosValue>) {
     let i: isize = -1;
     int_unary_op!(stack, i, ^);
 }
 
+#[inline]
 pub fn unary_ref(stack: &mut Vec<GosValue>, boxeds: &mut BoxedObjs) {
     let val = stack.pop().unwrap();
     stack.push(GosValue::Boxed(boxeds.insert(val)));
 }
 
+#[inline]
 pub fn unary_deref(stack: &mut Vec<GosValue>, boxeds: &BoxedObjs) {
     let val = stack.pop().unwrap();
     stack.push(boxeds[*val.as_boxed()].clone());
 }
 
+#[inline]
 pub fn logical_and(stack: &mut Vec<GosValue>) {
     bool_binary_op!(stack, &&);
 }
 
+#[inline]
 pub fn logical_or(stack: &mut Vec<GosValue>) {
     bool_binary_op!(stack, ||);
 }
 
+#[inline]
 pub fn logical_not(stack: &mut Vec<GosValue>) {
     let len = stack.len();
     stack[len - 1] = GosValue::Bool(!stack[len - 1].as_bool());
 }
 
+#[inline]
 pub fn compare_eql(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.eq(&b, objs)));
 }
 
+#[inline]
 pub fn compare_lss(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.cmp(&b, objs) == Ordering::Less));
 }
 
+#[inline]
 pub fn compare_gtr(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.cmp(&b, objs) == Ordering::Greater));
 }
 
+#[inline]
 pub fn compare_neq(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.cmp(&b, objs) != Ordering::Equal));
 }
 
+#[inline]
 pub fn compare_leq(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.cmp(&b, objs) != Ordering::Greater));
 }
 
+#[inline]
 pub fn compare_geq(stack: &mut Vec<GosValue>, objs: &VMObjects) {
     let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
     stack.push(GosValue::Bool(a.cmp(&b, objs) != Ordering::Less));
 }
 
+#[inline]
 pub fn store_xxx_op(target: &mut GosValue, code: OpIndex, operand: &GosValue) {
     match code {
         x if x == Opcode::ADD as OpIndex => int_float_store_xxx_op!(target, +=, operand),

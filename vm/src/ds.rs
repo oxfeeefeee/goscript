@@ -1,5 +1,5 @@
 use super::opcode::{CodeData, OpIndex, Opcode};
-use super::value::{BoxedKey, FunctionKey, GosValue, MetaKey, MetadataType, PackageKey, VMObjects};
+use super::value::{FunctionKey, GosValue, MetaKey, MetadataType, PackageKey, VMObjects};
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -14,26 +14,32 @@ use goscript_parser::objects::EntityKey;
 // ----------------------------------------------------------------------------
 // StringVal
 
+pub type StringIter<'a> = std::iter::Take<std::iter::Skip<std::str::Chars<'a>>>;
+
+pub type StringEnumIter<'a> =
+    std::iter::Enumerate<std::iter::Take<std::iter::Skip<std::str::Chars<'a>>>>;
+
 #[derive(Clone, Debug)]
 pub struct StringVal {
-    // strings are readony, so unlike slices and maps, Rc is enough
     data: Rc<String>,
+    begin: usize,
+    end: usize,
 }
 
 impl StringVal {
     #[inline]
     pub fn with_str(s: String) -> StringVal {
-        StringVal { data: Rc::new(s) }
+        let len = s.len();
+        StringVal {
+            data: Rc::new(s),
+            begin: 0,
+            end: len,
+        }
     }
 
     #[inline]
-    pub fn data_as_ref(&self) -> &String {
-        self.data.as_ref()
-    }
-
-    #[inline]
-    pub fn clone_data(&self) -> Rc<String> {
-        self.data.clone()
+    pub fn as_str(&self) -> &str {
+        &self.data.as_ref()[self.begin..self.end]
     }
 
     #[inline]
@@ -43,12 +49,12 @@ impl StringVal {
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.data.as_ref().len()
+        self.end - self.begin
     }
 
     #[inline]
     pub fn get_byte(&self, i: usize) -> u8 {
-        self.data.as_ref().as_bytes()[i]
+        self.data.as_ref().as_bytes()[self.begin + i]
     }
 
     pub fn slice(&self, begin: Option<usize>, end: Option<usize>) -> StringVal {
@@ -57,15 +63,24 @@ impl StringVal {
         let ei = end.unwrap_or(self_len);
         assert!(bi < self_len);
         assert!(bi <= ei && ei <= self_len);
-        // todo: efficient slice-like string
-        let sub = self.data.as_ref()[bi..ei].to_owned();
-        StringVal { data: Rc::new(sub) }
+        StringVal {
+            data: self.data.clone(),
+            begin: bi,
+            end: ei,
+        }
+    }
+
+    pub fn iter(&self) -> StringIter {
+        self.data
+            .chars()
+            .skip(self.begin)
+            .take(self.end - self.begin)
     }
 }
 
 impl PartialEq for StringVal {
     fn eq(&self, other: &StringVal) -> bool {
-        self.data == other.data
+        self.as_str().eq(other.as_str())
     }
 }
 
@@ -79,7 +94,9 @@ impl PartialOrd for StringVal {
 
 impl Ord for StringVal {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.data_as_ref().cmp(other.data_as_ref())
+        dbg!(self.as_str());
+        dbg!(other.as_str());
+        self.as_str().cmp(other.as_str())
     }
 }
 
@@ -342,11 +359,10 @@ impl<'a> SliceVal {
 
     #[inline]
     pub fn get(&self, i: usize) -> Option<GosValue> {
-        if let Some(val) = self.vec.borrow().get(self.begin + i) {
-            Some(val.clone().into_inner())
-        } else {
-            None
-        }
+        self.vec
+            .borrow()
+            .get(self.begin + i)
+            .map(|x| x.clone().into_inner())
     }
 
     #[inline]
@@ -396,8 +412,6 @@ impl<'a> SliceVal {
     }
 }
 
-/// SliceRef works like 'Ref', it means to be used as a temporary warpper
-/// to help accessing inner vec
 pub struct SliceRef<'a> {
     vec_ref: Ref<'a, GosVec>,
     begin: usize,
@@ -425,19 +439,19 @@ impl<'a> SliceRef<'a> {
             .take(self.end - self.begin)
     }
 
-    pub fn enumerate(&self) -> SliceEnumIter {
-        self.vec_ref
-            .iter()
-            .skip(self.begin)
-            .take(self.end - self.begin)
-            .enumerate()
-    }
-
     #[inline]
     pub fn get(&self, i: usize) -> Option<&RefCell<GosValue>> {
         self.vec_ref.get(self.begin + i)
     }
 }
+
+impl PartialEq for SliceVal {
+    fn eq(&self, _other: &SliceVal) -> bool {
+        unreachable!() //false
+    }
+}
+
+impl Eq for SliceVal {}
 
 // ----------------------------------------------------------------------------
 // StructVal
@@ -450,7 +464,7 @@ pub struct StructVal {
 }
 
 impl StructVal {
-    pub fn field_method_index(&self, name: &String, objs: &VMObjects) -> OpIndex {
+    pub fn field_method_index(&self, name: &str, objs: &VMObjects) -> OpIndex {
         let t = &objs.metas[self.meta];
         if let MetadataType::Struct(_, map) = &t.typ {
             map[name] as OpIndex

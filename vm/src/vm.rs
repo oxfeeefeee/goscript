@@ -1,5 +1,7 @@
 #![allow(dead_code)]
-use super::ds::{ClosureVal, GosHashMap, HashKey, SliceEnumIter, SliceRef, UpValue};
+use super::ds::{
+    ClosureVal, GosHashMap, HashKey, SliceEnumIter, SliceRef, StringEnumIter, UpValue,
+};
 use super::opcode::*;
 use super::value::*;
 use super::vm_util;
@@ -194,8 +196,8 @@ impl Fiber {
                         // and when it gets cloned, the underlying rust vec is not copied
                         // which leads to all function calls shares the same vec instance
                         GosValue::Slice(s) => {
-                            let slice = objs.slices[*s].deep_clone();
-                            GosValue::Slice(objs.slices.insert(slice))
+                            let slice = s.deep_clone();
+                            GosValue::Slice(Rc::new(slice))
                         }
                         GosValue::Map(m) => {
                             let map = objs.maps[*m].deep_clone();
@@ -301,8 +303,7 @@ impl Fiber {
                     let len = stack.len();
                     let val = try_unbox!(&stack[len - 1], &objs.boxed);
                     stack[len - 1] = match val {
-                        GosValue::Slice(skey) => {
-                            let slice = &objs.slices[*skey];
+                        GosValue::Slice(slice) => {
                             let index = *ind.as_int() as usize;
                             if let Some(v) = slice.get(index) {
                                 v
@@ -316,10 +317,10 @@ impl Fiber {
                         }
                         GosValue::Struct(skey) => {
                             let sval = &objs.structs[*skey];
-                            match ind {
-                                GosValue::Int(i) => sval.fields[i as usize].clone(),
+                            match &ind {
+                                GosValue::Int(i) => sval.fields[*i as usize].clone(),
                                 GosValue::Str(s) => {
-                                    let index = sval.field_method_index(s.data_as_ref(), objs);
+                                    let index = sval.field_method_index(s.as_str(), objs);
                                     if index < sval.fields.len() as OpIndex {
                                         sval.fields[index as usize].clone()
                                     } else {
@@ -361,8 +362,7 @@ impl Fiber {
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
                     match store {
                         GosValue::Slice(s) => {
-                            let target_cell =
-                                &objs.slices[*s].borrow_data()[*key.as_int() as usize];
+                            let target_cell = &s.borrow_data()[*key.as_int() as usize];
                             set_ref_store_op_val!(target_cell, op, val, is_op_set);
                         }
                         GosValue::Map(m) => {
@@ -380,7 +380,7 @@ impl Fiber {
                                 }
                                 GosValue::Str(sval) => {
                                     let struct_val = &objs.structs[*s];
-                                    let i = struct_val.field_method_index(sval.data_as_ref(), objs);
+                                    let i = struct_val.field_method_index(sval.as_str(), objs);
                                     let target = &mut objs.structs[*s].fields[i as usize];
                                     set_store_op_val!(target, op, val, is_op_set);
                                 }
@@ -505,7 +505,7 @@ impl Fiber {
                         pack_variadic!(stack, index, objs);
                     }
 
-                    // todo: clone parameters
+                    // todo clone parameters
 
                     // allocate placeholders for local variables
                     for _ in 0..func.local_count() {
@@ -711,10 +711,8 @@ impl Fiber {
                     };
                     let target = stack.pop().unwrap();
                     let result = match target {
-                        GosValue::Slice(sl) => GosValue::Slice(
-                            objs.slices.insert(objs.slices[sl].slice(begin, end, max)),
-                        ),
-                        GosValue::Str(s) => GosValue::Str(s.slice(begin, end)),
+                        GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
+                        GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                         _ => unreachable!(),
                     };
                     stack.push(result);
@@ -775,8 +773,8 @@ impl Fiber {
                     stack.push(val);
                 }
                 Opcode::LEN => match stack.pop().unwrap() {
-                    GosValue::Slice(skey) => {
-                        stack.push(GosValue::Int(objs.slices[skey].len() as isize));
+                    GosValue::Slice(slice) => {
+                        stack.push(GosValue::Int(slice.len() as isize));
                     }
                     GosValue::Map(mkey) => {
                         stack.push(GosValue::Int(objs.maps[mkey].len() as isize));
@@ -787,8 +785,8 @@ impl Fiber {
                     _ => unreachable!(),
                 },
                 Opcode::CAP => match stack.pop().unwrap() {
-                    GosValue::Slice(skey) => {
-                        stack.push(GosValue::Int(objs.slices[skey].cap() as isize));
+                    GosValue::Slice(slice) => {
+                        stack.push(GosValue::Int(slice.cap() as isize));
                     }
                     _ => unreachable!(),
                 },
@@ -797,8 +795,8 @@ impl Fiber {
                     pack_variadic!(stack, index, objs);
                     let b = stack.pop().unwrap();
                     let a = &stack[stack.len() - 1];
-                    let vala = &objs.slices[*a.as_slice()];
-                    let valb = &objs.slices[*b.as_slice()];
+                    let vala = a.as_slice();
+                    let valb = b.as_slice();
                     vala.borrow_data_mut()
                         .append(&mut valb.borrow_data().clone());
                 }

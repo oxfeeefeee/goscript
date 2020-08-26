@@ -56,17 +56,35 @@ func longestPalindrome2(s string) string {
     return res
 }
 
+func t(size int) {
+    table := make([][]int, size)
+    for i := 0; i < len(table); i++ {
+        table[i] = make([]int, size)
+    }
+    //total := 0
+    for i := 0; i < size; i++ {
+        for j :=0; j < size; j++ {
+            table[i][j] = i + j
+            //total += (i + j)
+        }
+    }
+}
+
 
 func main() {
     //j := 10
     s := "ZnVuYyBsb25nZXN0UGFsaW5kcm9tZShzIHN0cmaabbaabbaabbluZykgc3RyaW5nIHsKICAgIGlmIGxlbihzKSA8PSAxIHsKICAgICAgICByZXR1cm4gcwogICAgfQogICAgCiAgICB0YWJsZSA6PaaabbbaaabbbaaaSBtYWtlKFtdW11ib29"
     for i := 0; i < 2; i++ {
         s = s + s
+        
         //j += j
         //j -= j/2
+
+        //t(1000)
     }
     //assert(j == 10)
-	result := longestPalindrome2(s)
+	
+    result := longestPalindrome2(s)
 	assert(result == "aaabbbaaabbbaaa")
     
 
