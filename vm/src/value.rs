@@ -148,7 +148,7 @@ pub fn new_meta(t: Metadata) -> GosValue {
 
 // ----------------------------------------------------------------------------
 // GosValue
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum GosValue {
     Nil,
     Bool(bool),
@@ -276,6 +276,29 @@ impl GosValue {
     }
 }
 
+impl Clone for GosValue {
+    fn clone(&self) -> Self {
+        match self {
+            GosValue::Nil => GosValue::Nil,
+            GosValue::Bool(b) => GosValue::Bool(*b),
+            GosValue::Int(i) => GosValue::Int(*i),
+            GosValue::Float64(f) => GosValue::Float64(*f),
+            GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
+            GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
+            GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
+            GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
+            GosValue::Slice(s) => GosValue::Slice(Rc::clone(s)),
+            GosValue::Map(m) => GosValue::Map(Rc::clone(m)),
+            GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
+            GosValue::Struct(s) => GosValue::Struct(Rc::clone(s)),
+            GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
+            GosValue::Function(k) => GosValue::Function(*k),
+            GosValue::Package(k) => GosValue::Package(*k),
+            GosValue::Meta(m) => GosValue::Meta(Rc::clone(m)),
+        }
+    }
+}
+
 impl Eq for GosValue {}
 
 impl PartialEq for GosValue {
@@ -349,7 +372,7 @@ impl Hash for GosValue {
 
 // ----------------------------------------------------------------------------
 // Metadata
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SigMetadata {
     pub recv: Option<GosValue>,
     pub params: Vec<GosValue>,
@@ -357,7 +380,7 @@ pub struct SigMetadata {
     pub variadic: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum MetadataType {
     None,
     Signature(SigMetadata),
@@ -396,7 +419,7 @@ impl MetadataType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Metadata {
     zero_val: GosValue,
     typ: Rc<RefCell<MetadataType>>,

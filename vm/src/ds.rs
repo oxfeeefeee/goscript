@@ -16,7 +16,7 @@ pub type StringIter<'a> = std::str::Chars<'a>;
 
 pub type StringEnumIter<'a> = std::iter::Enumerate<std::str::Chars<'a>>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct StringVal {
     data: Rc<String>,
     begin: usize,
@@ -61,7 +61,7 @@ impl StringVal {
         assert!(bi < self_len);
         assert!(bi <= ei && ei <= self_len);
         StringVal {
-            data: self.data.clone(),
+            data: Rc::clone(&self.data),
             begin: bi,
             end: ei,
         }
@@ -69,6 +69,16 @@ impl StringVal {
 
     pub fn iter(&self) -> StringIter {
         self.as_str().chars()
+    }
+}
+
+impl Clone for StringVal {
+    fn clone(&self) -> Self {
+        StringVal {
+            data: Rc::clone(&self.data),
+            begin: self.begin,
+            end: self.end,
+        }
     }
 }
 
@@ -99,7 +109,7 @@ impl Ord for StringVal {
 
 pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MapVal {
     pub dark: bool,
     default_val: RefCell<GosValue>,
@@ -170,7 +180,17 @@ impl MapVal {
 
     #[inline]
     pub fn clone_inner(&self) -> Rc<RefCell<GosHashMap>> {
-        self.map.clone()
+        Rc::clone(&self.map)
+    }
+}
+
+impl Clone for MapVal {
+    fn clone(&self) -> Self {
+        MapVal {
+            dark: false,
+            default_val: self.default_val.clone(),
+            map: Rc::clone(&self.map),
+        }
     }
 }
 
@@ -187,7 +207,7 @@ impl Eq for MapVal {}
 
 pub type GosVec = Vec<RefCell<GosValue>>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SliceVal {
     pub dark: bool,
     begin: usize,
@@ -304,7 +324,7 @@ impl<'a> SliceVal {
             begin: self.begin + bi,
             end: self.begin + ei,
             soft_cap: self.begin + mi,
-            vec: self.vec.clone(),
+            vec: Rc::clone(&self.vec),
         }
     }
 
@@ -328,6 +348,18 @@ impl<'a> SliceVal {
         self.begin = 0;
         self.end = data_len;
         self.soft_cap = cap;
+    }
+}
+
+impl Clone for SliceVal {
+    fn clone(&self) -> Self {
+        SliceVal {
+            dark: false,
+            begin: self.begin,
+            end: self.end,
+            soft_cap: self.soft_cap,
+            vec: Rc::clone(&self.vec),
+        }
     }
 }
 
@@ -639,7 +671,7 @@ impl FunctionVal {
     /// returns the index of the const if it's found
     pub fn get_const_index(&self, val: &GosValue) -> Option<EntIndex> {
         self.consts.iter().enumerate().find_map(|(i, x)| {
-            if val.eq(x) {
+            if val == x {
                 Some(EntIndex::Const(i as OpIndex))
             } else {
                 None
