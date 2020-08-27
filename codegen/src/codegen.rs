@@ -360,12 +360,13 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let meta_val = self.get_type_meta(&field.typ);
-            let mut meta = meta_val.get_meta_val_mut(&mut self.objects);
-            if let MetadataType::Boxed(b) = meta.typ.clone() {
-                meta = &mut self.objects.metas[*b.as_meta()];
-            }
-            meta.add_struct_member(name.clone(), fval);
+            let meta = self.get_type_meta(&field.typ).as_meta().clone();
+            let meta = match &*meta.borrow_type() {
+                MetadataType::Struct(_, _) => meta.clone(),
+                MetadataType::Boxed(b) => b.as_meta().clone(),
+                _ => unreachable!(),
+            };
+            meta.borrow_type_mut().add_struct_member(name.clone(), fval);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
@@ -461,7 +462,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         // set the correct else jump target
         let func = current_func_mut!(self);
         // todo: don't crash if OpIndex overflows
-        let offset = i16::try_from(func.code.len() - top_marker).unwrap();
+        let offset = OpIndex::try_from(func.code.len() - top_marker).unwrap();
         func.code[top_marker - 1] = CodeData::Data(offset);
 
         if let Some(els) = &ifstmt.els {
@@ -470,7 +471,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let func = current_func_mut!(self);
             let marker = marker_if_arm_end.unwrap();
             // todo: don't crash if OpIndex overflows
-            let offset = i16::try_from(func.code.len() - marker).unwrap();
+            let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
             func.code[marker - 1] = CodeData::Data(offset);
         }
         Ok(())
@@ -520,14 +521,14 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         func.emit_code(Opcode::JUMP);
         // todo: don't crash if OpIndex overflows
-        let offset = i16::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
+        let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
         func.emit_data(offset);
 
         // set the correct else jump out target
         if let Some(m) = out_marker {
             let func = current_func_mut!(self);
             // todo: don't crash if OpIndex overflows
-            let offset = i16::try_from(func.code.len() - m).unwrap();
+            let offset = OpIndex::try_from(func.code.len() - m).unwrap();
             func.code[m - 1] = CodeData::Data(offset);
         }
         Ok(())
@@ -548,11 +549,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         func.emit_code(Opcode::JUMP);
         // todo: don't crash if OpIndex overflows
-        let offset = i16::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
+        let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
         func.emit_data(offset);
         // now tell Opcode::RANGE where to jump after it's done
         // todo: don't crash if OpIndex overflows
-        let end_offset = i16::try_from(func.code.len() - (marker + 2)).unwrap();
+        let end_offset = OpIndex::try_from(func.code.len() - (marker + 2)).unwrap();
         func.code[marker + 1] = CodeData::Data(end_offset);
         Ok(())
     }
@@ -809,11 +810,11 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::IndexSelExpr(_) => acc + 2,
             LeftHandSide::Deref(_) => acc + 1,
         });
-        let total_rhs_val = lhs.len() as i16;
-        let total_val = (total_lhs_val + total_rhs_val) as i16;
+        let total_rhs_val = lhs.len() as OpIndex;
+        let total_val = (total_lhs_val + total_rhs_val) as OpIndex;
         let mut current_indexing_index = -total_val;
         for (i, l) in lhs.iter().enumerate() {
-            let val_index = i as i16 - total_rhs_val;
+            let val_index = i as OpIndex - total_rhs_val;
             match l {
                 LeftHandSide::Primitive(_) => {
                     func.emit_store(l, val_index, None);
@@ -887,12 +888,13 @@ impl<'a> CodeGen<'a> {
         body: &BlockStmt,
     ) -> Result<FunctionKey, ()> {
         let typ = &self.ast_objs.ftypes[fkey];
-        let meta_val = fmeta.get_meta_val(&self.objects);
-        let sig_metadata = meta_val.sig_metadata();
+        let meta_val = fmeta.as_meta();
+        let meta_type = meta_val.borrow_type();
+        let sig_metadata = meta_type.sig_metadata();
         let variadic = sig_metadata.variadic;
         let fkey = *GosValue::new_function(
             self.pkg_key.clone(),
-            *fmeta.as_meta(),
+            fmeta.clone(),
             variadic,
             false,
             &mut self.objects,
@@ -985,7 +987,7 @@ impl<'a> CodeGen<'a> {
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
         let meta = self.get_type_meta(expr);
-        let meta_val = &self.objects.metas[*meta.as_meta()];
+        let meta_val = meta.as_meta();
         Ok(meta_val.zero_val().clone())
     }
 
@@ -1025,9 +1027,9 @@ impl<'a> CodeGen<'a> {
                     })
                     .collect::<Result<Vec<(GosValue, GosValue)>, ()>>()?;
                 let val = self.get_type_default(&map.val)?;
-                let map = GosValue::new_map(val, &mut self.objects);
+                let map = GosValue::new_map(val, &mut self.objects.maps);
                 for kv in key_vals.iter() {
-                    self.objects.maps[*map.as_map()].insert(kv.0.clone(), kv.1.clone());
+                    map.as_map().insert(kv.0.clone(), kv.1.clone());
                 }
                 Ok(map)
             }
@@ -1067,9 +1069,9 @@ impl<'a> CodeGen<'a> {
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
         let pkey = self.pkg_key;
-        let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
-        let fkey = *GosValue::new_function(pkey, *fmeta.as_meta(), false, true, &mut self.objects)
-            .as_function();
+        let fmeta = self.objects.default_sig_meta.clone().unwrap();
+        let fkey =
+            *GosValue::new_function(pkey, fmeta, false, true, &mut self.objects).as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
         self.pkg_key = pkey;

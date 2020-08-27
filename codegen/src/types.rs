@@ -14,9 +14,9 @@ fn const_value_or_type_from_tc(
     let typ = tc_objs.types[tkey].try_as_basic().unwrap().typ();
     match typ {
         //todo: fix: dont new Metadata
-        BasicType::Bool | BasicType::UntypedBool => val.map_or(Metadata::new_bool(vm_objs), |x| {
-            GosValue::Bool(x.bool_as_bool())
-        }),
+        BasicType::Bool | BasicType::UntypedBool => {
+            val.map_or(Metadata::new_bool(), |x| GosValue::Bool(x.bool_as_bool()))
+        }
         BasicType::Int
         | BasicType::Int8
         | BasicType::Int16
@@ -32,12 +32,12 @@ fn const_value_or_type_from_tc(
         | BasicType::Uintptr
         | BasicType::UnsafePointer
         | BasicType::UntypedInt
-        | BasicType::UntypedRune => val.map_or(Metadata::new_int(vm_objs), |x| {
+        | BasicType::UntypedRune => val.map_or(Metadata::new_int(), |x| {
             let (i, _) = x.to_int().int_as_i64();
             GosValue::Int(i as isize)
         }),
         BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-            val.map_or(Metadata::new_float64(vm_objs), |x| {
+            val.map_or(Metadata::new_float64(), |x| {
                 let (f, _) = x.num_as_f64();
                 GosValue::Float64(*f)
             })
@@ -79,7 +79,7 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
                 fields.push(f_type);
                 map.insert(field.name().clone(), i as OpIndex);
             }
-            Metadata::new_struct(fields, map, vm_objs)
+            Metadata::new_struct(fields, map)
         }
         Type::Signature(detail) => {
             let mut convert = |tuple_key| {
@@ -97,11 +97,11 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
                 let recv_tc_type = tc_objs.lobjs[x].typ().unwrap();
                 type_from_tc(recv_tc_type, tc_objs, vm_objs)
             });
-            Metadata::new_sig(recv, params, results, detail.variadic(), vm_objs)
+            Metadata::new_sig(recv, params, results, detail.variadic())
         }
         Type::Pointer(detail) => {
             let inner = type_from_tc(detail.base(), tc_objs, vm_objs);
-            Metadata::new_boxed(inner, vm_objs)
+            Metadata::new_boxed(inner)
         }
         Type::Named(detail) => {
             // this is incorrect

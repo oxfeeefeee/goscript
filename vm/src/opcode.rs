@@ -4,6 +4,18 @@ use std::fmt;
 
 pub type OpIndex = i16;
 
+pub const OP_ADD_VALUE: isize = 300;
+pub const OP_SUB_VALUE: isize = 301;
+pub const OP_MUL_VALUE: isize = 302;
+pub const OP_QUO_VALUE: isize = 303;
+pub const OP_REM_VALUE: isize = 304;
+pub const OP_AND_VALUE: isize = 305;
+pub const OP_OR_VALUE: isize = 306;
+pub const OP_XOR_VALUE: isize = 307;
+pub const OP_SHL_VALUE: isize = 308;
+pub const OP_SHR_VALUE: isize = 309;
+pub const OP_AND_NOT_VALUE: isize = 310;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Opcode {
     // push pop load store
@@ -55,30 +67,30 @@ pub enum Opcode {
     STORE_DEREF_OP,
 
     // arithmetic, logical, ref, deref, arrow
-    ADD = 300, // +
-    SUB,       // -
-    MUL,       // *
-    QUO,       // /
-    REM,       // %
-    AND,       // &
-    OR,        // |
-    XOR,       // ^
-    SHL,       // <<
-    SHR,       // >>
-    AND_NOT,   // $^
-    UNARY_ADD, // +
-    UNARY_SUB, // -
-    UNARY_XOR, // ^
-    REF,       // &
-    DEREF,     // *
-    ARROW,     // <-
-    NOT,       // !
-    EQL,       // ==
-    LSS,       // <
-    GTR,       // >
-    NEQ,       // !=
-    LEQ,       // <=
-    GEQ,       // >=
+    ADD = OP_ADD_VALUE,         // +
+    SUB = OP_SUB_VALUE,         // -
+    MUL = OP_MUL_VALUE,         // *
+    QUO = OP_QUO_VALUE,         // /
+    REM = OP_REM_VALUE,         // %
+    AND = OP_AND_VALUE,         // &
+    OR = OP_OR_VALUE,           // |
+    XOR = OP_XOR_VALUE,         // ^
+    SHL = OP_SHL_VALUE,         // <<
+    SHR = OP_SHR_VALUE,         // >>
+    AND_NOT = OP_AND_NOT_VALUE, // $^
+    UNARY_ADD,                  // +
+    UNARY_SUB,                  // -
+    UNARY_XOR,                  // ^
+    REF,                        // &
+    DEREF,                      // *
+    ARROW,                      // <-
+    NOT,                        // !
+    EQL,                        // ==
+    LSS,                        // <
+    GTR,                        // >
+    NEQ,                        // !=
+    LEQ,                        // <=
+    GEQ,                        // >=
 
     // call
     PRE_CALL = 400,
@@ -133,11 +145,6 @@ impl Opcode {
     #[inline]
     pub fn offset(&self, base: Opcode) -> OpIndex {
         (*self as i16 - base as i16) as OpIndex
-    }
-
-    #[inline]
-    pub fn load_local_index(&self) -> OpIndex {
-        self.offset(Opcode::LOAD_LOCAL0)
     }
 
     pub fn property(&self) -> (&str, i8) {

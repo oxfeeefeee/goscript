@@ -82,7 +82,7 @@ impl FuncGen for FunctionVal {
                     GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
                     GosValue::Int(i) if i16::try_from(i).ok().is_some() => {
                         self.emit_code(Opcode::PUSH_IMM);
-                        self.emit_data(i16::try_from(i).unwrap());
+                        self.emit_data(OpIndex::try_from(i).unwrap());
                     }
                     _ => {
                         self.emit_code(Opcode::PUSH_CONST);
