@@ -751,11 +751,11 @@ impl<'a> CodeGen<'a> {
         };
         if let Some(code) = simple_op {
             if *token == Token::INC || *token == Token::DEC {
-                self.gen_op_assign(&lhs[0], code as OpIndex, None)?;
+                self.gen_op_assign(&lhs[0], code, None)?;
             } else {
                 assert_eq!(lhs_exprs.len(), 1);
                 assert_eq!(rhs_exprs.len(), 1);
-                self.gen_op_assign(&lhs[0], code as OpIndex, Some(&rhs_exprs[0]))?;
+                self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]))?;
             }
             Ok(None)
         } else {
@@ -776,8 +776,7 @@ impl<'a> CodeGen<'a> {
             // the range statement
             self.visit_expr(r)?;
             let func = current_func_mut!(self);
-            func.emit_code(Opcode::PUSH_IMM);
-            func.emit_data(-1);
+            func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
             range_marker = Some(func.code.len());
             func.emit_range();
             func.emit_data(0); // placeholder, the block_end address.
@@ -849,7 +848,7 @@ impl<'a> CodeGen<'a> {
     fn gen_op_assign(
         &mut self,
         left: &LeftHandSide,
-        op: OpIndex,
+        op: Opcode,
         right: Option<&Expr>,
     ) -> Result<(), ()> {
         if let Some(e) = right {
@@ -857,8 +856,7 @@ impl<'a> CodeGen<'a> {
         } else {
             // it's inc/dec
             let func = current_func_mut!(self);
-            func.emit_code(Opcode::PUSH_IMM);
-            func.emit_data(1);
+            func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(1));
         }
         let func = current_func_mut!(self);
         match left {

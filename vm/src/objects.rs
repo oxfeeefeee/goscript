@@ -1,5 +1,5 @@
 #![macro_use]
-use super::opcode::{CodeData, OpIndex, Opcode};
+use super::opcode::{CodeData, Instruction, OpIndex, Opcode, Value32Type};
 use super::value::GosValue;
 use goscript_parser::objects::EntityKey;
 use slotmap::{new_key_type, DenseSlotMap};
@@ -766,6 +766,18 @@ impl FunctionVal {
 
     pub fn const_val(&self, index: OpIndex) -> &GosValue {
         &self.consts[index as usize]
+    }
+
+    pub fn emit_inst(
+        &mut self,
+        op: Opcode,
+        op_ex: Option<Opcode>,
+        type0: Option<Value32Type>,
+        type1: Option<Value32Type>,
+        imm: Option<i32>,
+    ) {
+        let i = Instruction::new(op, op_ex, type0, type1, imm);
+        self.code.push(CodeData::Inst(i));
     }
 
     pub fn emit_code(&mut self, code: Opcode) {

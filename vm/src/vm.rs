@@ -178,14 +178,19 @@ impl Fiber {
         let mut total_inst = 0;
         //let mut stats: HashMap<Opcode, usize> = HashMap::new();
         loop {
-            let inst = code[frame.pc].unwrap_code();
+            let idata = &code[frame.pc];
+            let inst_op = match idata {
+                CodeData::Inst(i) => i.op(),
+                CodeData::Code(c) => *c,
+                _ => unreachable!(),
+            };
             total_inst += 1;
             //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
             frame.pc += 1;
             //dbg!(inst);
-            match inst {
+            match inst_op {
                 Opcode::PUSH_CONST => {
-                    let index = read_index!(code, frame);
+                    let index = idata.unwrap_inst().imm();
                     let gos_val = &consts[index as usize];
                     let val = match gos_val {
                         // Slice/Map are special cases here because, they are stored literal,
@@ -209,30 +214,14 @@ impl Fiber {
                 Opcode::PUSH_FALSE => stack.push(GosValue::Bool(false)),
                 Opcode::PUSH_TRUE => stack.push(GosValue::Bool(true)),
                 Opcode::PUSH_IMM => {
-                    let index = read_index!(code, frame);
+                    let index = idata.unwrap_inst().imm();
                     stack.push(GosValue::Int(index as isize));
                 }
                 Opcode::POP => {
                     stack.pop();
                 }
-                Opcode::LOAD_LOCAL0 => load_local_i!(stack, stack_base, 0),
-                Opcode::LOAD_LOCAL1 => load_local_i!(stack, stack_base, 1),
-                Opcode::LOAD_LOCAL2 => load_local_i!(stack, stack_base, 2),
-                Opcode::LOAD_LOCAL3 => load_local_i!(stack, stack_base, 3),
-                Opcode::LOAD_LOCAL4 => load_local_i!(stack, stack_base, 4),
-                Opcode::LOAD_LOCAL5 => load_local_i!(stack, stack_base, 5),
-                Opcode::LOAD_LOCAL6 => load_local_i!(stack, stack_base, 6),
-                Opcode::LOAD_LOCAL7 => load_local_i!(stack, stack_base, 7),
-                Opcode::LOAD_LOCAL8 => load_local_i!(stack, stack_base, 8),
-                Opcode::LOAD_LOCAL9 => load_local_i!(stack, stack_base, 9),
-                Opcode::LOAD_LOCAL10 => load_local_i!(stack, stack_base, 10),
-                Opcode::LOAD_LOCAL11 => load_local_i!(stack, stack_base, 11),
-                Opcode::LOAD_LOCAL12 => load_local_i!(stack, stack_base, 12),
-                Opcode::LOAD_LOCAL13 => load_local_i!(stack, stack_base, 13),
-                Opcode::LOAD_LOCAL14 => load_local_i!(stack, stack_base, 14),
-                Opcode::LOAD_LOCAL15 => load_local_i!(stack, stack_base, 15),
                 Opcode::LOAD_LOCAL => {
-                    let index = offset_uint!(stack_base, read_index!(code, frame));
+                    let index = offset_uint!(stack_base, idata.unwrap_inst().imm());
                     stack.push(stack[index].clone());
                 }
                 Opcode::STORE_LOCAL => {
@@ -251,7 +240,7 @@ impl Fiber {
                     vm_util::store_xxx_op(&mut stack[index], op, &operand);
                 }
                 Opcode::LOAD_UPVALUE => {
-                    let index = read_index!(code, frame);
+                    let index = idata.unwrap_inst().imm();
                     let upvalue =
                         frame.callable.closure().borrow().upvalues[index as usize].clone();
                     match &upvalue {
@@ -269,9 +258,9 @@ impl Fiber {
                 }
                 Opcode::STORE_UPVALUE | Opcode::STORE_UPVALUE_NT | Opcode::STORE_UPVALUE_OP => {
                     let index = read_index!(code, frame);
-                    let offset = inst.offset(Opcode::STORE_UPVALUE);
+                    let offset = inst_op.offset(Opcode::STORE_UPVALUE);
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
-                    let is_op_set = *inst == Opcode::STORE_UPVALUE_OP;
+                    let is_op_set = inst_op == Opcode::STORE_UPVALUE_OP;
                     let closure = frame.callable.closure();
                     let upvalue = closure.borrow().upvalues[index as usize].clone();
                     match &upvalue {
@@ -294,7 +283,7 @@ impl Fiber {
                     }
                 }
                 Opcode::LOAD_FIELD | Opcode::LOAD_FIELD_IMM => {
-                    let ind = if *inst == Opcode::LOAD_FIELD {
+                    let ind = if inst_op == Opcode::LOAD_FIELD {
                         stack.pop().unwrap()
                     } else {
                         GosValue::Int(read_index!(code, frame) as isize)
@@ -314,18 +303,18 @@ impl Fiber {
                 | Opcode::STORE_FIELD_IMM_OP => {
                     let index = offset_uint!(stack.len(), read_index!(code, frame));
                     let store = &stack[index];
-                    let non_imm = inst.offset(Opcode::STORE_FIELD) <= 2;
+                    let non_imm = inst_op.offset(Opcode::STORE_FIELD) <= 2;
                     let (key, offset, is_op_set) = if non_imm {
                         (
                             stack.get(index + 1).unwrap().clone(),
-                            inst.offset(Opcode::STORE_FIELD),
-                            *inst == Opcode::STORE_FIELD_OP,
+                            inst_op.offset(Opcode::STORE_FIELD),
+                            inst_op == Opcode::STORE_FIELD_OP,
                         )
                     } else {
                         (
                             GosValue::Int(read_index!(code, frame) as isize),
-                            inst.offset(Opcode::STORE_FIELD_IMM),
-                            *inst == Opcode::STORE_FIELD_IMM_OP,
+                            inst_op.offset(Opcode::STORE_FIELD_IMM),
+                            inst_op == Opcode::STORE_FIELD_IMM_OP,
                         )
                     };
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
@@ -342,7 +331,7 @@ impl Fiber {
                     }
                 }
                 Opcode::LOAD_THIS_PKG_FIELD => {
-                    let index = read_index!(code, frame);
+                    let index = idata.unwrap_inst().imm();
                     let pkg = &objs.packages[func.package];
                     stack.push(pkg.member(index).clone());
                 }
@@ -443,7 +432,7 @@ impl Fiber {
                     dbg!(&code);
                     //dbg!(&stack);
 
-                    if func.variadic() && *inst != Opcode::CALL_ELLIPSIS {
+                    if func.variadic() && inst_op != Opcode::CALL_ELLIPSIS {
                         let index = stack_base
                             + func.param_count
                             + func.ret_count
@@ -506,7 +495,7 @@ impl Fiber {
                     //    dbg!(GosValueDebug::new(&s, &objs));
                     //}
 
-                    match *inst {
+                    match inst_op {
                         Opcode::RETURN => {
                             stack.truncate(stack_base + frame.ret_count(objs));
                         }
@@ -644,7 +633,7 @@ impl Fiber {
                     stack.push(GosValue::Bool(!objs.packages[pkey].inited()));
                 }
                 Opcode::SLICE | Opcode::SLICE_FULL => {
-                    let max = if *inst == Opcode::SLICE_FULL {
+                    let max = if inst_op == Opcode::SLICE_FULL {
                         Some(*stack.pop().unwrap().as_int() as usize)
                     } else {
                         None

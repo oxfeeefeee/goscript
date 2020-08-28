@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 pub use super::objects::*;
+use super::opcode::Value32Type;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
@@ -281,26 +282,6 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 
 // ----------------------------------------------------------------------------
 // GosValue32
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum Value32Type {
-    Nil,
-    Bool,
-    Int,
-    Float64,
-    Complex64,
-    Str,
-    Boxed,
-    Closure,
-    Slice,
-    Map,
-    Interface,
-    Struct,
-    Channel,
-    Function,
-    Package,
-    Metadata,
-}
 
 #[derive(Copy, Clone)]
 union Value32Union {

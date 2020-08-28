@@ -20,12 +20,6 @@ macro_rules! read_index {
     }};
 }
 
-macro_rules! load_local_i {
-    ($stack:ident, $stack_base:ident, $index:literal) => {{
-        $stack.push($stack[offset_uint!($stack_base, $index)].clone()); 
-    }};
-}
-
 macro_rules! upframe {
     ($iter:expr, $f:ident) => {
         $iter.find(|x| x.callable.func() == *$f).unwrap();
@@ -437,7 +431,7 @@ pub fn compare_geq(stack: &mut Vec<GosValue>) {
 
 #[inline]
 pub fn store_xxx_op(target: &mut GosValue, code: OpIndex, operand: &GosValue) {
-    match code as isize {
+    match code as u8 {
         OP_ADD_VALUE => int_float_store_xxx_op!(target, +=, operand),
         OP_SUB_VALUE => int_float_store_xxx_op!(target, -=, operand),
         OP_MUL_VALUE => int_float_store_xxx_op!(target, *=, operand),

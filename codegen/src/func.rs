@@ -25,7 +25,7 @@ pub trait FuncGen {
 
     fn emit_load(&mut self, index: EntIndex);
 
-    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<OpIndex>);
+    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<Opcode>);
 
     fn emit_import(&mut self, index: OpIndex);
 
@@ -80,37 +80,26 @@ impl FuncGen for FunctionVal {
                     GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
                     GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
                     GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
-                    GosValue::Int(i) if i16::try_from(i).ok().is_some() => {
-                        self.emit_code(Opcode::PUSH_IMM);
-                        self.emit_data(OpIndex::try_from(i).unwrap());
+                    GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
+                        let imm: OpIndex = OpIndex::try_from(i).unwrap();
+                        self.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(imm));
                     }
                     _ => {
-                        self.emit_code(Opcode::PUSH_CONST);
-                        self.emit_data(i);
+                        self.emit_inst(Opcode::PUSH_CONST, None, None, None, Some(i));
                     }
                 }
             }
-            EntIndex::LocalVar(i) => {
-                let code = Opcode::get_load_local(i);
-                self.emit_code(code);
-                if let Opcode::LOAD_LOCAL = code {
-                    self.emit_data(i);
-                }
-            }
-            EntIndex::UpValue(i) => {
-                self.emit_code(Opcode::LOAD_UPVALUE);
-                self.emit_data(i);
-            }
+            EntIndex::LocalVar(i) => self.emit_inst(Opcode::LOAD_LOCAL, None, None, None, Some(i)),
+            EntIndex::UpValue(i) => self.emit_inst(Opcode::LOAD_UPVALUE, None, None, None, Some(i)),
             EntIndex::PackageMember(i) => {
-                self.emit_code(Opcode::LOAD_THIS_PKG_FIELD);
-                self.emit_data(i);
+                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, None, None, None, Some(i))
             }
             EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
         }
     }
 
-    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<OpIndex>) {
+    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<Opcode>) {
         if let LeftHandSide::Primitive(index) = lhs {
             if EntIndex::Blank == *index {
                 return;
@@ -175,7 +164,7 @@ impl FuncGen for FunctionVal {
             self.emit_data(rhs_index);
         }
         if let Some(data) = op {
-            self.emit_data(data);
+            self.emit_data(data as OpIndex);
         }
     }
 
@@ -184,8 +173,13 @@ impl FuncGen for FunctionVal {
         self.emit_data(index);
         self.emit_code(Opcode::JUMP_IF_NOT);
         let mut cd = vec![
-            CodeData::Code(Opcode::PUSH_IMM),
-            CodeData::Data(0 as OpIndex),
+            CodeData::Inst(Instruction::new(
+                Opcode::PUSH_IMM,
+                None,
+                None,
+                None,
+                Some(0),
+            )),
             CodeData::Code(Opcode::LOAD_FIELD),
             CodeData::Code(Opcode::PRE_CALL),
             CodeData::Code(Opcode::CALL),

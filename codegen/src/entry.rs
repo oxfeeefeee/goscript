@@ -46,9 +46,8 @@ impl<'a> EntryGen<'a> {
                 .as_function();
         let func = &mut self.objects.functions[fkey];
         func.emit_import(main_idx);
-        func.emit_code(Opcode::PUSH_IMM);
         // negative index for main func
-        func.emit_data(-1);
+        func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
         func.emit_load_field();
         func.emit_pre_call();
         func.emit_call(false);
