@@ -91,7 +91,6 @@ impl VMObjects {
         let itype = MetadataVal::new_int(&mut objs);
         objs.basic_types.insert("int", itype);
         let ftype = MetadataVal::new_float64(&mut objs);
-        objs.basic_types.insert("float", ftype.clone());
         objs.basic_types.insert("float64", ftype);
         let stype = MetadataVal::new_str(&mut objs);
         objs.basic_types.insert("string", stype);
@@ -100,7 +99,28 @@ impl VMObjects {
         objs
     }
 
-    pub fn basic_type(&self, name: &str) -> &GosValue {
+    #[inline]
+    pub fn metadata_bool(&self) -> GosValue {
+        self.basic_type("bool").clone()
+    }
+
+    #[inline]
+    pub fn metadata_int(&self) -> GosValue {
+        self.basic_type("int").clone()
+    }
+
+    #[inline]
+    pub fn metadata_float64(&self) -> GosValue {
+        self.basic_type("float64").clone()
+    }
+
+    #[inline]
+    pub fn metadata_string(&self) -> GosValue {
+        self.basic_type("string").clone()
+    }
+
+    #[inline]
+    fn basic_type(&self, name: &str) -> &GosValue {
         &self.basic_types[name]
     }
 }
@@ -169,6 +189,7 @@ impl StringVal {
 }
 
 impl Clone for StringVal {
+    #[inline]
     fn clone(&self) -> Self {
         StringVal {
             data: Rc::clone(&self.data),
@@ -179,6 +200,7 @@ impl Clone for StringVal {
 }
 
 impl PartialEq for StringVal {
+    #[inline]
     fn eq(&self, other: &StringVal) -> bool {
         self.as_str().eq(other.as_str())
     }
@@ -187,12 +209,14 @@ impl PartialEq for StringVal {
 impl Eq for StringVal {}
 
 impl PartialOrd for StringVal {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for StringVal {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         dbg!(self.as_str());
         dbg!(other.as_str());
@@ -862,7 +886,7 @@ pub struct MetadataVal {
 }
 
 impl MetadataVal {
-    pub fn new_bool(objs: &mut VMObjects) -> GosValue {
+    fn new_bool(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: GosValue::Bool(false),
             typ: MetadataType::None,
@@ -870,7 +894,7 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
-    pub fn new_int(objs: &mut VMObjects) -> GosValue {
+    fn new_int(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: GosValue::Int(0),
             typ: MetadataType::None,
@@ -878,7 +902,7 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
-    pub fn new_float64(objs: &mut VMObjects) -> GosValue {
+    fn new_float64(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: GosValue::Float64(0.0),
             typ: MetadataType::None,
@@ -886,7 +910,7 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
-    pub fn new_str(objs: &mut VMObjects) -> GosValue {
+    fn new_str(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: GosValue::Str(objs.str_zero_val.clone()),
             typ: MetadataType::None,
@@ -962,8 +986,8 @@ impl MetadataVal {
             typ: MetadataType::Struct(fields, fields_index),
         };
         let key = objs.metas.insert(meta);
-        objs.metas[key].zero_val().as_struct().borrow_mut().meta = GosValue::Meta(key);
-        GosValue::Meta(key)
+        objs.metas[key].zero_val().as_struct().borrow_mut().meta = GosValue::Metadata(key);
+        GosValue::Metadata(key)
     }
 
     pub fn new_channel(vtype: GosValue, objs: &mut VMObjects) -> GosValue {

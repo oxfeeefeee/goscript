@@ -76,7 +76,7 @@ macro_rules! duplicate {
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => $val.clone(),
             GosValue::Package(_) => $val.clone(),
-            GosValue::Meta(_) => $val.clone(),
+            GosValue::Metadata(_) => $val.clone(),
             //_ => unreachable!(),
         }
     };

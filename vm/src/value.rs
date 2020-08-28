@@ -25,9 +25,9 @@ pub enum GosValue {
     Channel(Rc<RefCell<ChannelVal>>),
     // below are not visible to users, they are "values" not "variables"
     // they are static data, don't use Rc for better performance
-    Meta(MetadataKey),
     Function(FunctionKey),
     Package(PackageKey),
+    Metadata(MetadataKey),
 }
 
 impl GosValue {
@@ -76,7 +76,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_meta(t: MetadataVal, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Meta(metas.insert(t))
+        GosValue::Metadata(metas.insert(t))
     }
 
     #[inline]
@@ -135,7 +135,7 @@ impl GosValue {
 
     #[inline]
     pub fn as_meta(&self) -> &MetadataKey {
-        unwrap_gos_val!(Meta, self)
+        unwrap_gos_val!(Metadata, self)
     }
 
     #[inline]
@@ -145,6 +145,7 @@ impl GosValue {
 }
 
 impl Clone for GosValue {
+    #[inline]
     fn clone(&self) -> Self {
         match self {
             GosValue::Nil => GosValue::Nil,
@@ -162,7 +163,7 @@ impl Clone for GosValue {
             GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
             GosValue::Function(k) => GosValue::Function(*k),
             GosValue::Package(k) => GosValue::Package(*k),
-            GosValue::Meta(m) => GosValue::Meta(*m),
+            GosValue::Metadata(m) => GosValue::Metadata(*m),
         }
     }
 }
@@ -272,7 +273,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             GosValue::Boxed(k) => k.fmt(f),
             GosValue::Function(k) => self.objs.functions[*k].fmt(f),
             GosValue::Package(k) => self.objs.packages[*k].fmt(f),
-            GosValue::Meta(k) => self.objs.metas[*k].fmt(f),
+            GosValue::Metadata(k) => self.objs.metas[*k].fmt(f),
             //_ => unreachable!(),
         }
     }
@@ -281,7 +282,9 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 // ----------------------------------------------------------------------------
 // GosValue32
 
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Value32Type {
+    Nil,
     Bool,
     Int,
     Float64,
@@ -296,16 +299,159 @@ pub enum Value32Type {
     Channel,
     Function,
     Package,
-    Meta,
+    Metadata,
 }
 
+#[derive(Copy, Clone)]
 union Value32Union {
+    unil: (),
     ubool: bool,
     uint: isize,
     ufloat64: f64,
     ucomplex64: (f32, f32),
-    ustr: *const String,
+    ustr: *const StringVal,
     uboxed: *const RefCell<GosValue>,
+    uclosure: *const RefCell<ClosureVal>,
+    uslice: *const SliceVal,
+    umap: *const MapVal,
+    uinterface: *const RefCell<InterfaceVal>,
+    ustruct: *const RefCell<StructVal>,
+    uchannel: *const RefCell<ChannelVal>,
+    umetadata: MetadataKey,
+    ufunction: FunctionKey,
+    upackage: PackageKey,
+}
+
+/// GosValue32 is a 32bit struct for VM stack to get better performance, when converting
+/// to GosValue32, the type info is lost, Opcode is responsible for providing type info
+/// when converting back to GosValue
+#[derive(Copy, Clone)]
+pub struct GosValue32 {
+    data: Value32Union,
+    debug_type: Value32Type, // to be removed in release build
+}
+
+impl GosValue32 {
+    #[inline]
+    pub fn from_v64(v: GosValue) -> (GosValue32, Value32Type) {
+        let (data, typ) = match v {
+            GosValue::Nil => (Value32Union { unil: () }, Value32Type::Nil),
+            GosValue::Bool(b) => (Value32Union { ubool: b }, Value32Type::Bool),
+            GosValue::Int(i) => (Value32Union { uint: i }, Value32Type::Int),
+            GosValue::Float64(f) => (Value32Union { ufloat64: f }, Value32Type::Float64),
+            GosValue::Complex64(f1, f2) => (
+                Value32Union {
+                    ucomplex64: (f1, f2),
+                },
+                Value32Type::Complex64,
+            ),
+            GosValue::Str(s) => (
+                Value32Union {
+                    ustr: Rc::into_raw(s),
+                },
+                Value32Type::Str,
+            ),
+            GosValue::Boxed(b) => (
+                Value32Union {
+                    uboxed: Rc::into_raw(b),
+                },
+                Value32Type::Boxed,
+            ),
+            GosValue::Closure(c) => (
+                Value32Union {
+                    uclosure: Rc::into_raw(c),
+                },
+                Value32Type::Closure,
+            ),
+            GosValue::Slice(s) => (
+                Value32Union {
+                    uslice: Rc::into_raw(s),
+                },
+                Value32Type::Slice,
+            ),
+            GosValue::Map(m) => (
+                Value32Union {
+                    umap: Rc::into_raw(m),
+                },
+                Value32Type::Map,
+            ),
+            GosValue::Interface(i) => (
+                Value32Union {
+                    uinterface: Rc::into_raw(i),
+                },
+                Value32Type::Interface,
+            ),
+            GosValue::Struct(s) => (
+                Value32Union {
+                    ustruct: Rc::into_raw(s),
+                },
+                Value32Type::Struct,
+            ),
+            GosValue::Channel(c) => (
+                Value32Union {
+                    uchannel: Rc::into_raw(c),
+                },
+                Value32Type::Channel,
+            ),
+            GosValue::Function(k) => (Value32Union { ufunction: k }, Value32Type::Function),
+            GosValue::Package(k) => (Value32Union { upackage: k }, Value32Type::Package),
+            GosValue::Metadata(k) => (Value32Union { umetadata: k }, Value32Type::Metadata),
+        };
+        (
+            GosValue32 {
+                data: data,
+                debug_type: typ,
+            },
+            typ,
+        )
+    }
+
+    #[inline]
+    pub fn to_v64(&self, t: Value32Type) -> GosValue {
+        debug_assert!(t == self.debug_type);
+        unsafe {
+            match t {
+                Value32Type::Nil => GosValue::Nil,
+                Value32Type::Bool => GosValue::Bool(self.data.ubool),
+                Value32Type::Int => GosValue::Int(self.data.uint),
+                Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
+                Value32Type::Complex64 => {
+                    GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
+                }
+                Value32Type::Str => GosValue::Str(Rc::from_raw(self.data.ustr)),
+                Value32Type::Boxed => GosValue::Boxed(Rc::from_raw(self.data.uboxed)),
+                Value32Type::Closure => GosValue::Closure(Rc::from_raw(self.data.uclosure)),
+                Value32Type::Slice => GosValue::Slice(Rc::from_raw(self.data.uslice)),
+                Value32Type::Map => GosValue::Map(Rc::from_raw(self.data.umap)),
+                Value32Type::Interface => GosValue::Interface(Rc::from_raw(self.data.uinterface)),
+                Value32Type::Struct => GosValue::Struct(Rc::from_raw(self.data.ustruct)),
+                Value32Type::Channel => GosValue::Channel(Rc::from_raw(self.data.uchannel)),
+                Value32Type::Function => GosValue::Function(self.data.ufunction),
+                Value32Type::Package => GosValue::Package(self.data.upackage),
+                Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn to_bool(&self) -> bool {
+        unsafe { self.data.ubool }
+    }
+
+    #[inline]
+    pub fn to_int(&self) -> isize {
+        unsafe { self.data.uint }
+    }
+
+    #[inline]
+    pub fn to_float64(&self) -> f64 {
+        unsafe { self.data.ufloat64 }
+    }
+
+    #[inline]
+    pub fn to_complex64(&self) -> (f32, f32) {
+        unsafe { self.data.ucomplex64 }
+    }
 }
 
 #[cfg(test)]
