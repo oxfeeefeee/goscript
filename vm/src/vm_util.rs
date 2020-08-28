@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::opcode::*;
-use super::value::{VMObjects, GosValue, ClosureVal};
+use super::value::{VMObjects, GosValue, ClosureVal, MetadataObjs};
 use std::cmp::Ordering;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -36,7 +36,7 @@ macro_rules! bind_method {
     ($sval:ident, $val:ident, $index:ident, $objs:ident) => {
         GosValue::Closure(
             Rc::new(RefCell::new(ClosureVal {
-                func: *$sval.borrow().meta.as_meta().borrow_type()
+                func: *$objs.metas[*$sval.borrow().meta.as_meta()].typ()
                     .get_struct_member($index)
                     .as_function(),
                 receiver: Some($val.clone()),
@@ -499,7 +499,7 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
                 GosValue::Int(i) => sval.borrow().fields[*i as usize].clone(),
                 GosValue::Str(s) => {
                     let struct_ref = sval.borrow();
-                    let index = struct_ref.field_method_index(s.as_str());
+                    let index = struct_ref.field_method_index(s.as_str(), &objs.metas);
                     if index < struct_ref.fields.len() as OpIndex {
                         struct_ref.fields[index as usize].clone()
                     } else {
@@ -518,7 +518,7 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
 }
 
 #[inline]
-pub fn store_field(target: &GosValue, key: &GosValue, op: Option<OpIndex>, val: GosValue, is_op_set: bool) {
+pub fn store_field(target: &GosValue, key: &GosValue, op: Option<OpIndex>, val: GosValue, is_op_set: bool, metas: &MetadataObjs) {
     match target {
         GosValue::Slice(s) => {
             let target_cell = &s.borrow_data()[*key.as_int() as usize];
@@ -537,7 +537,7 @@ pub fn store_field(target: &GosValue, key: &GosValue, op: Option<OpIndex>, val: 
                     set_store_op_val(target, op, val, is_op_set);
                 }
                 GosValue::Str(sval) => {
-                    let i = s.borrow().field_method_index(sval.as_str());
+                    let i = s.borrow().field_method_index(sval.as_str(), metas);
                     let target = &mut s.borrow_mut().fields[i as usize];
                     set_store_op_val(target, op, val, is_op_set);
                 }

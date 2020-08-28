@@ -6,8 +6,8 @@ use std::convert::TryFrom;
 use super::func::*;
 use super::types;
 
-use goscript_vm::ds::{EntIndex, UpValue};
 use goscript_vm::null_key;
+use goscript_vm::objects::{EntIndex, MetadataType, UpValue};
 use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 
@@ -360,13 +360,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let meta = self.get_type_meta(&field.typ).as_meta().clone();
-            let meta = match &*meta.borrow_type() {
-                MetadataType::Struct(_, _) => meta.clone(),
-                MetadataType::Boxed(b) => b.as_meta().clone(),
+            let meta_key = *self.get_type_meta(&field.typ).as_meta();
+            let key = match self.objects.metas[meta_key].typ() {
+                MetadataType::Boxed(b) => *b.as_meta(),
+                MetadataType::Struct(_, _) => meta_key,
                 _ => unreachable!(),
             };
-            meta.borrow_type_mut().add_struct_member(name.clone(), fval);
+            self.objects.metas[key]
+                .typ_mut()
+                .add_struct_member(name.clone(), fval);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
@@ -888,8 +890,7 @@ impl<'a> CodeGen<'a> {
         body: &BlockStmt,
     ) -> Result<FunctionKey, ()> {
         let typ = &self.ast_objs.ftypes[fkey];
-        let meta_val = fmeta.as_meta();
-        let meta_type = meta_val.borrow_type();
+        let meta_type = self.objects.metas[*fmeta.as_meta()].typ();
         let sig_metadata = meta_type.sig_metadata();
         let variadic = sig_metadata.variadic;
         let fkey = *GosValue::new_function(
@@ -987,7 +988,7 @@ impl<'a> CodeGen<'a> {
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
         let meta = self.get_type_meta(expr);
-        let meta_val = meta.as_meta();
+        let meta_val = &self.objects.metas[*meta.as_meta()];
         Ok(meta_val.zero_val().clone())
     }
 

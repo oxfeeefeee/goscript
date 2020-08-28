@@ -2,7 +2,7 @@
 
 use std::convert::TryFrom;
 
-use goscript_vm::ds::{EntIndex, FunctionVal};
+use goscript_vm::objects::{EntIndex, FunctionVal};
 use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 

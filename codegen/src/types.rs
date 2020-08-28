@@ -13,10 +13,11 @@ fn const_value_or_type_from_tc(
 ) -> GosValue {
     let typ = tc_objs.types[tkey].try_as_basic().unwrap().typ();
     match typ {
-        //todo: fix: dont new Metadata
-        BasicType::Bool | BasicType::UntypedBool => {
-            val.map_or(Metadata::new_bool(), |x| GosValue::Bool(x.bool_as_bool()))
-        }
+        //todo: fix: dont new MetadataVal
+        BasicType::Bool | BasicType::UntypedBool => val
+            .map_or(MetadataVal::new_bool(vm_objs), |x| {
+                GosValue::Bool(x.bool_as_bool())
+            }),
         BasicType::Int
         | BasicType::Int8
         | BasicType::Int16
@@ -32,19 +33,20 @@ fn const_value_or_type_from_tc(
         | BasicType::Uintptr
         | BasicType::UnsafePointer
         | BasicType::UntypedInt
-        | BasicType::UntypedRune => val.map_or(Metadata::new_int(), |x| {
+        | BasicType::UntypedRune => val.map_or(MetadataVal::new_int(vm_objs), |x| {
             let (i, _) = x.to_int().int_as_i64();
             GosValue::Int(i as isize)
         }),
         BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-            val.map_or(Metadata::new_float64(), |x| {
+            val.map_or(MetadataVal::new_float64(vm_objs), |x| {
                 let (f, _) = x.num_as_f64();
                 GosValue::Float64(*f)
             })
         }
-        BasicType::Str | BasicType::UntypedString => val.map_or(Metadata::new_str(vm_objs), |x| {
-            GosValue::new_str(x.str_as_string())
-        }),
+        BasicType::Str | BasicType::UntypedString => val
+            .map_or(MetadataVal::new_str(vm_objs), |x| {
+                GosValue::new_str(x.str_as_string())
+            }),
         _ => unreachable!(),
         //Complex64,  todo
         //Complex128, todo
@@ -68,7 +70,7 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
         Type::Basic(_) => const_value_or_type_from_tc(typ, None, tc_objs, vm_objs),
         Type::Slice(detail) => {
             let el_type = type_from_tc(detail.elem(), tc_objs, vm_objs);
-            Metadata::new_slice(el_type, vm_objs)
+            MetadataVal::new_slice(el_type, vm_objs)
         }
         Type::Struct(detail) => {
             let mut fields = Vec::new();
@@ -79,7 +81,7 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
                 fields.push(f_type);
                 map.insert(field.name().clone(), i as OpIndex);
             }
-            Metadata::new_struct(fields, map)
+            MetadataVal::new_struct(fields, map, vm_objs)
         }
         Type::Signature(detail) => {
             let mut convert = |tuple_key| {
@@ -97,11 +99,11 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
                 let recv_tc_type = tc_objs.lobjs[x].typ().unwrap();
                 type_from_tc(recv_tc_type, tc_objs, vm_objs)
             });
-            Metadata::new_sig(recv, params, results, detail.variadic())
+            MetadataVal::new_sig(recv, params, results, detail.variadic(), vm_objs)
         }
         Type::Pointer(detail) => {
             let inner = type_from_tc(detail.base(), tc_objs, vm_objs);
-            Metadata::new_boxed(inner)
+            MetadataVal::new_boxed(inner, vm_objs)
         }
         Type::Named(detail) => {
             // this is incorrect

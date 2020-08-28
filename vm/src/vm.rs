@@ -1,5 +1,7 @@
 #![allow(dead_code)]
-use super::ds::{ClosureVal, GosHashMap, SliceEnumIter, SliceRef, StringEnumIter, UpValue};
+use super::objects::{
+    ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter, UpValue,
+};
 use super::opcode::*;
 use super::value::*;
 use super::vm_util;
@@ -8,7 +10,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
@@ -328,10 +330,15 @@ impl Fiber {
                     };
                     let (op, val) = get_store_op_val!(stack, code, frame, consts, objs, offset);
                     match store {
-                        GosValue::Boxed(b) => {
-                            vm_util::store_field(&*b.borrow(), &key, op, val, is_op_set)
-                        }
-                        _ => vm_util::store_field(store, &key, op, val, is_op_set),
+                        GosValue::Boxed(b) => vm_util::store_field(
+                            &*b.borrow(),
+                            &key,
+                            op,
+                            val,
+                            is_op_set,
+                            &objs.metas,
+                        ),
+                        _ => vm_util::store_field(store, &key, op, val, is_op_set, &objs.metas),
                     }
                 }
                 Opcode::LOAD_THIS_PKG_FIELD => {
@@ -410,10 +417,12 @@ impl Fiber {
                     let next_func = &objs.functions[func_key];
                     // init return values
                     if next_func.ret_count > 0 {
-                        let meta_type = next_func.meta.as_meta().borrow_type();
+                        let meta_type = objs.metas[*next_func.meta.as_meta()].typ();
                         let rs = &meta_type.sig_metadata().results;
-                        let mut returns =
-                            rs.iter().map(|x| x.as_meta().zero_val().clone()).collect();
+                        let mut returns = rs
+                            .iter()
+                            .map(|x| objs.metas[*x.as_meta()].zero_val().clone())
+                            .collect();
                         stack.append(&mut returns);
                     }
                     // push receiver on stack as the first parameter
@@ -690,8 +699,8 @@ impl Fiber {
                 Opcode::MAKE => {
                     let index = read_index!(code, frame);
                     let meta = &stack[offset_uint!(stack.len(), index - 1)];
-                    let metadata = meta.as_meta().clone();
-                    let val = match &*metadata.borrow_type() {
+                    let metadata = &objs.metas[*meta.as_meta()];
+                    let val = match metadata.typ() {
                         MetadataType::Slice(vmeta) => {
                             let (cap, len) = match index {
                                 -2 => (
@@ -704,7 +713,7 @@ impl Fiber {
                                 }
                                 _ => unreachable!(),
                             };
-                            let vmetadata = vmeta.as_meta();
+                            let vmetadata = &objs.metas[*vmeta.as_meta()];
                             GosValue::new_slice(len, cap, vmetadata.zero_val(), &mut objs.slices)
                         }
                         MetadataType::Map(_k, _v) => unimplemented!(),
