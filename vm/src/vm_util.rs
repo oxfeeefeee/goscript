@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
-use super::opcode::*;
+use super::instruction::*;
 use super::value::{VMObjects, GosValue, ClosureVal, MetadataObjs};
 use std::cmp::Ordering;
 use std::cell::RefCell;

@@ -1,8 +1,8 @@
 #![allow(dead_code)]
+use super::instruction::*;
 use super::objects::{
     ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter, UpValue,
 };
-use super::opcode::*;
 use super::value::*;
 use super::vm_util;
 use std::cell::{Ref, RefCell};
@@ -263,7 +263,6 @@ impl Fiber {
                     let upvalue = closure.borrow().upvalues[index as usize].clone();
                     match &upvalue {
                         UpValue::Open(f, ind) => {
-                            drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
                             vm_util::set_store_op_val(

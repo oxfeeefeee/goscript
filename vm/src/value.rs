@@ -1,6 +1,6 @@
 #![allow(dead_code)]
+use super::instruction::Value32Type;
 pub use super::objects::*;
-use super::opcode::Value32Type;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;

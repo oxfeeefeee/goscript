@@ -10,8 +10,8 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
 use goscript_types::{Config, PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_vm::instruction::*;
 use goscript_vm::null_key;
-use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
 

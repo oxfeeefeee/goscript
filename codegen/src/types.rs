@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use goscript_types::{BasicType, ConstValue, TCObjects, Type, TypeKey as TCTypeKey};
-use goscript_vm::opcode::OpIndex;
+use goscript_vm::instruction::OpIndex;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 

@@ -1,5 +1,5 @@
 #![macro_use]
-use super::opcode::{Instruction, OpIndex, Opcode, Value32Type};
+use super::instruction::{Instruction, OpIndex, Opcode, Value32Type};
 use super::value::GosValue;
 use goscript_parser::objects::EntityKey;
 use slotmap::{new_key_type, DenseSlotMap};

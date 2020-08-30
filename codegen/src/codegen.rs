@@ -6,9 +6,9 @@ use std::convert::TryFrom;
 use super::func::*;
 use super::types;
 
+use goscript_vm::instruction::*;
 use goscript_vm::null_key;
 use goscript_vm::objects::{EntIndex, MetadataType, UpValue};
-use goscript_vm::opcode::*;
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;

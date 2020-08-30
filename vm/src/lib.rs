@@ -1,5 +1,5 @@
+pub mod instruction;
 pub mod objects;
-pub mod opcode;
 
 pub mod value;
 
