@@ -1,5 +1,5 @@
 #![macro_use]
-use super::opcode::{CodeData, Instruction, OpIndex, Opcode, Value32Type};
+use super::opcode::{Instruction, OpIndex, Opcode, Value32Type};
 use super::value::GosValue;
 use goscript_parser::objects::EntityKey;
 use slotmap::{new_key_type, DenseSlotMap};
@@ -718,7 +718,7 @@ impl From<EntIndex> for OpIndex {
 pub struct FunctionVal {
     pub package: PackageKey,
     pub meta: GosValue,
-    pub code: Vec<CodeData>,
+    pub code: Vec<Instruction>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<UpValue>,
     // param_count, ret_count can be read from typ,
@@ -777,15 +777,11 @@ impl FunctionVal {
         imm: Option<i32>,
     ) {
         let i = Instruction::new(op, op_ex, type0, type1, imm);
-        self.code.push(CodeData::Inst(i));
+        self.code.push(i);
     }
 
     pub fn emit_code(&mut self, code: Opcode) {
-        self.code.push(CodeData::Code(code));
-    }
-
-    pub fn emit_data(&mut self, data: OpIndex) {
-        self.code.push(CodeData::Data(data));
+        self.emit_inst(code, None, None, None, None);
     }
 
     /// returns the index of the const if it's found

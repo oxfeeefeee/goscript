@@ -121,22 +121,16 @@ impl FuncGen for FunctionVal {
 
         let mut inst = Instruction::new(code, op, None, None, None);
         inst.set_imm2(rhs_index, *i);
-        self.code.push(CodeData::Inst(inst));
+        self.code.push(inst);
     }
 
     fn emit_import(&mut self, index: OpIndex) {
         self.emit_inst(Opcode::IMPORT, None, None, None, Some(index));
         let mut cd = vec![
-            CodeData::Inst(Instruction::new(
-                Opcode::PUSH_IMM,
-                None,
-                None,
-                None,
-                Some(0),
-            )),
-            CodeData::Code(Opcode::LOAD_FIELD),
-            CodeData::Code(Opcode::PRE_CALL),
-            CodeData::Code(Opcode::CALL),
+            Instruction::new(Opcode::PUSH_IMM, None, None, None, Some(0)),
+            Instruction::new(Opcode::LOAD_FIELD, None, None, None, None),
+            Instruction::new(Opcode::PRE_CALL, None, None, None, None),
+            Instruction::new(Opcode::CALL, None, None, None, None),
         ];
         let offset = cd.len() as OpIndex;
         self.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, Some(offset));

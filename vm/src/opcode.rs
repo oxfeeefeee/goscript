@@ -196,7 +196,7 @@ pub enum Value32Type {
 /// or
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    8bit      |    24bit     |
 /// |  Opcode   |  <Opcode> |  <TypeA>  |  <TypeB>  |   immediate  |   immediate  |
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Instruction {
     val: u64,
 }
@@ -283,39 +283,28 @@ impl Instruction {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum CodeData {
-    Code(Opcode),
-    Data(OpIndex),
-    Inst(Instruction),
-}
-
-impl CodeData {
-    pub fn unwrap_code(&self) -> &Opcode {
-        match self {
-            CodeData::Code(code) => code,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn unwrap_data(&self) -> &OpIndex {
-        match self {
-            CodeData::Data(data) => data,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn unwrap_inst(&self) -> Instruction {
-        match self {
-            CodeData::Inst(i) => *i,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn unwrap_inst_mut(&mut self) -> &mut Instruction {
-        match self {
-            CodeData::Inst(i) => i,
-            _ => unreachable!(),
+impl fmt::Debug for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let op = self.op();
+        match op {
+            Opcode::STORE_LOCAL
+            | Opcode::STORE_UPVALUE
+            | Opcode::STORE_FIELD
+            | Opcode::STORE_FIELD_IMM
+            | Opcode::STORE_THIS_PKG_FIELD
+            | Opcode::STORE_DEREF => {
+                let op_ex = self.op_ex();
+                let (i0, i1) = self.imm2();
+                if op_ex == Opcode::ZERO {
+                    write!(f, "{}, IMM0: {}, IMM1: {}", op, i0, i1)
+                } else {
+                    write!(f, "{}, EX: {}, IMM0: {}, IMM1: {}", op, op_ex, i0, i1)
+                }
+            }
+            _ => {
+                let imm = self.imm();
+                write!(f, "{}, IMM: {}", op, imm)
+            }
         }
     }
 }
