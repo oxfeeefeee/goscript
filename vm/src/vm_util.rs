@@ -12,14 +12,6 @@ macro_rules! offset_uint {
     };
 }
 
-macro_rules! read_index {
-    ($code:ident, $frame:ident) => {{
-        let index = $code[$frame.pc].unwrap_data();
-        $frame.pc += 1;
-        *index
-    }};
-}
-
 macro_rules! upframe {
     ($iter:expr, $f:ident) => {
         $iter.find(|x| x.callable.func() == *$f).unwrap();
@@ -72,24 +64,6 @@ macro_rules! duplicate {
             GosValue::Package(_) => $val.clone(),
             GosValue::Metadata(_) => $val.clone(),
             //_ => unreachable!(),
-        }
-    };
-}
-
-macro_rules! get_store_op_val {
-    ($stack:ident, $code:ident, $frame:ident, $consts:ident, $objs:ident, $code_offset:expr) => {
-        match $code_offset {
-            x if x == 0 => (None, duplicate!($stack[$stack.len() - 1], $objs)),
-            x if x == 1 => {
-                let i = offset_uint!($stack.len(), read_index!($code, $frame));
-                (None, duplicate!($stack[i], $objs))
-            }
-            x if x == 2 => {
-                let op = read_index!($code, $frame);
-                let operand = &$stack[$stack.len() - 1];
-                (Some(op), operand.clone())
-            }
-            _ => unreachable!(),
         }
     };
 }
@@ -430,19 +404,19 @@ pub fn compare_geq(stack: &mut Vec<GosValue>) {
 }
 
 #[inline]
-pub fn store_xxx_op(target: &mut GosValue, code: OpIndex, operand: &GosValue) {
-    match code as u8 {
-        OP_ADD_VALUE => int_float_store_xxx_op!(target, +=, operand),
-        OP_SUB_VALUE => int_float_store_xxx_op!(target, -=, operand),
-        OP_MUL_VALUE => int_float_store_xxx_op!(target, *=, operand),
-        OP_QUO_VALUE => int_float_store_xxx_op!(target, /=, operand),
-        OP_REM_VALUE => int_store_xxx_op!(target, %=, operand),
-        OP_AND_VALUE => int_store_xxx_op!(target, &=, operand),
-        OP_OR_VALUE => int_store_xxx_op!(target, |=, operand),
-        OP_XOR_VALUE => int_store_xxx_op!(target, ^=, operand),
-        OP_SHL_VALUE => int_store_xxx_op!(target, <<=, operand),
-        OP_SHR_VALUE => int_store_xxx_op!(target, >>=, operand),
-        OP_AND_NOT_VALUE => {
+pub fn store_xxx_op(target: &mut GosValue, code: Opcode, operand: &GosValue) {
+    match code {
+        Opcode::ADD => int_float_store_xxx_op!(target, +=, operand),
+        Opcode::SUB => int_float_store_xxx_op!(target, -=, operand),
+        Opcode::MUL => int_float_store_xxx_op!(target, *=, operand),
+        Opcode::QUO => int_float_store_xxx_op!(target, /=, operand),
+        Opcode::REM => int_store_xxx_op!(target, %=, operand),
+        Opcode::AND => int_store_xxx_op!(target, &=, operand),
+        Opcode::OR => int_store_xxx_op!(target, |=, operand),
+        Opcode::XOR => int_store_xxx_op!(target, ^=, operand),
+        Opcode::SHL => int_store_xxx_op!(target, <<=, operand),
+        Opcode::SHR => int_store_xxx_op!(target, >>=, operand),
+        Opcode::AND_NOT => {
             match (target, operand) {
                 (GosValue::Int(ia), GosValue::Int(ib)) => {
                     *ia = *ia & !ib;
@@ -455,7 +429,7 @@ pub fn store_xxx_op(target: &mut GosValue, code: OpIndex, operand: &GosValue) {
 }
 
 #[inline]
-pub fn set_store_op_val(target: &mut GosValue, op: Option<OpIndex>, val: GosValue, is_op_set: bool) {
+pub fn set_store_op_val(target: &mut GosValue, op: Option<Opcode>, val: GosValue, is_op_set: bool) {
     if is_op_set {
         store_xxx_op(target, op.unwrap(), &val);
     } else {
@@ -464,7 +438,7 @@ pub fn set_store_op_val(target: &mut GosValue, op: Option<OpIndex>, val: GosValu
 }
 
 #[inline]
-pub fn set_ref_store_op_val(target: &RefCell<GosValue>, op: Option<OpIndex>, val: GosValue, is_op_set: bool) {
+pub fn set_ref_store_op_val(target: &RefCell<GosValue>, op: Option<Opcode>, val: GosValue, is_op_set: bool) {
     if is_op_set {
         let mut old_val = target.borrow_mut();
         store_xxx_op(&mut old_val, op.unwrap(), &val);
@@ -512,7 +486,7 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
 }
 
 #[inline]
-pub fn store_field(target: &GosValue, key: &GosValue, op: Option<OpIndex>, val: GosValue, is_op_set: bool, metas: &MetadataObjs) {
+pub fn store_field(target: &GosValue, key: &GosValue, op: Option<Opcode>, val: GosValue, is_op_set: bool, metas: &MetadataObjs) {
     match target {
         GosValue::Slice(s) => {
             let target_cell = &s.borrow_data()[*key.as_int() as usize];

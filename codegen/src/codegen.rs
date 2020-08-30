@@ -164,14 +164,16 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
                     let bf = &self.built_in_funcs[i as usize];
                     let func = current_func_mut!(self);
-                    func.emit_code(bf.opcode);
-                    if bf.variadic {
-                        func.emit_data(if ellipsis {
-                            0 // do not pack params if there is ellipsis
+                    let count = if bf.variadic {
+                        if ellipsis {
+                            Some(0) // do not pack params if there is ellipsis
                         } else {
-                            (bf.params_count - 1 - count as isize) as OpIndex
-                        });
-                    }
+                            Some((bf.params_count - 1 - count as isize) as OpIndex)
+                        }
+                    } else {
+                        None
+                    };
+                    func.emit_inst(bf.opcode, None, None, None, count);
                     Ok(())
                 } else {
                     Err(())
@@ -241,14 +243,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let mark_code = match op {
             Token::LAND => {
                 let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF_NOT);
-                func.emit_data(0); // placeholder
+                func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
                 Some((func.code.len(), code))
             }
             Token::LOR => {
                 let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF);
-                func.emit_data(0); // placeholder
+                func.emit_inst(Opcode::JUMP_IF, None, None, None, None);
                 Some((func.code.len(), code))
             }
             _ => None,
@@ -256,11 +256,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(right)?;
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
-            func.emit_code(Opcode::JUMP);
-            func.emit_data(1);
+            func.emit_inst(Opcode::JUMP, None, None, None, Some(1));
             func.emit_code(c);
             let diff = func.code.len() - i - 1;
-            func.code[i - 1] = CodeData::Data(diff as OpIndex);
+            func.code[i - 1].unwrap_inst_mut().set_imm(diff as OpIndex);
         } else {
             current_func_mut!(self).emit_code(code);
         }
@@ -444,18 +443,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
         self.visit_expr(&ifstmt.cond)?;
         let func = current_func_mut!(self);
-        func.emit_code(Opcode::JUMP_IF_NOT);
-        // place holder, to be set later
-        func.emit_data(0);
+        func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
         let top_marker = func.code.len();
 
         drop(func);
         self.visit_stmt_block(&ifstmt.body)?;
         let marker_if_arm_end = if ifstmt.els.is_some() {
             let func = current_func_mut!(self);
-            func.emit_code(Opcode::JUMP);
-            // place holder, to be set later
-            func.emit_data(0);
+            // imm to be set later
+            func.emit_inst(Opcode::JUMP, None, None, None, None);
             Some(func.code.len())
         } else {
             None
@@ -465,7 +461,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         // todo: don't crash if OpIndex overflows
         let offset = OpIndex::try_from(func.code.len() - top_marker).unwrap();
-        func.code[top_marker - 1] = CodeData::Data(offset);
+        func.code[top_marker - 1].unwrap_inst_mut().set_imm(offset);
 
         if let Some(els) = &ifstmt.els {
             self.visit_stmt(els)?;
@@ -474,7 +470,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let marker = marker_if_arm_end.unwrap();
             // todo: don't crash if OpIndex overflows
             let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
-            func.code[marker - 1] = CodeData::Data(offset);
+            func.code[marker - 1].unwrap_inst_mut().set_imm(offset);
         }
         Ok(())
     }
@@ -507,9 +503,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let out_marker = if let Some(cond) = &fstmt.cond {
             self.visit_expr(&cond)?;
             let func = current_func_mut!(self);
-            func.emit_code(Opcode::JUMP_IF_NOT);
-            // place holder, to be set later
-            func.emit_data(0);
+            func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
             Some(func.code.len())
         } else {
             None
@@ -521,17 +515,16 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         // jump to the top
         let func = current_func_mut!(self);
-        func.emit_code(Opcode::JUMP);
         // todo: don't crash if OpIndex overflows
         let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
-        func.emit_data(offset);
+        func.emit_inst(Opcode::JUMP, None, None, None, Some(offset));
 
         // set the correct else jump out target
         if let Some(m) = out_marker {
             let func = current_func_mut!(self);
             // todo: don't crash if OpIndex overflows
             let offset = OpIndex::try_from(func.code.len() - m).unwrap();
-            func.code[m - 1] = CodeData::Data(offset);
+            func.code[m - 1].unwrap_inst_mut().set_imm(offset);
         }
         Ok(())
     }
@@ -549,14 +542,13 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         self.visit_stmt_block(&rstmt.body)?;
         // jump to the top
         let func = current_func_mut!(self);
-        func.emit_code(Opcode::JUMP);
         // todo: don't crash if OpIndex overflows
         let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
-        func.emit_data(offset);
+        func.emit_inst(Opcode::JUMP, None, None, None, Some(offset));
         // now tell Opcode::RANGE where to jump after it's done
         // todo: don't crash if OpIndex overflows
-        let end_offset = OpIndex::try_from(func.code.len() - (marker + 2)).unwrap();
-        func.code[marker + 1] = CodeData::Data(end_offset);
+        let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
+        func.code[marker].unwrap_inst_mut().set_imm(end_offset);
         Ok(())
     }
 
@@ -778,8 +770,8 @@ impl<'a> CodeGen<'a> {
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
             range_marker = Some(func.code.len());
-            func.emit_range();
-            func.emit_data(0); // placeholder, the block_end address.
+            // the block_end address to be set
+            func.emit_inst(Opcode::RANGE, None, None, None, None);
         } else if values.len() == lhs.len() {
             // define or assign with values
             for val in values.iter() {

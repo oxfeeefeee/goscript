@@ -109,69 +109,23 @@ impl FuncGen for FunctionVal {
         let (code, i) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
-                EntIndex::LocalVar(i) => (
-                    if rhs_index == -1 {
-                        match op {
-                            Some(_) => Opcode::STORE_LOCAL_OP,
-                            None => Opcode::STORE_LOCAL,
-                        }
-                    } else {
-                        Opcode::STORE_LOCAL_NT
-                    },
-                    i,
-                ),
-                EntIndex::UpValue(i) => (
-                    if rhs_index == -1 {
-                        match op {
-                            Some(_) => Opcode::STORE_UPVALUE_OP,
-                            None => Opcode::STORE_UPVALUE,
-                        }
-                    } else {
-                        Opcode::STORE_UPVALUE_NT
-                    },
-                    i,
-                ),
-                EntIndex::PackageMember(_) => unimplemented!(),
+                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
+                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
+                EntIndex::PackageMember(i) => (Opcode::STORE_THIS_PKG_FIELD, i),
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(i) => {
-                let code = if rhs_index == -1 {
-                    match op {
-                        Some(_) => Opcode::STORE_FIELD_OP,
-                        None => Opcode::STORE_FIELD,
-                    }
-                } else {
-                    Opcode::STORE_FIELD_NT
-                };
-                (code, i)
-            }
-            LeftHandSide::Deref(i) => {
-                let code = if rhs_index == -1 {
-                    match op {
-                        Some(_) => Opcode::STORE_DEREF_OP,
-                        None => Opcode::STORE_DEREF,
-                    }
-                } else {
-                    Opcode::STORE_DEREF_NT
-                };
-                (code, i)
-            }
+            LeftHandSide::IndexSelExpr(i) => (Opcode::STORE_FIELD, i),
+            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i),
         };
-        self.emit_code(code);
-        self.emit_data(*i);
-        if rhs_index < -1 {
-            self.emit_data(rhs_index);
-        }
-        if let Some(data) = op {
-            self.emit_data(data as OpIndex);
-        }
+
+        let mut inst = Instruction::new(code, op, None, None, None);
+        inst.set_imm2(rhs_index, *i);
+        self.code.push(CodeData::Inst(inst));
     }
 
     fn emit_import(&mut self, index: OpIndex) {
-        self.emit_code(Opcode::IMPORT);
-        self.emit_data(index);
-        self.emit_code(Opcode::JUMP_IF_NOT);
+        self.emit_inst(Opcode::IMPORT, None, None, None, Some(index));
         let mut cd = vec![
             CodeData::Inst(Instruction::new(
                 Opcode::PUSH_IMM,
@@ -184,49 +138,49 @@ impl FuncGen for FunctionVal {
             CodeData::Code(Opcode::PRE_CALL),
             CodeData::Code(Opcode::CALL),
         ];
-        self.emit_data(cd.len() as OpIndex);
+        let offset = cd.len() as OpIndex;
+        self.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, Some(offset));
         self.code.append(&mut cd);
     }
 
     fn emit_pop(&mut self) {
-        self.emit_code(Opcode::POP);
+        self.emit_inst(Opcode::POP, None, None, None, None);
     }
 
     fn emit_load_field(&mut self) {
-        self.emit_code(Opcode::LOAD_FIELD);
+        self.emit_inst(Opcode::LOAD_FIELD, None, None, None, None);
     }
 
     fn emit_load_field_imm(&mut self, imm: OpIndex) {
-        self.emit_code(Opcode::LOAD_FIELD_IMM);
-        self.emit_data(imm);
+        self.emit_inst(Opcode::LOAD_FIELD_IMM, None, None, None, Some(imm));
     }
 
     fn emit_return(&mut self) {
-        self.emit_code(Opcode::RETURN);
+        self.emit_inst(Opcode::RETURN, None, None, None, None);
     }
 
     fn emit_return_init_pkg(&mut self, index: OpIndex) {
-        self.emit_code(Opcode::RETURN_INIT_PKG);
-        self.emit_data(index);
+        self.emit_inst(Opcode::RETURN_INIT_PKG, None, None, None, Some(index));
     }
 
     fn emit_pre_call(&mut self) {
-        self.emit_code(Opcode::PRE_CALL);
+        self.emit_inst(Opcode::PRE_CALL, None, None, None, None);
     }
 
     fn emit_call(&mut self, has_ellipsis: bool) {
-        if has_ellipsis {
-            self.emit_code(Opcode::CALL_ELLIPSIS);
+        let op = if has_ellipsis {
+            Opcode::CALL_ELLIPSIS
         } else {
-            self.emit_code(Opcode::CALL);
-        }
+            Opcode::CALL
+        };
+        self.emit_inst(op, None, None, None, None);
     }
 
     fn emit_new(&mut self) {
-        self.emit_code(Opcode::NEW);
+        self.emit_inst(Opcode::NEW, None, None, None, None);
     }
 
     fn emit_range(&mut self) {
-        self.emit_code(Opcode::RANGE);
+        self.emit_inst(Opcode::RANGE, None, None, None, None);
     }
 }
