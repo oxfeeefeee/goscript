@@ -309,7 +309,7 @@ union Value32Union {
 #[derive(Copy, Clone)]
 pub struct GosValue32 {
     data: Value32Union,
-    debug_type: Value32Type, // to be removed in release build
+    pub debug_type: Value32Type, // to be removed in release build
 }
 
 impl GosValue32 {
@@ -388,7 +388,46 @@ impl GosValue32 {
     }
 
     #[inline]
-    pub fn to_v64(&self, t: Value32Type) -> GosValue {
+    pub fn get_v64(&self, t: Value32Type) -> GosValue {
+        debug_assert!(t == self.debug_type);
+        unsafe {
+            match t {
+                Value32Type::Nil => GosValue::Nil,
+                Value32Type::Bool => GosValue::Bool(self.data.ubool),
+                Value32Type::Int => GosValue::Int(self.data.uint),
+                Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
+                Value32Type::Complex64 => {
+                    GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
+                }
+                Value32Type::Str => GosValue::Str(GosValue32::get_rc_from_ptr(self.data.ustr)),
+                Value32Type::Boxed => {
+                    GosValue::Boxed(GosValue32::get_rc_from_ptr(self.data.uboxed))
+                }
+                Value32Type::Closure => {
+                    GosValue::Closure(GosValue32::get_rc_from_ptr(self.data.uclosure))
+                }
+                Value32Type::Slice => {
+                    GosValue::Slice(GosValue32::get_rc_from_ptr(self.data.uslice))
+                }
+                Value32Type::Map => GosValue::Map(GosValue32::get_rc_from_ptr(self.data.umap)),
+                Value32Type::Interface => {
+                    GosValue::Interface(GosValue32::get_rc_from_ptr(self.data.uinterface))
+                }
+                Value32Type::Struct => {
+                    GosValue::Struct(GosValue32::get_rc_from_ptr(self.data.ustruct))
+                }
+                Value32Type::Channel => {
+                    GosValue::Channel(GosValue32::get_rc_from_ptr(self.data.uchannel))
+                }
+                Value32Type::Function => GosValue::Function(self.data.ufunction),
+                Value32Type::Package => GosValue::Package(self.data.upackage),
+                Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn into_v64(&self, t: Value32Type) -> GosValue {
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {
@@ -416,22 +455,37 @@ impl GosValue32 {
 
     #[inline]
     pub fn to_bool(&self) -> bool {
+        assert_eq!(self.debug_type, Value32Type::Bool);
         unsafe { self.data.ubool }
     }
 
     #[inline]
     pub fn to_int(&self) -> isize {
+        assert_eq!(self.debug_type, Value32Type::Int);
         unsafe { self.data.uint }
     }
 
     #[inline]
     pub fn to_float64(&self) -> f64 {
+        assert_eq!(self.debug_type, Value32Type::Float64);
         unsafe { self.data.ufloat64 }
     }
 
     #[inline]
     pub fn to_complex64(&self) -> (f32, f32) {
+        assert_eq!(self.debug_type, Value32Type::Complex64);
         unsafe { self.data.ucomplex64 }
+    }
+
+    /// get_rc_from_ptr returns a Rc from raw pointer, without decreasing the ref counter
+    #[inline]
+    fn get_rc_from_ptr<T>(ptr: *const T) -> Rc<T> {
+        unsafe {
+            let rc = Rc::from_raw(ptr);
+            let rc2 = rc.clone();
+            Rc::into_raw(rc);
+            rc2
+        }
     }
 }
 

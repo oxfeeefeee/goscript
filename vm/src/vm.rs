@@ -3,6 +3,7 @@ use super::instruction::*;
 use super::objects::{
     ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter, UpValue,
 };
+use super::stack::Stack;
 use super::value::*;
 use super::vm_util;
 use std::cell::{Ref, RefCell};
@@ -120,9 +121,9 @@ impl CallFrame {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Fiber {
-    stack: Vec<GosValue>,
+    stack: Stack,
     frames: Vec<CallFrame>,
     caller: Option<Rc<RefCell<Fiber>>>,
     next_frame: Option<CallFrame>,
@@ -131,7 +132,7 @@ pub struct Fiber {
 impl Fiber {
     fn new(caller: Option<Rc<RefCell<Fiber>>>) -> Fiber {
         Fiber {
-            stack: Vec::new(),
+            stack: Stack::new(),
             frames: Vec::new(),
             caller: caller,
             next_frame: None,
@@ -218,7 +219,7 @@ impl Fiber {
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = offset_uint!(stack_base, inst.imm());
-                    stack.push(stack[index].clone());
+                    stack.push(index![stack, index].clone());
                 }
                 Opcode::STORE_LOCAL => {
                     let op_ex = inst.op_ex();
@@ -226,10 +227,12 @@ impl Fiber {
                     let s_index = offset_uint!(stack_base, index);
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     if op_ex == Opcode::ZERO {
-                        stack[s_index] = duplicate!(stack[rhs_s_index], objs);
+                        stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
                     } else {
-                        let operand = stack[rhs_s_index].clone();
-                        vm_util::store_xxx_op(&mut stack[s_index], op_ex, &operand);
+                        let operand = index![stack, rhs_s_index].clone();
+                        let mut lhs = index![stack, s_index];
+                        vm_util::store_xxx_op(&mut lhs, op_ex, &operand);
+                        stack_set!(stack, s_index, lhs);
                     }
                 }
                 Opcode::LOAD_UPVALUE => {
@@ -241,7 +244,7 @@ impl Fiber {
                             drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
-                            stack.push(stack[stack_ptr].clone());
+                            stack.push(index![stack, stack_ptr].clone());
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(val) => {
@@ -255,9 +258,9 @@ impl Fiber {
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let is_op_set = op_ex != Opcode::ZERO;
                     let val = if is_op_set {
-                        stack[rhs_s_index].clone()
+                        index![stack, rhs_s_index].clone()
                     } else {
-                        duplicate!(stack[rhs_s_index], objs)
+                        duplicate!(index![stack, rhs_s_index], objs)
                     };
                     let closure = frame.callable.closure();
                     let upvalue = closure.borrow().upvalues[index as usize].clone();
@@ -265,12 +268,9 @@ impl Fiber {
                         UpValue::Open(f, ind) => {
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
-                            vm_util::set_store_op_val(
-                                &mut stack[stack_ptr],
-                                Some(op_ex),
-                                val,
-                                is_op_set,
-                            );
+                            let mut v = index![stack, stack_ptr];
+                            vm_util::set_store_op_val(&mut v, Some(op_ex), val, is_op_set);
+                            stack_set!(stack, stack_ptr, v);
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(_) => {
@@ -286,16 +286,20 @@ impl Fiber {
                 }
                 Opcode::LOAD_FIELD | Opcode::LOAD_FIELD_IMM => {
                     let ind = if inst_op == Opcode::LOAD_FIELD {
-                        stack.pop().unwrap()
+                        stack.pop()
                     } else {
                         GosValue::Int(inst.imm() as isize)
                     };
                     let len = stack.len();
-                    let val = &stack[len - 1];
-                    stack[len - 1] = match val {
-                        GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
-                        _ => vm_util::load_field(val, &ind, objs),
-                    };
+                    let val = &index![stack, len - 1];
+                    stack_set!(
+                        stack,
+                        len - 1,
+                        match val {
+                            GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
+                            _ => vm_util::load_field(val, &ind, objs),
+                        }
+                    );
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
                     let op_ex = inst.op_ex();
@@ -303,18 +307,18 @@ impl Fiber {
                     let s_index = offset_uint!(stack.len(), index);
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let key = if inst_op == Opcode::STORE_FIELD {
-                        stack.get(s_index + 1).unwrap().clone()
+                        stack.get(s_index + 1).clone()
                     } else {
                         GosValue::Int(index as isize)
                     };
                     let is_op_set = op_ex != Opcode::ZERO;
                     let val = if is_op_set {
-                        stack[rhs_s_index].clone()
+                        index![stack, rhs_s_index].clone()
                     } else {
-                        duplicate!(stack[rhs_s_index], objs)
+                        duplicate!(index![stack, rhs_s_index], objs)
                     };
 
-                    let store = &stack[s_index];
+                    let store = index![stack, s_index];
                     match store {
                         GosValue::Boxed(b) => vm_util::store_field(
                             &*b.borrow(),
@@ -325,7 +329,7 @@ impl Fiber {
                             &objs.metas,
                         ),
                         _ => vm_util::store_field(
-                            store,
+                            &store,
                             &key,
                             Some(op_ex),
                             val,
@@ -345,7 +349,7 @@ impl Fiber {
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let pkg = &mut objs.packages[func.package];
                     if op_ex == Opcode::ZERO {
-                        *pkg.member_mut(index) = duplicate!(stack[rhs_s_index], objs)
+                        *pkg.member_mut(index) = duplicate!(index![stack, rhs_s_index], objs)
                     } else {
                         let operand = &consts[rhs_index as usize];
                         vm_util::store_xxx_op(pkg.member_mut(index), op_ex, operand);
@@ -356,11 +360,11 @@ impl Fiber {
                     let (rhs_index, index) = inst.imm2();
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let s_index = offset_uint!(stack.len(), index);
-                    let store = stack.get(s_index).unwrap();
+                    let store = stack.get(s_index);
                     if op_ex == Opcode::ZERO {
                         store
                             .as_boxed()
-                            .replace(duplicate!(stack[rhs_s_index], objs));
+                            .replace(duplicate!(index![stack, rhs_s_index], objs));
                     } else {
                         let operand = &consts[rhs_index as usize];
                         vm_util::store_xxx_op(&mut store.as_boxed().borrow_mut(), op_ex, operand);
@@ -392,7 +396,7 @@ impl Fiber {
                 Opcode::GEQ => vm_util::compare_geq(stack),
 
                 Opcode::PRE_CALL => {
-                    let val = stack.pop().unwrap();
+                    let val = stack.pop();
                     let sbase = stack.len();
                     let next_frame = CallFrame::with_gos_value(&val, sbase);
                     let func_key = next_frame.callable.func();
@@ -474,11 +478,11 @@ impl Fiber {
                             if referrers.len() == 0 {
                                 continue;
                             }
-                            let val = &stack[stack_base + *ind as usize];
+                            let val = index![stack, stack_base + *ind as usize];
                             let func = frame.callable.func();
                             for r in referrers.iter() {
                                 let mut cls_val = r.as_closure().borrow_mut();
-                                cls_val.close_upvalue(func, *ind, val);
+                                cls_val.close_upvalue(func, *ind, &val);
                             }
                         }
                     }
@@ -501,7 +505,7 @@ impl Fiber {
                             stack.truncate(stack_base + count);
                             // the var values left on the stack are for pkg members
                             for i in 0..count {
-                                let val = stack.pop().unwrap();
+                                let val = stack.pop();
                                 let index = (count - 1 - i) as OpIndex;
                                 pkg.init_var(&index, val);
                             }
@@ -534,26 +538,24 @@ impl Fiber {
                     frame.pc = offset_uint!(frame.pc, inst.imm());
                 }
                 Opcode::JUMP_IF => {
-                    let val = stack.last().unwrap();
+                    let val = stack.pop();
                     if *val.as_bool() {
                         frame.pc = offset_uint!(frame.pc, inst.imm());
                     }
-                    stack.pop();
                 }
                 Opcode::JUMP_IF_NOT => {
-                    let val = stack.last().unwrap();
+                    let val = stack.pop();
                     if !*val.as_bool() {
                         frame.pc = offset_uint!(frame.pc, inst.imm());
                     }
-                    stack.pop();
                 }
                 // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
                 // and followed by a target jump address
                 Opcode::RANGE => {
                     let offset = inst.imm();
                     let len = stack.len();
-                    let t = &stack[len - 2].clone();
-                    let mut mark = *stack[len - 1].as_int();
+                    let t = index![stack, len - 2].clone();
+                    let mut mark = *index![stack, len - 1].as_int();
                     if mark < 0 {
                         mark = range_slot;
                         range_slot += 1;
@@ -589,7 +591,7 @@ impl Fiber {
                             ),
                             _ => unreachable!(),
                         }
-                        *stack[len - 1].as_int_mut() = mark;
+                        stack_set!(stack, len - 1, GosValue::Int(mark));
                     }
                     let end = match mark {
                         0 => range_body!(t, stack, mp0, mi0, lp0, li0, sp0, si0),
@@ -623,12 +625,12 @@ impl Fiber {
                 }
                 Opcode::SLICE | Opcode::SLICE_FULL => {
                     let max = if inst_op == Opcode::SLICE_FULL {
-                        Some(*stack.pop().unwrap().as_int() as usize)
+                        Some(*stack.pop().as_int() as usize)
                     } else {
                         None
                     };
-                    let end_val = stack.pop().unwrap();
-                    let begin_val = stack.pop().unwrap();
+                    let end_val = stack.pop();
+                    let begin_val = stack.pop();
                     let end = if end_val.is_nil() {
                         None
                     } else {
@@ -639,7 +641,7 @@ impl Fiber {
                     } else {
                         Some(*begin_val.as_int() as usize)
                     };
-                    let target = stack.pop().unwrap();
+                    let target = stack.pop();
                     let result = match target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
@@ -649,7 +651,7 @@ impl Fiber {
                 }
 
                 Opcode::NEW => {
-                    let new_val = match stack.pop().unwrap() {
+                    let new_val = match stack.pop() {
                         GosValue::Function(fkey) => {
                             // NEW a closure
                             let func = &objs.functions[fkey];
@@ -676,17 +678,17 @@ impl Fiber {
                 }
                 Opcode::MAKE => {
                     let index = inst.imm();
-                    let meta = &stack[offset_uint!(stack.len(), index - 1)];
+                    let meta = index![stack, offset_uint!(stack.len(), index - 1)];
                     let metadata = &objs.metas[*meta.as_meta()];
                     let val = match metadata.typ() {
                         MetadataType::Slice(vmeta) => {
                             let (cap, len) = match index {
                                 -2 => (
-                                    *stack.pop().unwrap().as_int() as usize,
-                                    *stack.pop().unwrap().as_int() as usize,
+                                    *stack.pop().as_int() as usize,
+                                    *stack.pop().as_int() as usize,
                                 ),
                                 -1 => {
-                                    let len = *stack.pop().unwrap().as_int() as usize;
+                                    let len = *stack.pop().as_int() as usize;
                                     (len, len)
                                 }
                                 _ => unreachable!(),
@@ -701,7 +703,7 @@ impl Fiber {
                     stack.pop();
                     stack.push(val);
                 }
-                Opcode::LEN => match &stack.pop().unwrap() {
+                Opcode::LEN => match &stack.pop() {
                     GosValue::Slice(slice) => {
                         stack.push(GosValue::Int(slice.len() as isize));
                     }
@@ -713,7 +715,7 @@ impl Fiber {
                     }
                     _ => unreachable!(),
                 },
-                Opcode::CAP => match stack.pop().unwrap() {
+                Opcode::CAP => match stack.pop() {
                     GosValue::Slice(slice) => {
                         stack.push(GosValue::Int(slice.cap() as isize));
                     }
@@ -722,14 +724,14 @@ impl Fiber {
                 Opcode::APPEND => {
                     let index = offset_uint!(stack.len(), inst.imm());
                     pack_variadic!(stack, index, objs);
-                    let b = stack.pop().unwrap();
-                    let a = &stack[stack.len() - 1];
+                    let b = stack.pop();
+                    let a = index![stack, stack.len() - 1];
                     let vala = a.as_slice();
                     let valb = b.as_slice();
                     vala.borrow_data_mut()
                         .append(&mut valb.borrow_data().clone());
                 }
-                Opcode::ASSERT => match stack.pop().unwrap() {
+                Opcode::ASSERT => match stack.pop() {
                     GosValue::Bool(b) => assert!(b, "Opcode::ASSERT: not true!"),
                     _ => assert!(false, "Opcode::ASSERT: not bool!"),
                 },

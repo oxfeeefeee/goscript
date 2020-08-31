@@ -5,10 +5,25 @@ use super::value::{VMObjects, GosValue, ClosureVal, MetadataObjs};
 use std::cmp::Ordering;
 use std::cell::RefCell;
 use std::rc::Rc;
+use super::stack::Stack;
 
 macro_rules! offset_uint {
     ($uint:expr, $offset:expr) => {
         ($uint as isize + $offset as isize) as usize
+    };
+}
+
+macro_rules! index {
+    ($stack:ident, $i:expr) => {
+        $stack.get($i)
+        //$stack.get($i).unwrap()
+    };
+}
+
+
+macro_rules! stack_set {
+    ($stack:ident, $i:expr, $v:expr) => {
+        $stack.set($i, $v);
     };
 }
 
@@ -70,7 +85,7 @@ macro_rules! duplicate {
 
 macro_rules! int_float_binary_op {
     ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop().unwrap(), $stack.pop().unwrap());
+        let (b, a) = ($stack.pop(), $stack.pop());
         $stack.push(match (a, b) {
             (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia $op ib),
             (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa $op fb),
@@ -81,7 +96,7 @@ macro_rules! int_float_binary_op {
 
 macro_rules! int_binary_op {
     ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop().unwrap(), $stack.pop().unwrap());
+        let (b, a) = ($stack.pop(), $stack.pop());
         $stack.push(match (a, b) {
             (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia $op ib),
             _ => unreachable!(),
@@ -91,7 +106,7 @@ macro_rules! int_binary_op {
 
 macro_rules! int_unary_op {
     ($stack:ident, $left:ident, $op:tt) => {
-        let a = $stack.pop().unwrap();
+        let a = $stack.pop();
         $stack.push(match a {
             GosValue::Int(ia) => GosValue::Int($left $op ia),
             _ => unreachable!(),
@@ -101,7 +116,7 @@ macro_rules! int_unary_op {
 
 macro_rules! bool_binary_op {
     ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop().unwrap(), $stack.pop().unwrap());
+        let (b, a) = ($stack.pop(), $stack.pop());
         $stack.push(match (a, b) {
             (GosValue::Bool(ba), GosValue::Bool(bb)) => GosValue::Bool(ba $op bb),
             _ => unreachable!(),
@@ -252,8 +267,8 @@ macro_rules! range_body {
 }
 
 #[inline]
-pub fn add(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn add(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     let c = match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia + ib),
         (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa + fb),
@@ -268,43 +283,43 @@ pub fn add(stack: &mut Vec<GosValue>) {
 }
 
 #[inline]
-pub fn sub(stack: &mut Vec<GosValue>) {
+pub fn sub(stack: &mut Stack) {
     int_float_binary_op!(stack, -);
 }
 
 #[inline]
-pub fn mul(stack: &mut Vec<GosValue>) {
+pub fn mul(stack: &mut Stack) {
     int_float_binary_op!(stack, *);
 }
 
 #[inline]
-pub fn quo(stack: &mut Vec<GosValue>) {
+pub fn quo(stack: &mut Stack) {
     int_float_binary_op!(stack, /);
 }
 
 #[inline]
-pub fn rem(stack: &mut Vec<GosValue>) {
+pub fn rem(stack: &mut Stack) {
     int_binary_op!(stack, %);
 }
 
 #[inline]
-pub fn and(stack: &mut Vec<GosValue>) {
+pub fn and(stack: &mut Stack) {
     int_binary_op!(stack, &);
 }
 
 #[inline]
-pub fn or(stack: &mut Vec<GosValue>) {
+pub fn or(stack: &mut Stack) {
     int_binary_op!(stack, |);
 }
 
 #[inline]
-pub fn xor(stack: &mut Vec<GosValue>) {
+pub fn xor(stack: &mut Stack) {
     int_binary_op!(stack, ^);
 }
 
 #[inline]
-pub fn and_not(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn and_not(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(match (a, b) {
         (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia & !ib),
         _ => unreachable!(),
@@ -312,94 +327,94 @@ pub fn and_not(stack: &mut Vec<GosValue>) {
 }
 
 #[inline]
-pub fn shl(stack: &mut Vec<GosValue>) {
+pub fn shl(stack: &mut Stack) {
     int_binary_op!(stack, <<);
 }
 
 #[inline]
-pub fn shr(stack: &mut Vec<GosValue>) {
+pub fn shr(stack: &mut Stack) {
     int_binary_op!(stack, >>);
 }
 
 #[inline]
-pub fn unary_and(stack: &mut Vec<GosValue>) {
+pub fn unary_and(stack: &mut Stack) {
     let i: isize = 0;
     int_unary_op!(stack, i, +);
 }
 
 #[inline]
-pub fn unary_sub(stack: &mut Vec<GosValue>) {
+pub fn unary_sub(stack: &mut Stack) {
     let i: isize = 0;
     int_unary_op!(stack, i, -);
 }
 
 #[inline]
-pub fn unary_xor(stack: &mut Vec<GosValue>) {
+pub fn unary_xor(stack: &mut Stack) {
     let i: isize = -1;
     int_unary_op!(stack, i, ^);
 }
 
 #[inline]
-pub fn unary_ref(stack: &mut Vec<GosValue>) {
-    let val = stack.pop().unwrap();
+pub fn unary_ref(stack: &mut Stack) {
+    let val = stack.pop();
     stack.push(GosValue::new_boxed(val));
 }
 
 #[inline]
-pub fn unary_deref(stack: &mut Vec<GosValue>) {
-    let val = stack.pop().unwrap();
+pub fn unary_deref(stack: &mut Stack) {
+    let val = stack.pop();
     stack.push(val.as_boxed().borrow().clone());
 }
 
 #[inline]
-pub fn logical_and(stack: &mut Vec<GosValue>) {
+pub fn logical_and(stack: &mut Stack) {
     bool_binary_op!(stack, &&);
 }
 
 #[inline]
-pub fn logical_or(stack: &mut Vec<GosValue>) {
+pub fn logical_or(stack: &mut Stack) {
     bool_binary_op!(stack, ||);
 }
 
 #[inline]
-pub fn logical_not(stack: &mut Vec<GosValue>) {
+pub fn logical_not(stack: &mut Stack) {
     let len = stack.len();
-    stack[len - 1] = GosValue::Bool(!stack[len - 1].as_bool());
+    stack_set!(stack, len - 1, GosValue::Bool(!index![stack, len - 1].as_bool()));
 }
 
 #[inline]
-pub fn compare_eql(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_eql(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.eq(&b)));
 }
 
 #[inline]
-pub fn compare_lss(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_lss(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Less));
 }
 
 #[inline]
-pub fn compare_gtr(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_gtr(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Greater));
 }
 
 #[inline]
-pub fn compare_neq(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_neq(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Equal));
 }
 
 #[inline]
-pub fn compare_leq(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_leq(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Greater));
 }
 
 #[inline]
-pub fn compare_geq(stack: &mut Vec<GosValue>) {
-    let (b, a) = (stack.pop().unwrap(), stack.pop().unwrap());
+pub fn compare_geq(stack: &mut Stack) {
+    let (b, a) = (stack.pop(), stack.pop());
     stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Less));
 }
 
