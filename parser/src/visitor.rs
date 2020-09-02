@@ -19,7 +19,7 @@ pub trait ExprVisitor {
 
     fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result;
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey) -> Self::Result; //add: lvalue
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) -> Self::Result; //add: lvalue
 
     fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result;
 
@@ -124,7 +124,7 @@ pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
         Expr::Paren(e) => v.visit_expr_paren(&e.as_ref().expr),
         Expr::Selector(e) => {
             let selexp = e.as_ref();
-            v.visit_expr_selector(&selexp.expr, &selexp.sel)
+            v.visit_expr_selector(&selexp.expr, &selexp.sel, expr.id())
         }
         Expr::Index(e) => {
             let indexp = e.as_ref();

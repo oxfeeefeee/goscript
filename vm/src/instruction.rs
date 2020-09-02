@@ -24,6 +24,8 @@ pub enum Opcode {
     STORE_FIELD,
     LOAD_FIELD_IMM,
     STORE_FIELD_IMM,
+    //LOAD_FIELD_BY_NAME,
+    //STORE_FIELD_BY_NAME,
     LOAD_THIS_PKG_FIELD,
     STORE_THIS_PKG_FIELD,
     STORE_DEREF,
@@ -170,13 +172,21 @@ impl fmt::Display for Opcode {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub const COPYABLE_END: Value32Type = Value32Type::Metadata;
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[repr(u8)]
 pub enum Value32Type {
+    Copyable = 1, // a virtual type indicating any non-rc type
     Nil,
     Bool,
     Int,
     Float64,
     Complex64,
+    Function,
+    Package,
+    Metadata,
+
     Str,
     Boxed,
     Closure,
@@ -185,9 +195,6 @@ pub enum Value32Type {
     Interface,
     Struct,
     Channel,
-    Function,
-    Package,
-    Metadata,
 }
 
 /// Instruction is 64 bit

@@ -375,7 +375,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_char(')')
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey) -> Self::Result {
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, _: NodeId) -> Self::Result {
         self.visit_expr(expr)?;
         self.f.write_char('.')?;
         self.visit_expr_ident(ident)

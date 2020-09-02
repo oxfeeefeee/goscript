@@ -1025,4 +1025,26 @@ impl MetadataVal {
     pub fn typ_mut(&mut self) -> &mut MetadataType {
         &mut self.typ
     }
+
+    pub fn get_value32_type(&self, metas: &MetadataObjs) -> Value32Type {
+        match &self.typ {
+            MetadataType::None => match &self.zero_val {
+                GosValue::Nil => Value32Type::Nil,
+                GosValue::Bool(_) => Value32Type::Bool,
+                GosValue::Int(_) => Value32Type::Int,
+                GosValue::Float64(_) => Value32Type::Float64,
+                GosValue::Complex64(_, _) => Value32Type::Complex64,
+                GosValue::Str(_) => Value32Type::Str,
+                _ => unreachable!(),
+            },
+            MetadataType::Signature(_) => Value32Type::Function,
+            MetadataType::Slice(_) => Value32Type::Slice,
+            MetadataType::Map(_, _) => Value32Type::Map,
+            MetadataType::Interface(_) => Value32Type::Interface,
+            MetadataType::Struct(_, _) => Value32Type::Struct,
+            MetadataType::Channel(_) => Value32Type::Channel,
+            MetadataType::Boxed(_) => Value32Type::Boxed,
+            MetadataType::Named(btype, _) => metas[*btype.as_meta()].get_value32_type(metas),
+        }
+    }
 }

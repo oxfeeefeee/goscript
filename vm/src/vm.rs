@@ -121,7 +121,6 @@ impl CallFrame {
     }
 }
 
-#[derive(Clone)]
 pub struct Fiber {
     stack: Stack,
     frames: Vec<CallFrame>,
@@ -152,7 +151,7 @@ impl Fiber {
         let stack = &mut self.stack;
         // allocate local variables
         for _ in 0..func.local_count() {
-            stack.push(GosValue::Nil);
+            stack.push_nil();
         }
         let mut consts = &func.consts;
         let mut code = &func.code;
@@ -205,21 +204,16 @@ impl Fiber {
                     };
                     stack.push(val);
                 }
-                Opcode::PUSH_NIL => {
-                    stack.push(GosValue::Nil);
-                }
-                Opcode::PUSH_FALSE => stack.push(GosValue::Bool(false)),
-                Opcode::PUSH_TRUE => stack.push(GosValue::Bool(true)),
-                Opcode::PUSH_IMM => {
-                    let index = inst.imm();
-                    stack.push(GosValue::Int(index as isize));
-                }
+                Opcode::PUSH_NIL => stack.push_nil(),
+                Opcode::PUSH_FALSE => stack.push_bool(false),
+                Opcode::PUSH_TRUE => stack.push_bool(true),
+                Opcode::PUSH_IMM => stack.push_int(inst.imm() as isize),
                 Opcode::POP => {
-                    stack.pop();
+                    stack.pop_discard(inst.t0());
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = offset_uint!(stack_base, inst.imm());
-                    stack.push(index![stack, index].clone());
+                    stack.push_from_index(index, inst.t0()); // (index![stack, index]);
                 }
                 Opcode::STORE_LOCAL => {
                     let op_ex = inst.op_ex();
@@ -229,7 +223,7 @@ impl Fiber {
                     if op_ex == Opcode::ZERO {
                         stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
                     } else {
-                        let operand = index![stack, rhs_s_index].clone();
+                        let operand = index![stack, rhs_s_index];
                         let mut lhs = index![stack, s_index];
                         vm_util::store_xxx_op(&mut lhs, op_ex, &operand);
                         stack_set!(stack, s_index, lhs);
@@ -244,7 +238,7 @@ impl Fiber {
                             drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
-                            stack.push(index![stack, stack_ptr].clone());
+                            stack.push(index![stack, stack_ptr]);
                             frame = self.frames.last_mut().unwrap();
                         }
                         UpValue::Closed(val) => {
@@ -258,7 +252,7 @@ impl Fiber {
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let is_op_set = op_ex != Opcode::ZERO;
                     let val = if is_op_set {
-                        index![stack, rhs_s_index].clone()
+                        index![stack, rhs_s_index]
                     } else {
                         duplicate!(index![stack, rhs_s_index], objs)
                     };
@@ -307,13 +301,13 @@ impl Fiber {
                     let s_index = offset_uint!(stack.len(), index);
                     let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let key = if inst_op == Opcode::STORE_FIELD {
-                        stack.get(s_index + 1).clone()
+                        stack.get(s_index + 1)
                     } else {
                         GosValue::Int(index as isize)
                     };
                     let is_op_set = op_ex != Opcode::ZERO;
                     let val = if is_op_set {
-                        index![stack, rhs_s_index].clone()
+                        index![stack, rhs_s_index]
                     } else {
                         duplicate!(index![stack, rhs_s_index], objs)
                     };
@@ -554,7 +548,7 @@ impl Fiber {
                 Opcode::RANGE => {
                     let offset = inst.imm();
                     let len = stack.len();
-                    let t = index![stack, len - 2].clone();
+                    let t = index![stack, len - 2];
                     let mut mark = *index![stack, len - 1].as_int();
                     if mark < 0 {
                         mark = range_slot;

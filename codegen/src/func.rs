@@ -16,20 +16,27 @@ use goscript_parser::objects::Objects as AstObjects;
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    IndexSelExpr(OpIndex),
+    // Value32Type are the types of the object and the index/selector
+    IndexSelExpr(OpIndex, Value32Type, Value32Type),
     Deref(OpIndex),
 }
 
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()>;
 
-    fn emit_load(&mut self, index: EntIndex);
+    fn emit_load(&mut self, index: EntIndex, typ: Value32Type);
 
-    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<Opcode>);
+    fn emit_store(
+        &mut self,
+        lhs: &LeftHandSide,
+        rhs_index: OpIndex,
+        op: Option<Opcode>,
+        typ: Value32Type,
+    );
 
     fn emit_import(&mut self, index: OpIndex);
 
-    fn emit_pop(&mut self);
+    fn emit_pop(&mut self, typ: Value32Type);
 
     fn emit_load_field(&mut self);
 
@@ -72,34 +79,41 @@ impl FuncGen for FunctionVal {
         Ok(re)
     }
 
-    fn emit_load(&mut self, index: EntIndex) {
+    fn emit_load(&mut self, index: EntIndex, typ: Value32Type) {
         match index {
-            EntIndex::Const(i) => {
-                // optimizaiton, replace PUSH_CONST with PUSH_NIL/_TRUE/_FALSE/_IMM]
-                match self.const_val(i).clone() {
-                    GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
-                    GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
-                    GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
-                    GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
-                        let imm: OpIndex = OpIndex::try_from(i).unwrap();
-                        self.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(imm));
-                    }
-                    _ => {
-                        self.emit_inst(Opcode::PUSH_CONST, None, None, None, Some(i));
-                    }
+            EntIndex::Const(i) => match self.const_val(i).clone() {
+                GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
+                GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
+                GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
+                GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
+                    let imm: OpIndex = OpIndex::try_from(i).unwrap();
+                    self.emit_inst(Opcode::PUSH_IMM, None, Some(typ), None, Some(imm));
                 }
+                _ => {
+                    self.emit_inst(Opcode::PUSH_CONST, None, Some(typ), None, Some(i));
+                }
+            },
+            EntIndex::LocalVar(i) => {
+                self.emit_inst(Opcode::LOAD_LOCAL, None, Some(typ), None, Some(i))
             }
-            EntIndex::LocalVar(i) => self.emit_inst(Opcode::LOAD_LOCAL, None, None, None, Some(i)),
-            EntIndex::UpValue(i) => self.emit_inst(Opcode::LOAD_UPVALUE, None, None, None, Some(i)),
+            EntIndex::UpValue(i) => {
+                self.emit_inst(Opcode::LOAD_UPVALUE, None, Some(typ), None, Some(i))
+            }
             EntIndex::PackageMember(i) => {
-                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, None, None, None, Some(i))
+                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, None, Some(typ), None, Some(i))
             }
             EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
         }
     }
 
-    fn emit_store(&mut self, lhs: &LeftHandSide, rhs_index: OpIndex, op: Option<Opcode>) {
+    fn emit_store(
+        &mut self,
+        lhs: &LeftHandSide,
+        rhs_index: OpIndex,
+        op: Option<Opcode>,
+        typ: Value32Type,
+    ) {
         if let LeftHandSide::Primitive(index) = lhs {
             if EntIndex::Blank == *index {
                 return;
@@ -115,11 +129,11 @@ impl FuncGen for FunctionVal {
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(i) => (Opcode::STORE_FIELD, i),
+            LeftHandSide::IndexSelExpr(i, _, _) => (Opcode::STORE_FIELD, i),
             LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i),
         };
 
-        let mut inst = Instruction::new(code, op, None, None, None);
+        let mut inst = Instruction::new(code, op, None, Some(typ), None);
         inst.set_imm2(rhs_index, *i);
         self.code.push(inst);
     }
@@ -137,8 +151,8 @@ impl FuncGen for FunctionVal {
         self.code.append(&mut cd);
     }
 
-    fn emit_pop(&mut self) {
-        self.emit_inst(Opcode::POP, None, None, None, None);
+    fn emit_pop(&mut self, typ: Value32Type) {
+        self.emit_inst(Opcode::POP, None, Some(typ), None, None);
     }
 
     fn emit_load_field(&mut self) {

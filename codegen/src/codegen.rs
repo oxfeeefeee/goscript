@@ -71,7 +71,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
         let index = self.resolve_ident(ident)?;
-        current_func_mut!(self).emit_load(index);
+        let t = self.get_use_value32_type(*ident);
+        current_func_mut!(self).emit_load(index, t);
         Ok(())
     }
 
@@ -82,8 +83,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) -> Self::Result {
         let val = self.get_const_value(id)?;
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val);
-        func.emit_load(i);
+        let i = func.add_const(None, val.clone());
+        let (_, t) = GosValue32::from_v64(val);
+        func.emit_load(i, t);
         Ok(())
     }
 
@@ -93,7 +95,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
-        func.emit_load(i);
+        func.emit_load(i, Value32Type::Function);
         func.emit_new();
         Ok(())
     }
@@ -101,8 +103,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
         let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit)?;
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val);
-        func.emit_load(i);
+        let i = func.add_const(None, val.clone());
+        let (_, t) = GosValue32::from_v64(val);
+        func.emit_load(i, t);
         Ok(())
     }
 
@@ -110,10 +113,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(expr)
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey) -> Self::Result {
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, _id: NodeId) -> Self::Result {
         self.visit_expr(expr)?;
         // todo: use index instead of string when Type Checker is in place
         self.gen_push_ident_str(ident);
+        //dbg!(&self.ti.selections[&id]);
         current_func_mut!(self).emit_load_field();
         Ok(())
     }
@@ -273,8 +277,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
         let val = self.gen_type_meta_by_node_id(arr.id());
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val);
-        func.emit_load(i);
+        let i = func.add_const(None, val.clone());
+        let (_, t) = GosValue32::from_v64(val);
+        func.emit_load(i, t);
         Ok(())
     }
 
@@ -331,9 +336,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                             .names
                             .iter()
                             .map(|n| -> Result<LeftHandSide, ()> {
-                                Ok(LeftHandSide::Primitive(
-                                    self.add_local_or_resolve_ident(n, true)?,
-                                ))
+                                let index = self.add_local_or_resolve_ident(n, true)?;
+                                Ok(LeftHandSide::Primitive(index))
                             })
                             .collect::<Result<Vec<LeftHandSide>, ()>>()?;
                         self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None)?;
@@ -359,7 +363,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let meta_key = *self.get_type_meta(&field.typ).as_meta();
+            let meta_key = *self.get_use_type_meta(&field.typ).as_meta();
             let key = match self.objects.metas[meta_key].typ() {
                 MetadataType::Boxed(b) => *b.as_meta(),
                 MetadataType::Struct(_, _) => meta_key,
@@ -414,13 +418,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) -> Self::Result {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr)?;
+            let t = self.get_expr_value32_type(expr);
             let f = current_func_mut!(self);
             f.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
                 -1,
                 None,
+                t,
             );
-            f.emit_pop();
+            f.emit_pop(t);
         }
         current_func_mut!(self).emit_return();
         Ok(())
@@ -702,26 +708,34 @@ impl<'a> CodeGen<'a> {
         let is_def = *token == Token::DEFINE;
         let lhs = lhs_exprs
             .iter()
-            .map(|expr| match expr {
-                Expr::Ident(ident) => {
-                    let idx = self.add_local_or_resolve_ident(ident, is_def)?;
-                    Ok(LeftHandSide::Primitive(idx))
+            .map(|expr| {
+                match expr {
+                    Expr::Ident(ident) => {
+                        let idx = self.add_local_or_resolve_ident(ident, is_def)?;
+                        Ok(LeftHandSide::Primitive(idx))
+                    }
+                    Expr::Index(ind_expr) => {
+                        let obj = &ind_expr.as_ref().expr;
+                        self.visit_expr(obj)?;
+                        let obj_typ = self.get_expr_value32_type(obj);
+                        let ind = &ind_expr.as_ref().index;
+                        self.visit_expr(ind)?;
+                        let index_typ = self.get_expr_value32_type(ind);
+                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, index_typ)) // the true index will be calculated later
+                    }
+                    Expr::Selector(sexpr) => {
+                        self.visit_expr(&sexpr.expr)?;
+                        self.gen_push_ident_str(&sexpr.sel);
+                        let obj_typ = self.get_expr_value32_type(&sexpr.expr);
+                        // the true index will be calculated later
+                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, Value32Type::Str))
+                    }
+                    Expr::Star(sexpr) => {
+                        self.visit_expr(&sexpr.expr)?;
+                        Ok(LeftHandSide::Deref(0)) // the true index will be calculated later
+                    }
+                    _ => unreachable!(),
                 }
-                Expr::Index(ind_expr) => {
-                    self.visit_expr(&ind_expr.as_ref().expr)?;
-                    self.visit_expr(&ind_expr.as_ref().index)?;
-                    Ok(LeftHandSide::IndexSelExpr(0)) // the true index will be calculated later
-                }
-                Expr::Selector(sexpr) => {
-                    self.visit_expr(&sexpr.expr)?;
-                    self.gen_push_ident_str(&sexpr.sel);
-                    Ok(LeftHandSide::IndexSelExpr(0)) // the true index will be calculated later
-                }
-                Expr::Star(sexpr) => {
-                    self.visit_expr(&sexpr.expr)?;
-                    Ok(LeftHandSide::Deref(0)) // the true index will be calculated later
-                }
-                _ => unreachable!(),
             })
             .collect::<Result<Vec<LeftHandSide>, ()>>()?;
 
@@ -743,11 +757,13 @@ impl<'a> CodeGen<'a> {
         };
         if let Some(code) = simple_op {
             if *token == Token::INC || *token == Token::DEC {
-                self.gen_op_assign(&lhs[0], code, None)?;
+                let typ = self.get_expr_value32_type(&lhs_exprs[0]);
+                self.gen_op_assign(&lhs[0], code, None, typ)?;
             } else {
                 assert_eq!(lhs_exprs.len(), 1);
                 assert_eq!(rhs_exprs.len(), 1);
-                self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]))?;
+                let typ = self.get_expr_value32_type(&rhs_exprs[0]);
+                self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]), typ)?;
             }
             Ok(None)
         } else {
@@ -764,7 +780,7 @@ impl<'a> CodeGen<'a> {
     ) -> Result<Option<usize>, ()> {
         let mut range_marker = None;
         // handle the right hand side
-        if let Some(r) = range {
+        let types = if let Some(r) = range {
             // the range statement
             self.visit_expr(r)?;
             let func = current_func_mut!(self);
@@ -772,51 +788,63 @@ impl<'a> CodeGen<'a> {
             range_marker = Some(func.code.len());
             // the block_end address to be set
             func.emit_inst(Opcode::RANGE, None, None, None, None);
+            self.get_range_value32_types(r)
         } else if values.len() == lhs.len() {
             // define or assign with values
+            let mut types = Vec::with_capacity(values.len());
             for val in values.iter() {
                 self.visit_expr(val)?;
+                types.push(self.get_expr_value32_type(val));
             }
+            types
         } else if values.len() == 0 {
             // define without values
             let val = self.get_type_default(&typ.as_ref().unwrap())?;
+            let mut types = Vec::with_capacity(lhs.len());
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                func.emit_load(i);
+                let (_, t) = GosValue32::from_v64(val.clone());
+                func.emit_load(i, t);
+                types.push(t);
             }
+            types
         } else if values.len() == 1 {
             // define or assign with function call on the right
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0])?;
+                self.get_return_value32_types(&values[0])
             } else {
                 return Err(());
             }
         } else {
             return Err(());
-        }
+        };
 
         // now the values should be on stack, generate code to set them to the lhs
         let func = current_func_mut!(self);
         let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
             LeftHandSide::Primitive(_) => acc,
-            LeftHandSide::IndexSelExpr(_) => acc + 2,
+            LeftHandSide::IndexSelExpr(_, _, _) => acc + 2,
             LeftHandSide::Deref(_) => acc + 1,
         });
-        let total_rhs_val = lhs.len() as OpIndex;
+        assert_eq!(lhs.len(), types.len());
+        let total_rhs_val = types.len() as OpIndex;
         let total_val = (total_lhs_val + total_rhs_val) as OpIndex;
         let mut current_indexing_index = -total_val;
         for (i, l) in lhs.iter().enumerate() {
             let val_index = i as OpIndex - total_rhs_val;
+            let typ = types[i];
             match l {
                 LeftHandSide::Primitive(_) => {
-                    func.emit_store(l, val_index, None);
+                    func.emit_store(l, val_index, None, typ);
                 }
-                LeftHandSide::IndexSelExpr(_) => {
+                LeftHandSide::IndexSelExpr(_, t0, t1) => {
                     func.emit_store(
-                        &LeftHandSide::IndexSelExpr(current_indexing_index),
+                        &LeftHandSide::IndexSelExpr(current_indexing_index, *t0, *t1),
                         val_index,
                         None,
+                        typ,
                     );
                     // the lhs of IndexSelExpr takes two spots
                     current_indexing_index += 2;
@@ -826,13 +854,27 @@ impl<'a> CodeGen<'a> {
                         &LeftHandSide::Deref(current_indexing_index),
                         val_index,
                         None,
+                        typ,
                     );
                     current_indexing_index += 1;
                 }
             }
         }
-        for _ in 0..total_val {
-            func.emit_pop();
+
+        // pop rhs
+        for t in types.iter().rev() {
+            func.emit_pop(*t);
+        }
+        // pop lhs
+        for i in lhs.iter().rev() {
+            match i {
+                LeftHandSide::Primitive(_) => {}
+                LeftHandSide::IndexSelExpr(_, t0, t1) => {
+                    func.emit_pop(*t1);
+                    func.emit_pop(*t0);
+                }
+                LeftHandSide::Deref(_) => func.emit_pop(Value32Type::Boxed),
+            }
         }
         Ok(range_marker)
     }
@@ -842,6 +884,7 @@ impl<'a> CodeGen<'a> {
         left: &LeftHandSide,
         op: Opcode,
         right: Option<&Expr>,
+        typ: Value32Type,
     ) -> Result<(), ()> {
         if let Some(e) = right {
             self.visit_expr(e)?;
@@ -855,20 +898,25 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?
                 // local index is resolved in gen_assign
-                func.emit_store(left, -1, Some(op));
+                func.emit_store(left, -1, Some(op), typ);
+                func.emit_pop(typ);
             }
-            LeftHandSide::IndexSelExpr(_) => {
+            LeftHandSide::IndexSelExpr(_, t0, t1) => {
                 // why -3?  stack looks like this(bottom to top) :
                 //  [... target, index, value]
-                func.emit_store(&LeftHandSide::IndexSelExpr(-3), -1, Some(op));
+                func.emit_store(&LeftHandSide::IndexSelExpr(-3, *t0, *t1), -1, Some(op), typ);
+                func.emit_pop(typ);
+                func.emit_pop(*t1);
+                func.emit_pop(*t0);
             }
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
                 //  [... target, value]
-                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op));
+                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), typ);
+                func.emit_pop(typ);
+                func.emit_pop(Value32Type::Boxed);
             }
         }
-        func.emit_pop();
         Ok(())
     }
 
@@ -948,7 +996,7 @@ impl<'a> CodeGen<'a> {
         types::type_from_tc(typ, self.tc_objs, self.objects)
     }
 
-    fn get_type_meta(&mut self, expr: &Expr) -> GosValue {
+    fn get_use_type_meta(&mut self, expr: &Expr) -> GosValue {
         let ikey = match expr {
             Expr::Star(s) => *s.expr.try_as_ident().unwrap(),
             Expr::Ident(i) => *i,
@@ -976,8 +1024,35 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    fn get_expr_value32_type(&mut self, e: &Expr) -> Value32Type {
+        let typ = self.ti.types.get(&e.id()).unwrap().typ;
+        types::value32_type_from_tc(typ, self.tc_objs)
+    }
+
+    fn get_use_value32_type(&mut self, ikey: IdentKey) -> Value32Type {
+        let typ = &self.tc_objs.lobjs[self.ti.uses[&ikey]].typ().unwrap();
+        types::value32_type_from_tc(*typ, self.tc_objs)
+    }
+
+    fn get_def_value32_type(&mut self, ikey: IdentKey) -> Value32Type {
+        let typ = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()]
+            .typ()
+            .unwrap();
+        types::value32_type_from_tc(*typ, self.tc_objs)
+    }
+
+    fn get_range_value32_types(&mut self, e: &Expr) -> Vec<Value32Type> {
+        let typ = self.ti.types.get(&e.id()).unwrap().typ;
+        types::range_value32_types(typ, self.tc_objs)
+    }
+
+    fn get_return_value32_types(&mut self, e: &Expr) -> Vec<Value32Type> {
+        let typ = self.ti.types.get(&e.id()).unwrap().typ;
+        types::return_value32_types(typ, self.tc_objs)
+    }
+
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
-        let meta = self.get_type_meta(expr);
+        let meta = self.get_use_type_meta(expr);
         let meta_val = &self.objects.metas[*meta.as_meta()];
         Ok(meta_val.zero_val().clone())
     }
@@ -1045,7 +1120,7 @@ impl<'a> CodeGen<'a> {
         let gos_val = GosValue::new_str(name);
         let func = current_func_mut!(self);
         let index = func.add_const(None, gos_val);
-        func.emit_load(index);
+        func.emit_load(index, Value32Type::Str);
     }
 
     fn built_in_func_index(&self, name: &str) -> Option<OpIndex> {
