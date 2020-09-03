@@ -617,22 +617,12 @@ impl Fiber {
                 }
                 Opcode::SLICE | Opcode::SLICE_FULL => {
                     let max = if inst_op == Opcode::SLICE_FULL {
-                        Some(*stack.pop().as_int() as usize)
+                        *stack.pop().as_int()
                     } else {
-                        None
+                        -1
                     };
-                    let end_val = stack.pop();
-                    let begin_val = stack.pop();
-                    let end = if end_val.is_nil() {
-                        None
-                    } else {
-                        Some(*end_val.as_int() as usize)
-                    };
-                    let begin = if begin_val.is_nil() {
-                        None
-                    } else {
-                        Some(*begin_val.as_int() as usize)
-                    };
+                    let end = *stack.pop().as_int();
+                    let begin = *stack.pop().as_int();
                     let target = stack.pop();
                     let result = match target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),

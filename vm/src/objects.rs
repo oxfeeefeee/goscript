@@ -196,12 +196,10 @@ impl StringVal {
         self.as_str().as_bytes()[i]
     }
 
-    pub fn slice(&self, begin: Option<usize>, end: Option<usize>) -> StringVal {
-        let self_len = self.len();
-        let bi = begin.unwrap_or(0);
-        let ei = end.unwrap_or(self_len);
-        assert!(bi < self_len);
-        assert!(bi <= ei && ei <= self_len);
+    pub fn slice(&self, begin: isize, end: isize) -> StringVal {
+        let self_len = self.len() as isize + 1;
+        let bi = begin as usize;
+        let ei = ((self_len + end) % self_len) as usize;
         StringVal {
             data: Rc::clone(&self.data),
             begin: bi,
@@ -456,15 +454,12 @@ impl<'a> SliceVal {
     }
 
     #[inline]
-    pub fn slice(&self, begin: Option<usize>, end: Option<usize>, max: Option<usize>) -> SliceVal {
-        let self_len = self.len();
-        let self_cap = self.cap();
-        let bi = begin.unwrap_or(0);
-        let ei = end.unwrap_or(self_len);
-        let mi = max.unwrap_or(self_cap);
-        assert!(bi < self_len);
-        assert!(bi <= ei && ei <= self_len);
-        assert!(ei <= mi && mi <= self_cap);
+    pub fn slice(&self, begin: isize, end: isize, max: isize) -> SliceVal {
+        let self_len = self.len() as isize + 1;
+        let self_cap = self.cap() as isize + 1;
+        let bi = begin as usize;
+        let ei = ((self_len + end) % self_len) as usize;
+        let mi = ((self_cap + max) % self_cap) as usize;
         SliceVal {
             dark: false,
             begin: self.begin + bi,
@@ -668,8 +663,8 @@ impl PackageVal {
     }
 
     /// add placeholder for vars, will be initialized when imported
-    pub fn add_var(&mut self, entity: EntityKey, fn_index: OpIndex) -> OpIndex {
-        let index = self.add_member(entity, GosValue::Nil);
+    pub fn add_var(&mut self, entity: EntityKey, fn_index: OpIndex, ph: GosValue) -> OpIndex {
+        let index = self.add_member(entity, ph);
         self.var_mapping
             .as_mut()
             .unwrap()

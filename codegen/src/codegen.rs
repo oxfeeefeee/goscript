@@ -140,11 +140,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     ) -> Self::Result {
         self.visit_expr(expr)?;
         match low {
-            None => current_func_mut!(self).emit_code(Opcode::PUSH_NIL),
+            None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM),
             Some(e) => self.visit_expr(e)?,
         }
         match high {
-            None => current_func_mut!(self).emit_code(Opcode::PUSH_NIL),
+            None => current_func_mut!(self).emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1)),
             Some(e) => self.visit_expr(e)?,
         }
         match max {
@@ -673,7 +673,11 @@ impl<'a> CodeGen<'a> {
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
-                pkg.add_var(ident_key.unwrap(), index.into());
+                pkg.add_var(
+                    ident_key.unwrap(),
+                    index.into(),
+                    self.objects.zero_val_mark.clone(),
+                );
             }
             Ok(index)
         } else {
@@ -1031,7 +1035,7 @@ impl<'a> CodeGen<'a> {
         types::value32_type_from_tc(typ, self.tc_objs)
     }
 
-    fn get_use_value32_type(&mut self, ikey: IdentKey) -> Value32Type {
+    fn get_use_value32_type(&self, ikey: IdentKey) -> Value32Type {
         let typ = &self.tc_objs.lobjs[self.ti.uses[&ikey]].typ().unwrap();
         types::value32_type_from_tc(*typ, self.tc_objs)
     }

@@ -139,9 +139,12 @@ pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> Value32Type 
                 Value32Type::Float64
             }
             BasicType::Str | BasicType::UntypedString => Value32Type::Str,
-            _ => unreachable!(),
-            //Complex64,  todo
-            //Complex128, todo
+            BasicType::UntypedNil => Value32Type::Nil,
+            _ => {
+                dbg!(detail.typ());
+                unreachable!()
+            } //Complex64,  todo
+              //Complex128, todo
         },
         Type::Slice(_) => Value32Type::Slice,
         Type::Map(_) => Value32Type::Map,
