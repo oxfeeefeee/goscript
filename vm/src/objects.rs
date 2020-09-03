@@ -59,16 +59,19 @@ pub struct VMObjects {
     pub packages: PackageObjs,
     pub basic_types: HashMap<&'static str, GosValue>,
     pub default_sig_meta: Option<GosValue>,
-    pub str_zero_val: Rc<StringVal>,
-    pub slice_zero_val: Rc<SliceVal>,
-    pub map_zero_val: Rc<MapVal>,
+    pub zero_val_mark: GosValue,
+    pub str_zero_val: GosValue,
+    pub boxed_zero_val: GosValue,
+    pub closure_zero_val: GosValue,
+    pub slice_zero_val: GosValue,
+    pub map_zero_val: GosValue,
+    pub iface_zero_val: GosValue,
+    pub chan_zero_val: GosValue,
 }
 
 impl VMObjects {
     pub fn new() -> VMObjects {
-        let str_zero_val = Rc::new(StringVal::with_str("".to_string()));
-        let slice_zero_val = Rc::new(SliceVal::new(0, 0, &GosValue::Nil));
-        let map_zero_val = Rc::new(MapVal::new(GosValue::Nil));
+        let mark = GosValue::Int(95279527);
         let mut objs = VMObjects {
             interfaces: vec![],
             closures: vec![],
@@ -82,9 +85,19 @@ impl VMObjects {
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             basic_types: HashMap::new(),
             default_sig_meta: None,
-            str_zero_val: str_zero_val,
-            slice_zero_val: slice_zero_val,
-            map_zero_val: map_zero_val,
+            zero_val_mark: mark.clone(),
+            str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
+            boxed_zero_val: GosValue::Boxed(Rc::new(RefCell::new(mark.clone()))),
+            closure_zero_val: GosValue::Closure(Rc::new(RefCell::new(ClosureVal::new(
+                null_key!(),
+                vec![],
+            )))),
+            slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
+            map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
+            iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceVal::new(
+                mark.clone(),
+            )))),
+            chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal {}))),
         };
         let btype = MetadataVal::new_bool(&mut objs);
         objs.basic_types.insert("bool", btype);
@@ -117,6 +130,19 @@ impl VMObjects {
     #[inline]
     pub fn metadata_string(&self) -> GosValue {
         self.basic_type("string").clone()
+    }
+
+    #[inline]
+    pub fn nil_zero_val(&self, t: Value32Type) -> GosValue {
+        match t {
+            Value32Type::Boxed => self.boxed_zero_val.clone(),
+            Value32Type::Interface => self.iface_zero_val.clone(),
+            Value32Type::Map => self.map_zero_val.clone(),
+            Value32Type::Slice => self.slice_zero_val.clone(),
+            Value32Type::Channel => self.chan_zero_val.clone(),
+            Value32Type::Function => self.closure_zero_val.clone(),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
@@ -545,20 +571,28 @@ impl StructVal {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceVal {
-    pub dark: bool,
     pub meta: GosValue,
-    pub obj: GosValue,              // the Named object behind the interface
+    pub obj: Option<GosValue>,      // the Named object behind the interface
     pub obj_meta: Option<GosValue>, // the type of the named object
     pub mapping: Vec<OpIndex>,      // mapping from interface's methods to object's methods
+}
+
+impl InterfaceVal {
+    pub fn new(meta: GosValue) -> InterfaceVal {
+        InterfaceVal {
+            meta: meta,
+            obj: None,
+            obj_meta: None,
+            mapping: vec![],
+        }
+    }
 }
 
 // ----------------------------------------------------------------------------
 // ChannelVal
 
 #[derive(Clone, Debug)]
-pub struct ChannelVal {
-    pub dark: bool,
-}
+pub struct ChannelVal {}
 
 // ----------------------------------------------------------------------------
 // ClosureVal
@@ -920,7 +954,7 @@ impl MetadataVal {
 
     fn new_str(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Str(objs.str_zero_val.clone()),
+            zero_val: objs.str_zero_val.clone(),
             typ: MetadataType::None,
         };
         GosValue::new_meta(m, &mut objs.metas)
@@ -934,7 +968,7 @@ impl MetadataVal {
         objs: &mut VMObjects,
     ) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Nil,
+            zero_val: objs.zero_val_mark.clone(),
             typ: MetadataType::Signature(SigMetadata {
                 recv: recv,
                 params: params,
@@ -947,7 +981,7 @@ impl MetadataVal {
 
     pub fn new_slice(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Slice(objs.slice_zero_val.clone()),
+            zero_val: objs.slice_zero_val.clone(),
             typ: MetadataType::Slice(vtype),
         };
         GosValue::new_meta(m, &mut objs.metas)
@@ -955,7 +989,7 @@ impl MetadataVal {
 
     pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Map(objs.map_zero_val.clone()),
+            zero_val: objs.map_zero_val.clone(),
             typ: MetadataType::Map(ktype, vtype),
         };
         GosValue::new_meta(m, &mut objs.metas)
@@ -963,13 +997,7 @@ impl MetadataVal {
 
     pub fn new_interface(fields: Vec<GosValue>, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceVal {
-                dark: false,
-                meta: GosValue::Nil,
-                obj: GosValue::Nil,
-                obj_meta: None,
-                mapping: vec![],
-            }))),
+            zero_val: objs.iface_zero_val.clone(),
             typ: MetadataType::Interface(fields),
         };
         GosValue::new_meta(m, &mut objs.metas)
@@ -986,7 +1014,7 @@ impl MetadataVal {
             .collect();
         let struct_val = StructVal {
             dark: false,
-            meta: GosValue::Nil,
+            meta: objs.zero_val_mark.clone(),
             fields: field_zeros,
         };
         let meta = MetadataVal {
@@ -1000,7 +1028,7 @@ impl MetadataVal {
 
     pub fn new_channel(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal { dark: false }))),
+            zero_val: objs.chan_zero_val.clone(),
             typ: MetadataType::Channel(vtype),
         };
         GosValue::new_meta(m, &mut objs.metas)
@@ -1008,7 +1036,7 @@ impl MetadataVal {
 
     pub fn new_boxed(inner: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Boxed(Rc::new(RefCell::new(GosValue::Nil))),
+            zero_val: objs.boxed_zero_val.clone(),
             typ: MetadataType::Boxed(inner),
         };
         GosValue::new_meta(m, &mut objs.metas)
