@@ -771,12 +771,12 @@ impl FunctionVal {
     pub fn emit_inst(
         &mut self,
         op: Opcode,
-        op_ex: Option<Opcode>,
         type0: Option<Value32Type>,
         type1: Option<Value32Type>,
+        type2: Option<Value32Type>,
         imm: Option<i32>,
     ) {
-        let i = Instruction::new(op, op_ex, type0, type1, imm);
+        let i = Instruction::new(op, type0, type1, type2, imm);
         self.code.push(i);
     }
 

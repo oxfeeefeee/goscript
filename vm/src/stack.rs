@@ -54,8 +54,9 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_non_rc(&mut self) {
-        self.inner.pop();
+    pub fn pop_with_type(&mut self, t: Value32Type) -> GosValue {
+        let v32 = self.inner.pop().unwrap();
+        v32.into_v64(t)
     }
 
     #[inline]
@@ -65,7 +66,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get2(&self, index: usize, t: Value32Type) -> GosValue {
+    pub fn get_with_type(&self, index: usize, t: Value32Type) -> GosValue {
         let v = self.inner.get(index).unwrap();
         v.get_v64(t)
     }

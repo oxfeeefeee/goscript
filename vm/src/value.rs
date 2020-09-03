@@ -500,7 +500,6 @@ impl GosValue32 {
 
     #[inline]
     pub fn into_v64(&self, t: Value32Type) -> GosValue {
-        //dbg!(t, self.debug_type);
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {

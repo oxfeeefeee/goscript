@@ -216,15 +216,15 @@ impl Fiber {
                     stack.push_from_index(index, inst.t0()); // (index![stack, index]);
                 }
                 Opcode::STORE_LOCAL => {
-                    let op_ex = inst.op_ex();
                     let (rhs_index, index) = inst.imm2();
                     let s_index = offset_uint!(stack_base, index);
-                    let rhs_s_index = offset_uint!(stack.len(), rhs_index);
-                    if op_ex == Opcode::ZERO {
+                    if rhs_index < 0 {
+                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                         stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
                     } else {
-                        let operand = index![stack, rhs_s_index];
+                        let operand = index![stack, stack.len() - 1];
                         let mut lhs = index![stack, s_index];
+                        let op_ex = Instruction::index2code(rhs_index);
                         vm_util::store_xxx_op(&mut lhs, op_ex, &operand);
                         stack_set!(stack, s_index, lhs);
                     }
@@ -247,14 +247,16 @@ impl Fiber {
                     }
                 }
                 Opcode::STORE_UPVALUE => {
-                    let op_ex = inst.op_ex();
                     let (rhs_index, index) = inst.imm2();
-                    let rhs_s_index = offset_uint!(stack.len(), rhs_index);
-                    let is_op_set = op_ex != Opcode::ZERO;
-                    let val = if is_op_set {
-                        index![stack, rhs_s_index]
+                    let is_op_set = rhs_index > 0;
+                    let (val, op_ex) = if is_op_set {
+                        (
+                            index![stack, stack.len() - 1],
+                            Some(Instruction::index2code(rhs_index)),
+                        )
                     } else {
-                        duplicate!(index![stack, rhs_s_index], objs)
+                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
+                        (duplicate!(index![stack, rhs_s_index], objs), None)
                     };
                     let closure = frame.callable.closure();
                     let upvalue = closure.borrow().upvalues[index as usize].clone();
@@ -263,7 +265,7 @@ impl Fiber {
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
                             let mut v = index![stack, stack_ptr];
-                            vm_util::set_store_op_val(&mut v, Some(op_ex), val, is_op_set);
+                            vm_util::set_store_op_val(&mut v, op_ex, val, is_op_set);
                             stack_set!(stack, stack_ptr, v);
                             frame = self.frames.last_mut().unwrap();
                         }
@@ -272,7 +274,7 @@ impl Fiber {
                             match &mut closure.borrow_mut().upvalues[index as usize] {
                                 UpValue::Open(_, _) => unreachable!(),
                                 UpValue::Closed(v) => {
-                                    vm_util::set_store_op_val(v, Some(op_ex), val, is_op_set)
+                                    vm_util::set_store_op_val(v, op_ex, val, is_op_set)
                                 }
                             }
                         }
@@ -280,36 +282,33 @@ impl Fiber {
                 }
                 Opcode::LOAD_FIELD | Opcode::LOAD_FIELD_IMM => {
                     let ind = if inst_op == Opcode::LOAD_FIELD {
-                        stack.pop()
+                        stack.pop_with_type(inst.t1())
                     } else {
                         GosValue::Int(inst.imm() as isize)
                     };
-                    let len = stack.len();
-                    let val = &index![stack, len - 1];
-                    stack_set!(
-                        stack,
-                        len - 1,
-                        match val {
-                            GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
-                            _ => vm_util::load_field(val, &ind, objs),
-                        }
-                    );
+                    let val = &stack.pop_with_type(inst.t0());
+                    stack.push(match val {
+                        GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
+                        _ => vm_util::load_field(val, &ind, objs),
+                    });
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
-                    let op_ex = inst.op_ex();
                     let (rhs_index, index) = inst.imm2();
                     let s_index = offset_uint!(stack.len(), index);
-                    let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let key = if inst_op == Opcode::STORE_FIELD {
                         stack.get(s_index + 1)
                     } else {
                         GosValue::Int(index as isize)
                     };
-                    let is_op_set = op_ex != Opcode::ZERO;
-                    let val = if is_op_set {
-                        index![stack, rhs_s_index]
+                    let is_op_set = rhs_index > 0;
+                    let (val, op_ex) = if is_op_set {
+                        (
+                            index![stack, stack.len() - 1],
+                            Some(Instruction::index2code(rhs_index)),
+                        )
                     } else {
-                        duplicate!(index![stack, rhs_s_index], objs)
+                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
+                        (duplicate!(index![stack, rhs_s_index], objs), None)
                     };
 
                     let store = index![stack, s_index];
@@ -317,19 +316,12 @@ impl Fiber {
                         GosValue::Boxed(b) => vm_util::store_field(
                             &*b.borrow(),
                             &key,
-                            Some(op_ex),
+                            op_ex,
                             val,
                             is_op_set,
                             &objs.metas,
                         ),
-                        _ => vm_util::store_field(
-                            &store,
-                            &key,
-                            Some(op_ex),
-                            val,
-                            is_op_set,
-                            &objs.metas,
-                        ),
+                        _ => vm_util::store_field(&store, &key, op_ex, val, is_op_set, &objs.metas),
                     }
                 }
                 Opcode::LOAD_THIS_PKG_FIELD => {
@@ -338,30 +330,36 @@ impl Fiber {
                     stack.push(pkg.member(index).clone());
                 }
                 Opcode::STORE_THIS_PKG_FIELD => {
-                    let op_ex = inst.op_ex();
                     let (rhs_index, index) = inst.imm2();
-                    let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let pkg = &mut objs.packages[func.package];
-                    if op_ex == Opcode::ZERO {
+                    if rhs_index < 0 {
+                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                         *pkg.member_mut(index) = duplicate!(index![stack, rhs_s_index], objs)
                     } else {
-                        let operand = &consts[rhs_index as usize];
-                        vm_util::store_xxx_op(pkg.member_mut(index), op_ex, operand);
+                        let operand = &index![stack, stack.len() - 1];
+                        vm_util::store_xxx_op(
+                            pkg.member_mut(index),
+                            Instruction::index2code(rhs_index),
+                            operand,
+                        );
                     };
                 }
                 Opcode::STORE_DEREF => {
-                    let op_ex = inst.op_ex();
                     let (rhs_index, index) = inst.imm2();
-                    let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                     let s_index = offset_uint!(stack.len(), index);
                     let store = stack.get(s_index);
-                    if op_ex == Opcode::ZERO {
+                    if rhs_index < 0 {
+                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
                         store
                             .as_boxed()
                             .replace(duplicate!(index![stack, rhs_s_index], objs));
                     } else {
-                        let operand = &consts[rhs_index as usize];
-                        vm_util::store_xxx_op(&mut store.as_boxed().borrow_mut(), op_ex, operand);
+                        let operand = &index![stack, stack.len() - 1];
+                        vm_util::store_xxx_op(
+                            &mut store.as_boxed().borrow_mut(),
+                            Instruction::index2code(rhs_index),
+                            operand,
+                        );
                     }
                 }
                 Opcode::ADD => vm_util::add(stack),

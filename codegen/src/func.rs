@@ -38,9 +38,9 @@ pub trait FuncGen {
 
     fn emit_pop(&mut self, typ: Value32Type);
 
-    fn emit_load_field(&mut self);
+    fn emit_load_field(&mut self, typ: Value32Type, index_type: Value32Type);
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex);
+    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: Value32Type);
 
     fn emit_return(&mut self);
 
@@ -87,20 +87,20 @@ impl FuncGen for FunctionVal {
                 GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
                 GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
                     let imm: OpIndex = OpIndex::try_from(i).unwrap();
-                    self.emit_inst(Opcode::PUSH_IMM, None, Some(typ), None, Some(imm));
+                    self.emit_inst(Opcode::PUSH_IMM, Some(typ), None, None, Some(imm));
                 }
                 _ => {
-                    self.emit_inst(Opcode::PUSH_CONST, None, Some(typ), None, Some(i));
+                    self.emit_inst(Opcode::PUSH_CONST, Some(typ), None, None, Some(i));
                 }
             },
             EntIndex::LocalVar(i) => {
-                self.emit_inst(Opcode::LOAD_LOCAL, None, Some(typ), None, Some(i))
+                self.emit_inst(Opcode::LOAD_LOCAL, Some(typ), None, None, Some(i))
             }
             EntIndex::UpValue(i) => {
-                self.emit_inst(Opcode::LOAD_UPVALUE, None, Some(typ), None, Some(i))
+                self.emit_inst(Opcode::LOAD_UPVALUE, Some(typ), None, None, Some(i))
             }
             EntIndex::PackageMember(i) => {
-                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, None, Some(typ), None, Some(i))
+                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, Some(typ), None, None, Some(i))
             }
             EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
@@ -120,21 +120,28 @@ impl FuncGen for FunctionVal {
             }
         }
 
-        let (code, i) = match lhs {
+        let (code, i, t1, t2) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
-                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i),
-                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i),
-                EntIndex::PackageMember(i) => (Opcode::STORE_THIS_PKG_FIELD, i),
+                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i, None, None),
+                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i, None, None),
+                EntIndex::PackageMember(i) => (
+                    Opcode::STORE_THIS_PKG_FIELD,
+                    i,
+                    Some(Value32Type::Package),
+                    None,
+                ),
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(i, _, _) => (Opcode::STORE_FIELD, i),
-            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i),
+            LeftHandSide::IndexSelExpr(i, t1, t2) => (Opcode::STORE_FIELD, i, Some(*t1), Some(*t2)),
+            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i, None, None),
         };
 
-        let mut inst = Instruction::new(code, op, None, Some(typ), None);
-        inst.set_imm2(rhs_index, *i);
+        let mut inst = Instruction::new(code, Some(typ), t1, t2, None);
+        assert!(rhs_index == -1 || op.is_none());
+        let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
+        inst.set_imm2(imm0, *i);
         self.code.push(inst);
     }
 
@@ -142,7 +149,13 @@ impl FuncGen for FunctionVal {
         self.emit_inst(Opcode::IMPORT, None, None, None, Some(index));
         let mut cd = vec![
             Instruction::new(Opcode::PUSH_IMM, None, None, None, Some(0)),
-            Instruction::new(Opcode::LOAD_FIELD, None, None, None, None),
+            Instruction::new(
+                Opcode::LOAD_FIELD,
+                Some(Value32Type::Package),
+                Some(Value32Type::Int),
+                None,
+                None,
+            ),
             Instruction::new(Opcode::PRE_CALL, None, None, None, None),
             Instruction::new(Opcode::CALL, None, None, None, None),
         ];
@@ -152,15 +165,15 @@ impl FuncGen for FunctionVal {
     }
 
     fn emit_pop(&mut self, typ: Value32Type) {
-        self.emit_inst(Opcode::POP, None, Some(typ), None, None);
+        self.emit_inst(Opcode::POP, Some(typ), None, None, None);
     }
 
-    fn emit_load_field(&mut self) {
-        self.emit_inst(Opcode::LOAD_FIELD, None, None, None, None);
+    fn emit_load_field(&mut self, typ: Value32Type, index_type: Value32Type) {
+        self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(index_type), None, None);
     }
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex) {
-        self.emit_inst(Opcode::LOAD_FIELD_IMM, None, None, None, Some(imm));
+    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: Value32Type) {
+        self.emit_inst(Opcode::LOAD_FIELD_IMM, Some(typ), None, None, Some(imm));
     }
 
     fn emit_return(&mut self) {

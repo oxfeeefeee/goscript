@@ -199,10 +199,10 @@ pub enum Value32Type {
 
 /// Instruction is 64 bit
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    32bit     |
-/// |  Opcode   |  <Opcode> |  <TypeA>  |  <TypeB>  |   immediate  |
+/// |  Opcode   |  <TypeA>  |  <TypeB>  |  <TypeC>  |   immediate  |
 /// or
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    8bit      |    24bit     |
-/// |  Opcode   |  <Opcode> |  <TypeA>  |  <TypeB>  |   immediate  |   immediate  |
+/// |  Opcode   |  <TypeA>  |  <TypeB>  |  <TypeC>  |     ext      |   immediate  |
 #[derive(Clone, Copy)]
 pub struct Instruction {
     val: u64,
@@ -211,20 +211,20 @@ pub struct Instruction {
 impl Instruction {
     pub fn new(
         op: Opcode,
-        op_ex: Option<Opcode>,
         type0: Option<Value32Type>,
         type1: Option<Value32Type>,
+        type2: Option<Value32Type>,
         imm: Option<OpIndex>,
     ) -> Instruction {
         let val = (op as u64) << (8 * 3 + 32);
         let mut inst = Instruction { val: val };
-        if let Some(v) = op_ex {
+        if let Some(v) = type0 {
             inst.val |= (v as u64) << (8 * 2 + 32);
         }
-        if let Some(v) = type0 {
+        if let Some(v) = type1 {
             inst.val |= (v as u64) << (8 + 32);
         }
-        if let Some(v) = type1 {
+        if let Some(v) = type2 {
             inst.val |= (v as u64) << 32;
         }
         if let Some(v) = imm {
@@ -256,19 +256,19 @@ impl Instruction {
     }
 
     #[inline]
-    pub fn op_ex(&self) -> Opcode {
+    pub fn t0(&self) -> Value32Type {
         let v = ((self.val >> (8 * 2 + 32)) as u16) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
 
     #[inline]
-    pub fn t0(&self) -> Value32Type {
+    pub fn t1(&self) -> Value32Type {
         let v = ((self.val >> (8 + 32)) as u32) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
 
     #[inline]
-    pub fn t1(&self) -> Value32Type {
+    pub fn t2(&self) -> Value32Type {
         let v = ((self.val >> 32) as u32) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
@@ -288,6 +288,16 @@ impl Instruction {
         let i1 = unsafe { std::mem::transmute(all) };
         (i0 as OpIndex, i1)
     }
+
+    #[inline]
+    pub fn code2index(op: Opcode) -> OpIndex {
+        op as OpIndex
+    }
+
+    #[inline]
+    pub fn index2code(i: OpIndex) -> Opcode {
+        unsafe { std::mem::transmute(i as u8) }
+    }
 }
 
 impl fmt::Debug for Instruction {
@@ -300,11 +310,11 @@ impl fmt::Debug for Instruction {
             | Opcode::STORE_FIELD_IMM
             | Opcode::STORE_THIS_PKG_FIELD
             | Opcode::STORE_DEREF => {
-                let op_ex = self.op_ex();
                 let (i0, i1) = self.imm2();
-                if op_ex == Opcode::ZERO {
+                if i0 < 0 {
                     write!(f, "{}, IMM0: {}, IMM1: {}", op, i0, i1)
                 } else {
+                    let op_ex = Instruction::index2code(i0);
                     write!(f, "{}, EX: {}, IMM0: {}, IMM1: {}", op, op_ex, i0, i1)
                 }
             }
@@ -329,15 +339,15 @@ mod test {
     fn test_instruction() {
         let mut i = Instruction::new(
             Opcode::ADD,
-            Some(Opcode::CALL),
+            Some(Value32Type::Str),
             Some(Value32Type::Closure),
             Some(Value32Type::Int),
             Some(-99),
         );
         assert_eq!(i.op(), Opcode::ADD);
-        assert_eq!(i.op_ex(), Opcode::CALL);
-        assert_eq!(i.t0(), Value32Type::Closure);
-        assert_eq!(i.t1(), Value32Type::Int);
+        assert_eq!(i.t0(), Value32Type::Str);
+        assert_eq!(i.t1(), Value32Type::Closure);
+        assert_eq!(i.t2(), Value32Type::Int);
         assert_eq!(i.imm(), -99);
 
         dbg!(1 << 8);

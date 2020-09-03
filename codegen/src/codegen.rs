@@ -113,19 +113,21 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(expr)
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, _id: NodeId) -> Self::Result {
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) -> Self::Result {
         self.visit_expr(expr)?;
         // todo: use index instead of string when Type Checker is in place
         self.gen_push_ident_str(ident);
-        //dbg!(&self.ti.selections[&id]);
-        current_func_mut!(self).emit_load_field();
+        let (t0, _) = self.get_selection_value32_types(id);
+        current_func_mut!(self).emit_load_field(t0, Value32Type::Str);
         Ok(())
     }
 
     fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
         self.visit_expr(expr)?;
         self.visit_expr(index)?;
-        current_func_mut!(self).emit_load_field();
+        let t0 = self.get_expr_value32_type(expr);
+        let t1 = self.get_expr_value32_type(index);
+        current_func_mut!(self).emit_load_field(t0, t1);
         Ok(())
     }
 
@@ -1049,6 +1051,14 @@ impl<'a> CodeGen<'a> {
     fn get_return_value32_types(&mut self, e: &Expr) -> Vec<Value32Type> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         types::return_value32_types(typ, self.tc_objs)
+    }
+
+    fn get_selection_value32_types(&mut self, id: NodeId) -> (Value32Type, Value32Type) {
+        let sel = &self.ti.selections[&id];
+        let t0 = types::value32_type_from_tc(sel.recv().unwrap(), self.tc_objs);
+        let t1 =
+            types::value32_type_from_tc(self.tc_objs.lobjs[sel.obj()].typ().unwrap(), self.tc_objs);
+        (t0, t1)
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
