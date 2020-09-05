@@ -83,7 +83,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) -> Self::Result {
         let val = self.get_const_value(id)?;
         let func = current_func_mut!(self);
-        let t = val.get_v32_type();
+        let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
@@ -103,7 +103,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
         let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit)?;
         let func = current_func_mut!(self);
-        let t = val.get_v32_type();
+        let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
@@ -279,7 +279,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
         let val = self.gen_type_meta_by_node_id(arr.id());
         let func = current_func_mut!(self);
-        let t = val.get_v32_type();
+        let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
@@ -812,7 +812,7 @@ impl<'a> CodeGen<'a> {
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                let t = val.get_v32_type();
+                let t = val.get_type();
                 func.emit_load(i, t);
                 types.push(t);
             }

@@ -168,7 +168,7 @@ impl GosValue {
         metas[*self.as_meta()].get_value_type(metas)
     }
 
-    pub fn get_v32_type(&self) -> ValueType {
+    pub fn get_type(&self) -> ValueType {
         match self {
             GosValue::Bool(_) => ValueType::Bool,
             GosValue::Int(_) => ValueType::Int,
