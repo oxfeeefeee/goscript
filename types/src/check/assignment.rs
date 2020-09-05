@@ -402,6 +402,7 @@ impl<'a> Checker<'a> {
                         if name != "_" {
                             new_vars.push(okey);
                         }
+                        self.result.record_def(*ikey, Some(okey));
                         okey
                     }
                 } else {

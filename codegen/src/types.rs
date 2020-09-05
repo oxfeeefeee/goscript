@@ -70,6 +70,11 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
             let el_type = type_from_tc(detail.elem(), tc_objs, vm_objs);
             MetadataVal::new_slice(el_type, vm_objs)
         }
+        Type::Map(detail) => {
+            let ktype = type_from_tc(detail.key(), tc_objs, vm_objs);
+            let vtype = type_from_tc(detail.elem(), tc_objs, vm_objs);
+            MetadataVal::new_map(ktype, vtype, vm_objs)
+        }
         Type::Struct(detail) => {
             let mut fields = Vec::new();
             let mut map = HashMap::<String, OpIndex>::new();

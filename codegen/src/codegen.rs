@@ -667,9 +667,11 @@ impl<'a> CodeGen<'a> {
             return Ok(EntIndex::Blank);
         }
         if is_def {
+            let meta = *self.gen_def_type_meta(*ikey).as_meta();
+            let zero_val = self.objects.metas[meta].zero_val().clone();
             let func = current_func_mut!(self);
             let ident_key = ident.entity.clone().into_key();
-            let index = func.add_local(ident_key);
+            let index = func.add_local(ident_key, Some(zero_val));
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];

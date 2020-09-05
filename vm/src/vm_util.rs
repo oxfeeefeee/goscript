@@ -61,8 +61,7 @@ macro_rules! pack_variadic {
 macro_rules! duplicate {
     ($val:expr, $objs:ident) => {
         match &$val {
-            GosValue::Nil
-            | GosValue::Bool(_)
+            GosValue::Bool(_)
             | GosValue::Int(_)
             | GosValue::Float64(_)
             | GosValue::Complex64(_, _)

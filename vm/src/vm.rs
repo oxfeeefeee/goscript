@@ -434,11 +434,12 @@ impl Fiber {
                         pack_variadic!(stack, index, objs);
                     }
 
-                    // todo clone parameters
+                    // todo: clone parameters, initialize nil values
 
-                    // allocate placeholders for local variables
-                    for _ in 0..func.local_count() {
-                        stack.push(GosValue::Nil);
+                    debug_assert!(func.local_count() == func.local_zeros.len());
+                    // allocate local variables
+                    for v in func.local_zeros.iter() {
+                        stack.push(v.clone());
                     }
                 }
                 Opcode::RETURN | Opcode::RETURN_INIT_PKG => {

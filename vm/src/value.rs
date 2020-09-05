@@ -11,7 +11,6 @@ use std::rc::Rc;
 // GosValue
 #[derive(Debug)]
 pub enum GosValue {
-    Nil,
     Bool(bool),
     Int(isize),
     Float64(f64), // becasue in Go there is no "float", just float64
@@ -90,15 +89,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn is_nil(&self) -> bool {
-        if let GosValue::Nil = self {
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline]
     pub fn as_bool(&self) -> &bool {
         unwrap_gos_val!(Bool, self)
     }
@@ -119,6 +109,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_str(&self) -> &Rc<StringVal> {
+        unwrap_gos_val!(Str, self)
+    }
+
+    #[inline]
     pub fn as_slice(&self) -> &Rc<SliceVal> {
         unwrap_gos_val!(Slice, self)
     }
@@ -129,8 +124,23 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_interface(&self) -> &Rc<RefCell<InterfaceVal>> {
+        unwrap_gos_val!(Interface, self)
+    }
+
+    #[inline]
+    pub fn as_channel(&self) -> &Rc<RefCell<ChannelVal>> {
+        unwrap_gos_val!(Channel, self)
+    }
+
+    #[inline]
     pub fn as_function(&self) -> &FunctionKey {
         unwrap_gos_val!(Function, self)
+    }
+
+    #[inline]
+    pub fn as_package(&self) -> &PackageKey {
+        unwrap_gos_val!(Package, self)
     }
 
     #[inline]
@@ -157,13 +167,33 @@ impl GosValue {
     pub fn meta_get_value32_type(&self, metas: &MetadataObjs) -> Value32Type {
         metas[*self.as_meta()].get_value32_type(metas)
     }
+
+    #[inline]
+    pub fn semantic_copy(&self) -> GosValue {
+        match self {
+            GosValue::Bool(b) => GosValue::Bool(*b),
+            GosValue::Int(i) => GosValue::Int(*i),
+            GosValue::Float64(f) => GosValue::Float64(*f),
+            GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
+            GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
+            GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
+            GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
+            GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
+            GosValue::Map(m) => GosValue::Map(Rc::new((**m).clone())),
+            GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
+            GosValue::Struct(s) => GosValue::Struct(Rc::new((**s).clone())),
+            GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
+            GosValue::Function(k) => GosValue::Function(*k),
+            GosValue::Package(k) => GosValue::Package(*k),
+            GosValue::Metadata(m) => GosValue::Metadata(*m),
+        }
+    }
 }
 
 impl Clone for GosValue {
     #[inline]
     fn clone(&self) -> Self {
         match self {
-            GosValue::Nil => GosValue::Nil,
             GosValue::Bool(b) => GosValue::Bool(*b),
             GosValue::Int(i) => GosValue::Int(*i),
             GosValue::Float64(f) => GosValue::Float64(*f),
@@ -189,7 +219,6 @@ impl PartialEq for GosValue {
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
             // todo: not the "correct" implementation yet,
-            (GosValue::Nil, GosValue::Nil) => true,
             (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
             (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
@@ -211,7 +240,6 @@ impl Ord for GosValue {
     fn cmp(&self, b: &Self) -> Ordering {
         match (self, b) {
             // todo: not the "correct" implementation yet,
-            (GosValue::Nil, GosValue::Nil) => Ordering::Equal,
             (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
             (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
             (GosValue::Float64(x), GosValue::Float64(y)) => {
@@ -234,7 +262,6 @@ impl Ord for GosValue {
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self {
-            GosValue::Nil => 0.hash(state),
             GosValue::Bool(b) => b.hash(state),
             GosValue::Int(i) => i.hash(state),
             GosValue::Float64(f) => f.to_bits().hash(state),
@@ -273,8 +300,7 @@ impl<'a> GosValueDebug<'a> {
 impl<'a> fmt::Debug for GosValueDebug<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.val {
-            GosValue::Nil
-            | GosValue::Bool(_)
+            GosValue::Bool(_)
             | GosValue::Int(_)
             | GosValue::Float64(_)
             | GosValue::Complex64(_, _) => self.val.fmt(f),
@@ -296,7 +322,9 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 
 // ----------------------------------------------------------------------------
 // GosValue32
-
+// nil is only allowed on the stack as a rhs value
+// never as a lhs var, because when it's assigned to
+// we wouldn't know we should release it or not
 #[derive(Copy, Clone)]
 union Value32Union {
     unil: (),
@@ -329,7 +357,6 @@ impl GosValue32 {
     #[inline]
     pub fn from_v64(v: GosValue) -> (GosValue32, Value32Type) {
         let (data, typ) = match v {
-            GosValue::Nil => (Value32Union { unil: () }, Value32Type::Nil),
             GosValue::Bool(b) => (Value32Union { ubool: b }, Value32Type::Bool),
             GosValue::Int(i) => (Value32Union { uint: i }, Value32Type::Int),
             GosValue::Float64(f) => (Value32Union { ufloat64: f }, Value32Type::Float64),
@@ -440,13 +467,12 @@ impl GosValue32 {
         }
     }
 
+    /// returns GosValue and increases RC
     #[inline]
     pub fn get_v64(&self, t: Value32Type) -> GosValue {
-        //dbg!(t, self.debug_type);
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {
-                Value32Type::Nil => GosValue::Nil,
                 Value32Type::Bool => GosValue::Bool(self.data.ubool),
                 Value32Type::Int => GosValue::Int(self.data.uint),
                 Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
@@ -476,7 +502,7 @@ impl GosValue32 {
                 Value32Type::Function => GosValue::Function(self.data.ufunction),
                 Value32Type::Package => GosValue::Package(self.data.upackage),
                 Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
-                Value32Type::Copyable => unreachable!(),
+                _ => unreachable!(),
             }
         }
     }
@@ -505,12 +531,13 @@ impl GosValue32 {
         unsafe { self.data.ucomplex64 }
     }
 
+    /// returns GosValue without increasing RC
     #[inline]
     pub fn into_v64(&self, t: Value32Type) -> GosValue {
+        //dbg!(t, self.debug_type);
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {
-                Value32Type::Nil => GosValue::Nil,
                 Value32Type::Bool => GosValue::Bool(self.data.ubool),
                 Value32Type::Int => GosValue::Int(self.data.uint),
                 Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
@@ -528,7 +555,7 @@ impl GosValue32 {
                 Value32Type::Function => GosValue::Function(self.data.ufunction),
                 Value32Type::Package => GosValue::Package(self.data.upackage),
                 Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
-                Value32Type::Copyable => unreachable!(),
+                _ => unreachable!(),
             }
         }
     }
@@ -605,7 +632,7 @@ mod test {
         let slice = GosValue::new_slice(10, 10, &GosValue::Int(0), &mut o.slices);
         dbg!(
             GosValueDebug::new(&s, &o),
-            GosValueDebug::new(&GosValue::Nil, &o),
+            //GosValueDebug::new(&GosValue::Nil, &o),
             GosValueDebug::new(&GosValue::Int(1), &o),
             GosValueDebug::new(&slice, &o),
         );

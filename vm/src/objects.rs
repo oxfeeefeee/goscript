@@ -67,6 +67,8 @@ pub struct VMObjects {
     pub map_zero_val: GosValue,
     pub iface_zero_val: GosValue,
     pub chan_zero_val: GosValue,
+    pub func_zero_val: GosValue,
+    pub pkg_zero_val: GosValue,
 }
 
 impl VMObjects {
@@ -98,6 +100,8 @@ impl VMObjects {
                 mark.clone(),
             )))),
             chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal {}))),
+            func_zero_val: GosValue::Function(null_key!()),
+            pkg_zero_val: GosValue::Package(null_key!()),
         };
         let btype = MetadataVal::new_bool(&mut objs);
         objs.basic_types.insert("bool", btype);
@@ -754,6 +758,7 @@ pub struct FunctionVal {
     // these fields are for faster access
     pub param_count: usize,
     pub ret_count: usize,
+    pub local_zeros: Vec<GosValue>,
     entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
     variadic: bool,
@@ -770,6 +775,7 @@ impl FunctionVal {
             up_ptrs: Vec::new(),
             param_count: 0,
             ret_count: 0,
+            local_zeros: Vec::new(),
             entities: HashMap::new(),
             local_alloc: 0,
             variadic: variadic,
@@ -825,12 +831,15 @@ impl FunctionVal {
     }
 
     // for unnamed return values, entity == None
-    pub fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
+    pub fn add_local(&mut self, entity: Option<EntityKey>, typ: Option<GosValue>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
             let old = self.entities.insert(key, EntIndex::LocalVar(result));
             assert_eq!(old, None);
         };
+        if let Some(t) = typ {
+            self.local_zeros.push(t);
+        }
         self.local_alloc += 1;
         EntIndex::LocalVar(result)
     }
@@ -1052,7 +1061,6 @@ impl MetadataVal {
     pub fn get_value32_type(&self, metas: &MetadataObjs) -> Value32Type {
         match &self.typ {
             MetadataType::None => match &self.zero_val {
-                GosValue::Nil => Value32Type::Nil,
                 GosValue::Bool(_) => Value32Type::Bool,
                 GosValue::Int(_) => Value32Type::Int,
                 GosValue::Float64(_) => Value32Type::Float64,

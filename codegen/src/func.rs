@@ -63,14 +63,14 @@ impl FuncGen for FunctionVal {
             .map(|f| {
                 let names = &o.fields[*f].names;
                 if names.len() == 0 {
-                    self.add_local(None);
+                    self.add_local(None, None);
                     1
                 } else {
                     names
                         .iter()
                         .map(|n| {
                             let ident = &o.idents[*n];
-                            self.add_local(ident.entity.clone().into_key());
+                            self.add_local(ident.entity.clone().into_key(), None);
                         })
                         .count()
                 }
@@ -82,7 +82,7 @@ impl FuncGen for FunctionVal {
     fn emit_load(&mut self, index: EntIndex, typ: Value32Type) {
         match index {
             EntIndex::Const(i) => match self.const_val(i).clone() {
-                GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
+                //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
                 GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
                 GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
                 GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
