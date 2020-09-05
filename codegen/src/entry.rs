@@ -48,7 +48,7 @@ impl<'a> EntryGen<'a> {
         func.emit_import(main_idx);
         // negative index for main func
         func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
-        func.emit_load_field(Value32Type::Package, Value32Type::Int);
+        func.emit_load_field(ValueType::Package, ValueType::Int);
         func.emit_pre_call();
         func.emit_call(false);
         func.emit_return();

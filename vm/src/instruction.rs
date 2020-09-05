@@ -172,11 +172,11 @@ impl fmt::Display for Opcode {
     }
 }
 
-pub const COPYABLE_END: Value32Type = Value32Type::Metadata;
+pub const COPYABLE_END: ValueType = ValueType::Metadata;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]
-pub enum Value32Type {
+pub enum ValueType {
     Copyable = 1, // a virtual type indicating any non-rc type
     Nil,
     Bool,
@@ -211,9 +211,9 @@ pub struct Instruction {
 impl Instruction {
     pub fn new(
         op: Opcode,
-        type0: Option<Value32Type>,
-        type1: Option<Value32Type>,
-        type2: Option<Value32Type>,
+        type0: Option<ValueType>,
+        type1: Option<ValueType>,
+        type2: Option<ValueType>,
         imm: Option<OpIndex>,
     ) -> Instruction {
         let val = (op as u64) << (8 * 3 + 32);
@@ -256,19 +256,19 @@ impl Instruction {
     }
 
     #[inline]
-    pub fn t0(&self) -> Value32Type {
+    pub fn t0(&self) -> ValueType {
         let v = ((self.val >> (8 * 2 + 32)) as u16) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
 
     #[inline]
-    pub fn t1(&self) -> Value32Type {
+    pub fn t1(&self) -> ValueType {
         let v = ((self.val >> (8 + 32)) as u32) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
 
     #[inline]
-    pub fn t2(&self) -> Value32Type {
+    pub fn t2(&self) -> ValueType {
         let v = ((self.val >> 32) as u32) & 0xff;
         unsafe { std::mem::transmute(v as u8) }
     }
@@ -339,15 +339,15 @@ mod test {
     fn test_instruction() {
         let mut i = Instruction::new(
             Opcode::ADD,
-            Some(Value32Type::Str),
-            Some(Value32Type::Closure),
-            Some(Value32Type::Int),
+            Some(ValueType::Str),
+            Some(ValueType::Closure),
+            Some(ValueType::Int),
             Some(-99),
         );
         assert_eq!(i.op(), Opcode::ADD);
-        assert_eq!(i.t0(), Value32Type::Str);
-        assert_eq!(i.t1(), Value32Type::Closure);
-        assert_eq!(i.t2(), Value32Type::Int);
+        assert_eq!(i.t0(), ValueType::Str);
+        assert_eq!(i.t1(), ValueType::Closure);
+        assert_eq!(i.t2(), ValueType::Int);
         assert_eq!(i.imm(), -99);
 
         dbg!(1 << 8);

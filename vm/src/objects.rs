@@ -1,5 +1,5 @@
 #![macro_use]
-use super::instruction::{Instruction, OpIndex, Opcode, Value32Type};
+use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::value::GosValue;
 use goscript_parser::objects::EntityKey;
 use slotmap::{new_key_type, DenseSlotMap};
@@ -137,14 +137,14 @@ impl VMObjects {
     }
 
     #[inline]
-    pub fn nil_zero_val(&self, t: Value32Type) -> GosValue {
+    pub fn nil_zero_val(&self, t: ValueType) -> GosValue {
         match t {
-            Value32Type::Boxed => self.boxed_zero_val.clone(),
-            Value32Type::Interface => self.iface_zero_val.clone(),
-            Value32Type::Map => self.map_zero_val.clone(),
-            Value32Type::Slice => self.slice_zero_val.clone(),
-            Value32Type::Channel => self.chan_zero_val.clone(),
-            Value32Type::Function => self.closure_zero_val.clone(),
+            ValueType::Boxed => self.boxed_zero_val.clone(),
+            ValueType::Interface => self.iface_zero_val.clone(),
+            ValueType::Map => self.map_zero_val.clone(),
+            ValueType::Slice => self.slice_zero_val.clone(),
+            ValueType::Channel => self.chan_zero_val.clone(),
+            ValueType::Function => self.closure_zero_val.clone(),
             _ => unreachable!(),
         }
     }
@@ -806,9 +806,9 @@ impl FunctionVal {
     pub fn emit_inst(
         &mut self,
         op: Opcode,
-        type0: Option<Value32Type>,
-        type1: Option<Value32Type>,
-        type2: Option<Value32Type>,
+        type0: Option<ValueType>,
+        type1: Option<ValueType>,
+        type2: Option<ValueType>,
         imm: Option<i32>,
     ) {
         let i = Instruction::new(op, type0, type1, type2, imm);
@@ -1058,23 +1058,23 @@ impl MetadataVal {
         &mut self.typ
     }
 
-    pub fn get_value32_type(&self, metas: &MetadataObjs) -> Value32Type {
+    pub fn get_value32_type(&self, metas: &MetadataObjs) -> ValueType {
         match &self.typ {
             MetadataType::None => match &self.zero_val {
-                GosValue::Bool(_) => Value32Type::Bool,
-                GosValue::Int(_) => Value32Type::Int,
-                GosValue::Float64(_) => Value32Type::Float64,
-                GosValue::Complex64(_, _) => Value32Type::Complex64,
-                GosValue::Str(_) => Value32Type::Str,
+                GosValue::Bool(_) => ValueType::Bool,
+                GosValue::Int(_) => ValueType::Int,
+                GosValue::Float64(_) => ValueType::Float64,
+                GosValue::Complex64(_, _) => ValueType::Complex64,
+                GosValue::Str(_) => ValueType::Str,
                 _ => unreachable!(),
             },
-            MetadataType::Signature(_) => Value32Type::Function,
-            MetadataType::Slice(_) => Value32Type::Slice,
-            MetadataType::Map(_, _) => Value32Type::Map,
-            MetadataType::Interface(_) => Value32Type::Interface,
-            MetadataType::Struct(_, _) => Value32Type::Struct,
-            MetadataType::Channel(_) => Value32Type::Channel,
-            MetadataType::Boxed(_) => Value32Type::Boxed,
+            MetadataType::Signature(_) => ValueType::Function,
+            MetadataType::Slice(_) => ValueType::Slice,
+            MetadataType::Map(_, _) => ValueType::Map,
+            MetadataType::Interface(_) => ValueType::Interface,
+            MetadataType::Struct(_, _) => ValueType::Struct,
+            MetadataType::Channel(_) => ValueType::Channel,
+            MetadataType::Boxed(_) => ValueType::Boxed,
             MetadataType::Named(btype, _) => metas[*btype.as_meta()].get_value32_type(metas),
         }
     }

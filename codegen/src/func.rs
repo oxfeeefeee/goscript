@@ -16,31 +16,31 @@ use goscript_parser::objects::Objects as AstObjects;
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    // Value32Type are the types of the object and the index/selector
-    IndexSelExpr(OpIndex, Value32Type, Value32Type),
+    // ValueType are the types of the object and the index/selector
+    IndexSelExpr(OpIndex, ValueType, ValueType),
     Deref(OpIndex),
 }
 
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()>;
 
-    fn emit_load(&mut self, index: EntIndex, typ: Value32Type);
+    fn emit_load(&mut self, index: EntIndex, typ: ValueType);
 
     fn emit_store(
         &mut self,
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
-        typ: Value32Type,
+        typ: ValueType,
     );
 
     fn emit_import(&mut self, index: OpIndex);
 
-    fn emit_pop(&mut self, typ: Value32Type);
+    fn emit_pop(&mut self, typ: ValueType);
 
-    fn emit_load_field(&mut self, typ: Value32Type, index_type: Value32Type);
+    fn emit_load_field(&mut self, typ: ValueType, index_type: ValueType);
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: Value32Type);
+    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType);
 
     fn emit_return(&mut self);
 
@@ -79,7 +79,7 @@ impl FuncGen for FunctionVal {
         Ok(re)
     }
 
-    fn emit_load(&mut self, index: EntIndex, typ: Value32Type) {
+    fn emit_load(&mut self, index: EntIndex, typ: ValueType) {
         match index {
             EntIndex::Const(i) => match self.const_val(i).clone() {
                 //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
@@ -112,7 +112,7 @@ impl FuncGen for FunctionVal {
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
-        typ: Value32Type,
+        typ: ValueType,
     ) {
         if let LeftHandSide::Primitive(index) = lhs {
             if EntIndex::Blank == *index {
@@ -128,7 +128,7 @@ impl FuncGen for FunctionVal {
                 EntIndex::PackageMember(i) => (
                     Opcode::STORE_THIS_PKG_FIELD,
                     i,
-                    Some(Value32Type::Package),
+                    Some(ValueType::Package),
                     None,
                 ),
                 EntIndex::BuiltIn(_) => unreachable!(),
@@ -151,8 +151,8 @@ impl FuncGen for FunctionVal {
             Instruction::new(Opcode::PUSH_IMM, None, None, None, Some(0)),
             Instruction::new(
                 Opcode::LOAD_FIELD,
-                Some(Value32Type::Package),
-                Some(Value32Type::Int),
+                Some(ValueType::Package),
+                Some(ValueType::Int),
                 None,
                 None,
             ),
@@ -164,15 +164,15 @@ impl FuncGen for FunctionVal {
         self.code.append(&mut cd);
     }
 
-    fn emit_pop(&mut self, typ: Value32Type) {
+    fn emit_pop(&mut self, typ: ValueType) {
         self.emit_inst(Opcode::POP, Some(typ), None, None, None);
     }
 
-    fn emit_load_field(&mut self, typ: Value32Type, index_type: Value32Type) {
+    fn emit_load_field(&mut self, typ: ValueType, index_type: ValueType) {
         self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(index_type), None, None);
     }
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: Value32Type) {
+    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType) {
         self.emit_inst(Opcode::LOAD_FIELD_IMM, Some(typ), None, None, Some(imm));
     }
 

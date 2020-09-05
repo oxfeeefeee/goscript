@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-use super::instruction::{Value32Type, COPYABLE_END};
+use super::instruction::{OpIndex, ValueType, COPYABLE_END};
 use super::value::*;
 
 pub struct Stack {
-    inner: Vec<GosValue32>,
+    inner: Vec<GosValue64>,
 }
 
 impl Stack {
@@ -13,68 +13,68 @@ impl Stack {
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
-        let (v, _) = GosValue32::from_v64(val);
+        let (v, _) = GosValue64::from_v128_leak(&val);
         self.inner.push(v);
     }
 
     #[inline]
-    pub fn push_from_index(&mut self, index: usize, t: Value32Type) {
+    pub fn push_from_index(&mut self, index: usize, t: ValueType) {
         self.inner
             .push(unsafe { self.inner.get_unchecked(index).clone(t) });
     }
 
     #[inline]
     pub fn push_nil(&mut self) {
-        self.inner.push(GosValue32::nil());
+        self.inner.push(GosValue64::nil());
     }
 
     #[inline]
     pub fn push_bool(&mut self, b: bool) {
-        self.inner.push(GosValue32::from_bool(b));
+        self.inner.push(GosValue64::from_bool(b));
     }
 
     #[inline]
     pub fn push_int(&mut self, i: isize) {
-        self.inner.push(GosValue32::from_int(i));
+        self.inner.push(GosValue64::from_int(i));
     }
 
     #[inline]
     pub fn pop(&mut self) -> GosValue {
-        let v32 = self.inner.pop().unwrap();
-        v32.into_v64(v32.debug_type)
+        let v64 = self.inner.pop().unwrap();
+        v64.into_v128_unleak(v64.debug_type)
     }
 
     #[inline]
-    pub fn pop_discard(&mut self, t: Value32Type) {
+    pub fn pop_discard(&mut self, t: ValueType) {
         if t <= COPYABLE_END {
             self.inner.pop();
         } else {
-            self.inner.pop().unwrap().into_v64(t);
+            self.inner.pop().unwrap().into_v128_unleak(t);
         }
     }
 
     #[inline]
-    pub fn pop_with_type(&mut self, t: Value32Type) -> GosValue {
-        let v32 = self.inner.pop().unwrap();
-        v32.into_v64(t)
+    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
+        let v64 = self.inner.pop().unwrap();
+        v64.into_v128_unleak(t)
     }
 
     #[inline]
-    pub fn get(&self, index: usize /*, t: Value32Type*/) -> GosValue {
+    pub fn get(&self, index: usize /*, t: ValueType*/) -> GosValue {
         let v = self.inner.get(index).unwrap();
-        v.get_v64(v.debug_type)
+        v.get_v128(v.debug_type)
     }
 
     #[inline]
-    pub fn get_with_type(&self, index: usize, t: Value32Type) -> GosValue {
+    pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
         let v = self.inner.get(index).unwrap();
-        v.get_v64(t)
+        v.get_v128(t)
     }
 
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) {
-        let (v, _) = GosValue32::from_v64(val);
-        let _ = self.inner[index].into_v64(self.inner[index].debug_type);
+        let (v, _) = GosValue64::from_v128_leak(&val);
+        let _ = self.inner[index].into_v128_unleak(self.inner[index].debug_type);
         self.inner[index] = v;
     }
 
@@ -90,14 +90,14 @@ impl Stack {
 
     #[inline]
     pub fn append(&mut self, v: &mut Vec<GosValue>) {
-        let mut v32 = v
+        let mut v64 = v
             .drain(..)
             .map(|x| {
-                let (v, _) = GosValue32::from_v64(x);
+                let (v, _) = GosValue64::from_v128_leak(&x);
                 v
             })
             .collect();
-        self.inner.append(&mut v32);
+        self.inner.append(&mut v64);
     }
 
     #[inline]
@@ -105,8 +105,16 @@ impl Stack {
         self.inner
             .split_off(index)
             .into_iter()
-            .map(|x| x.into_v64(x.debug_type))
+            .map(|x| x.into_v128_unleak(x.debug_type))
             .collect()
+    }
+
+    #[inline]
+    pub fn sematic_copy(&mut self, li: usize, ri: usize, t: ValueType) {}
+
+    #[inline]
+    pub fn offset(base: usize, offset: OpIndex) -> usize {
+        (base as isize + offset as isize) as usize
     }
 }
 
@@ -122,6 +130,6 @@ mod test {
         s.push(GosValue::new_str("11".to_string()));
         let v2 = GosValue::new_str("aa".to_string());
         s.set(0, v2.clone());
-        //assert_eq!(s.get(0, Value32Type::Str), v2);
+        //assert_eq!(s.get(0, ValueType::Str), v2);
     }
 }

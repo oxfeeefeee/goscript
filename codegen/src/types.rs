@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use goscript_types::{BasicType, ConstValue, TCObjects, Type, TypeKey as TCTypeKey};
-use goscript_vm::instruction::{OpIndex, Value32Type};
+use goscript_vm::instruction::{OpIndex, ValueType};
 use goscript_vm::value::*;
 use std::collections::HashMap;
 
@@ -120,10 +120,10 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
     }
 }
 
-pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> Value32Type {
+pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
     match &tc_objs.types[typ] {
         Type::Basic(detail) => match detail.typ() {
-            BasicType::Bool | BasicType::UntypedBool => Value32Type::Bool,
+            BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
             BasicType::Int
             | BasicType::Int8
             | BasicType::Int16
@@ -139,23 +139,21 @@ pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> Value32Type 
             | BasicType::Uintptr
             | BasicType::UnsafePointer
             | BasicType::UntypedInt
-            | BasicType::UntypedRune => Value32Type::Int,
-            BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-                Value32Type::Float64
-            }
-            BasicType::Str | BasicType::UntypedString => Value32Type::Str,
-            BasicType::UntypedNil => Value32Type::Nil,
+            | BasicType::UntypedRune => ValueType::Int,
+            BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => ValueType::Float64,
+            BasicType::Str | BasicType::UntypedString => ValueType::Str,
+            BasicType::UntypedNil => ValueType::Nil,
             _ => {
                 dbg!(detail.typ());
                 unreachable!()
             } //Complex64,  todo
               //Complex128, todo
         },
-        Type::Slice(_) => Value32Type::Slice,
-        Type::Map(_) => Value32Type::Map,
-        Type::Struct(_) => Value32Type::Struct,
-        Type::Signature(_) => Value32Type::Function,
-        Type::Pointer(_) => Value32Type::Boxed,
+        Type::Slice(_) => ValueType::Slice,
+        Type::Map(_) => ValueType::Map,
+        Type::Struct(_) => ValueType::Struct,
+        Type::Signature(_) => ValueType::Function,
+        Type::Pointer(_) => ValueType::Boxed,
         Type::Named(detail) => value32_type_from_tc(detail.underlying(), tc_objs),
         _ => {
             dbg!(&tc_objs.types[typ]);
@@ -164,15 +162,15 @@ pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> Value32Type 
     }
 }
 
-pub fn range_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<Value32Type> {
+pub fn range_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
     match &tc_objs.types[typ] {
         Type::Basic(detail) => match detail.typ() {
-            BasicType::Str | BasicType::UntypedString => vec![Value32Type::Int, Value32Type::Int],
+            BasicType::Str | BasicType::UntypedString => vec![ValueType::Int, ValueType::Int],
             _ => unreachable!(),
         },
         Type::Slice(detail) => {
             let elem = value32_type_from_tc(detail.elem(), tc_objs);
-            vec![Value32Type::Int, elem]
+            vec![ValueType::Int, elem]
         }
         Type::Map(detail) => {
             let key = value32_type_from_tc(detail.key(), tc_objs);
@@ -186,7 +184,7 @@ pub fn range_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<Value32Ty
     }
 }
 
-pub fn return_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<Value32Type> {
+pub fn return_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
     match &tc_objs.types[typ] {
         Type::Tuple(detail) => detail
             .vars()

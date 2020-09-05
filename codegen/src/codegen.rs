@@ -83,8 +83,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) -> Self::Result {
         let val = self.get_const_value(id)?;
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val.clone());
-        let (_, t) = GosValue32::from_v64(val);
+        let t = val.get_v32_type();
+        let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
     }
@@ -95,7 +95,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body)?;
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
-        func.emit_load(i, Value32Type::Function);
+        func.emit_load(i, ValueType::Function);
         func.emit_new();
         Ok(())
     }
@@ -103,8 +103,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
         let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit)?;
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val.clone());
-        let (_, t) = GosValue32::from_v64(val);
+        let t = val.get_v32_type();
+        let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
     }
@@ -118,7 +118,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         // todo: use index instead of string when Type Checker is in place
         self.gen_push_ident_str(ident);
         let (t0, _) = self.get_selection_value32_types(id);
-        current_func_mut!(self).emit_load_field(t0, Value32Type::Str);
+        current_func_mut!(self).emit_load_field(t0, ValueType::Str);
         Ok(())
     }
 
@@ -279,8 +279,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
         let val = self.gen_type_meta_by_node_id(arr.id());
         let func = current_func_mut!(self);
-        let i = func.add_const(None, val.clone());
-        let (_, t) = GosValue32::from_v64(val);
+        let t = val.get_v32_type();
+        let i = func.add_const(None, val);
         func.emit_load(i, t);
         Ok(())
     }
@@ -736,7 +736,7 @@ impl<'a> CodeGen<'a> {
                         self.gen_push_ident_str(&sexpr.sel);
                         let obj_typ = self.get_expr_value32_type(&sexpr.expr);
                         // the true index will be calculated later
-                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, Value32Type::Str))
+                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, ValueType::Str))
                     }
                     Expr::Star(sexpr) => {
                         self.visit_expr(&sexpr.expr)?;
@@ -812,7 +812,7 @@ impl<'a> CodeGen<'a> {
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                let (_, t) = GosValue32::from_v64(val.clone());
+                let t = val.get_v32_type();
                 func.emit_load(i, t);
                 types.push(t);
             }
@@ -881,7 +881,7 @@ impl<'a> CodeGen<'a> {
                     func.emit_pop(*t1);
                     func.emit_pop(*t0);
                 }
-                LeftHandSide::Deref(_) => func.emit_pop(Value32Type::Boxed),
+                LeftHandSide::Deref(_) => func.emit_pop(ValueType::Boxed),
             }
         }
         Ok(range_marker)
@@ -892,7 +892,7 @@ impl<'a> CodeGen<'a> {
         left: &LeftHandSide,
         op: Opcode,
         right: Option<&Expr>,
-        typ: Value32Type,
+        typ: ValueType,
     ) -> Result<(), ()> {
         if let Some(e) = right {
             self.visit_expr(e)?;
@@ -922,7 +922,7 @@ impl<'a> CodeGen<'a> {
                 //  [... target, value]
                 func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), typ);
                 func.emit_pop(typ);
-                func.emit_pop(Value32Type::Boxed);
+                func.emit_pop(ValueType::Boxed);
             }
         }
         Ok(())
@@ -1032,34 +1032,34 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn get_expr_value32_type(&mut self, e: &Expr) -> Value32Type {
+    fn get_expr_value32_type(&mut self, e: &Expr) -> ValueType {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         types::value32_type_from_tc(typ, self.tc_objs)
     }
 
-    fn get_use_value32_type(&self, ikey: IdentKey) -> Value32Type {
+    fn get_use_value32_type(&self, ikey: IdentKey) -> ValueType {
         let typ = &self.tc_objs.lobjs[self.ti.uses[&ikey]].typ().unwrap();
         types::value32_type_from_tc(*typ, self.tc_objs)
     }
 
-    fn get_def_value32_type(&mut self, ikey: IdentKey) -> Value32Type {
+    fn get_def_value32_type(&mut self, ikey: IdentKey) -> ValueType {
         let typ = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()]
             .typ()
             .unwrap();
         types::value32_type_from_tc(*typ, self.tc_objs)
     }
 
-    fn get_range_value32_types(&mut self, e: &Expr) -> Vec<Value32Type> {
+    fn get_range_value32_types(&mut self, e: &Expr) -> Vec<ValueType> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         types::range_value32_types(typ, self.tc_objs)
     }
 
-    fn get_return_value32_types(&mut self, e: &Expr) -> Vec<Value32Type> {
+    fn get_return_value32_types(&mut self, e: &Expr) -> Vec<ValueType> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         types::return_value32_types(typ, self.tc_objs)
     }
 
-    fn get_selection_value32_types(&mut self, id: NodeId) -> (Value32Type, Value32Type) {
+    fn get_selection_value32_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
         let sel = &self.ti.selections[&id];
         let t0 = types::value32_type_from_tc(sel.recv().unwrap(), self.tc_objs);
         let t1 =
@@ -1136,7 +1136,7 @@ impl<'a> CodeGen<'a> {
         let gos_val = GosValue::new_str(name);
         let func = current_func_mut!(self);
         let index = func.add_const(None, gos_val);
-        func.emit_load(index, Value32Type::Str);
+        func.emit_load(index, ValueType::Str);
     }
 
     fn built_in_func_index(&self, name: &str) -> Option<OpIndex> {

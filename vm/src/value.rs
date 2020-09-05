@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::instruction::{Value32Type, COPYABLE_END};
+use super::instruction::{ValueType, COPYABLE_END};
 pub use super::objects::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -164,28 +164,27 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn meta_get_value32_type(&self, metas: &MetadataObjs) -> Value32Type {
+    pub fn meta_get_value32_type(&self, metas: &MetadataObjs) -> ValueType {
         metas[*self.as_meta()].get_value32_type(metas)
     }
 
-    #[inline]
-    pub fn semantic_copy(&self) -> GosValue {
+    pub fn get_v32_type(&self) -> ValueType {
         match self {
-            GosValue::Bool(b) => GosValue::Bool(*b),
-            GosValue::Int(i) => GosValue::Int(*i),
-            GosValue::Float64(f) => GosValue::Float64(*f),
-            GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
-            GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
-            GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
-            GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
-            GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
-            GosValue::Map(m) => GosValue::Map(Rc::new((**m).clone())),
-            GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
-            GosValue::Struct(s) => GosValue::Struct(Rc::new((**s).clone())),
-            GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
-            GosValue::Function(k) => GosValue::Function(*k),
-            GosValue::Package(k) => GosValue::Package(*k),
-            GosValue::Metadata(m) => GosValue::Metadata(*m),
+            GosValue::Bool(_) => ValueType::Bool,
+            GosValue::Int(_) => ValueType::Int,
+            GosValue::Float64(_) => ValueType::Float64,
+            GosValue::Complex64(_, _) => ValueType::Complex64,
+            GosValue::Str(_) => ValueType::Str,
+            GosValue::Boxed(_) => ValueType::Boxed,
+            GosValue::Closure(_) => ValueType::Closure,
+            GosValue::Slice(_) => ValueType::Slice,
+            GosValue::Map(_) => ValueType::Map,
+            GosValue::Interface(_) => ValueType::Interface,
+            GosValue::Struct(_) => ValueType::Struct,
+            GosValue::Channel(_) => ValueType::Channel,
+            GosValue::Function(_) => ValueType::Function,
+            GosValue::Package(_) => ValueType::Package,
+            GosValue::Metadata(_) => ValueType::Metadata,
         }
     }
 }
@@ -193,23 +192,8 @@ impl GosValue {
 impl Clone for GosValue {
     #[inline]
     fn clone(&self) -> Self {
-        match self {
-            GosValue::Bool(b) => GosValue::Bool(*b),
-            GosValue::Int(i) => GosValue::Int(*i),
-            GosValue::Float64(f) => GosValue::Float64(*f),
-            GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
-            GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
-            GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
-            GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
-            GosValue::Slice(s) => GosValue::Slice(Rc::clone(s)),
-            GosValue::Map(m) => GosValue::Map(Rc::clone(m)),
-            GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
-            GosValue::Struct(s) => GosValue::Struct(Rc::clone(s)),
-            GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
-            GosValue::Function(k) => GosValue::Function(*k),
-            GosValue::Package(k) => GosValue::Package(*k),
-            GosValue::Metadata(m) => GosValue::Metadata(*m),
-        }
+        let (v, t) = GosValue64::from_v128_leak(self);
+        v.into_v128_unleak(t)
     }
 }
 
@@ -321,7 +305,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 }
 
 // ----------------------------------------------------------------------------
-// GosValue32
+// GosValue64
 // nil is only allowed on the stack as a rhs value
 // never as a lhs var, because when it's assigned to
 // we wouldn't know we should release it or not
@@ -345,81 +329,81 @@ union Value32Union {
     uchannel: *const RefCell<ChannelVal>,
 }
 
-/// GosValue32 is a 32bit struct for VM stack to get better performance, when converting
-/// to GosValue32, the type info is lost, Opcode is responsible for providing type info
+/// GosValue64 is a 64bit struct for VM stack to get better performance, when converting
+/// to GosValue64, the type info is lost, Opcode is responsible for providing type info
 /// when converting back to GosValue
-pub struct GosValue32 {
+pub struct GosValue64 {
     data: Value32Union,
-    pub debug_type: Value32Type, // to be removed in release build
+    pub debug_type: ValueType, // to be removed in release build
 }
 
-impl GosValue32 {
+impl GosValue64 {
     #[inline]
-    pub fn from_v64(v: GosValue) -> (GosValue32, Value32Type) {
+    pub fn from_v128_leak(v: &GosValue) -> (GosValue64, ValueType) {
         let (data, typ) = match v {
-            GosValue::Bool(b) => (Value32Union { ubool: b }, Value32Type::Bool),
-            GosValue::Int(i) => (Value32Union { uint: i }, Value32Type::Int),
-            GosValue::Float64(f) => (Value32Union { ufloat64: f }, Value32Type::Float64),
+            GosValue::Bool(b) => (Value32Union { ubool: *b }, ValueType::Bool),
+            GosValue::Int(i) => (Value32Union { uint: *i }, ValueType::Int),
+            GosValue::Float64(f) => (Value32Union { ufloat64: *f }, ValueType::Float64),
             GosValue::Complex64(f1, f2) => (
                 Value32Union {
-                    ucomplex64: (f1, f2),
+                    ucomplex64: (*f1, *f2),
                 },
-                Value32Type::Complex64,
+                ValueType::Complex64,
             ),
             GosValue::Str(s) => (
                 Value32Union {
-                    ustr: Rc::into_raw(s),
+                    ustr: Rc::into_raw(s.clone()),
                 },
-                Value32Type::Str,
+                ValueType::Str,
             ),
             GosValue::Boxed(b) => (
                 Value32Union {
-                    uboxed: Rc::into_raw(b),
+                    uboxed: Rc::into_raw(b.clone()),
                 },
-                Value32Type::Boxed,
+                ValueType::Boxed,
             ),
             GosValue::Closure(c) => (
                 Value32Union {
-                    uclosure: Rc::into_raw(c),
+                    uclosure: Rc::into_raw(c.clone()),
                 },
-                Value32Type::Closure,
+                ValueType::Closure,
             ),
             GosValue::Slice(s) => (
                 Value32Union {
-                    uslice: Rc::into_raw(s),
+                    uslice: Rc::into_raw(s.clone()),
                 },
-                Value32Type::Slice,
+                ValueType::Slice,
             ),
             GosValue::Map(m) => (
                 Value32Union {
-                    umap: Rc::into_raw(m),
+                    umap: Rc::into_raw(m.clone()),
                 },
-                Value32Type::Map,
+                ValueType::Map,
             ),
             GosValue::Interface(i) => (
                 Value32Union {
-                    uinterface: Rc::into_raw(i),
+                    uinterface: Rc::into_raw(i.clone()),
                 },
-                Value32Type::Interface,
+                ValueType::Interface,
             ),
             GosValue::Struct(s) => (
                 Value32Union {
-                    ustruct: Rc::into_raw(s),
+                    ustruct: Rc::into_raw(s.clone()),
                 },
-                Value32Type::Struct,
+                ValueType::Struct,
             ),
             GosValue::Channel(c) => (
                 Value32Union {
-                    uchannel: Rc::into_raw(c),
+                    uchannel: Rc::into_raw(c.clone()),
                 },
-                Value32Type::Channel,
+                ValueType::Channel,
             ),
-            GosValue::Function(k) => (Value32Union { ufunction: k }, Value32Type::Function),
-            GosValue::Package(k) => (Value32Union { upackage: k }, Value32Type::Package),
-            GosValue::Metadata(k) => (Value32Union { umetadata: k }, Value32Type::Metadata),
+            GosValue::Function(k) => (Value32Union { ufunction: *k }, ValueType::Function),
+            GosValue::Package(k) => (Value32Union { upackage: *k }, ValueType::Package),
+            GosValue::Metadata(k) => (Value32Union { umetadata: *k }, ValueType::Metadata),
         };
         (
-            GosValue32 {
+            GosValue64 {
                 data: data,
                 debug_type: typ,
             },
@@ -428,80 +412,76 @@ impl GosValue32 {
     }
 
     #[inline]
-    pub fn nil() -> GosValue32 {
-        GosValue32 {
+    pub fn nil() -> GosValue64 {
+        GosValue64 {
             data: Value32Union { unil: () },
-            debug_type: Value32Type::Nil,
+            debug_type: ValueType::Nil,
         }
     }
 
     #[inline]
-    pub fn from_bool(b: bool) -> GosValue32 {
-        GosValue32 {
+    pub fn from_bool(b: bool) -> GosValue64 {
+        GosValue64 {
             data: Value32Union { ubool: b },
-            debug_type: Value32Type::Bool,
+            debug_type: ValueType::Bool,
         }
     }
 
     #[inline]
-    pub fn from_int(i: isize) -> GosValue32 {
-        GosValue32 {
+    pub fn from_int(i: isize) -> GosValue64 {
+        GosValue64 {
             data: Value32Union { uint: i },
-            debug_type: Value32Type::Int,
+            debug_type: ValueType::Int,
         }
     }
 
     #[inline]
-    pub fn from_float64(f: f64) -> GosValue32 {
-        GosValue32 {
+    pub fn from_float64(f: f64) -> GosValue64 {
+        GosValue64 {
             data: Value32Union { ufloat64: f },
-            debug_type: Value32Type::Float64,
+            debug_type: ValueType::Float64,
         }
     }
 
     #[inline]
-    pub fn from_complex64(r: f32, i: f32) -> GosValue32 {
-        GosValue32 {
+    pub fn from_complex64(r: f32, i: f32) -> GosValue64 {
+        GosValue64 {
             data: Value32Union { ucomplex64: (r, i) },
-            debug_type: Value32Type::Complex64,
+            debug_type: ValueType::Complex64,
         }
     }
 
     /// returns GosValue and increases RC
     #[inline]
-    pub fn get_v64(&self, t: Value32Type) -> GosValue {
+    pub fn get_v128(&self, t: ValueType) -> GosValue {
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {
-                Value32Type::Bool => GosValue::Bool(self.data.ubool),
-                Value32Type::Int => GosValue::Int(self.data.uint),
-                Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
-                Value32Type::Complex64 => {
+                ValueType::Bool => GosValue::Bool(self.data.ubool),
+                ValueType::Int => GosValue::Int(self.data.uint),
+                ValueType::Float64 => GosValue::Float64(self.data.ufloat64),
+                ValueType::Complex64 => {
                     GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
                 }
-                Value32Type::Str => GosValue::Str(GosValue32::get_rc_from_ptr(self.data.ustr)),
-                Value32Type::Boxed => {
-                    GosValue::Boxed(GosValue32::get_rc_from_ptr(self.data.uboxed))
+                ValueType::Str => GosValue::Str(GosValue64::get_rc_from_ptr(self.data.ustr)),
+                ValueType::Boxed => GosValue::Boxed(GosValue64::get_rc_from_ptr(self.data.uboxed)),
+                ValueType::Closure => {
+                    GosValue::Closure(GosValue64::get_rc_from_ptr(self.data.uclosure))
                 }
-                Value32Type::Closure => {
-                    GosValue::Closure(GosValue32::get_rc_from_ptr(self.data.uclosure))
+                ValueType::Slice => GosValue::Slice(GosValue64::get_rc_from_ptr(self.data.uslice)),
+                ValueType::Map => GosValue::Map(GosValue64::get_rc_from_ptr(self.data.umap)),
+                ValueType::Interface => {
+                    GosValue::Interface(GosValue64::get_rc_from_ptr(self.data.uinterface))
                 }
-                Value32Type::Slice => {
-                    GosValue::Slice(GosValue32::get_rc_from_ptr(self.data.uslice))
+                ValueType::Struct => {
+                    GosValue::Struct(GosValue64::get_rc_from_ptr(self.data.ustruct))
                 }
-                Value32Type::Map => GosValue::Map(GosValue32::get_rc_from_ptr(self.data.umap)),
-                Value32Type::Interface => {
-                    GosValue::Interface(GosValue32::get_rc_from_ptr(self.data.uinterface))
+                ValueType::Channel => {
+                    GosValue::Channel(GosValue64::get_rc_from_ptr(self.data.uchannel))
                 }
-                Value32Type::Struct => {
-                    GosValue::Struct(GosValue32::get_rc_from_ptr(self.data.ustruct))
-                }
-                Value32Type::Channel => {
-                    GosValue::Channel(GosValue32::get_rc_from_ptr(self.data.uchannel))
-                }
-                Value32Type::Function => GosValue::Function(self.data.ufunction),
-                Value32Type::Package => GosValue::Package(self.data.upackage),
-                Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
+                ValueType::Function => GosValue::Function(self.data.ufunction),
+                ValueType::Package => GosValue::Package(self.data.upackage),
+                ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
                 _ => unreachable!(),
             }
         }
@@ -509,99 +489,120 @@ impl GosValue32 {
 
     #[inline]
     pub fn get_bool(&self) -> bool {
-        debug_assert_eq!(self.debug_type, Value32Type::Bool);
+        debug_assert_eq!(self.debug_type, ValueType::Bool);
         unsafe { self.data.ubool }
     }
 
     #[inline]
     pub fn get_int(&self) -> isize {
-        debug_assert_eq!(self.debug_type, Value32Type::Int);
+        debug_assert_eq!(self.debug_type, ValueType::Int);
         unsafe { self.data.uint }
     }
 
     #[inline]
     pub fn get_float64(&self) -> f64 {
-        debug_assert_eq!(self.debug_type, Value32Type::Float64);
+        debug_assert_eq!(self.debug_type, ValueType::Float64);
         unsafe { self.data.ufloat64 }
     }
 
     #[inline]
     pub fn get_complex64(&self) -> (f32, f32) {
-        debug_assert_eq!(self.debug_type, Value32Type::Complex64);
+        debug_assert_eq!(self.debug_type, ValueType::Complex64);
         unsafe { self.data.ucomplex64 }
     }
 
     /// returns GosValue without increasing RC
     #[inline]
-    pub fn into_v64(&self, t: Value32Type) -> GosValue {
+    pub fn into_v128_unleak(&self, t: ValueType) -> GosValue {
         //dbg!(t, self.debug_type);
         debug_assert!(t == self.debug_type);
         unsafe {
             match t {
-                Value32Type::Bool => GosValue::Bool(self.data.ubool),
-                Value32Type::Int => GosValue::Int(self.data.uint),
-                Value32Type::Float64 => GosValue::Float64(self.data.ufloat64),
-                Value32Type::Complex64 => {
+                ValueType::Bool => GosValue::Bool(self.data.ubool),
+                ValueType::Int => GosValue::Int(self.data.uint),
+                ValueType::Float64 => GosValue::Float64(self.data.ufloat64),
+                ValueType::Complex64 => {
                     GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
                 }
-                Value32Type::Str => GosValue::Str(Rc::from_raw(self.data.ustr)),
-                Value32Type::Boxed => GosValue::Boxed(Rc::from_raw(self.data.uboxed)),
-                Value32Type::Closure => GosValue::Closure(Rc::from_raw(self.data.uclosure)),
-                Value32Type::Slice => GosValue::Slice(Rc::from_raw(self.data.uslice)),
-                Value32Type::Map => GosValue::Map(Rc::from_raw(self.data.umap)),
-                Value32Type::Interface => GosValue::Interface(Rc::from_raw(self.data.uinterface)),
-                Value32Type::Struct => GosValue::Struct(Rc::from_raw(self.data.ustruct)),
-                Value32Type::Channel => GosValue::Channel(Rc::from_raw(self.data.uchannel)),
-                Value32Type::Function => GosValue::Function(self.data.ufunction),
-                Value32Type::Package => GosValue::Package(self.data.upackage),
-                Value32Type::Metadata => GosValue::Metadata(self.data.umetadata),
+                ValueType::Str => GosValue::Str(Rc::from_raw(self.data.ustr)),
+                ValueType::Boxed => GosValue::Boxed(Rc::from_raw(self.data.uboxed)),
+                ValueType::Closure => GosValue::Closure(Rc::from_raw(self.data.uclosure)),
+                ValueType::Slice => GosValue::Slice(Rc::from_raw(self.data.uslice)),
+                ValueType::Map => GosValue::Map(Rc::from_raw(self.data.umap)),
+                ValueType::Interface => GosValue::Interface(Rc::from_raw(self.data.uinterface)),
+                ValueType::Struct => GosValue::Struct(Rc::from_raw(self.data.ustruct)),
+                ValueType::Channel => GosValue::Channel(Rc::from_raw(self.data.uchannel)),
+                ValueType::Function => GosValue::Function(self.data.ufunction),
+                ValueType::Package => GosValue::Package(self.data.upackage),
+                ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
                 _ => unreachable!(),
             }
         }
     }
 
     #[inline]
-    pub fn clone(&self, t: Value32Type) -> GosValue32 {
+    pub fn clone(&self, t: ValueType) -> GosValue64 {
         //let t = self.debug_type;
         let data = if t <= COPYABLE_END {
             self.data
         } else {
             unsafe {
                 match t {
-                    Value32Type::Str => Value32Union {
-                        ustr: GosValue32::clone_ptr(self.data.ustr),
+                    ValueType::Str => Value32Union {
+                        ustr: GosValue64::clone_ptr(self.data.ustr),
                     },
-                    Value32Type::Boxed => Value32Union {
-                        uboxed: GosValue32::clone_ptr(self.data.uboxed),
+                    ValueType::Boxed => Value32Union {
+                        uboxed: GosValue64::clone_ptr(self.data.uboxed),
                     },
-                    Value32Type::Closure => Value32Union {
-                        uclosure: GosValue32::clone_ptr(self.data.uclosure),
+                    ValueType::Closure => Value32Union {
+                        uclosure: GosValue64::clone_ptr(self.data.uclosure),
                     },
-                    Value32Type::Slice => Value32Union {
-                        uslice: GosValue32::clone_ptr(self.data.uslice),
+                    ValueType::Slice => Value32Union {
+                        uslice: GosValue64::clone_ptr(self.data.uslice),
                     },
-                    Value32Type::Map => Value32Union {
-                        umap: GosValue32::clone_ptr(self.data.umap),
+                    ValueType::Map => Value32Union {
+                        umap: GosValue64::clone_ptr(self.data.umap),
                     },
-                    Value32Type::Interface => Value32Union {
-                        uinterface: GosValue32::clone_ptr(self.data.uinterface),
+                    ValueType::Interface => Value32Union {
+                        uinterface: GosValue64::clone_ptr(self.data.uinterface),
                     },
-                    Value32Type::Struct => Value32Union {
-                        ustruct: GosValue32::clone_ptr(self.data.ustruct),
+                    ValueType::Struct => Value32Union {
+                        ustruct: GosValue64::clone_ptr(self.data.ustruct),
                     },
-                    Value32Type::Channel => Value32Union {
-                        uchannel: GosValue32::clone_ptr(self.data.uchannel),
+                    ValueType::Channel => Value32Union {
+                        uchannel: GosValue64::clone_ptr(self.data.uchannel),
                     },
                     _ => unreachable!(),
                 }
             }
         };
-        GosValue32 {
+        GosValue64 {
             data: data,
             debug_type: self.debug_type,
         }
     }
-
+    /*
+        #[inline]
+        pub fn semantic_copy(&self, t: ValueType) -> GosValue64 {
+            match self {
+                GosValue::Bool(b) => GosValue::Bool(*b),
+                GosValue::Int(i) => GosValue::Int(*i),
+                GosValue::Float64(f) => GosValue::Float64(*f),
+                GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
+                GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
+                GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
+                GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
+                GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
+                GosValue::Map(m) => GosValue::Map(Rc::new((**m).clone())),
+                GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
+                GosValue::Struct(s) => GosValue::Struct(Rc::new((**s).clone())),
+                GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
+                GosValue::Function(k) => GosValue::Function(*k),
+                GosValue::Package(k) => GosValue::Package(*k),
+                GosValue::Metadata(m) => GosValue::Metadata(*m),
+            }
+        }
+    */
     /// get_rc_from_ptr returns a Rc from raw pointer, without decreasing the ref counter
     #[inline]
     fn get_rc_from_ptr<T>(ptr: *const T) -> Rc<T> {
@@ -615,7 +616,7 @@ impl GosValue32 {
 
     #[inline]
     fn clone_ptr<T>(ptr: *const T) -> *const T {
-        Rc::into_raw(GosValue32::get_rc_from_ptr(ptr))
+        Rc::into_raw(GosValue64::get_rc_from_ptr(ptr))
     }
 }
 

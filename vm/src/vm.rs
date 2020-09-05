@@ -212,14 +212,14 @@ impl Fiber {
                     stack.pop_discard(inst.t0());
                 }
                 Opcode::LOAD_LOCAL => {
-                    let index = offset_uint!(stack_base, inst.imm());
+                    let index = Stack::offset(stack_base, inst.imm());
                     stack.push_from_index(index, inst.t0()); // (index![stack, index]);
                 }
                 Opcode::STORE_LOCAL => {
                     let (rhs_index, index) = inst.imm2();
-                    let s_index = offset_uint!(stack_base, index);
+                    let s_index = Stack::offset(stack_base, index);
                     if rhs_index < 0 {
-                        let rhs_s_index = offset_uint!(stack.len(), rhs_index);
+                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                         stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
                     } else {
                         let operand = index![stack, stack.len() - 1];
