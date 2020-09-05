@@ -120,7 +120,7 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
     }
 }
 
-pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
+pub fn value_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
     match &tc_objs.types[typ] {
         Type::Basic(detail) => match detail.typ() {
             BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
@@ -154,7 +154,7 @@ pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
         Type::Struct(_) => ValueType::Struct,
         Type::Signature(_) => ValueType::Function,
         Type::Pointer(_) => ValueType::Boxed,
-        Type::Named(detail) => value32_type_from_tc(detail.underlying(), tc_objs),
+        Type::Named(detail) => value_type_from_tc(detail.underlying(), tc_objs),
         _ => {
             dbg!(&tc_objs.types[typ]);
             unimplemented!()
@@ -162,19 +162,19 @@ pub fn value32_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
     }
 }
 
-pub fn range_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
+pub fn range_value_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
     match &tc_objs.types[typ] {
         Type::Basic(detail) => match detail.typ() {
             BasicType::Str | BasicType::UntypedString => vec![ValueType::Int, ValueType::Int],
             _ => unreachable!(),
         },
         Type::Slice(detail) => {
-            let elem = value32_type_from_tc(detail.elem(), tc_objs);
+            let elem = value_type_from_tc(detail.elem(), tc_objs);
             vec![ValueType::Int, elem]
         }
         Type::Map(detail) => {
-            let key = value32_type_from_tc(detail.key(), tc_objs);
-            let elem = value32_type_from_tc(detail.elem(), tc_objs);
+            let key = value_type_from_tc(detail.key(), tc_objs);
+            let elem = value_type_from_tc(detail.elem(), tc_objs);
             vec![key, elem]
         }
         _ => {
@@ -184,14 +184,14 @@ pub fn range_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType
     }
 }
 
-pub fn return_value32_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
+pub fn return_value_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
     match &tc_objs.types[typ] {
         Type::Tuple(detail) => detail
             .vars()
             .iter()
             .map(|x| {
                 let typ = tc_objs.lobjs[*x].typ().unwrap();
-                value32_type_from_tc(typ, tc_objs)
+                value_type_from_tc(typ, tc_objs)
             })
             .collect(),
         _ => unreachable!(),

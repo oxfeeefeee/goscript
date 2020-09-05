@@ -1058,7 +1058,7 @@ impl MetadataVal {
         &mut self.typ
     }
 
-    pub fn get_value32_type(&self, metas: &MetadataObjs) -> ValueType {
+    pub fn get_value_type(&self, metas: &MetadataObjs) -> ValueType {
         match &self.typ {
             MetadataType::None => match &self.zero_val {
                 GosValue::Bool(_) => ValueType::Bool,
@@ -1075,7 +1075,7 @@ impl MetadataVal {
             MetadataType::Struct(_, _) => ValueType::Struct,
             MetadataType::Channel(_) => ValueType::Channel,
             MetadataType::Boxed(_) => ValueType::Boxed,
-            MetadataType::Named(btype, _) => metas[*btype.as_meta()].get_value32_type(metas),
+            MetadataType::Named(btype, _) => metas[*btype.as_meta()].get_value_type(metas),
         }
     }
 }

@@ -71,7 +71,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
         let index = self.resolve_ident(ident)?;
-        let t = self.get_use_value32_type(*ident);
+        let t = self.get_use_value_type(*ident);
         current_func_mut!(self).emit_load(index, t);
         Ok(())
     }
@@ -117,7 +117,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(expr)?;
         // todo: use index instead of string when Type Checker is in place
         self.gen_push_ident_str(ident);
-        let (t0, _) = self.get_selection_value32_types(id);
+        let (t0, _) = self.get_selection_value_types(id);
         current_func_mut!(self).emit_load_field(t0, ValueType::Str);
         Ok(())
     }
@@ -125,8 +125,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
         self.visit_expr(expr)?;
         self.visit_expr(index)?;
-        let t0 = self.get_expr_value32_type(expr);
-        let t1 = self.get_expr_value32_type(index);
+        let t0 = self.get_expr_value_type(expr);
+        let t1 = self.get_expr_value_type(index);
         current_func_mut!(self).emit_load_field(t0, t1);
         Ok(())
     }
@@ -420,7 +420,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) -> Self::Result {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr)?;
-            let t = self.get_expr_value32_type(expr);
+            let t = self.get_expr_value_type(expr);
             let f = current_func_mut!(self);
             f.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
@@ -725,16 +725,16 @@ impl<'a> CodeGen<'a> {
                     Expr::Index(ind_expr) => {
                         let obj = &ind_expr.as_ref().expr;
                         self.visit_expr(obj)?;
-                        let obj_typ = self.get_expr_value32_type(obj);
+                        let obj_typ = self.get_expr_value_type(obj);
                         let ind = &ind_expr.as_ref().index;
                         self.visit_expr(ind)?;
-                        let index_typ = self.get_expr_value32_type(ind);
+                        let index_typ = self.get_expr_value_type(ind);
                         Ok(LeftHandSide::IndexSelExpr(0, obj_typ, index_typ)) // the true index will be calculated later
                     }
                     Expr::Selector(sexpr) => {
                         self.visit_expr(&sexpr.expr)?;
                         self.gen_push_ident_str(&sexpr.sel);
-                        let obj_typ = self.get_expr_value32_type(&sexpr.expr);
+                        let obj_typ = self.get_expr_value_type(&sexpr.expr);
                         // the true index will be calculated later
                         Ok(LeftHandSide::IndexSelExpr(0, obj_typ, ValueType::Str))
                     }
@@ -765,12 +765,12 @@ impl<'a> CodeGen<'a> {
         };
         if let Some(code) = simple_op {
             if *token == Token::INC || *token == Token::DEC {
-                let typ = self.get_expr_value32_type(&lhs_exprs[0]);
+                let typ = self.get_expr_value_type(&lhs_exprs[0]);
                 self.gen_op_assign(&lhs[0], code, None, typ)?;
             } else {
                 assert_eq!(lhs_exprs.len(), 1);
                 assert_eq!(rhs_exprs.len(), 1);
-                let typ = self.get_expr_value32_type(&rhs_exprs[0]);
+                let typ = self.get_expr_value_type(&rhs_exprs[0]);
                 self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]), typ)?;
             }
             Ok(None)
@@ -796,13 +796,13 @@ impl<'a> CodeGen<'a> {
             range_marker = Some(func.code.len());
             // the block_end address to be set
             func.emit_inst(Opcode::RANGE, None, None, None, None);
-            self.get_range_value32_types(r)
+            self.get_range_value_types(r)
         } else if values.len() == lhs.len() {
             // define or assign with values
             let mut types = Vec::with_capacity(values.len());
             for val in values.iter() {
                 self.visit_expr(val)?;
-                types.push(self.get_expr_value32_type(val));
+                types.push(self.get_expr_value_type(val));
             }
             types
         } else if values.len() == 0 {
@@ -821,7 +821,7 @@ impl<'a> CodeGen<'a> {
             // define or assign with function call on the right
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0])?;
-                self.get_return_value32_types(&values[0])
+                self.get_return_value_types(&values[0])
             } else {
                 return Err(());
             }
@@ -1032,38 +1032,38 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn get_expr_value32_type(&mut self, e: &Expr) -> ValueType {
+    fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        types::value32_type_from_tc(typ, self.tc_objs)
+        types::value_type_from_tc(typ, self.tc_objs)
     }
 
-    fn get_use_value32_type(&self, ikey: IdentKey) -> ValueType {
+    fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
         let typ = &self.tc_objs.lobjs[self.ti.uses[&ikey]].typ().unwrap();
-        types::value32_type_from_tc(*typ, self.tc_objs)
+        types::value_type_from_tc(*typ, self.tc_objs)
     }
 
-    fn get_def_value32_type(&mut self, ikey: IdentKey) -> ValueType {
+    fn get_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
         let typ = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()]
             .typ()
             .unwrap();
-        types::value32_type_from_tc(*typ, self.tc_objs)
+        types::value_type_from_tc(*typ, self.tc_objs)
     }
 
-    fn get_range_value32_types(&mut self, e: &Expr) -> Vec<ValueType> {
+    fn get_range_value_types(&mut self, e: &Expr) -> Vec<ValueType> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        types::range_value32_types(typ, self.tc_objs)
+        types::range_value_types(typ, self.tc_objs)
     }
 
-    fn get_return_value32_types(&mut self, e: &Expr) -> Vec<ValueType> {
+    fn get_return_value_types(&mut self, e: &Expr) -> Vec<ValueType> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        types::return_value32_types(typ, self.tc_objs)
+        types::return_value_types(typ, self.tc_objs)
     }
 
-    fn get_selection_value32_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
+    fn get_selection_value_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
         let sel = &self.ti.selections[&id];
-        let t0 = types::value32_type_from_tc(sel.recv().unwrap(), self.tc_objs);
+        let t0 = types::value_type_from_tc(sel.recv().unwrap(), self.tc_objs);
         let t1 =
-            types::value32_type_from_tc(self.tc_objs.lobjs[sel.obj()].typ().unwrap(), self.tc_objs);
+            types::value_type_from_tc(self.tc_objs.lobjs[sel.obj()].typ().unwrap(), self.tc_objs);
         (t0, t1)
     }
 

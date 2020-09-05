@@ -164,8 +164,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn meta_get_value32_type(&self, metas: &MetadataObjs) -> ValueType {
-        metas[*self.as_meta()].get_value32_type(metas)
+    pub fn meta_get_value_type(&self, metas: &MetadataObjs) -> ValueType {
+        metas[*self.as_meta()].get_value_type(metas)
     }
 
     pub fn get_v32_type(&self) -> ValueType {
@@ -310,7 +310,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 // never as a lhs var, because when it's assigned to
 // we wouldn't know we should release it or not
 #[derive(Copy, Clone)]
-union Value32Union {
+union V64Union {
     unil: (),
     ubool: bool,
     uint: isize,
@@ -333,7 +333,7 @@ union Value32Union {
 /// to GosValue64, the type info is lost, Opcode is responsible for providing type info
 /// when converting back to GosValue
 pub struct GosValue64 {
-    data: Value32Union,
+    data: V64Union,
     pub debug_type: ValueType, // to be removed in release build
 }
 
@@ -341,66 +341,66 @@ impl GosValue64 {
     #[inline]
     pub fn from_v128_leak(v: &GosValue) -> (GosValue64, ValueType) {
         let (data, typ) = match v {
-            GosValue::Bool(b) => (Value32Union { ubool: *b }, ValueType::Bool),
-            GosValue::Int(i) => (Value32Union { uint: *i }, ValueType::Int),
-            GosValue::Float64(f) => (Value32Union { ufloat64: *f }, ValueType::Float64),
+            GosValue::Bool(b) => (V64Union { ubool: *b }, ValueType::Bool),
+            GosValue::Int(i) => (V64Union { uint: *i }, ValueType::Int),
+            GosValue::Float64(f) => (V64Union { ufloat64: *f }, ValueType::Float64),
             GosValue::Complex64(f1, f2) => (
-                Value32Union {
+                V64Union {
                     ucomplex64: (*f1, *f2),
                 },
                 ValueType::Complex64,
             ),
             GosValue::Str(s) => (
-                Value32Union {
+                V64Union {
                     ustr: Rc::into_raw(s.clone()),
                 },
                 ValueType::Str,
             ),
             GosValue::Boxed(b) => (
-                Value32Union {
+                V64Union {
                     uboxed: Rc::into_raw(b.clone()),
                 },
                 ValueType::Boxed,
             ),
             GosValue::Closure(c) => (
-                Value32Union {
+                V64Union {
                     uclosure: Rc::into_raw(c.clone()),
                 },
                 ValueType::Closure,
             ),
             GosValue::Slice(s) => (
-                Value32Union {
+                V64Union {
                     uslice: Rc::into_raw(s.clone()),
                 },
                 ValueType::Slice,
             ),
             GosValue::Map(m) => (
-                Value32Union {
+                V64Union {
                     umap: Rc::into_raw(m.clone()),
                 },
                 ValueType::Map,
             ),
             GosValue::Interface(i) => (
-                Value32Union {
+                V64Union {
                     uinterface: Rc::into_raw(i.clone()),
                 },
                 ValueType::Interface,
             ),
             GosValue::Struct(s) => (
-                Value32Union {
+                V64Union {
                     ustruct: Rc::into_raw(s.clone()),
                 },
                 ValueType::Struct,
             ),
             GosValue::Channel(c) => (
-                Value32Union {
+                V64Union {
                     uchannel: Rc::into_raw(c.clone()),
                 },
                 ValueType::Channel,
             ),
-            GosValue::Function(k) => (Value32Union { ufunction: *k }, ValueType::Function),
-            GosValue::Package(k) => (Value32Union { upackage: *k }, ValueType::Package),
-            GosValue::Metadata(k) => (Value32Union { umetadata: *k }, ValueType::Metadata),
+            GosValue::Function(k) => (V64Union { ufunction: *k }, ValueType::Function),
+            GosValue::Package(k) => (V64Union { upackage: *k }, ValueType::Package),
+            GosValue::Metadata(k) => (V64Union { umetadata: *k }, ValueType::Metadata),
         };
         (
             GosValue64 {
@@ -414,7 +414,7 @@ impl GosValue64 {
     #[inline]
     pub fn nil() -> GosValue64 {
         GosValue64 {
-            data: Value32Union { unil: () },
+            data: V64Union { unil: () },
             debug_type: ValueType::Nil,
         }
     }
@@ -422,7 +422,7 @@ impl GosValue64 {
     #[inline]
     pub fn from_bool(b: bool) -> GosValue64 {
         GosValue64 {
-            data: Value32Union { ubool: b },
+            data: V64Union { ubool: b },
             debug_type: ValueType::Bool,
         }
     }
@@ -430,7 +430,7 @@ impl GosValue64 {
     #[inline]
     pub fn from_int(i: isize) -> GosValue64 {
         GosValue64 {
-            data: Value32Union { uint: i },
+            data: V64Union { uint: i },
             debug_type: ValueType::Int,
         }
     }
@@ -438,7 +438,7 @@ impl GosValue64 {
     #[inline]
     pub fn from_float64(f: f64) -> GosValue64 {
         GosValue64 {
-            data: Value32Union { ufloat64: f },
+            data: V64Union { ufloat64: f },
             debug_type: ValueType::Float64,
         }
     }
@@ -446,7 +446,7 @@ impl GosValue64 {
     #[inline]
     pub fn from_complex64(r: f32, i: f32) -> GosValue64 {
         GosValue64 {
-            data: Value32Union { ucomplex64: (r, i) },
+            data: V64Union { ucomplex64: (r, i) },
             debug_type: ValueType::Complex64,
         }
     }
@@ -548,28 +548,28 @@ impl GosValue64 {
         } else {
             unsafe {
                 match t {
-                    ValueType::Str => Value32Union {
+                    ValueType::Str => V64Union {
                         ustr: GosValue64::clone_ptr(self.data.ustr),
                     },
-                    ValueType::Boxed => Value32Union {
+                    ValueType::Boxed => V64Union {
                         uboxed: GosValue64::clone_ptr(self.data.uboxed),
                     },
-                    ValueType::Closure => Value32Union {
+                    ValueType::Closure => V64Union {
                         uclosure: GosValue64::clone_ptr(self.data.uclosure),
                     },
-                    ValueType::Slice => Value32Union {
+                    ValueType::Slice => V64Union {
                         uslice: GosValue64::clone_ptr(self.data.uslice),
                     },
-                    ValueType::Map => Value32Union {
+                    ValueType::Map => V64Union {
                         umap: GosValue64::clone_ptr(self.data.umap),
                     },
-                    ValueType::Interface => Value32Union {
+                    ValueType::Interface => V64Union {
                         uinterface: GosValue64::clone_ptr(self.data.uinterface),
                     },
-                    ValueType::Struct => Value32Union {
+                    ValueType::Struct => V64Union {
                         ustruct: GosValue64::clone_ptr(self.data.ustruct),
                     },
-                    ValueType::Channel => Value32Union {
+                    ValueType::Channel => V64Union {
                         uchannel: GosValue64::clone_ptr(self.data.uchannel),
                     },
                     _ => unreachable!(),
