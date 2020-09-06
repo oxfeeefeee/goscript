@@ -332,6 +332,7 @@ union V64Union {
 /// GosValue64 is a 64bit struct for VM stack to get better performance, when converting
 /// to GosValue64, the type info is lost, Opcode is responsible for providing type info
 /// when converting back to GosValue
+#[derive(Copy, Clone)]
 pub struct GosValue64 {
     data: V64Union,
     pub debug_type: ValueType, // to be removed in release build
@@ -581,28 +582,50 @@ impl GosValue64 {
             debug_type: self.debug_type,
         }
     }
-    /*
-        #[inline]
-        pub fn semantic_copy(&self, t: ValueType) -> GosValue64 {
-            match self {
-                GosValue::Bool(b) => GosValue::Bool(*b),
-                GosValue::Int(i) => GosValue::Int(*i),
-                GosValue::Float64(f) => GosValue::Float64(*f),
-                GosValue::Complex64(f1, f2) => GosValue::Complex64(*f1, *f2),
-                GosValue::Str(s) => GosValue::Str(Rc::clone(s)),
-                GosValue::Boxed(b) => GosValue::Boxed(Rc::clone(b)),
-                GosValue::Closure(c) => GosValue::Closure(Rc::clone(c)),
-                GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
-                GosValue::Map(m) => GosValue::Map(Rc::new((**m).clone())),
-                GosValue::Interface(i) => GosValue::Interface(Rc::clone(i)),
-                GosValue::Struct(s) => GosValue::Struct(Rc::new((**s).clone())),
-                GosValue::Channel(c) => GosValue::Channel(Rc::clone(c)),
-                GosValue::Function(k) => GosValue::Function(*k),
-                GosValue::Package(k) => GosValue::Package(*k),
-                GosValue::Metadata(m) => GosValue::Metadata(*m),
+
+    /// semantic_copy copies value as per Go assign behavoir
+    /// only works for non-copyable values, ie t < COPYABLE_END
+    #[inline]
+    pub fn semantic_copy(&self, t: ValueType, objs: &VMObjects) -> GosValue64 {
+        let data = unsafe {
+            match t {
+                ValueType::Str => V64Union {
+                    ustr: GosValue64::clone_ptr(self.data.ustr),
+                },
+                ValueType::Boxed => V64Union {
+                    uboxed: GosValue64::clone_ptr(self.data.uboxed),
+                },
+                ValueType::Closure => V64Union {
+                    uclosure: GosValue64::clone_ptr(self.data.uclosure),
+                },
+                ValueType::Slice => V64Union {
+                    uslice: Rc::into_raw(Rc::new(SliceVal::clone(&*self.data.uslice))),
+                },
+                ValueType::Map => V64Union {
+                    umap: Rc::into_raw(Rc::new(MapVal::clone(&*self.data.umap))),
+                },
+                ValueType::Interface => V64Union {
+                    uinterface: GosValue64::clone_ptr(self.data.uinterface),
+                },
+                ValueType::Struct => V64Union {
+                    ustruct: Rc::into_raw(Rc::new(RefCell::clone(&*self.data.ustruct))),
+                },
+                ValueType::Channel => V64Union {
+                    uchannel: GosValue64::clone_ptr(self.data.uchannel),
+                },
+                ValueType::Nil => {
+                    let v = objs.nil_zero_val(t);
+                    GosValue64::from_v128_leak(v).0.data
+                }
+                _ => unreachable!(),
             }
+        };
+        GosValue64 {
+            data: data,
+            debug_type: t,
         }
-    */
+    }
+
     /// get_rc_from_ptr returns a Rc from raw pointer, without decreasing the ref counter
     #[inline]
     fn get_rc_from_ptr<T>(ptr: *const T) -> Rc<T> {

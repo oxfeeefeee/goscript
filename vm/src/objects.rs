@@ -137,14 +137,14 @@ impl VMObjects {
     }
 
     #[inline]
-    pub fn nil_zero_val(&self, t: ValueType) -> GosValue {
+    pub fn nil_zero_val(&self, t: ValueType) -> &GosValue {
         match t {
-            ValueType::Boxed => self.boxed_zero_val.clone(),
-            ValueType::Interface => self.iface_zero_val.clone(),
-            ValueType::Map => self.map_zero_val.clone(),
-            ValueType::Slice => self.slice_zero_val.clone(),
-            ValueType::Channel => self.chan_zero_val.clone(),
-            ValueType::Function => self.closure_zero_val.clone(),
+            ValueType::Boxed => &self.boxed_zero_val,
+            ValueType::Interface => &self.iface_zero_val,
+            ValueType::Map => &self.map_zero_val,
+            ValueType::Slice => &self.slice_zero_val,
+            ValueType::Channel => &self.chan_zero_val,
+            ValueType::Function => &self.closure_zero_val,
             _ => unreachable!(),
         }
     }
@@ -972,7 +972,7 @@ impl MetadataVal {
         objs: &mut VMObjects,
     ) -> GosValue {
         let m = MetadataVal {
-            zero_val: objs.zero_val_mark.clone(),
+            zero_val: objs.closure_zero_val.clone(),
             typ: MetadataType::Signature(SigMetadata {
                 recv: recv,
                 params: params,

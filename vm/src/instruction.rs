@@ -177,9 +177,7 @@ pub const COPYABLE_END: ValueType = ValueType::Metadata;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
-    Copyable = 1, // a virtual type indicating any non-rc type
-    Nil,
-    Bool,
+    Bool = 1,
     Int,
     Float64,
     Complex64,
@@ -187,14 +185,18 @@ pub enum ValueType {
     Package,
     Metadata,
 
-    Str,
+    // a virtual type representing zero value for boxed, interfaces,
+    // maps, slices, channels and function types
+    Nil,
     Boxed,
     Closure,
     Slice,
     Map,
     Interface,
-    Struct,
     Channel,
+
+    Str,
+    Struct,
 }
 
 /// Instruction is 64 bit

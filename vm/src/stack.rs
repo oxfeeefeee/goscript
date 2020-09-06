@@ -79,6 +79,12 @@ impl Stack {
     }
 
     #[inline]
+    pub fn set_with_type(&mut self, index: usize, val: GosValue64, t: ValueType) {
+        let _ = self.inner[index].into_v128_unleak(t);
+        self.inner[index] = val;
+    }
+
+    #[inline]
     pub fn len(&self) -> usize {
         self.inner.len()
     }
@@ -110,7 +116,16 @@ impl Stack {
     }
 
     #[inline]
-    pub fn sematic_copy(&mut self, li: usize, ri: usize, t: ValueType) {}
+    pub fn sematic_copy(&mut self, li: usize, ri: usize, t: ValueType, objs: &VMObjects) {
+        //dbg!(t, self.inner[li].debug_type, self.inner[ri].debug_type);
+        debug_assert!(t == self.inner[li].debug_type);
+        debug_assert!(t == self.inner[ri].debug_type);
+        if t <= COPYABLE_END {
+            self.inner.swap(li, ri); // self.inner[li] = self.inner[ri];
+        } else {
+            self.set_with_type(li, self.inner[ri].semantic_copy(t, objs), t);
+        }
+    }
 
     #[inline]
     pub fn offset(base: usize, offset: OpIndex) -> usize {

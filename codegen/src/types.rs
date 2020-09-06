@@ -152,7 +152,7 @@ pub fn value_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
         Type::Slice(_) => ValueType::Slice,
         Type::Map(_) => ValueType::Map,
         Type::Struct(_) => ValueType::Struct,
-        Type::Signature(_) => ValueType::Function,
+        Type::Signature(_) => ValueType::Closure,
         Type::Pointer(_) => ValueType::Boxed,
         Type::Named(detail) => value_type_from_tc(detail.underlying(), tc_objs),
         _ => {

@@ -220,7 +220,8 @@ impl Fiber {
                     let s_index = Stack::offset(stack_base, index);
                     if rhs_index < 0 {
                         let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                        stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
+                        stack.sematic_copy(s_index, rhs_s_index, inst.t0(), objs);
+                    //stack_set!(stack, s_index, duplicate!(index![stack, rhs_s_index], objs));
                     } else {
                         let operand = index![stack, stack.len() - 1];
                         let mut lhs = index![stack, s_index];
@@ -235,7 +236,6 @@ impl Fiber {
                         frame.callable.closure().borrow().upvalues[index as usize].clone();
                     match &upvalue {
                         UpValue::Open(f, ind) => {
-                            drop(frame);
                             let upframe = upframe!(self.frames.iter().rev().skip(1), f);
                             let stack_ptr = offset_uint!(upframe.stack_base, *ind);
                             stack.push(index![stack, stack_ptr]);
