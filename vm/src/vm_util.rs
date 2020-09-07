@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::instruction::*;
-use super::value::{VMObjects, GosValue, ClosureVal, MetadataObjs};
+use super::value::{VMObjects, GosValue, ClosureVal};
 use std::cmp::Ordering;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -120,25 +120,6 @@ macro_rules! bool_binary_op {
             (GosValue::Bool(ba), GosValue::Bool(bb)) => GosValue::Bool(ba $op bb),
             _ => unreachable!(),
         });
-    };
-}
-
-macro_rules! int_float_store_xxx_op {
-    ($target:ident, $op:tt, $operand:ident) => {
-        match ($target, $operand) {
-            (GosValue::Int(ia), GosValue::Int(ib)) => {*ia $op ib;}
-            (GosValue::Float64(fa), GosValue::Float64(fb)) =>  {*fa $op fb;}
-            _ => unreachable!(),
-        };
-    };
-}
-
-macro_rules! int_store_xxx_op {
-    ($target:ident, $op:tt, $operand:ident) => {
-        match ($target, $operand) {
-            (GosValue::Int(ia), GosValue::Int(ib)) => {*ia $op ib;}
-            _ => unreachable!(),
-        };
     };
 }
 
@@ -418,50 +399,6 @@ pub fn compare_geq(stack: &mut Stack) {
 }
 
 #[inline]
-pub fn store_xxx_op(target: &mut GosValue, code: Opcode, operand: &GosValue) {
-    match code {
-        Opcode::ADD => int_float_store_xxx_op!(target, +=, operand),
-        Opcode::SUB => int_float_store_xxx_op!(target, -=, operand),
-        Opcode::MUL => int_float_store_xxx_op!(target, *=, operand),
-        Opcode::QUO => int_float_store_xxx_op!(target, /=, operand),
-        Opcode::REM => int_store_xxx_op!(target, %=, operand),
-        Opcode::AND => int_store_xxx_op!(target, &=, operand),
-        Opcode::OR => int_store_xxx_op!(target, |=, operand),
-        Opcode::XOR => int_store_xxx_op!(target, ^=, operand),
-        Opcode::SHL => int_store_xxx_op!(target, <<=, operand),
-        Opcode::SHR => int_store_xxx_op!(target, >>=, operand),
-        Opcode::AND_NOT => {
-            match (target, operand) {
-                (GosValue::Int(ia), GosValue::Int(ib)) => {
-                    *ia = *ia & !ib;
-                }
-                _ => unreachable!(),
-            };
-        }
-        _ => unreachable!(),
-    };
-}
-
-#[inline]
-pub fn set_store_op_val(target: &mut GosValue, op: Option<Opcode>, val: GosValue, is_op_set: bool) {
-    if is_op_set {
-        store_xxx_op(target, op.unwrap(), &val);
-    } else {
-        *target = val;
-    }
-}
-
-#[inline]
-pub fn set_ref_store_op_val(target: &RefCell<GosValue>, op: Option<Opcode>, val: GosValue, is_op_set: bool) {
-    if is_op_set {
-        let mut old_val = target.borrow_mut();
-        store_xxx_op(&mut old_val, op.unwrap(), &val);
-    } else {
-        target.replace(val);
-    }
-}
-
-#[inline]
 pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue {
     match val {
         GosValue::Slice(slice) => {
@@ -500,28 +437,28 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
 }
 
 #[inline]
-pub fn store_field(target: &GosValue, key: &GosValue, op: Option<Opcode>, val: GosValue, is_op_set: bool, metas: &MetadataObjs) {
+pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
     match target {
         GosValue::Slice(s) => {
             let target_cell = &s.borrow_data()[*key.as_int() as usize];
-            set_ref_store_op_val(target_cell, op, val, is_op_set);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, &objs.zero_val);
         }
         GosValue::Map(map) => {
             map.touch_key(&key);
             let borrowed = map.borrow_data();
             let target_cell = borrowed.get(&key).unwrap();
-            set_ref_store_op_val(target_cell, op, val, is_op_set);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, &objs.zero_val);   
         }
         GosValue::Struct(s) => {
             match key {
                 GosValue::Int(i) => {
                     let target = &mut s.borrow_mut().fields[*i as usize];
-                    set_store_op_val(target, op, val, is_op_set);
+                    stack.store_val(target, r_index, t, &objs.zero_val);
                 }
                 GosValue::Str(sval) => {
-                    let i = s.borrow().field_method_index(sval.as_str(), metas);
+                    let i = s.borrow().field_method_index(sval.as_str(), &objs.metas);
                     let target = &mut s.borrow_mut().fields[i as usize];
-                    set_store_op_val(target, op, val, is_op_set);
+                    stack.store_val(target, r_index, t, &objs.zero_val);
                 }
                 _ => unreachable!(),
             };

@@ -1,11 +1,31 @@
 #![allow(dead_code)]
-use super::instruction::{ValueType, COPYABLE_END};
+use super::instruction::{Opcode, ValueType, COPYABLE_END};
 pub use super::objects::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+macro_rules! union_op {
+    ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
+        GosValue64{
+            debug_type: $t,
+            data: V64Union {
+            $name: $a.data.$name $op $b.data.$name,
+        }}
+    };
+}
+
+macro_rules! binary_op_int_float {
+    ($t:ident, $a:ident, $b:ident, $op:tt) => {
+        match $t {
+            ValueType::Int => union_op!($a, $b, uint, $op, ValueType::Int),
+            ValueType::Float64 => union_op!($a, $b, ufloat64, $op, ValueType::Float64),
+            _ => unreachable!(),
+        }
+    };
+}
 
 // ----------------------------------------------------------------------------
 // GosValue
@@ -583,10 +603,10 @@ impl GosValue64 {
         }
     }
 
-    /// semantic_copy copies value as per Go assign behavoir
+    /// copy_semantic copies value as per Go assign behavoir
     /// only works for non-copyable values, ie t < COPYABLE_END
     #[inline]
-    pub fn semantic_copy(&self, t: ValueType, objs: &VMObjects) -> GosValue64 {
+    pub fn copy_semantic(&self, t: ValueType, zero: &ZeroVal) -> GosValue64 {
         let data = unsafe {
             match t {
                 ValueType::Str => V64Union {
@@ -614,7 +634,7 @@ impl GosValue64 {
                     uchannel: GosValue64::clone_ptr(self.data.uchannel),
                 },
                 ValueType::Nil => {
-                    let v = objs.nil_zero_val(t);
+                    let v = zero.nil_zero_val(t);
                     GosValue64::from_v128_leak(v).0.data
                 }
                 _ => unreachable!(),
@@ -623,6 +643,102 @@ impl GosValue64 {
         GosValue64 {
             data: data,
             debug_type: t,
+        }
+    }
+
+    #[inline]
+    pub fn binary_op_add(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe {
+            match t {
+                ValueType::Int => union_op!(a, b, uint, +, t),
+                ValueType::Float64 => union_op!(a, b, ufloat64, +, t),
+                ValueType::Str => {
+                    let mut s = (*a.data.ustr).as_str().to_string();
+                    s.push_str(&(*b.data.ustr).as_str());
+                    GosValue64 {
+                        debug_type: t,
+                        data: V64Union {
+                            ustr: Rc::into_raw(Rc::new(StringVal::with_str(s))),
+                        },
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[inline]
+    pub fn binary_op_sub(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, a, b, -) }
+    }
+
+    #[inline]
+    pub fn binary_op_mul(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, a, b, *) }
+    }
+
+    #[inline]
+    pub fn binary_op_quo(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, a, b, /) }
+    }
+
+    #[inline]
+    pub fn binary_op_rem(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, %, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_and(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, &, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_or(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, |, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_xor(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, ^, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_shl(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, <<, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_shr(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { union_op!(a, b, uint, >>, t) }
+    }
+
+    #[inline]
+    pub fn binary_op_and_not(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+        GosValue64 {
+            debug_type: t,
+            data: unsafe {
+                V64Union {
+                    uint: a.data.uint & !b.data.uint,
+                }
+            },
+        }
+    }
+
+    #[inline]
+    pub fn binary_op(a: GosValue64, b: GosValue64, t: ValueType, op: Opcode) -> GosValue64 {
+        match op {
+            Opcode::ADD => GosValue64::binary_op_add(a, b, t),
+            Opcode::SUB => GosValue64::binary_op_sub(a, b, t),
+            Opcode::MUL => GosValue64::binary_op_mul(a, b, t),
+            Opcode::QUO => GosValue64::binary_op_quo(a, b, t),
+            Opcode::REM => GosValue64::binary_op_rem(a, b, t),
+            Opcode::AND => GosValue64::binary_op_and(a, b, t),
+            Opcode::OR => GosValue64::binary_op_or(a, b, t),
+            Opcode::XOR => GosValue64::binary_op_xor(a, b, t),
+            Opcode::SHL => GosValue64::binary_op_shl(a, b, t),
+            Opcode::SHR => GosValue64::binary_op_shr(a, b, t),
+            Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
+            _ => unreachable!(),
         }
     }
 

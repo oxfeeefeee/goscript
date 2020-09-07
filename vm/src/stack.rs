@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::instruction::{OpIndex, ValueType, COPYABLE_END};
+use super::instruction::{Instruction, OpIndex, Opcode, ValueType, COPYABLE_END};
 use super::value::*;
 
 pub struct Stack {
@@ -19,8 +19,7 @@ impl Stack {
 
     #[inline]
     pub fn push_from_index(&mut self, index: usize, t: ValueType) {
-        self.inner
-            .push(unsafe { self.inner.get_unchecked(index).clone(t) });
+        self.inner.push(self.get_inner(index).clone(t));
     }
 
     #[inline]
@@ -116,15 +115,48 @@ impl Stack {
     }
 
     #[inline]
-    pub fn sematic_copy(&mut self, li: usize, ri: usize, t: ValueType, objs: &VMObjects) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, zero: &ZeroVal) {
         //dbg!(t, self.inner[li].debug_type, self.inner[ri].debug_type);
         debug_assert!(t == self.inner[li].debug_type);
         debug_assert!(t == self.inner[ri].debug_type);
         if t <= COPYABLE_END {
             self.inner.swap(li, ri); // self.inner[li] = self.inner[ri];
         } else {
-            self.set_with_type(li, self.inner[ri].semantic_copy(t, objs), t);
+            self.set_with_type(li, self.inner[ri].copy_semantic(t, zero), t);
         }
+    }
+
+    #[inline]
+    pub fn store_with_op(&mut self, li: usize, ri: usize, op: Opcode, t: ValueType) {
+        let a = self.get_inner(li);
+        let b = self.get_inner(ri);
+        self.inner[li] = GosValue64::binary_op(*a, *b, t, op);
+    }
+
+    #[inline]
+    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, zero: &ZeroVal) {
+        let v64 = if r_index < 0 {
+            let rhs_s_index = Stack::offset(self.len(), r_index);
+            if t <= COPYABLE_END {
+                *self.get_inner(rhs_s_index)
+            } else {
+                self.get_inner(rhs_s_index).copy_semantic(t, zero)
+            }
+        } else {
+            let (a, at) = GosValue64::from_v128_leak(target);
+            let ri = Stack::offset(self.len(), -1);
+            let b = self.get_inner(ri);
+            let op = Instruction::index2code(r_index);
+            let v = GosValue64::binary_op(a, *b, t, op);
+            a.into_v128_unleak(at);
+            v
+        };
+        *target = v64.into_v128_unleak(t);
+    }
+
+    #[inline]
+    fn get_inner(&self, i: usize) -> &GosValue64 {
+        unsafe { self.inner.get_unchecked(i) }
     }
 
     #[inline]

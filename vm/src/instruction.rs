@@ -185,7 +185,7 @@ pub enum ValueType {
     Package,
     Metadata,
 
-    // a virtual type representing zero value for boxed, interfaces,
+    // Nil is a virtual type representing zero value for boxed, interfaces,
     // maps, slices, channels and function types
     Nil,
     Boxed,

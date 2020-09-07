@@ -678,7 +678,7 @@ impl<'a> CodeGen<'a> {
                 pkg.add_var(
                     ident_key.unwrap(),
                     index.into(),
-                    self.objects.zero_val_mark.clone(),
+                    self.objects.zero_val.zero_val_mark.clone(),
                 );
             }
             Ok(index)
