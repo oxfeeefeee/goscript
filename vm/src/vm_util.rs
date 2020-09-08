@@ -2,7 +2,6 @@
 //use super::opcode::OpIndex;
 use super::instruction::*;
 use super::value::{VMObjects, GosValue, ClosureVal};
-use std::cmp::Ordering;
 use std::cell::RefCell;
 use std::rc::Rc;
 use super::stack::Stack;
@@ -37,89 +36,13 @@ macro_rules! bind_method {
     ($sval:ident, $val:ident, $index:ident, $objs:ident) => {
         GosValue::Closure(
             Rc::new(RefCell::new(ClosureVal {
-                func: *$objs.metas[*$sval.borrow().meta.as_meta()].typ()
+                func: $objs.metas[*$sval.borrow().meta.as_meta()].typ()
                     .get_struct_member($index)
-                    .as_function(),
+                    .as_closure().borrow().func,
                 receiver: Some($val.clone()),
                 upvalues: vec![],
             })),
         )
-    };
-}
-
-macro_rules! pack_variadic {
-    ($stack:ident, $index:ident, $objs:ident) => {
-        if $index < $stack.len() {
-            let mut v = Vec::new();
-            v.append(&mut $stack.split_off($index));
-            $stack.push(GosValue::with_slice_val(v, &mut $objs.slices))
-        }
-    };
-}
-
-/// Duplicates the GosValue, primitive types and read-only types are simply cloned
-macro_rules! duplicate {
-    ($val:expr, $objs:ident) => {
-        match &$val {
-            GosValue::Bool(_)
-            | GosValue::Int(_)
-            | GosValue::Float64(_)
-            | GosValue::Complex64(_, _)
-            | GosValue::Str(_)
-            | GosValue::Boxed(_)
-            | GosValue::Closure(_) => $val.clone(),
-            GosValue::Slice(s) => GosValue::Slice(Rc::new((**s).clone())),
-            GosValue::Map(m) => GosValue::Map(Rc::new((**m).clone())),
-            GosValue::Interface(_) => unimplemented!(),
-            GosValue::Struct(s) => 
-                GosValue::Struct(Rc::new((**s).clone())),
-            GosValue::Channel(_) => unimplemented!(),
-            GosValue::Function(_) => $val.clone(),
-            GosValue::Package(_) => $val.clone(),
-            GosValue::Metadata(_) => $val.clone(),
-            //_ => unreachable!(),
-        }
-    };
-}
-
-macro_rules! int_float_binary_op {
-    ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop(), $stack.pop());
-        $stack.push(match (a, b) {
-            (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia $op ib),
-            (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa $op fb),
-            _ => unreachable!(),
-        });
-    };
-}
-
-macro_rules! int_binary_op {
-    ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop(), $stack.pop());
-        $stack.push(match (a, b) {
-            (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia $op ib),
-            _ => unreachable!(),
-        });
-    };
-}
-
-macro_rules! int_unary_op {
-    ($stack:ident, $left:ident, $op:tt) => {
-        let a = $stack.pop();
-        $stack.push(match a {
-            GosValue::Int(ia) => GosValue::Int($left $op ia),
-            _ => unreachable!(),
-        });
-    };
-}
-
-macro_rules! bool_binary_op {
-    ($stack:ident, $op:tt) => {
-        let (b, a) = ($stack.pop(), $stack.pop());
-        $stack.push(match (a, b) {
-            (GosValue::Bool(ba), GosValue::Bool(bb)) => GosValue::Bool(ba $op bb),
-            _ => unreachable!(),
-        });
     };
 }
 
@@ -244,158 +167,6 @@ macro_rules! range_body {
             _ => unreachable!(),
         }
     }};
-}
-
-#[inline]
-pub fn add(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    let c = match (a, b) {
-        (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia + ib),
-        (GosValue::Float64(fa), GosValue::Float64(fb)) => GosValue::Float64(fa + fb),
-        (GosValue::Str(s0), GosValue::Str(s1)) => {
-            let mut s = s0.as_str().to_string();
-            s.push_str(&s1.as_str());
-            GosValue::new_str(s)
-        }
-        _ => unreachable!(),
-    };
-    stack.push(c);
-}
-
-#[inline]
-pub fn sub(stack: &mut Stack) {
-    int_float_binary_op!(stack, -);
-}
-
-#[inline]
-pub fn mul(stack: &mut Stack) {
-    int_float_binary_op!(stack, *);
-}
-
-#[inline]
-pub fn quo(stack: &mut Stack) {
-    int_float_binary_op!(stack, /);
-}
-
-#[inline]
-pub fn rem(stack: &mut Stack) {
-    int_binary_op!(stack, %);
-}
-
-#[inline]
-pub fn and(stack: &mut Stack) {
-    int_binary_op!(stack, &);
-}
-
-#[inline]
-pub fn or(stack: &mut Stack) {
-    int_binary_op!(stack, |);
-}
-
-#[inline]
-pub fn xor(stack: &mut Stack) {
-    int_binary_op!(stack, ^);
-}
-
-#[inline]
-pub fn and_not(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(match (a, b) {
-        (GosValue::Int(ia), GosValue::Int(ib)) => GosValue::Int(ia & !ib),
-        _ => unreachable!(),
-    });
-}
-
-#[inline]
-pub fn shl(stack: &mut Stack) {
-    int_binary_op!(stack, <<);
-}
-
-#[inline]
-pub fn shr(stack: &mut Stack) {
-    int_binary_op!(stack, >>);
-}
-
-#[inline]
-pub fn unary_and(stack: &mut Stack) {
-    let i: isize = 0;
-    int_unary_op!(stack, i, +);
-}
-
-#[inline]
-pub fn unary_sub(stack: &mut Stack) {
-    let i: isize = 0;
-    int_unary_op!(stack, i, -);
-}
-
-#[inline]
-pub fn unary_xor(stack: &mut Stack) {
-    let i: isize = -1;
-    int_unary_op!(stack, i, ^);
-}
-
-#[inline]
-pub fn unary_ref(stack: &mut Stack) {
-    let val = stack.pop();
-    stack.push(GosValue::new_boxed(val));
-}
-
-#[inline]
-pub fn unary_deref(stack: &mut Stack) {
-    let val = stack.pop();
-    stack.push(val.as_boxed().borrow().clone());
-}
-
-#[inline]
-pub fn logical_and(stack: &mut Stack) {
-    bool_binary_op!(stack, &&);
-}
-
-#[inline]
-pub fn logical_or(stack: &mut Stack) {
-    bool_binary_op!(stack, ||);
-}
-
-#[inline]
-pub fn logical_not(stack: &mut Stack) {
-    let len = stack.len();
-    stack_set!(stack, len - 1, GosValue::Bool(!index![stack, len - 1].as_bool()));
-}
-
-#[inline]
-pub fn compare_eql(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.eq(&b)));
-}
-
-#[inline]
-pub fn compare_lss(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Less));
-}
-
-#[inline]
-pub fn compare_gtr(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.cmp(&b) == Ordering::Greater));
-}
-
-#[inline]
-pub fn compare_neq(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Equal));
-}
-
-#[inline]
-pub fn compare_leq(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Greater));
-}
-
-#[inline]
-pub fn compare_geq(stack: &mut Stack) {
-    let (b, a) = (stack.pop(), stack.pop());
-    stack.push(GosValue::Bool(a.cmp(&b) != Ordering::Less));
 }
 
 #[inline]

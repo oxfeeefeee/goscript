@@ -41,9 +41,8 @@ impl<'a> EntryGen<'a> {
     fn gen_entry_func(&mut self, main_idx: OpIndex) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
-        let fkey =
-            *GosValue::new_function(null_key!(), fmeta.clone(), false, false, &mut self.objects)
-                .as_function();
+        let fval = FunctionVal::new(null_key!(), fmeta.clone(), None, false);
+        let fkey = self.objects.functions.insert(fval);
         let func = &mut self.objects.functions[fkey];
         func.emit_import(main_idx);
         // negative index for main func

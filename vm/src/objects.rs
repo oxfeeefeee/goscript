@@ -88,7 +88,7 @@ impl VMObjects {
         let stype = MetadataVal::new_str(&mut objs);
         objs.basic_types.insert("string", stype);
         // default_sig_meta is used by manually assembiled functions
-        objs.default_sig_meta = Some(MetadataVal::new_sig(None, vec![], vec![], false, &mut objs));
+        objs.default_sig_meta = Some(MetadataVal::new_sig(None, vec![], vec![], None, &mut objs));
         objs
     }
 
@@ -128,7 +128,6 @@ pub struct ZeroVal {
     pub map_zero_val: GosValue,
     pub iface_zero_val: GosValue,
     pub chan_zero_val: GosValue,
-    pub func_zero_val: GosValue,
     pub pkg_zero_val: GosValue,
 }
 
@@ -149,7 +148,6 @@ impl ZeroVal {
                 mark.clone(),
             )))),
             chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal {}))),
-            func_zero_val: GosValue::Function(null_key!()),
             pkg_zero_val: GosValue::Package(null_key!()),
         }
     }
@@ -774,12 +772,17 @@ pub struct FunctionVal {
     pub local_zeros: Vec<GosValue>,
     entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
-    variadic: bool,
+    variadic_type: Option<ValueType>,
     is_ctor: bool,
 }
 
 impl FunctionVal {
-    pub fn new(package: PackageKey, meta: GosValue, variadic: bool, ctor: bool) -> FunctionVal {
+    pub fn new(
+        package: PackageKey,
+        meta: GosValue,
+        variadic: Option<ValueType>,
+        ctor: bool,
+    ) -> FunctionVal {
         FunctionVal {
             package: package,
             meta: meta,
@@ -791,7 +794,7 @@ impl FunctionVal {
             local_zeros: Vec::new(),
             entities: HashMap::new(),
             local_alloc: 0,
-            variadic: variadic,
+            variadic_type: variadic,
             is_ctor: ctor,
         }
     }
@@ -800,8 +803,8 @@ impl FunctionVal {
         self.is_ctor
     }
 
-    pub fn variadic(&self) -> bool {
-        self.variadic
+    pub fn variadic(&self) -> Option<ValueType> {
+        self.variadic_type
     }
 
     pub fn local_count(&self) -> usize {
@@ -826,6 +829,10 @@ impl FunctionVal {
     ) {
         let i = Instruction::new(op, type0, type1, type2, imm);
         self.code.push(i);
+    }
+
+    pub fn emit_code_with_type(&mut self, code: Opcode, t: ValueType) {
+        self.emit_inst(code, Some(t), None, None, None);
     }
 
     pub fn emit_code(&mut self, code: Opcode) {
@@ -896,7 +903,7 @@ pub struct SigMetadata {
     pub recv: Option<GosValue>,
     pub params: Vec<GosValue>,
     pub results: Vec<GosValue>,
-    pub variadic: bool,
+    pub variadic: Option<ValueType>,
 }
 
 #[derive(Debug)]
@@ -981,7 +988,7 @@ impl MetadataVal {
         recv: Option<GosValue>,
         params: Vec<GosValue>,
         results: Vec<GosValue>,
-        variadic: bool,
+        variadic: Option<ValueType>,
         objs: &mut VMObjects,
     ) -> GosValue {
         let m = MetadataVal {

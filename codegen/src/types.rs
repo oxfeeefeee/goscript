@@ -102,8 +102,21 @@ pub fn type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects, vm_objs: &mut VMObjects
                 let recv_tc_type = tc_objs.lobjs[x].typ().unwrap();
                 type_from_tc(recv_tc_type, tc_objs, vm_objs)
             });
-            //dbg!(&params, &results, &recv, detail);
-            MetadataVal::new_sig(recv, params, results, detail.variadic(), vm_objs)
+            let variadic = if detail.variadic() {
+                let slice = tc_objs.types[detail.params()]
+                    .try_as_tuple()
+                    .unwrap()
+                    .vars()
+                    .last()
+                    .unwrap();
+                let sval = tc_objs.lobjs[*slice].typ().unwrap();
+                let elem = tc_objs.types[sval].try_as_slice().unwrap().elem();
+                let typ = type_from_tc(elem, tc_objs, vm_objs);
+                Some(vm_objs.metas[*typ.as_meta()].zero_val().get_type())
+            } else {
+                None
+            };
+            MetadataVal::new_sig(recv, params, results, variadic, vm_objs)
         }
         Type::Pointer(detail) => {
             let inner = type_from_tc(detail.base(), tc_objs, vm_objs);

@@ -88,12 +88,18 @@ impl GosValue {
     pub fn new_function(
         package: PackageKey,
         meta: GosValue,
-        variadic: bool,
+        variadic: Option<ValueType>,
         ctor: bool,
         objs: &mut VMObjects,
     ) -> GosValue {
         let val = FunctionVal::new(package, meta, variadic, ctor);
         GosValue::Function(objs.functions.insert(val))
+    }
+
+    #[inline]
+    pub fn new_closure(fkey: FunctionKey, upvalues: Vec<UpValue>) -> GosValue {
+        let val = ClosureVal::new(fkey, upvalues);
+        GosValue::Closure(Rc::new(RefCell::new(val)))
     }
 
     #[inline]
@@ -644,6 +650,27 @@ impl GosValue64 {
             data: data,
             debug_type: t,
         }
+    }
+
+    #[inline]
+    pub fn unary_negate(&mut self, t: ValueType) {
+        match t {
+            ValueType::Int => self.data.uint = -unsafe { self.data.uint },
+            ValueType::Float64 => self.data.ufloat64 = -unsafe { self.data.ufloat64 },
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn unary_xor(&mut self, t: ValueType) {
+        debug_assert!(t == ValueType::Int);
+        self.data.uint = unsafe { -1 ^ self.data.uint };
+    }
+
+    #[inline]
+    pub fn unary_not(&mut self, t: ValueType) {
+        debug_assert!(t == ValueType::Bool);
+        self.data.ubool = unsafe { !self.data.ubool };
     }
 
     #[inline]

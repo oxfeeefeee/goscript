@@ -1,6 +1,18 @@
 #![allow(dead_code)]
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType, COPYABLE_END};
 use super::value::*;
+use std::cmp::Ordering;
+
+macro_rules! binary_op {
+    ($stack:ident, $op:tt, $t:ident) => {{
+        let len = $stack.inner.len();
+        let a = $stack.get_inner(len - 2);
+        let b = $stack.get_inner(len - 1);
+        let v = GosValue64::$op(*a, *b, $t);
+        $stack.set_with_type(len - 2, v, $t);
+        $stack.pop_discard($t);
+    }};
+}
 
 pub struct Stack {
     inner: Vec<GosValue64>,
@@ -59,6 +71,18 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pop_bool(&mut self) -> bool {
+        let v64 = self.inner.pop().unwrap();
+        v64.get_bool()
+    }
+
+    #[inline]
+    pub fn pop_int(&mut self) -> isize {
+        let v64 = self.inner.pop().unwrap();
+        v64.get_int()
+    }
+
+    #[inline]
     pub fn get(&self, index: usize /*, t: ValueType*/) -> GosValue {
         let v = self.inner.get(index).unwrap();
         v.get_v128(v.debug_type)
@@ -103,6 +127,15 @@ impl Stack {
             })
             .collect();
         self.inner.append(&mut v64);
+    }
+
+    #[inline]
+    pub fn split_off_with_type(&mut self, index: usize, t: ValueType) -> Vec<GosValue> {
+        self.inner
+            .split_off(index)
+            .into_iter()
+            .map(|x| x.into_v128_unleak(t))
+            .collect()
     }
 
     #[inline]
@@ -155,8 +188,140 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pack_variadic(&mut self, index: usize, t: ValueType, slices: &mut SliceObjs) {
+        if index < self.len() {
+            let mut v = Vec::new();
+            v.append(&mut self.split_off_with_type(index, t));
+            self.push(GosValue::with_slice_val(v, slices))
+        }
+    }
+
+    #[inline]
+    pub fn add(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_add, t)
+    }
+
+    #[inline]
+    pub fn sub(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_sub, t)
+    }
+
+    #[inline]
+    pub fn mul(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_mul, t)
+    }
+
+    #[inline]
+    pub fn quo(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_quo, t)
+    }
+
+    #[inline]
+    pub fn rem(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_rem, t)
+    }
+
+    #[inline]
+    pub fn and(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_and, t)
+    }
+
+    #[inline]
+    pub fn or(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_or, t)
+    }
+
+    #[inline]
+    pub fn xor(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_xor, t)
+    }
+
+    #[inline]
+    pub fn shl(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_shl, t)
+    }
+
+    #[inline]
+    pub fn shr(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_shr, t)
+    }
+
+    #[inline]
+    pub fn and_not(&mut self, t: ValueType) {
+        binary_op!(self, binary_op_and_not, t)
+    }
+
+    #[inline]
+    pub fn unary_negate(&mut self, t: ValueType) {
+        self.get_inner_mut(self.len() - 1).unary_negate(t);
+    }
+
+    #[inline]
+    pub fn unary_xor(&mut self, t: ValueType) {
+        self.get_inner_mut(self.len() - 1).unary_xor(t);
+    }
+
+    #[inline]
+    pub fn unary_ref(&mut self, t: ValueType) {
+        let v = self.get_inner_mut(self.len() - 1).get_v128(t);
+        self.set(self.len() - 1, GosValue::new_boxed(v));
+    }
+
+    #[inline]
+    pub fn unary_deref(&mut self, t: ValueType) {
+        let v = self.get_inner_mut(self.len() - 1).get_v128(t);
+        self.set(self.len() - 1, v.as_boxed().borrow().clone());
+    }
+
+    #[inline]
+    pub fn logical_not(&mut self, t: ValueType) {
+        self.get_inner_mut(self.len() - 1).unary_not(t);
+    }
+
+    #[inline]
+    pub fn compare_eql(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.eq(&b)));
+    }
+
+    #[inline]
+    pub fn compare_lss(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.cmp(&b) == Ordering::Less));
+    }
+
+    #[inline]
+    pub fn compare_gtr(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.cmp(&b) == Ordering::Greater));
+    }
+
+    #[inline]
+    pub fn compare_neq(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Equal));
+    }
+
+    #[inline]
+    pub fn compare_leq(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Greater));
+    }
+
+    #[inline]
+    pub fn compare_geq(&mut self, t: ValueType) {
+        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Less));
+    }
+
+    #[inline]
     fn get_inner(&self, i: usize) -> &GosValue64 {
         unsafe { self.inner.get_unchecked(i) }
+    }
+
+    #[inline]
+    fn get_inner_mut(&mut self, i: usize) -> &mut GosValue64 {
+        unsafe { self.inner.get_unchecked_mut(i) }
     }
 
     #[inline]

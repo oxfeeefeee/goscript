@@ -50,7 +50,7 @@ pub trait FuncGen {
 
     fn emit_call(&mut self, has_ellipsis: bool);
 
-    fn emit_new(&mut self);
+    fn emit_new(&mut self, typ: ValueType);
 
     fn emit_range(&mut self);
 }
@@ -156,7 +156,7 @@ impl FuncGen for FunctionVal {
                 None,
                 None,
             ),
-            Instruction::new(Opcode::PRE_CALL, None, None, None, None),
+            Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
             Instruction::new(Opcode::CALL, None, None, None, None),
         ];
         let offset = cd.len() as OpIndex;
@@ -197,8 +197,8 @@ impl FuncGen for FunctionVal {
         self.emit_inst(op, None, None, None, None);
     }
 
-    fn emit_new(&mut self) {
-        self.emit_inst(Opcode::NEW, None, None, None, None);
+    fn emit_new(&mut self, typ: ValueType) {
+        self.emit_inst(Opcode::NEW, Some(typ), None, None, None);
     }
 
     fn emit_range(&mut self) {

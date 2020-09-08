@@ -96,7 +96,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
         func.emit_load(i, ValueType::Function);
-        func.emit_new();
+        func.emit_new(ValueType::Function);
         Ok(())
     }
 
@@ -139,6 +139,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         max: &Option<Expr>,
     ) -> Self::Result {
         self.visit_expr(expr)?;
+        let t = self.get_expr_value_type(expr);
         match low {
             None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM),
             Some(e) => self.visit_expr(e)?,
@@ -148,10 +149,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Some(e) => self.visit_expr(e)?,
         }
         match max {
-            None => current_func_mut!(self).emit_code(Opcode::SLICE),
+            None => current_func_mut!(self).emit_code_with_type(Opcode::SLICE, t),
             Some(e) => {
                 self.visit_expr(e)?;
-                current_func_mut!(self).emit_code(Opcode::SLICE_FULL);
+                current_func_mut!(self).emit_code_with_type(Opcode::SLICE_FULL, t);
             }
         }
         Ok(())
@@ -167,19 +168,24 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let ident = self.ast_objs.idents[*ikey].clone();
             if ident.entity.into_key().is_none() {
                 return if let Some(i) = self.built_in_func_index(&ident.name) {
+                    let t = self.get_expr_value_type(&params[0]);
+                    let t_last = self.get_expr_value_type(params.last().unwrap());
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
                     let bf = &self.built_in_funcs[i as usize];
                     let func = current_func_mut!(self);
-                    let count = if bf.variadic {
+                    let (t_variadic, count) = if bf.variadic {
                         if ellipsis {
-                            Some(0) // do not pack params if there is ellipsis
+                            (None, Some(0)) // do not pack params if there is ellipsis
                         } else {
-                            Some((bf.params_count - 1 - count as isize) as OpIndex)
+                            (
+                                Some(t_last),
+                                Some((bf.params_count - 1 - count as isize) as OpIndex),
+                            )
                         }
                     } else {
-                        None
+                        (None, None)
                     };
-                    func.emit_inst(bf.opcode, None, None, None, count);
+                    func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
                     Ok(())
                 } else {
                     Err(())
@@ -201,14 +207,16 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result {
         self.visit_expr(expr)?;
+        let t = self.get_expr_value_type(expr);
         //todo: could this be a pointer type?
         let code = Opcode::DEREF;
-        current_func_mut!(self).emit_code(code);
+        current_func_mut!(self).emit_code_with_type(code, t);
         Ok(())
     }
 
     fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
         self.visit_expr(expr)?;
+        let t = self.get_expr_value_type(expr);
         let code = match op {
             Token::AND => Opcode::REF,
             Token::ADD => Opcode::UNARY_ADD,
@@ -216,12 +224,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Token::XOR => Opcode::UNARY_XOR,
             _ => unreachable!(),
         };
-        current_func_mut!(self).emit_code(code);
+        current_func_mut!(self).emit_code_with_type(code, t);
         Ok(())
     }
 
     fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
         self.visit_expr(left)?;
+        let t = self.get_expr_value_type(left);
         let code = match op {
             Token::ADD => Opcode::ADD,
             Token::SUB => Opcode::SUB,
@@ -263,11 +272,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::JUMP, None, None, None, Some(1));
-            func.emit_code(c);
+            func.emit_code_with_type(c, t);
             let diff = func.code.len() - i - 1;
             func.code[i - 1].set_imm(diff as OpIndex);
         } else {
-            current_func_mut!(self).emit_code(code);
+            current_func_mut!(self).emit_code_with_type(code, t);
         }
         Ok(())
     }
@@ -359,8 +368,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
         let vm_ftype = self.gen_def_type_meta(decl.name);
         let stmt = decl.body.as_ref().unwrap();
-        let fval =
-            GosValue::Function(self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?);
+        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?;
+        let cls = GosValue::new_closure(fkey, vec![]);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
@@ -373,11 +382,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             };
             self.objects.metas[key]
                 .typ_mut()
-                .add_struct_member(name.clone(), fval);
+                .add_struct_member(name.clone(), cls);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
-            let index = pkg.add_member(ident.entity_key().unwrap(), fval);
+            let index = pkg.add_member(ident.entity_key().unwrap(), cls);
             if ident.name == "main" {
                 pkg.set_main_func(index);
             }
@@ -644,6 +653,7 @@ impl<'a> CodeGen<'a> {
                 }
             });
         if let Some(uv) = upvalue {
+            let t = self.get_use_value_type(*ident);
             let func = current_func_mut!(self);
             let index = func.try_add_upvalue(&entity_key, uv);
             return Ok(index);
@@ -938,15 +948,13 @@ impl<'a> CodeGen<'a> {
         let typ = &self.ast_objs.ftypes[fkey];
         let meta_type = self.objects.metas[*fmeta.as_meta()].typ();
         let sig_metadata = meta_type.sig_metadata();
-        let variadic = sig_metadata.variadic;
-        let fkey = *GosValue::new_function(
+        let fval = FunctionVal::new(
             self.pkg_key.clone(),
             fmeta.clone(),
-            variadic,
+            sig_metadata.variadic,
             false,
-            &mut self.objects,
-        )
-        .as_function();
+        );
+        let fkey = self.objects.functions.insert(fval);
         let mut func = &mut self.objects.functions[fkey];
         func.ret_count = match &typ.results {
             Some(fl) => func.add_params(&fl, self.ast_objs)?,
@@ -1152,10 +1160,10 @@ impl<'a> CodeGen<'a> {
     pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.default_sig_meta.clone().unwrap();
-        let fkey =
-            *GosValue::new_function(pkey, fmeta, false, true, &mut self.objects).as_function();
+        let fval = FunctionVal::new(pkey, fmeta, None, true);
+        let fkey = self.objects.functions.insert(fval);
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(null_key!(), GosValue::Function(fkey));
+        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey, vec![]));
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
         for f in files.iter() {
