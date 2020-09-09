@@ -271,6 +271,36 @@ impl Fiber {
                         }
                     }
                 }
+                Opcode::LOAD_INDEX => {
+                    let ind = stack.pop_with_type(inst.t1());
+                    let val = &stack.pop_with_type(inst.t0());
+                    stack.push(vm_util::load_index(val, &ind));
+                }
+                Opcode::LOAD_INDEX_IMM => {
+                    let val = &stack.pop_with_type(inst.t0());
+                    stack.push(vm_util::load_index_int(val, inst.imm() as usize));
+                }
+                Opcode::STORE_INDEX => {
+                    let (rhs_index, index) = inst.imm2();
+                    let s_index = Stack::offset(stack.len(), index);
+                    let key = stack.get_with_type(s_index + 1, inst.t2());
+                    let target = &stack.get_with_type(s_index, inst.t1());
+                    vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), objs);
+                }
+                Opcode::STORE_INDEX_IMM => {
+                    //wrong
+                    let (rhs_index, index) = inst.imm2();
+                    let s_index = Stack::offset(stack.len(), index);
+                    let target = &stack.get_with_type(s_index, inst.t1());
+                    vm_util::store_index_int(
+                        stack,
+                        target,
+                        index as usize,
+                        rhs_index,
+                        inst.t0(),
+                        objs,
+                    );
+                }
                 Opcode::LOAD_FIELD | Opcode::LOAD_FIELD_IMM => {
                     let ind = if inst_op == Opcode::LOAD_FIELD {
                         stack.pop_with_type(inst.t1())

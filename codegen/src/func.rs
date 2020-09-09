@@ -9,15 +9,33 @@ use goscript_vm::value::*;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 
+#[derive(Clone, Debug)]
+pub struct IndexSelInfo {
+    pub index: OpIndex,
+    pub t1: ValueType,
+    pub t2: ValueType,
+    pub is_index: bool,
+}
+
+impl IndexSelInfo {
+    pub fn new(index: OpIndex, t1: ValueType, t2: ValueType, is_index: bool) -> IndexSelInfo {
+        IndexSelInfo {
+            index: index,
+            t1: t1,
+            t2: t2,
+            is_index: is_index,
+        }
+    }
+}
+
 /// LeftHandSide represents the left hand side of an assign stmt
 /// Primitive stores index of lhs variable
-/// IndexSelExpr stores the index of lhs on the stack
+/// IndexSelExpr stores the info of index or selection lhs
 /// Deref stores the index of lhs on the stack
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    // ValueType are the types of the object and the index/selector
-    IndexSelExpr(OpIndex, ValueType, ValueType),
+    IndexSelExpr(IndexSelInfo),
     Deref(OpIndex),
 }
 
@@ -38,9 +56,13 @@ pub trait FuncGen {
 
     fn emit_pop(&mut self, typ: ValueType);
 
-    fn emit_load_field(&mut self, typ: ValueType, index_type: ValueType);
+    fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType);
 
     fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType);
+
+    fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType);
+
+    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType);
 
     fn emit_return(&mut self);
 
@@ -134,7 +156,14 @@ impl FuncGen for FunctionVal {
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(i, t1, t2) => (Opcode::STORE_FIELD, i, Some(*t1), Some(*t2)),
+            LeftHandSide::IndexSelExpr(info) => {
+                let op = if info.is_index {
+                    Opcode::STORE_INDEX
+                } else {
+                    Opcode::STORE_FIELD
+                };
+                (op, &info.index, Some(info.t1), Some(info.t2))
+            }
             LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i, None, None),
         };
 
@@ -168,12 +197,20 @@ impl FuncGen for FunctionVal {
         self.emit_inst(Opcode::POP, Some(typ), None, None, None);
     }
 
-    fn emit_load_field(&mut self, typ: ValueType, index_type: ValueType) {
-        self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(index_type), None, None);
+    fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType) {
+        self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(sel_type), None, None);
     }
 
     fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType) {
         self.emit_inst(Opcode::LOAD_FIELD_IMM, Some(typ), None, None, Some(imm));
+    }
+
+    fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType) {
+        self.emit_inst(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
+    }
+
+    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType) {
+        self.emit_inst(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
     }
 
     fn emit_return(&mut self) {

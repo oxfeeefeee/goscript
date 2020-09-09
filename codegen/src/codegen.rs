@@ -123,11 +123,20 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
-        self.visit_expr(expr)?;
-        self.visit_expr(index)?;
         let t0 = self.get_expr_value_type(expr);
         let t1 = self.get_expr_value_type(index);
-        current_func_mut!(self).emit_load_field(t0, t1);
+        self.visit_expr(expr)?;
+        let typ_val = self.ti.types.get(&index.id()).unwrap();
+        dbg!(typ_val);
+        if let Some(const_val) = typ_val.get_const_val() {
+            let (ival, _) = const_val.to_int().int_as_i64();
+            if let Ok(i) = OpIndex::try_from(ival) {
+                current_func_mut!(self).emit_load_index_imm(i, t0);
+                return Ok(());
+            }
+        }
+        self.visit_expr(index)?;
+        current_func_mut!(self).emit_load_index(t0, t1);
         Ok(())
     }
 
@@ -743,14 +752,21 @@ impl<'a> CodeGen<'a> {
                         let ind = &ind_expr.as_ref().index;
                         self.visit_expr(ind)?;
                         let index_typ = self.get_expr_value_type(ind);
-                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, index_typ)) // the true index will be calculated later
+                        Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                            0, obj_typ, index_typ, true,
+                        ))) // the true index will be calculated later
                     }
                     Expr::Selector(sexpr) => {
                         self.visit_expr(&sexpr.expr)?;
                         self.gen_push_ident_str(&sexpr.sel);
                         let obj_typ = self.get_expr_value_type(&sexpr.expr);
                         // the true index will be calculated later
-                        Ok(LeftHandSide::IndexSelExpr(0, obj_typ, ValueType::Str))
+                        Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                            0,
+                            obj_typ,
+                            ValueType::Str,
+                            false,
+                        )))
                     }
                     Expr::Star(sexpr) => {
                         self.visit_expr(&sexpr.expr)?;
@@ -848,7 +864,7 @@ impl<'a> CodeGen<'a> {
         let func = current_func_mut!(self);
         let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
             LeftHandSide::Primitive(_) => acc,
-            LeftHandSide::IndexSelExpr(_, _, _) => acc + 2,
+            LeftHandSide::IndexSelExpr(_) => acc + 2,
             LeftHandSide::Deref(_) => acc + 1,
         });
         assert_eq!(lhs.len(), types.len());
@@ -862,9 +878,14 @@ impl<'a> CodeGen<'a> {
                 LeftHandSide::Primitive(_) => {
                     func.emit_store(l, val_index, None, typ);
                 }
-                LeftHandSide::IndexSelExpr(_, t0, t1) => {
+                LeftHandSide::IndexSelExpr(info) => {
                     func.emit_store(
-                        &LeftHandSide::IndexSelExpr(current_indexing_index, *t0, *t1),
+                        &LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                            current_indexing_index,
+                            info.t1,
+                            info.t2,
+                            info.is_index,
+                        )),
                         val_index,
                         None,
                         typ,
@@ -892,9 +913,9 @@ impl<'a> CodeGen<'a> {
         for i in lhs.iter().rev() {
             match i {
                 LeftHandSide::Primitive(_) => {}
-                LeftHandSide::IndexSelExpr(_, t0, t1) => {
-                    func.emit_pop(*t1);
-                    func.emit_pop(*t0);
+                LeftHandSide::IndexSelExpr(info) => {
+                    func.emit_pop(info.t2);
+                    func.emit_pop(info.t1);
                 }
                 LeftHandSide::Deref(_) => func.emit_pop(ValueType::Boxed),
             }
@@ -924,13 +945,23 @@ impl<'a> CodeGen<'a> {
                 func.emit_store(left, -1, Some(op), typ);
                 func.emit_pop(typ);
             }
-            LeftHandSide::IndexSelExpr(_, t0, t1) => {
+            LeftHandSide::IndexSelExpr(info) => {
                 // why -3?  stack looks like this(bottom to top) :
                 //  [... target, index, value]
-                func.emit_store(&LeftHandSide::IndexSelExpr(-3, *t0, *t1), -1, Some(op), typ);
+                func.emit_store(
+                    &LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                        -3,
+                        info.t1,
+                        info.t2,
+                        info.is_index,
+                    )),
+                    -1,
+                    Some(op),
+                    typ,
+                );
                 func.emit_pop(typ);
-                func.emit_pop(*t1);
-                func.emit_pop(*t0);
+                func.emit_pop(info.t2);
+                func.emit_pop(info.t1);
             }
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
@@ -997,7 +1028,7 @@ impl<'a> CodeGen<'a> {
 
     fn get_const_value(&mut self, id: NodeId) -> Result<GosValue, ()> {
         let typ_val = self.ti.types.get(&id).unwrap();
-        let const_val = typ_val.get_const_val();
+        let const_val = typ_val.get_const_val().unwrap();
         Ok(types::get_const_value(
             typ_val.typ,
             const_val,

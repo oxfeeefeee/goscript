@@ -150,7 +150,7 @@ macro_rules! range_body {
 }
 
 #[inline]
-pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue {
+pub fn load_index(val: &GosValue, ind: &GosValue) -> GosValue {
     match val {
         GosValue::Slice(slice) => {
             let index = *ind.as_int() as usize;
@@ -164,6 +164,35 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
         GosValue::Str(s) => {
             GosValue::Int(s.get_byte(*ind.as_int() as usize) as isize)
         }
+        _ => unreachable!(),
+    }
+}
+
+#[inline]
+pub fn load_index_int(val: &GosValue, i: usize) -> GosValue {
+    match val {
+        GosValue::Slice(slice) => {
+            if let Some(v) = slice.get(i) {
+                v
+            } else {
+                unimplemented!();
+            }
+        }
+        GosValue::Map(map) => {
+            let ind = GosValue::Int(i as isize);
+            map.get(&ind).clone()
+        }
+        GosValue::Str(s) => {
+            GosValue::Int(s.get_byte(i) as isize)
+        }
+
+        _ => unreachable!(),
+    }
+}
+
+#[inline]
+pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue {
+    match val {
         GosValue::Struct(sval) => {
             match &ind {
                 GosValue::Int(i) => sval.borrow().fields[*i as usize].clone(),
@@ -188,7 +217,7 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
 }
 
 #[inline]
-pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
+pub fn store_index(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
     match target {
         GosValue::Slice(s) => {
             let target_cell = &s.borrow_data()[*key.as_int() as usize];
@@ -200,6 +229,31 @@ pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
             let target_cell = borrowed.get(&key).unwrap();
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t, &objs.zero_val);   
         }
+        _ => unreachable!(),
+    }
+}
+
+#[inline]
+pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
+    match target {
+        GosValue::Slice(s) => {
+            let target_cell = &s.borrow_data()[i];
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, &objs.zero_val);
+        }
+        GosValue::Map(map) => {
+            let key = GosValue::Int(i as isize);
+            map.touch_key(&key);
+            let borrowed = map.borrow_data();
+            let target_cell = borrowed.get(&key).unwrap();
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, &objs.zero_val);   
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[inline]
+pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
+    match target {
         GosValue::Struct(s) => {
             match key {
                 GosValue::Int(i) => {

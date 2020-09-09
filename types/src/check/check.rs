@@ -25,10 +25,10 @@ pub struct TypeAndValue {
 }
 
 impl TypeAndValue {
-    pub fn get_const_val(&self) -> &Value {
+    pub fn get_const_val(&self) -> Option<&Value> {
         match &self.mode {
-            OperandMode::Constant(v) => v,
-            _ => unreachable!(),
+            OperandMode::Constant(v) => Some(v),
+            _ => None,
         }
     }
 }
