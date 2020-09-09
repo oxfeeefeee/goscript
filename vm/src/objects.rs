@@ -608,9 +608,16 @@ pub struct ChannelVal {}
 // ClosureVal
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct UpValueDesc {
+    pub func: FunctionKey,
+    pub index: OpIndex,
+    pub typ: ValueType,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum UpValue {
     /// Parent CallFrame is still alive, pointing to a local variable
-    Open(FunctionKey, OpIndex), // (what func is the var defined, the index of the var)
+    Open(UpValueDesc), // (what func is the var defined, the index of the var)
     // Parent CallFrame is released, pointing to a Boxed value in the global pool
     Closed(GosValue),
 }
@@ -632,14 +639,6 @@ impl ClosureVal {
             func: key,
             receiver: None,
             upvalues: upvalues,
-        }
-    }
-
-    pub fn close_upvalue(&mut self, func: FunctionKey, index: OpIndex, val: &GosValue) {
-        for i in 0..self.upvalues.len() {
-            if self.upvalues[i] == UpValue::Open(func, index) {
-                self.upvalues[i] = UpValue::Closed(val.clone());
-            }
         }
     }
 }
@@ -687,9 +686,9 @@ impl PackageVal {
         index
     }
 
-    pub fn init_var(&mut self, fn_member_index: &OpIndex, val: GosValue) {
-        let index = self.var_mapping.as_ref().unwrap()[fn_member_index];
-        self.members[index as usize] = val;
+    pub fn var_mut(&mut self, fn_member_index: OpIndex) -> &mut GosValue {
+        let index = self.var_mapping.as_ref().unwrap()[&fn_member_index];
+        &mut self.members[index as usize]
     }
 
     pub fn var_count(&self) -> usize {

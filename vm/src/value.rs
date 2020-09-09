@@ -10,7 +10,7 @@ use std::rc::Rc;
 macro_rules! union_op {
     ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
         GosValue64{
-            debug_type: $t,
+            //debug_type: $t,
             data: V64Union {
             $name: $a.data.$name $op $b.data.$name,
         }}
@@ -361,7 +361,7 @@ union V64Union {
 #[derive(Copy, Clone)]
 pub struct GosValue64 {
     data: V64Union,
-    pub debug_type: ValueType, // to be removed in release build
+    //pub debug_type: ValueType, // to be removed in release build
 }
 
 impl GosValue64 {
@@ -432,7 +432,7 @@ impl GosValue64 {
         (
             GosValue64 {
                 data: data,
-                debug_type: typ,
+                //debug_type: typ,
             },
             typ,
         )
@@ -442,7 +442,7 @@ impl GosValue64 {
     pub fn nil() -> GosValue64 {
         GosValue64 {
             data: V64Union { unil: () },
-            debug_type: ValueType::Nil,
+            //debug_type: ValueType::Nil,
         }
     }
 
@@ -450,7 +450,7 @@ impl GosValue64 {
     pub fn from_bool(b: bool) -> GosValue64 {
         GosValue64 {
             data: V64Union { ubool: b },
-            debug_type: ValueType::Bool,
+            //debug_type: ValueType::Bool,
         }
     }
 
@@ -458,7 +458,7 @@ impl GosValue64 {
     pub fn from_int(i: isize) -> GosValue64 {
         GosValue64 {
             data: V64Union { uint: i },
-            debug_type: ValueType::Int,
+            //debug_type: ValueType::Int,
         }
     }
 
@@ -466,7 +466,7 @@ impl GosValue64 {
     pub fn from_float64(f: f64) -> GosValue64 {
         GosValue64 {
             data: V64Union { ufloat64: f },
-            debug_type: ValueType::Float64,
+            //debug_type: ValueType::Float64,
         }
     }
 
@@ -474,14 +474,14 @@ impl GosValue64 {
     pub fn from_complex64(r: f32, i: f32) -> GosValue64 {
         GosValue64 {
             data: V64Union { ucomplex64: (r, i) },
-            debug_type: ValueType::Complex64,
+            //debug_type: ValueType::Complex64,
         }
     }
 
     /// returns GosValue and increases RC
     #[inline]
     pub fn get_v128(&self, t: ValueType) -> GosValue {
-        debug_assert!(t == self.debug_type);
+        //debug_assert!(t == self.debug_type);
         unsafe {
             match t {
                 ValueType::Bool => GosValue::Bool(self.data.ubool),
@@ -516,25 +516,25 @@ impl GosValue64 {
 
     #[inline]
     pub fn get_bool(&self) -> bool {
-        debug_assert_eq!(self.debug_type, ValueType::Bool);
+        //debug_assert_eq!(self.debug_type, ValueType::Bool);
         unsafe { self.data.ubool }
     }
 
     #[inline]
     pub fn get_int(&self) -> isize {
-        debug_assert_eq!(self.debug_type, ValueType::Int);
+        //debug_assert_eq!(self.debug_type, ValueType::Int);
         unsafe { self.data.uint }
     }
 
     #[inline]
     pub fn get_float64(&self) -> f64 {
-        debug_assert_eq!(self.debug_type, ValueType::Float64);
+        //debug_assert_eq!(self.debug_type, ValueType::Float64);
         unsafe { self.data.ufloat64 }
     }
 
     #[inline]
     pub fn get_complex64(&self) -> (f32, f32) {
-        debug_assert_eq!(self.debug_type, ValueType::Complex64);
+        //debug_assert_eq!(self.debug_type, ValueType::Complex64);
         unsafe { self.data.ucomplex64 }
     }
 
@@ -542,7 +542,7 @@ impl GosValue64 {
     #[inline]
     pub fn into_v128_unleak(&self, t: ValueType) -> GosValue {
         //dbg!(t, self.debug_type);
-        debug_assert!(t == self.debug_type);
+        //debug_assert!(t == self.debug_type);
         unsafe {
             match t {
                 ValueType::Bool => GosValue::Bool(self.data.ubool),
@@ -605,7 +605,7 @@ impl GosValue64 {
         };
         GosValue64 {
             data: data,
-            debug_type: self.debug_type,
+            //debug_type: self.debug_type,
         }
     }
 
@@ -648,7 +648,7 @@ impl GosValue64 {
         };
         GosValue64 {
             data: data,
-            debug_type: t,
+            //debug_type: t,
         }
     }
 
@@ -683,7 +683,7 @@ impl GosValue64 {
                     let mut s = (*a.data.ustr).as_str().to_string();
                     s.push_str(&(*b.data.ustr).as_str());
                     GosValue64 {
-                        debug_type: t,
+                        //debug_type: t,
                         data: V64Union {
                             ustr: Rc::into_raw(Rc::new(StringVal::with_str(s))),
                         },
@@ -710,39 +710,39 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_rem(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_rem(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, %, t) }
     }
 
     #[inline]
-    pub fn binary_op_and(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_and(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, &, t) }
     }
 
     #[inline]
-    pub fn binary_op_or(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_or(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, |, t) }
     }
 
     #[inline]
-    pub fn binary_op_xor(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_xor(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, ^, t) }
     }
 
     #[inline]
-    pub fn binary_op_shl(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_shl(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, <<, t) }
     }
 
     #[inline]
-    pub fn binary_op_shr(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_shr(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, >>, t) }
     }
 
     #[inline]
-    pub fn binary_op_and_not(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_and_not(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
         GosValue64 {
-            debug_type: t,
+            //debug_type: t,
             data: unsafe {
                 V64Union {
                     uint: a.data.uint & !b.data.uint,

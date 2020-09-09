@@ -50,12 +50,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop(&mut self) -> GosValue {
-        let v64 = self.inner.pop().unwrap();
-        v64.into_v128_unleak(v64.debug_type)
-    }
-
-    #[inline]
     pub fn pop_discard(&mut self, t: ValueType) {
         if t <= COPYABLE_END {
             self.inner.pop();
@@ -83,12 +77,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get(&self, index: usize /*, t: ValueType*/) -> GosValue {
-        let v = self.inner.get(index).unwrap();
-        v.get_v128(v.debug_type)
-    }
-
-    #[inline]
     pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
         let v = self.inner.get(index).unwrap();
         v.get_v128(t)
@@ -96,8 +84,8 @@ impl Stack {
 
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) {
-        let (v, _) = GosValue64::from_v128_leak(&val);
-        let _ = self.inner[index].into_v128_unleak(self.inner[index].debug_type);
+        let (v, t) = GosValue64::from_v128_leak(&val);
+        let _ = self.inner[index].into_v128_unleak(t);
         self.inner[index] = v;
     }
 
@@ -114,7 +102,7 @@ impl Stack {
 
     #[inline]
     pub fn truncate(&mut self, len: usize) {
-        self.split_off(len);
+        self.inner.split_off(len); // temp
     }
 
     #[inline]
@@ -139,19 +127,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn split_off(&mut self, index: usize) -> Vec<GosValue> {
-        self.inner
-            .split_off(index)
-            .into_iter()
-            .map(|x| x.into_v128_unleak(x.debug_type))
-            .collect()
-    }
-
-    #[inline]
     pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, zero: &ZeroVal) {
         //dbg!(t, self.inner[li].debug_type, self.inner[ri].debug_type);
-        debug_assert!(t == self.inner[li].debug_type);
-        debug_assert!(t == self.inner[ri].debug_type);
+        //debug_assert!(t == self.inner[li].debug_type);
+        //debug_assert!(t == self.inner[ri].debug_type);
         if t <= COPYABLE_END {
             self.inner.swap(li, ri); // self.inner[li] = self.inner[ri];
         } else {
@@ -193,6 +172,36 @@ impl Stack {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
             self.push(GosValue::with_slice_val(v, slices))
+        }
+    }
+
+    #[inline]
+    pub fn close_upvalue(
+        &self,
+        cls: &mut ClosureVal,
+        func: FunctionKey,
+        index: OpIndex,
+        stack_index: usize,
+    ) {
+        for uv in cls.upvalues.iter_mut() {
+            match uv {
+                UpValue::Open(desc) => {
+                    if desc.func == func && desc.index == index {
+                        *uv = UpValue::Closed(self.get_with_type(stack_index, desc.typ));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[inline]
+    pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
+        for i in 0..count {
+            let var_index = (count - 1 - i) as OpIndex;
+            let var = pkg.var_mut(var_index);
+            let t = var.get_type();
+            *var = self.pop_with_type(t);
         }
     }
 

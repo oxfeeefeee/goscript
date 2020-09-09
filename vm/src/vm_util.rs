@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//#![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::instruction::*;
 use super::value::{VMObjects, GosValue, ClosureVal};
@@ -6,29 +6,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use super::stack::Stack;
 
-macro_rules! offset_uint {
-    ($uint:expr, $offset:expr) => {
-        ($uint as isize + $offset as isize) as usize
-    };
-}
-
-macro_rules! index {
-    ($stack:ident, $i:expr) => {
-        $stack.get($i)
-        //$stack.get($i).unwrap()
-    };
-}
-
-
-macro_rules! stack_set {
-    ($stack:ident, $i:expr, $v:expr) => {
-        $stack.set($i, $v);
-    };
-}
-
 macro_rules! upframe {
-    ($iter:expr, $f:ident) => {
-        $iter.find(|x| x.callable.func() == *$f).unwrap();
+    ($iter:expr, $f:expr) => {
+        $iter.find(|x| x.callable.func() == $f).unwrap();
     };
 }
 
@@ -99,7 +79,7 @@ macro_rules! range_init {
 }
 
 macro_rules! range_body {
-    ($target:expr, $stack:ident, 
+    ($target:expr, $stack:ident, $inst:ident,
         $map_ptr:ident, $map_iter:ident,
         $slice_ptr:ident, $slice_iter:ident,
         $str_ptr:ident, $str_iter:ident) => {{
@@ -119,8 +99,8 @@ macro_rules! range_body {
                         }
                         $map_ptr = None
                     }
-                    $stack.pop();
-                    $stack.pop();
+                    $stack.pop_with_type($inst.t2());
+                    $stack.pop_with_type($inst.t1());
                     true
                 }
             }
@@ -139,8 +119,8 @@ macro_rules! range_body {
                         }
                         $slice_ptr = None
                     }
-                    $stack.pop();
-                    $stack.pop();
+                    $stack.pop_with_type($inst.t2());
+                    $stack.pop_with_type($inst.t1());
                     true
                 }
             }
@@ -159,8 +139,8 @@ macro_rules! range_body {
                         }
                         $str_ptr = None
                     }
-                    $stack.pop();
-                    $stack.pop();
+                    $stack.pop_with_type($inst.t2());
+                    $stack.pop_with_type($inst.t1());
                     true
                 }
             }

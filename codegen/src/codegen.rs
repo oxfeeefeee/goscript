@@ -647,13 +647,17 @@ impl<'a> CodeGen<'a> {
                 let f = &mut self.objects.functions[*ifunc];
                 let index = f.entity_index(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
-                    Some(UpValue::Open(*ifunc, ind.into()))
+                    let desc = UpValueDesc {
+                        func: *ifunc,
+                        index: ind.into(),
+                        typ: self.get_use_value_type(*ident),
+                    };
+                    Some(UpValue::Open(desc))
                 } else {
                     None
                 }
             });
         if let Some(uv) = upvalue {
-            let t = self.get_use_value_type(*ident);
             let func = current_func_mut!(self);
             let index = func.try_add_upvalue(&entity_key, uv);
             return Ok(index);
@@ -801,12 +805,13 @@ impl<'a> CodeGen<'a> {
         let types = if let Some(r) = range {
             // the range statement
             self.visit_expr(r)?;
+            let (t, tkv) = self.get_range_value_types(r);
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
             range_marker = Some(func.code.len());
             // the block_end address to be set
-            func.emit_inst(Opcode::RANGE, None, None, None, None);
-            self.get_range_value_types(r)
+            func.emit_inst(Opcode::RANGE, Some(t), Some(tkv[0]), Some(tkv[1]), None);
+            tkv
         } else if values.len() == lhs.len() {
             // define or assign with values
             let mut types = Vec::with_capacity(values.len());
@@ -1057,7 +1062,7 @@ impl<'a> CodeGen<'a> {
         types::value_type_from_tc(*typ, self.tc_objs)
     }
 
-    fn get_range_value_types(&mut self, e: &Expr) -> Vec<ValueType> {
+    fn get_range_value_types(&mut self, e: &Expr) -> (ValueType, Vec<ValueType>) {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         types::range_value_types(typ, self.tc_objs)
     }

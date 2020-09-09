@@ -233,9 +233,9 @@ impl Fiber {
                     let upvalue =
                         frame.callable.closure().borrow().upvalues[index as usize].clone();
                     match &upvalue {
-                        UpValue::Open(f, ind) => {
-                            let upframe = upframe!(self.frames.iter().rev().skip(1), f);
-                            let stack_ptr = Stack::offset(upframe.stack_base, *ind);
+                        UpValue::Open(desc) => {
+                            let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
+                            let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
                             stack.push_from_index(stack_ptr, inst.t0());
                             frame = self.frames.last_mut().unwrap();
                         }
@@ -249,9 +249,9 @@ impl Fiber {
                     let closure = frame.callable.closure();
                     let upvalue = closure.borrow().upvalues[index as usize].clone();
                     match &upvalue {
-                        UpValue::Open(f, ind) => {
-                            let upframe = upframe!(self.frames.iter().rev().skip(1), f);
-                            let stack_ptr = Stack::offset(upframe.stack_base, *ind);
+                        UpValue::Open(desc) => {
+                            let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
+                            let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
                             if rhs_index < 0 {
                                 let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                 stack.store_copy_semantic(stack_ptr, rhs_s_index, inst.t0(), zval);
@@ -263,7 +263,7 @@ impl Fiber {
                         }
                         UpValue::Closed(_) => {
                             match &mut closure.borrow_mut().upvalues[index as usize] {
-                                UpValue::Open(_, _) => unreachable!(),
+                                UpValue::Open(_) => unreachable!(),
                                 UpValue::Closed(v) => {
                                     stack.store_val(v, rhs_index, inst.t0(), zval);
                                 }
@@ -416,11 +416,13 @@ impl Fiber {
                             let cls_val = c.as_closure().borrow();
                             for uv in cls_val.upvalues.iter() {
                                 match uv {
-                                    UpValue::Open(f, ind) => {
+                                    UpValue::Open(desc) => {
                                         drop(frame);
-                                        let upframe =
-                                            upframe!(self.frames.iter_mut().rev().skip(1), f);
-                                        upframe.remove_referred_by(*ind, c.clone());
+                                        let upframe = upframe!(
+                                            self.frames.iter_mut().rev().skip(1),
+                                            desc.func
+                                        );
+                                        upframe.remove_referred_by(desc.index, c.clone());
                                         frame = self.frames.last_mut().unwrap();
                                     }
                                     // Do nothing for closed ones for now, Will be delt with it by GC.
@@ -436,11 +438,15 @@ impl Fiber {
                             if referrers.len() == 0 {
                                 continue;
                             }
-                            let val = index![stack, stack_base + *ind as usize];
                             let func = frame.callable.func();
                             for r in referrers.iter() {
                                 let mut cls_val = r.as_closure().borrow_mut();
-                                cls_val.close_upvalue(func, *ind, &val);
+                                stack.close_upvalue(
+                                    &mut cls_val,
+                                    func,
+                                    *ind,
+                                    Stack::offset(stack_base, *ind),
+                                );
                             }
                         }
                     }
@@ -452,6 +458,9 @@ impl Fiber {
 
                     match inst_op {
                         Opcode::RETURN => {
+                            //for v in func.local_zeros.iter().skip(frame.ret_count(objs)).rev() {
+                            //    stack.pop_with_type(v.get_type());
+                            //}
                             stack.truncate(stack_base + frame.ret_count(objs));
                         }
                         Opcode::RETURN_INIT_PKG => {
@@ -462,11 +471,12 @@ impl Fiber {
                             // remove garbage first
                             debug_assert!(stack.len() == stack_base + count);
                             // the var values left on the stack are for pkg members
-                            for i in 0..count {
+                            stack.init_pkg_vars(pkg, count);
+                            /*for i in 0..count {
                                 let val = stack.pop();
                                 let index = (count - 1 - i) as OpIndex;
                                 pkg.init_var(&index, val);
-                            }
+                            }*/
                             // the one pushed by IMPORT was poped by LOAD_FIELD
                             stack.push(GosValue::Package(pkey));
                         }
@@ -493,16 +503,16 @@ impl Fiber {
                 }
 
                 Opcode::JUMP => {
-                    frame.pc = offset_uint!(frame.pc, inst.imm());
+                    frame.pc = Stack::offset(frame.pc, inst.imm());
                 }
                 Opcode::JUMP_IF => {
                     if stack.pop_bool() {
-                        frame.pc = offset_uint!(frame.pc, inst.imm());
+                        frame.pc = Stack::offset(frame.pc, inst.imm());
                     }
                 }
                 Opcode::JUMP_IF_NOT => {
                     if !stack.pop_bool() {
-                        frame.pc = offset_uint!(frame.pc, inst.imm());
+                        frame.pc = Stack::offset(frame.pc, inst.imm());
                     }
                 }
                 // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
@@ -510,8 +520,8 @@ impl Fiber {
                 Opcode::RANGE => {
                     let offset = inst.imm();
                     let len = stack.len();
-                    let t = index![stack, len - 2];
-                    let mut mark = *index![stack, len - 1].as_int();
+                    let t = stack.get_with_type(len - 2, inst.t0());
+                    let mut mark = *stack.get_with_type(len - 1, ValueType::Int).as_int();
                     if mark < 0 {
                         mark = range_slot;
                         range_slot += 1;
@@ -547,29 +557,29 @@ impl Fiber {
                             ),
                             _ => unreachable!(),
                         }
-                        stack_set!(stack, len - 1, GosValue::Int(mark));
+                        stack.set(len - 1, GosValue::Int(mark));
                     }
                     let end = match mark {
-                        0 => range_body!(t, stack, mp0, mi0, lp0, li0, sp0, si0),
-                        1 => range_body!(t, stack, mp1, mi1, lp1, li1, sp1, si1),
-                        2 => range_body!(t, stack, mp2, mi2, lp2, li2, sp2, si2),
-                        3 => range_body!(t, stack, mp3, mi3, lp3, li3, sp3, si3),
-                        4 => range_body!(t, stack, mp4, mi4, lp4, li4, sp4, si4),
-                        5 => range_body!(t, stack, mp5, mi5, lp5, li5, sp5, si5),
-                        6 => range_body!(t, stack, mp6, mi6, lp6, li6, sp6, si6),
-                        7 => range_body!(t, stack, mp7, mi7, lp7, li7, sp7, si7),
-                        8 => range_body!(t, stack, mp8, mi8, lp8, li8, sp8, si8),
-                        9 => range_body!(t, stack, mp9, mi9, lp9, li9, sp9, si9),
-                        10 => range_body!(t, stack, mp10, mi10, lp10, li10, sp10, si10),
-                        11 => range_body!(t, stack, mp11, mi11, lp11, li11, sp11, si11),
-                        12 => range_body!(t, stack, mp12, mi12, lp12, li12, sp12, si12),
-                        13 => range_body!(t, stack, mp13, mi13, lp13, li13, sp13, si13),
-                        14 => range_body!(t, stack, mp14, mi14, lp14, li14, sp14, si14),
-                        15 => range_body!(t, stack, mp15, mi15, lp15, li15, sp15, si15),
+                        0 => range_body!(t, stack, inst, mp0, mi0, lp0, li0, sp0, si0),
+                        1 => range_body!(t, stack, inst, mp1, mi1, lp1, li1, sp1, si1),
+                        2 => range_body!(t, stack, inst, mp2, mi2, lp2, li2, sp2, si2),
+                        3 => range_body!(t, stack, inst, mp3, mi3, lp3, li3, sp3, si3),
+                        4 => range_body!(t, stack, inst, mp4, mi4, lp4, li4, sp4, si4),
+                        5 => range_body!(t, stack, inst, mp5, mi5, lp5, li5, sp5, si5),
+                        6 => range_body!(t, stack, inst, mp6, mi6, lp6, li6, sp6, si6),
+                        7 => range_body!(t, stack, inst, mp7, mi7, lp7, li7, sp7, si7),
+                        8 => range_body!(t, stack, inst, mp8, mi8, lp8, li8, sp8, si8),
+                        9 => range_body!(t, stack, inst, mp9, mi9, lp9, li9, sp9, si9),
+                        10 => range_body!(t, stack, inst, mp10, mi10, lp10, li10, sp10, si10),
+                        11 => range_body!(t, stack, inst, mp11, mi11, lp11, li11, sp11, si11),
+                        12 => range_body!(t, stack, inst, mp12, mi12, lp12, li12, sp12, si12),
+                        13 => range_body!(t, stack, inst, mp13, mi13, lp13, li13, sp13, si13),
+                        14 => range_body!(t, stack, inst, mp14, mi14, lp14, li14, sp14, si14),
+                        15 => range_body!(t, stack, inst, mp15, mi15, lp15, li15, sp15, si15),
                         _ => unreachable!(),
                     };
                     if end {
-                        frame.pc = offset_uint!(frame.pc, offset);
+                        frame.pc = Stack::offset(frame.pc, offset);
                         range_slot -= 1;
                     }
                 }
@@ -607,10 +617,11 @@ impl Fiber {
                             // set referred_by for the frames down in the stack
                             for uv in func.up_ptrs.iter() {
                                 match uv {
-                                    UpValue::Open(func, ind) => {
+                                    UpValue::Open(desc) => {
                                         drop(frame);
-                                        let upframe = upframe!(self.frames.iter_mut().rev(), func);
-                                        upframe.add_referred_by(*ind, closure.clone());
+                                        let upframe =
+                                            upframe!(self.frames.iter_mut().rev(), desc.func);
+                                        upframe.add_referred_by(desc.index, closure.clone());
                                         frame = self.frames.last_mut().unwrap();
                                     }
                                     UpValue::Closed(_) => unreachable!(),
@@ -682,6 +693,7 @@ impl Fiber {
                 }
                 _ => unimplemented!(),
             };
+            //dbg!(inst_op, stack.len());
         }
     }
 }

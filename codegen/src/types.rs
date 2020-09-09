@@ -175,20 +175,22 @@ pub fn value_type_from_tc(typ: TCTypeKey, tc_objs: &TCObjects) -> ValueType {
     }
 }
 
-pub fn range_value_types(typ: TCTypeKey, tc_objs: &TCObjects) -> Vec<ValueType> {
+pub fn range_value_types(typ: TCTypeKey, tc_objs: &TCObjects) -> (ValueType, Vec<ValueType>) {
     match &tc_objs.types[typ] {
         Type::Basic(detail) => match detail.typ() {
-            BasicType::Str | BasicType::UntypedString => vec![ValueType::Int, ValueType::Int],
+            BasicType::Str | BasicType::UntypedString => {
+                (ValueType::Str, vec![ValueType::Int, ValueType::Int])
+            }
             _ => unreachable!(),
         },
         Type::Slice(detail) => {
             let elem = value_type_from_tc(detail.elem(), tc_objs);
-            vec![ValueType::Int, elem]
+            (ValueType::Slice, vec![ValueType::Int, elem])
         }
         Type::Map(detail) => {
             let key = value_type_from_tc(detail.key(), tc_objs);
             let elem = value_type_from_tc(detail.elem(), tc_objs);
-            vec![key, elem]
+            (ValueType::Map, vec![key, elem])
         }
         _ => {
             dbg!(&tc_objs.types[typ]);
