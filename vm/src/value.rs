@@ -1,11 +1,15 @@
 //#![allow(dead_code)]
 use super::instruction::{Opcode, ValueType};
 pub use super::objects::*;
+use ordered_float;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+type F32 = ordered_float::OrderedFloat<f32>;
+type F64 = ordered_float::OrderedFloat<f64>;
 
 pub const C_PLACE_HOLDER: GosValue64 = GosValue64 {
     data: V64Union { uint: 9527 },
@@ -15,10 +19,15 @@ pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(9528);
 macro_rules! union_op {
     ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
         GosValue64{
-            //debug_type: $t,
             data: V64Union {
             $name: $a.data.$name $op $b.data.$name,
         }}
+    };
+}
+
+macro_rules! union_cmp {
+    ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
+        $a.data.$name $op $b.data.$name
     };
 }
 
@@ -32,14 +41,35 @@ macro_rules! binary_op_int_float {
     };
 }
 
+macro_rules! cmp_bool_int_float {
+    ($t:ident, $a:ident, $b:ident, $op:tt) => {
+        match $t {
+            ValueType::Bool => union_cmp!($a, $b, ubool, $op, ValueType::Bool),
+            ValueType::Int => union_cmp!($a, $b, uint, $op, ValueType::Int),
+            ValueType::Float64 => union_cmp!($a, $b, ufloat64, $op, ValueType::Float64),
+            _ => unreachable!(),
+        }
+    };
+}
+
+macro_rules! cmp_int_float {
+    ($t:ident, $a:ident, $b:ident, $op:tt) => {
+        match $t {
+            ValueType::Int => union_cmp!($a, $b, uint, $op, ValueType::Int),
+            ValueType::Float64 => union_cmp!($a, $b, ufloat64, $op, ValueType::Float64),
+            _ => unreachable!(),
+        }
+    };
+}
+
 // ----------------------------------------------------------------------------
 // GosValue
 #[derive(Debug, Clone)]
 pub enum GosValue {
     Bool(bool),
     Int(isize),
-    Float64(f64), // becasue in Go there is no "float", just float64
-    Complex64(f32, f32),
+    Float64(F64), // becasue in Go there is no "float", just float64
+    Complex64(F32, F32),
 
     // the 3 below are not visible to users, they are "values" not "variables"
     // they are static data, don't use Rc for better performance
@@ -363,8 +393,8 @@ pub union V64Union {
     unil: (),
     ubool: bool,
     uint: isize,
-    ufloat64: f64,
-    ucomplex64: (f32, f32),
+    ufloat64: F64,
+    ucomplex64: (F32, F32),
     umetadata: MetadataKey,
     ufunction: FunctionKey,
     upackage: PackageKey,
@@ -431,7 +461,7 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn from_float64(f: f64) -> GosValue64 {
+    pub fn from_float64(f: F64) -> GosValue64 {
         GosValue64 {
             data: V64Union { ufloat64: f },
             //debug_type: ValueType::Float64,
@@ -439,7 +469,7 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn from_complex64(r: f32, i: f32) -> GosValue64 {
+    pub fn from_complex64(r: F32, i: F32) -> GosValue64 {
         GosValue64 {
             data: V64Union { ucomplex64: (r, i) },
             //debug_type: ValueType::Complex64,
@@ -479,13 +509,13 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn get_float64(&self) -> f64 {
+    pub fn get_float64(&self) -> F64 {
         //debug_assert_eq!(self.debug_type, ValueType::Float64);
         unsafe { self.data.ufloat64 }
     }
 
     #[inline]
-    pub fn get_complex64(&self) -> (f32, f32) {
+    pub fn get_complex64(&self) -> (F32, F32) {
         //debug_assert_eq!(self.debug_type, ValueType::Complex64);
         unsafe { self.data.ucomplex64 }
     }
@@ -533,57 +563,57 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_add(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_add(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
         unsafe { binary_op_int_float!(t, a, b, +) }
     }
 
     #[inline]
-    pub fn binary_op_sub(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_sub(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
         unsafe { binary_op_int_float!(t, a, b, -) }
     }
 
     #[inline]
-    pub fn binary_op_mul(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_mul(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
         unsafe { binary_op_int_float!(t, a, b, *) }
     }
 
     #[inline]
-    pub fn binary_op_quo(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_quo(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
         unsafe { binary_op_int_float!(t, a, b, /) }
     }
 
     #[inline]
-    pub fn binary_op_rem(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_rem(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, %, t) }
     }
 
     #[inline]
-    pub fn binary_op_and(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_and(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, &, t) }
     }
 
     #[inline]
-    pub fn binary_op_or(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_or(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, |, t) }
     }
 
     #[inline]
-    pub fn binary_op_xor(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_xor(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, ^, t) }
     }
 
     #[inline]
-    pub fn binary_op_shl(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_shl(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, <<, t) }
     }
 
     #[inline]
-    pub fn binary_op_shr(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_shr(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         unsafe { union_op!(a, b, uint, >>, t) }
     }
 
     #[inline]
-    pub fn binary_op_and_not(a: GosValue64, b: GosValue64, _t: ValueType) -> GosValue64 {
+    pub fn binary_op_and_not(a: &GosValue64, b: &GosValue64, _t: ValueType) -> GosValue64 {
         GosValue64 {
             //debug_type: t,
             data: unsafe {
@@ -595,7 +625,7 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op(a: GosValue64, b: GosValue64, t: ValueType, op: Opcode) -> GosValue64 {
+    pub fn binary_op(a: &GosValue64, b: &GosValue64, t: ValueType, op: Opcode) -> GosValue64 {
         match op {
             Opcode::ADD => GosValue64::binary_op_add(a, b, t),
             Opcode::SUB => GosValue64::binary_op_sub(a, b, t),
@@ -610,6 +640,36 @@ impl GosValue64 {
             Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
             _ => unreachable!(),
         }
+    }
+
+    #[inline]
+    pub fn compare_eql(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_bool_int_float!(t, a, b, ==) }
+    }
+
+    #[inline]
+    pub fn compare_neq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_bool_int_float!(t, a, b, !=) }
+    }
+
+    #[inline]
+    pub fn compare_lss(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, a, b, <) }
+    }
+
+    #[inline]
+    pub fn compare_gtr(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, a, b, >) }
+    }
+
+    #[inline]
+    pub fn compare_leq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, a, b, <=) }
+    }
+
+    #[inline]
+    pub fn compare_geq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, a, b, >=) }
     }
 }
 

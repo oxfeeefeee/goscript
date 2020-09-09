@@ -99,15 +99,15 @@ macro_rules! range_body {
                         }
                         $map_ptr = None
                     }
-                    $stack.pop_with_type($inst.t2());
-                    $stack.pop_with_type($inst.t1());
+                    $stack.pop_discard();
+                    $stack.pop_discard();
                     true
                 }
             }
             GosValue::Slice(_) => {
                 let v = $slice_iter.as_mut().unwrap().next();
                 if let Some((k, v)) = v {
-                    $stack.push(GosValue::Int(k as isize));
+                    $stack.push_int(k as isize);
                     $stack.push(v.clone().into_inner());
                     false
                 } else {
@@ -119,16 +119,16 @@ macro_rules! range_body {
                         }
                         $slice_ptr = None
                     }
-                    $stack.pop_with_type($inst.t2());
-                    $stack.pop_with_type($inst.t1());
+                    $stack.pop_discard();
+                    $stack.pop_discard();
                     true
                 }
             }
             GosValue::Str(_) => {
                 let v = $str_iter.as_mut().unwrap().next();
                 if let Some((k, v)) = v {
-                    $stack.push(GosValue::Int(k as isize));
-                    $stack.push(GosValue::Int(v as isize));
+                    $stack.push_int(k as isize);
+                    $stack.push_int(v as isize);
                     false
                 } else {
                     $str_iter.take();
@@ -139,8 +139,8 @@ macro_rules! range_body {
                         }
                         $str_ptr = None
                     }
-                    $stack.pop_with_type($inst.t2());
-                    $stack.pop_with_type($inst.t1());
+                    $stack.pop_discard();
+                    $stack.pop_discard();
                     true
                 }
             }

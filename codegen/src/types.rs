@@ -39,7 +39,7 @@ fn const_value_or_type_from_tc(
         BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
             val.map_or(vm_objs.metadata_float64(), |x| {
                 let (f, _) = x.num_as_f64();
-                GosValue::Float64(*f)
+                GosValue::Float64(f.into())
             })
         }
         BasicType::Str | BasicType::UntypedString => val.map_or(vm_objs.metadata_string(), |x| {

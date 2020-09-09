@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 slotmap = "0.4"
+ordered-float = "2.0"
 time-test = "0.2.2"
 
 [dependencies.goscript-parser]

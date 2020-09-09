@@ -969,7 +969,7 @@ impl MetadataVal {
 
     fn new_float64(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: GosValue::Float64(0.0),
+            zero_val: GosValue::Float64(0.0.into()),
             typ: MetadataType::None,
         };
         GosValue::new_meta(m, &mut objs.metas)

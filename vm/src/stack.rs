@@ -10,7 +10,17 @@ macro_rules! binary_op {
         let len = $stack.len();
         let a = $stack.get_c(len - 2);
         let b = $stack.get_c(len - 1);
-        *$stack.get_c_mut(len - 2) = GosValue64::$op(*a, *b, $t);
+        *$stack.get_c_mut(len - 2) = GosValue64::$op(a, b, $t);
+        $stack.pop_discard();
+    }};
+}
+
+macro_rules! cmp_op {
+    ($stack:ident, $op:tt, $t:ident) => {{
+        let len = $stack.len();
+        let a = $stack.get_c(len - 2);
+        let b = $stack.get_c(len - 1);
+        *$stack.get_c_mut(len - 2) = GosValue64::from_bool(GosValue64::$op(a, b, $t));
         $stack.pop_discard();
     }};
 }
@@ -182,7 +192,7 @@ impl Stack {
         if t <= COPYABLE_END {
             let a = self.get_c(li);
             let b = self.get_c(ri);
-            *self.get_c_mut(li) = GosValue64::binary_op(*a, *b, t, op);
+            *self.get_c_mut(li) = GosValue64::binary_op(a, b, t, op);
         } else {
             let a = self.get_rc(li);
             let b = self.get_rc(ri);
@@ -205,7 +215,7 @@ impl Stack {
             if t <= COPYABLE_END {
                 let (a, _) = GosValue64::from_v128(target);
                 let b = self.get_c(ri);
-                let v = GosValue64::binary_op(a, *b, t, op);
+                let v = GosValue64::binary_op(&a, b, t, op);
                 v.into_v128(t)
             } else {
                 GosValue::add_str(target, self.get_rc(ri))
@@ -344,38 +354,62 @@ impl Stack {
 
     #[inline]
     pub fn compare_eql(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.eq(&b)));
-    }
-
-    #[inline]
-    pub fn compare_lss(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.cmp(&b) == Ordering::Less));
-    }
-
-    #[inline]
-    pub fn compare_gtr(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.cmp(&b) == Ordering::Greater));
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_eql, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(a.eq(&b));
+        }
     }
 
     #[inline]
     pub fn compare_neq(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Equal));
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_neq, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(!a.eq(&b));
+        }
+    }
+
+    #[inline]
+    pub fn compare_lss(&mut self, t: ValueType) {
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_lss, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(a.cmp(&b) == Ordering::Less);
+        }
+    }
+
+    #[inline]
+    pub fn compare_gtr(&mut self, t: ValueType) {
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_gtr, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(a.cmp(&b) == Ordering::Greater);
+        }
     }
 
     #[inline]
     pub fn compare_leq(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Greater));
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_leq, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(a.cmp(&b) != Ordering::Greater);
+        }
     }
 
     #[inline]
     pub fn compare_geq(&mut self, t: ValueType) {
-        let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
-        self.push(GosValue::Bool(a.cmp(&b) != Ordering::Less));
+        if t <= COPYABLE_END {
+            cmp_op!(self, compare_geq, t);
+        } else {
+            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            self.push_bool(a.cmp(&b) != Ordering::Less);
+        }
     }
 
     #[inline]

@@ -655,7 +655,7 @@ impl Fiber {
                         MetadataType::Channel(_st) => unimplemented!(),
                         _ => unreachable!(),
                     };
-                    stack.pop_with_type(ValueType::Metadata);
+                    stack.pop_discard();
                     stack.push(val);
                 }
                 Opcode::LEN => match &stack.pop_with_type(inst.t0()) {
