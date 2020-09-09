@@ -1,11 +1,16 @@
-#![allow(dead_code)]
-use super::instruction::{Opcode, ValueType, COPYABLE_END};
+//#![allow(dead_code)]
+use super::instruction::{Opcode, ValueType};
 pub use super::objects::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+pub const C_PLACE_HOLDER: GosValue64 = GosValue64 {
+    data: V64Union { uint: 9527 },
+};
+pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(9528);
 
 macro_rules! union_op {
     ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
@@ -29,7 +34,7 @@ macro_rules! binary_op_int_float {
 
 // ----------------------------------------------------------------------------
 // GosValue
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GosValue {
     Bool(bool),
     Int(isize),
@@ -194,6 +199,7 @@ impl GosValue {
         metas[*self.as_meta()].get_value_type(metas)
     }
 
+    #[inline]
     pub fn get_type(&self) -> ValueType {
         match self {
             GosValue::Bool(_) => ValueType::Bool,
@@ -213,19 +219,34 @@ impl GosValue {
             GosValue::Metadata(_) => ValueType::Metadata,
         }
     }
-}
 
-impl Clone for GosValue {
     #[inline]
-    fn clone(&self) -> Self {
-        let (v, t) = GosValue64::from_v128_leak(self);
-        v.into_v128_unleak(t)
+    pub fn copy_semantic(&self, t: ValueType, zero: &ZeroVal) -> GosValue {
+        match self {
+            GosValue::Int(i) => {
+                // this is nil
+                assert_eq!(*i, 9528);
+                zero.nil_zero_val(t).clone()
+            }
+            GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceVal::clone(s))),
+            GosValue::Map(m) => GosValue::Map(Rc::new(MapVal::clone(m))),
+            GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
+            _ => self.clone(),
+        }
+    }
+
+    #[inline]
+    pub fn add_str(a: &GosValue, b: &GosValue) -> GosValue {
+        let mut s = a.as_str().as_str().to_string();
+        s.push_str(b.as_str().as_str());
+        GosValue::new_str(s)
     }
 }
 
 impl Eq for GosValue {}
 
 impl PartialEq for GosValue {
+    #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
             // todo: not the "correct" implementation yet,
@@ -241,12 +262,14 @@ impl PartialEq for GosValue {
 }
 
 impl PartialOrd for GosValue {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for GosValue {
+    #[inline]
     fn cmp(&self, b: &Self) -> Ordering {
         match (self, b) {
             // todo: not the "correct" implementation yet,
@@ -336,7 +359,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
 // never as a lhs var, because when it's assigned to
 // we wouldn't know we should release it or not
 #[derive(Copy, Clone)]
-union V64Union {
+pub union V64Union {
     unil: (),
     ubool: bool,
     uint: isize,
@@ -345,14 +368,6 @@ union V64Union {
     umetadata: MetadataKey,
     ufunction: FunctionKey,
     upackage: PackageKey,
-    ustr: *const StringVal,
-    uboxed: *const RefCell<GosValue>,
-    uclosure: *const RefCell<ClosureVal>,
-    uslice: *const SliceVal,
-    umap: *const MapVal,
-    uinterface: *const RefCell<InterfaceVal>,
-    ustruct: *const RefCell<StructVal>,
-    uchannel: *const RefCell<ChannelVal>,
 }
 
 /// GosValue64 is a 64bit struct for VM stack to get better performance, when converting
@@ -366,7 +381,7 @@ pub struct GosValue64 {
 
 impl GosValue64 {
     #[inline]
-    pub fn from_v128_leak(v: &GosValue) -> (GosValue64, ValueType) {
+    pub fn from_v128(v: &GosValue) -> (GosValue64, ValueType) {
         let (data, typ) = match v {
             GosValue::Bool(b) => (V64Union { ubool: *b }, ValueType::Bool),
             GosValue::Int(i) => (V64Union { uint: *i }, ValueType::Int),
@@ -377,57 +392,10 @@ impl GosValue64 {
                 },
                 ValueType::Complex64,
             ),
-            GosValue::Str(s) => (
-                V64Union {
-                    ustr: Rc::into_raw(s.clone()),
-                },
-                ValueType::Str,
-            ),
-            GosValue::Boxed(b) => (
-                V64Union {
-                    uboxed: Rc::into_raw(b.clone()),
-                },
-                ValueType::Boxed,
-            ),
-            GosValue::Closure(c) => (
-                V64Union {
-                    uclosure: Rc::into_raw(c.clone()),
-                },
-                ValueType::Closure,
-            ),
-            GosValue::Slice(s) => (
-                V64Union {
-                    uslice: Rc::into_raw(s.clone()),
-                },
-                ValueType::Slice,
-            ),
-            GosValue::Map(m) => (
-                V64Union {
-                    umap: Rc::into_raw(m.clone()),
-                },
-                ValueType::Map,
-            ),
-            GosValue::Interface(i) => (
-                V64Union {
-                    uinterface: Rc::into_raw(i.clone()),
-                },
-                ValueType::Interface,
-            ),
-            GosValue::Struct(s) => (
-                V64Union {
-                    ustruct: Rc::into_raw(s.clone()),
-                },
-                ValueType::Struct,
-            ),
-            GosValue::Channel(c) => (
-                V64Union {
-                    uchannel: Rc::into_raw(c.clone()),
-                },
-                ValueType::Channel,
-            ),
             GosValue::Function(k) => (V64Union { ufunction: *k }, ValueType::Function),
             GosValue::Package(k) => (V64Union { upackage: *k }, ValueType::Package),
             GosValue::Metadata(k) => (V64Union { umetadata: *k }, ValueType::Metadata),
+            _ => unreachable!(),
         };
         (
             GosValue64 {
@@ -490,22 +458,6 @@ impl GosValue64 {
                 ValueType::Complex64 => {
                     GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
                 }
-                ValueType::Str => GosValue::Str(GosValue64::get_rc_from_ptr(self.data.ustr)),
-                ValueType::Boxed => GosValue::Boxed(GosValue64::get_rc_from_ptr(self.data.uboxed)),
-                ValueType::Closure => {
-                    GosValue::Closure(GosValue64::get_rc_from_ptr(self.data.uclosure))
-                }
-                ValueType::Slice => GosValue::Slice(GosValue64::get_rc_from_ptr(self.data.uslice)),
-                ValueType::Map => GosValue::Map(GosValue64::get_rc_from_ptr(self.data.umap)),
-                ValueType::Interface => {
-                    GosValue::Interface(GosValue64::get_rc_from_ptr(self.data.uinterface))
-                }
-                ValueType::Struct => {
-                    GosValue::Struct(GosValue64::get_rc_from_ptr(self.data.ustruct))
-                }
-                ValueType::Channel => {
-                    GosValue::Channel(GosValue64::get_rc_from_ptr(self.data.uchannel))
-                }
                 ValueType::Function => GosValue::Function(self.data.ufunction),
                 ValueType::Package => GosValue::Package(self.data.upackage),
                 ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
@@ -540,7 +492,7 @@ impl GosValue64 {
 
     /// returns GosValue without increasing RC
     #[inline]
-    pub fn into_v128_unleak(&self, t: ValueType) -> GosValue {
+    pub fn into_v128(&self, t: ValueType) -> GosValue {
         //dbg!(t, self.debug_type);
         //debug_assert!(t == self.debug_type);
         unsafe {
@@ -551,104 +503,11 @@ impl GosValue64 {
                 ValueType::Complex64 => {
                     GosValue::Complex64(self.data.ucomplex64.0, self.data.ucomplex64.1)
                 }
-                ValueType::Str => GosValue::Str(Rc::from_raw(self.data.ustr)),
-                ValueType::Boxed => GosValue::Boxed(Rc::from_raw(self.data.uboxed)),
-                ValueType::Closure => GosValue::Closure(Rc::from_raw(self.data.uclosure)),
-                ValueType::Slice => GosValue::Slice(Rc::from_raw(self.data.uslice)),
-                ValueType::Map => GosValue::Map(Rc::from_raw(self.data.umap)),
-                ValueType::Interface => GosValue::Interface(Rc::from_raw(self.data.uinterface)),
-                ValueType::Struct => GosValue::Struct(Rc::from_raw(self.data.ustruct)),
-                ValueType::Channel => GosValue::Channel(Rc::from_raw(self.data.uchannel)),
                 ValueType::Function => GosValue::Function(self.data.ufunction),
                 ValueType::Package => GosValue::Package(self.data.upackage),
                 ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
                 _ => unreachable!(),
             }
-        }
-    }
-
-    #[inline]
-    pub fn clone(&self, t: ValueType) -> GosValue64 {
-        //let t = self.debug_type;
-        let data = if t <= COPYABLE_END {
-            self.data
-        } else {
-            unsafe {
-                match t {
-                    ValueType::Str => V64Union {
-                        ustr: GosValue64::clone_ptr(self.data.ustr),
-                    },
-                    ValueType::Boxed => V64Union {
-                        uboxed: GosValue64::clone_ptr(self.data.uboxed),
-                    },
-                    ValueType::Closure => V64Union {
-                        uclosure: GosValue64::clone_ptr(self.data.uclosure),
-                    },
-                    ValueType::Slice => V64Union {
-                        uslice: GosValue64::clone_ptr(self.data.uslice),
-                    },
-                    ValueType::Map => V64Union {
-                        umap: GosValue64::clone_ptr(self.data.umap),
-                    },
-                    ValueType::Interface => V64Union {
-                        uinterface: GosValue64::clone_ptr(self.data.uinterface),
-                    },
-                    ValueType::Struct => V64Union {
-                        ustruct: GosValue64::clone_ptr(self.data.ustruct),
-                    },
-                    ValueType::Channel => V64Union {
-                        uchannel: GosValue64::clone_ptr(self.data.uchannel),
-                    },
-                    _ => unreachable!(),
-                }
-            }
-        };
-        GosValue64 {
-            data: data,
-            //debug_type: self.debug_type,
-        }
-    }
-
-    /// copy_semantic copies value as per Go assign behavoir
-    /// only works for non-copyable values, ie t < COPYABLE_END
-    #[inline]
-    pub fn copy_semantic(&self, t: ValueType, zero: &ZeroVal) -> GosValue64 {
-        let data = unsafe {
-            match t {
-                ValueType::Str => V64Union {
-                    ustr: GosValue64::clone_ptr(self.data.ustr),
-                },
-                ValueType::Boxed => V64Union {
-                    uboxed: GosValue64::clone_ptr(self.data.uboxed),
-                },
-                ValueType::Closure => V64Union {
-                    uclosure: GosValue64::clone_ptr(self.data.uclosure),
-                },
-                ValueType::Slice => V64Union {
-                    uslice: Rc::into_raw(Rc::new(SliceVal::clone(&*self.data.uslice))),
-                },
-                ValueType::Map => V64Union {
-                    umap: Rc::into_raw(Rc::new(MapVal::clone(&*self.data.umap))),
-                },
-                ValueType::Interface => V64Union {
-                    uinterface: GosValue64::clone_ptr(self.data.uinterface),
-                },
-                ValueType::Struct => V64Union {
-                    ustruct: Rc::into_raw(Rc::new(RefCell::clone(&*self.data.ustruct))),
-                },
-                ValueType::Channel => V64Union {
-                    uchannel: GosValue64::clone_ptr(self.data.uchannel),
-                },
-                ValueType::Nil => {
-                    let v = zero.nil_zero_val(t);
-                    GosValue64::from_v128_leak(v).0.data
-                }
-                _ => unreachable!(),
-            }
-        };
-        GosValue64 {
-            data: data,
-            //debug_type: t,
         }
     }
 
@@ -675,23 +534,7 @@ impl GosValue64 {
 
     #[inline]
     pub fn binary_op_add(a: GosValue64, b: GosValue64, t: ValueType) -> GosValue64 {
-        unsafe {
-            match t {
-                ValueType::Int => union_op!(a, b, uint, +, t),
-                ValueType::Float64 => union_op!(a, b, ufloat64, +, t),
-                ValueType::Str => {
-                    let mut s = (*a.data.ustr).as_str().to_string();
-                    s.push_str(&(*b.data.ustr).as_str());
-                    GosValue64 {
-                        //debug_type: t,
-                        data: V64Union {
-                            ustr: Rc::into_raw(Rc::new(StringVal::with_str(s))),
-                        },
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
+        unsafe { binary_op_int_float!(t, a, b, +) }
     }
 
     #[inline]
@@ -767,22 +610,6 @@ impl GosValue64 {
             Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
             _ => unreachable!(),
         }
-    }
-
-    /// get_rc_from_ptr returns a Rc from raw pointer, without decreasing the ref counter
-    #[inline]
-    fn get_rc_from_ptr<T>(ptr: *const T) -> Rc<T> {
-        unsafe {
-            let rc = Rc::from_raw(ptr);
-            let rc2 = Rc::clone(&rc);
-            Rc::into_raw(rc);
-            rc2
-        }
-    }
-
-    #[inline]
-    fn clone_ptr<T>(ptr: *const T) -> *const T {
-        Rc::into_raw(GosValue64::get_rc_from_ptr(ptr))
     }
 }
 

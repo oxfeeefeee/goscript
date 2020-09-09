@@ -211,7 +211,7 @@ impl Fiber {
                 Opcode::PUSH_TRUE => stack.push_bool(true),
                 Opcode::PUSH_IMM => stack.push_int(inst.imm() as isize),
                 Opcode::POP => {
-                    stack.pop_discard(inst.t0());
+                    stack.pop_discard();
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = Stack::offset(stack_base, inst.imm());
@@ -598,7 +598,7 @@ impl Fiber {
                     let end = stack.pop_int();
                     let begin = stack.pop_int();
                     let target = stack.pop_with_type(inst.t0());
-                    let result = match target {
+                    let result = match &target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                         _ => unreachable!(),
