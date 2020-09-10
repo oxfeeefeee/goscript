@@ -9,21 +9,43 @@ use goscript_vm::value::*;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct IndexSelInfo {
     pub index: OpIndex,
     pub t1: ValueType,
-    pub t2: ValueType,
-    pub is_index: bool,
+    pub t2: Option<ValueType>, // for non-IMM instructions
+    pub is_index: bool,        // is an index expresion not a selection expresion
+    pub const_val: Option<i8>, // for IMM instructions
 }
 
 impl IndexSelInfo {
-    pub fn new(index: OpIndex, t1: ValueType, t2: ValueType, is_index: bool) -> IndexSelInfo {
+    pub fn new(
+        index: OpIndex,
+        t1: ValueType,
+        t2: Option<ValueType>,
+        is_index: bool,
+        const_val: Option<i8>,
+    ) -> IndexSelInfo {
         IndexSelInfo {
             index: index,
             t1: t1,
             t2: t2,
             is_index: is_index,
+            const_val: const_val,
+        }
+    }
+
+    pub fn with_index(&self, i: OpIndex) -> IndexSelInfo {
+        let mut v = *self;
+        v.index = i;
+        v
+    }
+
+    pub fn stack_space(&self) -> OpIndex {
+        if self.t2.is_some() {
+            2
+        } else {
+            1
         }
     }
 }
@@ -142,15 +164,16 @@ impl FuncGen for FunctionVal {
             }
         }
 
-        let (code, i, t1, t2) = match lhs {
+        let (code, i, t1, t2, imm_index) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
-                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i, None, None),
-                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i, None, None),
+                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i, None, None, None),
+                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i, None, None, None),
                 EntIndex::PackageMember(i) => (
                     Opcode::STORE_THIS_PKG_FIELD,
                     i,
                     Some(ValueType::Package),
+                    None,
                     None,
                 ),
                 EntIndex::BuiltIn(_) => unreachable!(),
@@ -158,16 +181,26 @@ impl FuncGen for FunctionVal {
             },
             LeftHandSide::IndexSelExpr(info) => {
                 let op = if info.is_index {
-                    Opcode::STORE_INDEX
+                    if info.const_val.is_some() {
+                        Opcode::STORE_INDEX_IMM
+                    } else {
+                        Opcode::STORE_INDEX
+                    }
                 } else {
-                    Opcode::STORE_FIELD
+                    if info.const_val.is_some() {
+                        Opcode::STORE_FIELD_IMM
+                    } else {
+                        Opcode::STORE_FIELD
+                    }
                 };
-                (op, &info.index, Some(info.t1), Some(info.t2))
+                (op, &info.index, Some(info.t1), info.t2, info.const_val)
             }
-            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i, None, None),
+            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i, None, None, None),
         };
-
         let mut inst = Instruction::new(code, Some(typ), t1, t2, None);
+        if let Some(i) = imm_index {
+            inst.set_t2_with_index(i);
+        }
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
         inst.set_imm2(imm0, *i);

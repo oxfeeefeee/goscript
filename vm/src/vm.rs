@@ -248,14 +248,14 @@ impl Fiber {
                     vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), objs);
                 }
                 Opcode::STORE_INDEX_IMM => {
-                    //wrong
+                    // the only place we can store the immediate index is t2
                     let (rhs_index, index) = inst.imm2();
                     let s_index = Stack::offset(stack.len(), index);
                     let target = &stack.get_with_type(s_index, inst.t1());
                     vm_util::store_index_int(
                         stack,
                         target,
-                        index as usize,
+                        inst.t2_as_index() as usize,
                         rhs_index,
                         inst.t0(),
                         objs,

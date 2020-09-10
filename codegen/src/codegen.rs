@@ -749,10 +749,26 @@ impl<'a> CodeGen<'a> {
                         self.visit_expr(obj)?;
                         let obj_typ = self.get_expr_value_type(obj);
                         let ind = &ind_expr.as_ref().index;
-                        self.visit_expr(ind)?;
-                        let index_typ = self.get_expr_value_type(ind);
+
+                        let mut index_const = None;
+                        let mut index_typ = None;
+                        let typ_val = self.ti.types.get(&ind.id()).unwrap();
+                        if let Some(const_val) = typ_val.get_const_val() {
+                            let (ival, _) = const_val.to_int().int_as_i64();
+                            if let Ok(i) = i8::try_from(ival) {
+                                index_const = Some(i);
+                            }
+                        }
+                        if index_const.is_none() {
+                            self.visit_expr(ind)?;
+                            index_typ = Some(self.get_expr_value_type(ind));
+                        }
                         Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
-                            0, obj_typ, index_typ, true,
+                            0,
+                            obj_typ,
+                            index_typ,
+                            true,
+                            index_const,
                         ))) // the true index will be calculated later
                     }
                     Expr::Selector(sexpr) => {
@@ -763,8 +779,9 @@ impl<'a> CodeGen<'a> {
                         Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
                             0,
                             obj_typ,
-                            ValueType::Str,
+                            Some(ValueType::Str),
                             false,
+                            None,
                         )))
                     }
                     Expr::Star(sexpr) => {
@@ -863,7 +880,7 @@ impl<'a> CodeGen<'a> {
         let func = current_func_mut!(self);
         let total_lhs_val = lhs.iter().fold(0, |acc, x| match x {
             LeftHandSide::Primitive(_) => acc,
-            LeftHandSide::IndexSelExpr(_) => acc + 2,
+            LeftHandSide::IndexSelExpr(info) => acc + info.stack_space(),
             LeftHandSide::Deref(_) => acc + 1,
         });
         assert_eq!(lhs.len(), types.len());
@@ -879,12 +896,7 @@ impl<'a> CodeGen<'a> {
                 }
                 LeftHandSide::IndexSelExpr(info) => {
                     func.emit_store(
-                        &LeftHandSide::IndexSelExpr(IndexSelInfo::new(
-                            current_indexing_index,
-                            info.t1,
-                            info.t2,
-                            info.is_index,
-                        )),
+                        &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_index)),
                         val_index,
                         None,
                         typ,
@@ -913,7 +925,9 @@ impl<'a> CodeGen<'a> {
             match i {
                 LeftHandSide::Primitive(_) => {}
                 LeftHandSide::IndexSelExpr(info) => {
-                    func.emit_pop(info.t2);
+                    if let Some(t) = info.t2 {
+                        func.emit_pop(t);
+                    }
                     func.emit_pop(info.t1);
                 }
                 LeftHandSide::Deref(_) => func.emit_pop(ValueType::Boxed),
@@ -945,21 +959,18 @@ impl<'a> CodeGen<'a> {
                 func.emit_pop(typ);
             }
             LeftHandSide::IndexSelExpr(info) => {
-                // why -3?  stack looks like this(bottom to top) :
-                //  [... target, index, value]
+                // stack looks like this(bottom to top) :
+                //  [... target, index, value] or [... target, value]
                 func.emit_store(
-                    &LeftHandSide::IndexSelExpr(IndexSelInfo::new(
-                        -3,
-                        info.t1,
-                        info.t2,
-                        info.is_index,
-                    )),
+                    &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - 1)),
                     -1,
                     Some(op),
                     typ,
                 );
                 func.emit_pop(typ);
-                func.emit_pop(info.t2);
+                if let Some(t) = info.t2 {
+                    func.emit_pop(t);
+                }
                 func.emit_pop(info.t1);
             }
             LeftHandSide::Deref(_) => {

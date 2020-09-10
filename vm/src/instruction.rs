@@ -213,6 +213,9 @@ pub enum ValueType {
 /// or
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    8bit      |    24bit     |
 /// |  Opcode   |  <TypeA>  |  <TypeB>  |  <TypeC>  |     ext      |   immediate  |
+/// or
+/// |    8bit   |    8bit   |    8bit   |    8bit   |    8bit      |    24bit     |
+/// |  Opcode   |  <TypeA>  |  <TypeB>  |    ext    |     ext      |   immediate  |
 #[derive(Clone, Copy)]
 pub struct Instruction {
     val: u64,
@@ -251,13 +254,23 @@ impl Instruction {
 
     #[inline]
     pub fn set_imm2(&mut self, imm0: OpIndex, imm1: OpIndex) {
-        assert!(-(1 << 7) <= imm0 && imm0 < (1 << 7));
-        assert!(-(1 << 23) <= imm1 && imm1 < (1 << 23));
+        assert!(Instruction::in_8bit_range(imm0));
+        assert!(Instruction::in_24bit_range(imm1));
         let u0: u8 = unsafe { std::mem::transmute(imm0 as i8) };
         let u0 = (u0 as u32) << 24;
         let u1: u32 = unsafe { std::mem::transmute(imm1) };
         let u1 = u1 & 0x00ff_ffff;
         self.val = (self.val & 0xffff_ffff_0000_0000) | (u0 | u1) as u64;
+    }
+
+    /// set_t2_with_index tries to set an OpIndex to the space of t2
+    /// returns error if it's out of range
+    /// used by STORE_INDEX_IMM, STORE_FIELD_IMM
+    #[inline]
+    pub fn set_t2_with_index(&mut self, index: i8) {
+        let val8: u8 = unsafe { std::mem::transmute(index) };
+        let val64 = (val8 as u64) << 32;
+        self.val = (self.val & 0xffff_ff00_ffff_ffff) | val64;
     }
 
     #[inline]
@@ -284,6 +297,13 @@ impl Instruction {
     }
 
     #[inline]
+    pub fn t2_as_index(&self) -> OpIndex {
+        let v = ((self.val & 0x0000_00ff_0000_0000) >> 32) as u8;
+        let ival: i8 = unsafe { std::mem::transmute(v) };
+        ival as OpIndex
+    }
+
+    #[inline]
     pub fn imm(&self) -> OpIndex {
         unsafe { std::mem::transmute((self.val & 0xffff_ffff) as u32) }
     }
@@ -307,6 +327,16 @@ impl Instruction {
     #[inline]
     pub fn index2code(i: OpIndex) -> Opcode {
         unsafe { std::mem::transmute(i as u8) }
+    }
+
+    #[inline]
+    pub fn in_8bit_range(i: OpIndex) -> bool {
+        -(1 << 7) <= i && i < (1 << 7)
+    }
+
+    #[inline]
+    pub fn in_24bit_range(i: OpIndex) -> bool {
+        -(1 << 23) <= i && i < (1 << 23)
     }
 }
 
@@ -365,6 +395,17 @@ mod test {
         assert_eq!(i.imm2().0, -128);
         assert_eq!(i.imm2().1, -(1 << 23));
         i.set_imm2(127, 1 << 23 - 1);
+        assert_eq!(i.imm2().0, 127);
+        assert_eq!(i.imm2().1, 1 << 23 - 1);
+
+        assert!(!Instruction::in_8bit_range(128));
+        i.set_t2_with_index(-128);
+        assert_eq!(i.t2_as_index(), -128);
+        let _ = i.set_t2_with_index(90);
+        assert_eq!(i.t2_as_index(), 90);
+        assert_eq!(i.t0(), ValueType::Str);
+        assert_eq!(i.t1(), ValueType::Closure);
+        assert_ne!(i.t2(), ValueType::Int);
         assert_eq!(i.imm2().0, 127);
         assert_eq!(i.imm2().1, 1 << 23 - 1);
     }
