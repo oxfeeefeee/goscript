@@ -2,27 +2,12 @@
 //use super::opcode::OpIndex;
 use super::instruction::*;
 use super::value::{VMObjects, GosValue, ClosureVal};
-use std::cell::RefCell;
 use std::rc::Rc;
 use super::stack::Stack;
 
 macro_rules! upframe {
     ($iter:expr, $f:expr) => {
-        $iter.find(|x| x.callable.func() == $f).unwrap();
-    };
-}
-
-macro_rules! bind_method {
-    ($sval:ident, $val:ident, $index:ident, $objs:ident) => {
-        GosValue::Closure(
-            Rc::new(RefCell::new(ClosureVal {
-                func: $objs.metas[*$sval.borrow().meta.as_meta()].typ()
-                    .get_struct_member($index)
-                    .as_closure().borrow().func,
-                receiver: Some($val.clone()),
-                upvalues: vec![],
-            })),
-        )
+        $iter.find(|x| x.func() == $f).unwrap();
     };
 }
 
@@ -202,7 +187,15 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
                     if index < struct_ref.fields.len() as OpIndex {
                         struct_ref.fields[index as usize].clone()
                     } else {
-                        bind_method!(sval, val, index, objs)
+                        GosValue::Closure(
+                            Rc::new(ClosureVal::new(
+                                objs.metas[*sval.borrow().meta.as_meta()].typ()
+                                    .get_struct_member(index)
+                                    .as_closure().func,
+                                Some(val.copy_semantic(None)),
+                                None,
+                            )),
+                        )
                     }
                 }
                 _ => unreachable!(),

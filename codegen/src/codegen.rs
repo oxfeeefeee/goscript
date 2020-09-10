@@ -127,7 +127,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let t1 = self.get_expr_value_type(index);
         self.visit_expr(expr)?;
         let typ_val = self.ti.types.get(&index.id()).unwrap();
-        dbg!(typ_val);
         if let Some(const_val) = typ_val.get_const_val() {
             let (ival, _) = const_val.to_int().int_as_i64();
             if let Ok(i) = OpIndex::try_from(ival) {
@@ -378,7 +377,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let vm_ftype = self.gen_def_type_meta(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?;
-        let cls = GosValue::new_closure(fkey, vec![]);
+        let cls = GosValue::new_closure(fkey, None);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
@@ -1199,7 +1198,7 @@ impl<'a> CodeGen<'a> {
         let fval = FunctionVal::new(pkey, fmeta, None, true);
         let fkey = self.objects.functions.insert(fval);
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey, vec![]));
+        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey, None));
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
         for f in files.iter() {

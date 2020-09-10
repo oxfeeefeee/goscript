@@ -16,6 +16,16 @@ pub const C_PLACE_HOLDER: GosValue64 = GosValue64 {
 };
 pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(9528);
 
+macro_rules! unwrap_gos_val {
+    ($name:tt, $self_:ident) => {
+        if let GosValue::$name(k) = $self_ {
+            k
+        } else {
+            unreachable!();
+        }
+    };
+}
+
 macro_rules! union_op {
     ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
         GosValue64{
@@ -79,7 +89,7 @@ pub enum GosValue {
 
     Str(Rc<StringVal>), // "String" is taken
     Boxed(Rc<RefCell<GosValue>>),
-    Closure(Rc<RefCell<ClosureVal>>),
+    Closure(Rc<ClosureVal>),
     Slice(Rc<SliceVal>),
     Map(Rc<MapVal>),
     Interface(Rc<RefCell<InterfaceVal>>),
@@ -132,9 +142,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(fkey: FunctionKey, upvalues: Vec<UpValue>) -> GosValue {
-        let val = ClosureVal::new(fkey, upvalues);
-        GosValue::Closure(Rc::new(RefCell::new(val)))
+    pub fn new_closure(fkey: FunctionKey, upvalues: Option<Vec<UpValue>>) -> GosValue {
+        let val = ClosureVal::new(fkey, None, upvalues);
+        GosValue::Closure(Rc::new(val))
     }
 
     #[inline]
@@ -210,7 +220,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &Rc<RefCell<ClosureVal>> {
+    pub fn as_closure(&self) -> &Rc<ClosureVal> {
         unwrap_gos_val!(Closure, self)
     }
 
@@ -251,12 +261,13 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, t: ValueType, zero: &ZeroVal) -> GosValue {
+    pub fn copy_semantic(&self, nil: Option<(&ZeroVal, ValueType)>) -> GosValue {
         match self {
             GosValue::Int(i) => {
                 // this is nil
                 assert_eq!(*i, 9528);
-                zero.nil_zero_val(t).clone()
+                let (zv, t) = nil.unwrap();
+                zv.nil_zero_val(t).clone()
             }
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceVal::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapVal::clone(m))),
@@ -717,6 +728,7 @@ mod test {
         dbg!(mem::size_of::<SliceVal>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
+        dbg!(mem::size_of::<GosValue64>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

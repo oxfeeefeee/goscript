@@ -20,16 +20,6 @@ macro_rules! null_key {
     };
 }
 
-macro_rules! unwrap_gos_val {
-    ($name:tt, $self_:ident) => {
-        if let GosValue::$name(k) = $self_ {
-            k
-        } else {
-            unreachable!();
-        }
-    };
-}
-
 new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
@@ -138,10 +128,7 @@ impl ZeroVal {
             zero_val_mark: mark.clone(),
             str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
             boxed_zero_val: GosValue::Boxed(Rc::new(RefCell::new(mark.clone()))),
-            closure_zero_val: GosValue::Closure(Rc::new(RefCell::new(ClosureVal::new(
-                null_key!(),
-                vec![],
-            )))),
+            closure_zero_val: GosValue::Closure(Rc::new(ClosureVal::new(null_key!(), None, None))),
             slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
             map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
             iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceVal::new(
@@ -630,16 +617,31 @@ pub enum UpValue {
 pub struct ClosureVal {
     pub func: FunctionKey,
     pub receiver: Option<GosValue>,
-    pub upvalues: Vec<UpValue>,
+    upvalues: Option<Vec<Rc<RefCell<UpValue>>>>,
 }
 
 impl ClosureVal {
-    pub fn new(key: FunctionKey, upvalues: Vec<UpValue>) -> ClosureVal {
+    pub fn new(
+        key: FunctionKey,
+        receiver: Option<GosValue>,
+        upvalues: Option<Vec<UpValue>>,
+    ) -> ClosureVal {
         ClosureVal {
             func: key,
-            receiver: None,
-            upvalues: upvalues,
+            receiver: receiver,
+            upvalues: upvalues
+                .map(|uvs| uvs.into_iter().map(|x| Rc::new(RefCell::new(x))).collect()),
         }
+    }
+
+    #[inline]
+    pub fn has_upvalues(&self) -> bool {
+        self.upvalues.is_some()
+    }
+
+    #[inline]
+    pub fn upvalues(&self) -> &Vec<Rc<RefCell<UpValue>>> {
+        self.upvalues.as_ref().unwrap()
     }
 }
 

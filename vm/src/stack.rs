@@ -182,7 +182,7 @@ impl Stack {
         if t <= COPYABLE_END {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
-            *self.get_rc_mut(li) = self.get_rc(ri).copy_semantic(t, zero);
+            *self.get_rc_mut(li) = self.get_rc(ri).copy_semantic(Some((zero, t)));
             //self.set_with_type(li, self.inner[ri].copy_semantic(t, zero), t);
         }
     }
@@ -207,7 +207,7 @@ impl Stack {
             if t <= COPYABLE_END {
                 self.get_c(rhs_s_index).into_v128(t)
             } else {
-                self.get_rc(rhs_s_index).copy_semantic(t, zero)
+                self.get_rc(rhs_s_index).copy_semantic(Some((zero, t)))
             }
         } else {
             let ri = Stack::offset(self.len(), -1);
@@ -236,12 +236,13 @@ impl Stack {
     #[inline]
     pub fn close_upvalue(
         &self,
-        cls: &mut ClosureVal,
+        cls: &ClosureVal,
         func: FunctionKey,
         index: OpIndex,
         stack_index: usize,
     ) {
-        for uv in cls.upvalues.iter_mut() {
+        for uv_ref in cls.upvalues().iter() {
+            let uv: &mut UpValue = &mut uv_ref.borrow_mut();
             match uv {
                 UpValue::Open(desc) => {
                     if desc.func == func && desc.index == index {
