@@ -234,16 +234,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn close_upvalue(&self, uvs: &Vec<WeakUpValue>, typ: ValueType, stack_index: usize) {
-        let val = self.get_with_type(stack_index, typ);
-        for weak in uvs {
-            if let Some(uv) = weak.upgrade() {
-                uv.close(val.clone());
-            }
-        }
-    }
-
-    #[inline]
     pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;

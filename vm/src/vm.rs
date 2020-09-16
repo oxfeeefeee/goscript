@@ -404,11 +404,13 @@ impl Fiber {
                             if referrers.weaks.len() == 0 {
                                 continue;
                             }
-                            stack.close_upvalue(
-                                &referrers.weaks,
-                                referrers.typ,
-                                Stack::offset(stack_base, *ind),
-                            );
+                            let val =
+                                stack.get_with_type(Stack::offset(stack_base, *ind), referrers.typ);
+                            for weak in referrers.weaks.iter() {
+                                if let Some(uv) = weak.upgrade() {
+                                    uv.close(val.clone());
+                                }
+                            }
                         }
                     }
 
