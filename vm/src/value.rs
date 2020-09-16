@@ -12,9 +12,9 @@ type F32 = ordered_float::OrderedFloat<f32>;
 type F64 = ordered_float::OrderedFloat<f64>;
 
 pub const C_PLACE_HOLDER: GosValue64 = GosValue64 {
-    data: V64Union { uint: 9527 },
+    data: V64Union { uint: 95289528 },
 };
-pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(9528);
+pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(95299529);
 
 macro_rules! unwrap_gos_val {
     ($name:tt, $self_:ident) => {
@@ -88,7 +88,7 @@ pub enum GosValue {
     Metadata(MetadataKey),
 
     Str(Rc<StringVal>), // "String" is taken
-    Boxed(Rc<RefCell<GosValue>>),
+    Boxed(Rc<RefCell<BoxedVal>>),
     Closure(Rc<ClosureVal>),
     Slice(Rc<SliceVal>),
     Map(Rc<MapVal>),
@@ -104,7 +104,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_boxed(v: GosValue) -> GosValue {
+    pub fn new_boxed(v: BoxedVal) -> GosValue {
         GosValue::Boxed(Rc::new(RefCell::new(v)))
     }
 
@@ -142,8 +142,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(fkey: FunctionKey, upvalues: Option<Vec<UpValue>>) -> GosValue {
-        let val = ClosureVal::new(fkey, None, upvalues);
+    pub fn new_closure(fkey: FunctionKey) -> GosValue {
+        let val = ClosureVal::new(fkey, None, None);
         GosValue::Closure(Rc::new(val))
     }
 
@@ -230,7 +230,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_boxed(&self) -> &Rc<RefCell<GosValue>> {
+    pub fn as_boxed(&self) -> &Rc<RefCell<BoxedVal>> {
         unwrap_gos_val!(Boxed, self)
     }
 
@@ -263,9 +263,9 @@ impl GosValue {
     #[inline]
     pub fn copy_semantic(&self, nil: Option<(&ZeroVal, ValueType)>) -> GosValue {
         match self {
-            GosValue::Int(i) => {
+            GosValue::Int(_) => {
                 // this is nil
-                assert_eq!(*i, 9528);
+                assert_eq!(self, &RC_PLACE_HOLDER);
                 let (zv, t) = nil.unwrap();
                 zv.nil_zero_val(t).clone()
             }

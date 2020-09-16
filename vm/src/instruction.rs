@@ -48,16 +48,19 @@ pub enum Opcode {
     UNARY_ADD, // +
     UNARY_SUB, // -
     UNARY_XOR, // ^
-    REF,       // &
-    DEREF,     // *
-    ARROW,     // <-
-    NOT,       // !
-    EQL,       // ==
-    LSS,       // <
-    GTR,       // >
-    NEQ,       // !=
-    LEQ,       // <=
-    GEQ,       // >=
+    //REF,       // &
+    REF_VAR,
+    REF_SLICE,
+    REF_STRUCT,
+    DEREF, // *
+    ARROW, // <-
+    NOT,   // !
+    EQL,   // ==
+    LSS,   // <
+    GTR,   // >
+    NEQ,   // !=
+    LEQ,   // <=
+    GEQ,   // >=
 
     // call
     PRE_CALL,
@@ -131,7 +134,10 @@ impl Opcode {
             Opcode::UNARY_ADD => ("UNARY_ADD", 0),
             Opcode::UNARY_SUB => ("UNARY_SUB", 0),
             Opcode::UNARY_XOR => ("UNARY_XOR", 0),
-            Opcode::REF => ("REF", 0),
+            //Opcode::REF => ("REF", 0),
+            Opcode::REF_VAR => ("REF_VAR", 0),
+            Opcode::REF_SLICE => ("REF_SLICE", 0),
+            Opcode::REF_STRUCT => ("REF_STRUCT", 0),
             Opcode::DEREF => ("DEREF", 0),
             Opcode::ARROW => ("ARROW", 0),
             Opcode::NOT => ("LNOT", 0),

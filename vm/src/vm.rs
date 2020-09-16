@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::instruction::*;
 use super::objects::{
-    ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter, UpValue,
+    ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
 };
 use super::stack::Stack;
 use super::value::*;
@@ -19,12 +19,18 @@ pub struct ByteCode {
 }
 
 #[derive(Clone, Debug)]
+struct Referers {
+    typ: ValueType,
+    weaks: Vec<WeakUpValue>,
+}
+
+#[derive(Clone, Debug)]
 struct CallFrame {
     closure: Rc<ClosureVal>,
     pc: usize,
     stack_base: usize,
     // closures that have upvalues pointing to this frame
-    referred_by: Option<HashMap<OpIndex, Vec<GosValue>>>,
+    referred_by: Option<HashMap<OpIndex, Referers>>,
 }
 
 impl CallFrame {
@@ -37,28 +43,25 @@ impl CallFrame {
         }
     }
 
-    fn add_referred_by(&mut self, index: OpIndex, closure: GosValue) {
+    fn add_referred_by(&mut self, index: OpIndex, typ: ValueType, uv: &UpValue) {
         if self.referred_by.is_none() {
             self.referred_by = Some(HashMap::new());
         }
         let map = self.referred_by.as_mut().unwrap();
+        let weak = uv.downgrade();
         match map.get_mut(&index) {
             Some(v) => {
-                v.push(closure);
+                debug_assert!(v.typ == typ);
+                v.weaks.push(weak);
             }
             None => {
-                map.insert(index, vec![closure]);
-            }
-        }
-    }
-
-    fn remove_referred_by(&mut self, index: OpIndex, closure: &GosValue) {
-        let map = self.referred_by.as_mut().unwrap();
-        let v = map.get_mut(&index).unwrap();
-        for i in 0..v.len() {
-            if &v[i] == closure {
-                v.swap_remove(i);
-                break;
+                map.insert(
+                    index,
+                    Referers {
+                        typ: typ,
+                        weaks: vec![weak],
+                    },
+                );
             }
         }
     }
@@ -103,7 +106,7 @@ impl Fiber {
     }
 
     fn run(&mut self, fkey: FunctionKey, pkgs: &Vec<PackageKey>, objs: &mut VMObjects) {
-        let cls = GosValue::new_closure(fkey, None);
+        let cls = GosValue::new_closure(fkey);
         let frame = CallFrame::with_closure(cls, 0);
         self.frames.push(frame);
         self.main_loop(pkgs, objs);
@@ -196,15 +199,15 @@ impl Fiber {
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    let uv: &UpValue = &upvalue.borrow();
+                    let uv: &UpValueState = &upvalue.inner.borrow();
                     match &uv {
-                        UpValue::Open(desc) => {
+                        UpValueState::Open(desc) => {
                             let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
                             let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
                             stack.push_from_index(stack_ptr, inst.t0());
                             frame = self.frames.last_mut().unwrap();
                         }
-                        UpValue::Closed(val) => {
+                        UpValueState::Closed(val) => {
                             stack.push(val.clone());
                         }
                     }
@@ -212,9 +215,9 @@ impl Fiber {
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm2();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    let uv: &mut UpValue = &mut upvalue.borrow_mut();
+                    let uv: &mut UpValueState = &mut upvalue.inner.borrow_mut();
                     match uv {
-                        UpValue::Open(desc) => {
+                        UpValueState::Open(desc) => {
                             let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
                             let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
                             if rhs_index < 0 {
@@ -226,7 +229,7 @@ impl Fiber {
                             }
                             frame = self.frames.last_mut().unwrap();
                         }
-                        UpValue::Closed(v) => {
+                        UpValueState::Closed(v) => {
                             stack.store_val(v, rhs_index, inst.t0(), zval);
                         }
                     }
@@ -268,10 +271,11 @@ impl Fiber {
                         GosValue::Int(inst.imm() as isize)
                     };
                     let val = &stack.pop_with_type(inst.t0());
-                    stack.push(match val {
-                        GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
-                        _ => vm_util::load_field(val, &ind, objs),
-                    });
+                    //stack.push(match val {
+                    //    GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
+                    //    _ => vm_util::load_field(val, &ind, objs),
+                    //});
+                    stack.push(vm_util::load_field(val, &ind, objs));
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
                     let (rhs_index, index) = inst.imm2();
@@ -282,17 +286,18 @@ impl Fiber {
                         GosValue::Int(index as isize)
                     };
                     let target = &stack.get_with_type(s_index, inst.t1());
-                    match target {
-                        GosValue::Boxed(b) => vm_util::store_field(
-                            stack,
-                            &*b.borrow(),
-                            &key,
-                            rhs_index,
-                            inst.t0(),
-                            objs,
-                        ),
-                        _ => vm_util::store_field(stack, target, &key, rhs_index, inst.t0(), objs),
-                    };
+                    // match target {
+                    //     GosValue::Boxed(b) => vm_util::store_field(
+                    //         stack,
+                    //         &*b.borrow(),
+                    //         &key,
+                    //         rhs_index,
+                    //         inst.t0(),
+                    //         objs,
+                    //     ),
+                    //     _ => vm_util::store_field(stack, target, &key, rhs_index, inst.t0(), objs),
+                    // };
+                    vm_util::store_field(stack, target, &key, rhs_index, inst.t0(), objs);
                 }
                 Opcode::LOAD_THIS_PKG_FIELD => {
                     let index = inst.imm();
@@ -305,15 +310,16 @@ impl Fiber {
                     stack.store_val(pkg.member_mut(index), rhs_index, inst.t0(), zval);
                 }
                 Opcode::STORE_DEREF => {
-                    let (rhs_index, index) = inst.imm2();
-                    let s_index = Stack::offset(stack.len(), index);
-                    let store = stack.get_with_type(s_index, ValueType::Boxed);
-                    stack.store_val(
-                        &mut store.as_boxed().borrow_mut(),
-                        rhs_index,
-                        inst.t0(),
-                        zval,
-                    );
+                    // let (rhs_index, index) = inst.imm2();
+                    // let s_index = Stack::offset(stack.len(), index);
+                    // let store = stack.get_with_type(s_index, ValueType::Boxed);
+                    // stack.store_val(
+                    //     &mut store.as_boxed().borrow_mut(),
+                    //     rhs_index,
+                    //     inst.t0(),
+                    //     zval,
+                    // );
+                    unimplemented!()
                 }
                 Opcode::ADD => stack.add(inst.t0()),
                 Opcode::SUB => stack.sub(inst.t0()),
@@ -329,9 +335,6 @@ impl Fiber {
                 Opcode::UNARY_ADD => {}
                 Opcode::UNARY_SUB => stack.unary_negate(inst.t0()),
                 Opcode::UNARY_XOR => stack.unary_xor(inst.t0()),
-                Opcode::REF => stack.unary_ref(inst.t0()),
-                Opcode::DEREF => stack.unary_deref(inst.t0()),
-                Opcode::ARROW => unimplemented!(),
                 Opcode::NOT => stack.logical_not(inst.t0()),
                 Opcode::EQL => stack.compare_eql(inst.t0()),
                 Opcode::LSS => stack.compare_lss(inst.t0()),
@@ -339,7 +342,9 @@ impl Fiber {
                 Opcode::NEQ => stack.compare_neq(inst.t0()),
                 Opcode::LEQ => stack.compare_leq(inst.t0()),
                 Opcode::GEQ => stack.compare_geq(inst.t0()),
-
+                Opcode::ARROW => unimplemented!(),
+                //Opcode::REF => stack.unary_ref(inst.t0()),
+                //Opcode::DEREF => stack.unary_deref(inst.t0()),
                 Opcode::PRE_CALL => {
                     let val = stack.pop_with_type(ValueType::Closure);
                     let sbase = stack.len();
@@ -393,41 +398,17 @@ impl Fiber {
                     }
                 }
                 Opcode::RETURN | Opcode::RETURN_INIT_PKG => {
-                    // first handle upvalues in 2 steps:
-                    // 1. clean up any referred_by created by this frame
-
-                    if frame.closure().has_upvalues() {
-                        let cls = GosValue::Closure(frame.closure().clone());
-                        for uv_ref in cls.as_closure().upvalues().iter() {
-                            let uv: &UpValue = &uv_ref.borrow();
-                            match uv {
-                                UpValue::Open(desc) => {
-                                    drop(frame);
-                                    let upframe =
-                                        upframe!(self.frames.iter_mut().rev().skip(1), desc.func);
-                                    upframe.remove_referred_by(desc.index, &cls);
-                                    frame = self.frames.last_mut().unwrap();
-                                }
-                                // Do nothing for closed ones for now, Will be delt with it by GC.
-                                UpValue::Closed(_) => {}
-                            }
-                        }
-                    }
-                    // 2. close any active upvalue this frame contains
+                    // close any active upvalue this frame contains
                     if let Some(referred) = &frame.referred_by {
                         for (ind, referrers) in referred {
-                            if referrers.len() == 0 {
+                            if referrers.weaks.len() == 0 {
                                 continue;
                             }
-                            let func = frame.func();
-                            for r in referrers.iter() {
-                                stack.close_upvalue(
-                                    r.as_closure(),
-                                    func,
-                                    *ind,
-                                    Stack::offset(stack_base, *ind),
-                                );
-                            }
+                            stack.close_upvalue(
+                                &referrers.weaks,
+                                referrers.typ,
+                                Stack::offset(stack_base, *ind),
+                            );
                         }
                     }
 
@@ -591,25 +572,15 @@ impl Fiber {
                         GosValue::Function(fkey) => {
                             // NEW a closure
                             let func = &objs.functions[fkey];
-                            let closure = GosValue::Closure(Rc::new(ClosureVal::new(
-                                fkey,
-                                None,
-                                Some(func.up_ptrs.clone()),
-                            )));
-                            // set referred_by for the frames down in the stack
-                            for uv in func.up_ptrs.iter() {
-                                match uv {
-                                    UpValue::Open(desc) => {
-                                        drop(frame);
-                                        let upframe =
-                                            upframe!(self.frames.iter_mut().rev(), desc.func);
-                                        upframe.add_referred_by(desc.index, closure.clone());
-                                        frame = self.frames.last_mut().unwrap();
-                                    }
-                                    UpValue::Closed(_) => unreachable!(),
-                                }
+                            let val = ClosureVal::new(fkey, None, Some(func.up_ptrs.clone()));
+                            for uv in val.upvalues().iter() {
+                                drop(frame);
+                                let desc = uv.desc();
+                                let upframe = upframe!(self.frames.iter_mut().rev(), desc.func);
+                                upframe.add_referred_by(desc.index, desc.typ, uv);
+                                frame = self.frames.last_mut().unwrap();
                             }
-                            closure
+                            GosValue::Closure(Rc::new(val))
                         }
                         _ => unimplemented!(),
                     };

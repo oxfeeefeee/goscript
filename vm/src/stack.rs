@@ -234,22 +234,11 @@ impl Stack {
     }
 
     #[inline]
-    pub fn close_upvalue(
-        &self,
-        cls: &ClosureVal,
-        func: FunctionKey,
-        index: OpIndex,
-        stack_index: usize,
-    ) {
-        for uv_ref in cls.upvalues().iter() {
-            let uv: &mut UpValue = &mut uv_ref.borrow_mut();
-            match uv {
-                UpValue::Open(desc) => {
-                    if desc.func == func && desc.index == index {
-                        *uv = UpValue::Closed(self.get_with_type(stack_index, desc.typ));
-                    }
-                }
-                _ => {}
+    pub fn close_upvalue(&self, uvs: &Vec<WeakUpValue>, typ: ValueType, stack_index: usize) {
+        let val = self.get_with_type(stack_index, typ);
+        for weak in uvs {
+            if let Some(uv) = weak.upgrade() {
+                uv.close(val.clone());
             }
         }
     }
@@ -334,18 +323,6 @@ impl Stack {
     #[inline]
     pub fn unary_xor(&mut self, t: ValueType) {
         self.get_c_mut(self.len() - 1).unary_xor(t);
-    }
-
-    #[inline]
-    pub fn unary_ref(&mut self, t: ValueType) {
-        let v = self.get_with_type(self.len() - 1, t);
-        self.set(self.len() - 1, GosValue::new_boxed(v));
-    }
-
-    #[inline]
-    pub fn unary_deref(&mut self, _t: ValueType) {
-        let v = self.get_rc_mut(self.len() - 1).as_boxed().borrow().clone();
-        self.set(self.len() - 1, v);
     }
 
     #[inline]

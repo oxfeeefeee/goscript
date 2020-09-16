@@ -8,7 +8,7 @@ use super::types;
 
 use goscript_vm::instruction::*;
 use goscript_vm::null_key;
-use goscript_vm::objects::{EntIndex, MetadataType, UpValue};
+use goscript_vm::objects::{EntIndex, MetadataType};
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
@@ -226,10 +226,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(expr)?;
         let t = self.get_expr_value_type(expr);
         let code = match op {
-            Token::AND => Opcode::REF,
             Token::ADD => Opcode::UNARY_ADD,
             Token::SUB => Opcode::UNARY_SUB,
             Token::XOR => Opcode::UNARY_XOR,
+            Token::AND => unimplemented!(), /* match expr {
+            Expr::Ident(ident) => {
+            let index = self.resolve_ident(ident)?;
+            Opcode::REF_VAR
+            }
+            Expr::Index(iexpr) => Opcode::REF_SLICE,
+            Expr::Selector(sexpr) => unimplemented!(),
+            _ => unimplemented!(),
+            },*/
             _ => unreachable!(),
         };
         current_func_mut!(self).emit_code_with_type(code, t);
@@ -377,7 +385,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let vm_ftype = self.gen_def_type_meta(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?;
-        let cls = GosValue::new_closure(fkey, None);
+        let cls = GosValue::new_closure(fkey);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
@@ -655,12 +663,12 @@ impl<'a> CodeGen<'a> {
                 let f = &mut self.objects.functions[*ifunc];
                 let index = f.entity_index(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
-                    let desc = UpValueDesc {
+                    let desc = ValueDesc {
                         func: *ifunc,
                         index: ind.into(),
                         typ: self.get_use_value_type(*ident),
                     };
-                    Some(UpValue::Open(desc))
+                    Some(desc)
                 } else {
                     None
                 }
@@ -1209,7 +1217,7 @@ impl<'a> CodeGen<'a> {
         let fval = FunctionVal::new(pkey, fmeta, None, true);
         let fkey = self.objects.functions.insert(fval);
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey, None));
+        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey));
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
         for f in files.iter() {

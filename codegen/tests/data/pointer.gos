@@ -5,7 +5,7 @@ type Node struct{
     j int
 }
 
-func main() {
+func main() {/*
     var a = "aa"
     var b = "bb"
     var c = a + b
@@ -17,6 +17,5 @@ func main() {
     var e = *d
     assert(i == 8)
     assert(j == 6)
-    assert(e == "ccc")
-    // assert(c == "ccc")
+    assert(e == "ccc") */   
 }

@@ -127,7 +127,9 @@ impl ZeroVal {
         ZeroVal {
             zero_val_mark: mark.clone(),
             str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
-            boxed_zero_val: GosValue::Boxed(Rc::new(RefCell::new(mark.clone()))),
+            boxed_zero_val: GosValue::Boxed(Rc::new(RefCell::new(BoxedVal::Var(
+                BoxedVar::Pointer(mark.clone()),
+            )))),
             closure_zero_val: GosValue::Closure(Rc::new(ClosureVal::new(null_key!(), None, None))),
             slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
             map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
@@ -592,21 +594,91 @@ impl InterfaceVal {
 pub struct ChannelVal {}
 
 // ----------------------------------------------------------------------------
+// BoxedVal
+/// There are two kinds of BoxedVars, which is determined by the behavior of
+/// copy_semantic. Struct, Slice and Map have true pointers
+/// Others don't have true pointers, so a unvalue-like open/close mechanism is needed
+#[derive(Debug, Clone)]
+pub enum BoxedVar {
+    Desc(ValueDesc),
+    Pointer(GosValue),
+}
+
+#[derive(Debug, Clone)]
+pub enum BoxedVal {
+    Var(BoxedVar),
+    SliceMember(Rc<SliceVal>, OpIndex),
+    StructField(Rc<RefCell<StructVal>>, OpIndex),
+}
+
+impl BoxedVal {
+    pub fn new_var(d: ValueDesc) -> BoxedVal {
+        BoxedVal::Var(BoxedVar::Desc(d))
+    }
+
+    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedVal {
+        let s = slice.as_slice();
+        BoxedVal::SliceMember(s.clone(), index)
+    }
+
+    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedVal {
+        let s = stru.as_struct();
+        BoxedVal::StructField(s.clone(), index)
+    }
+}
+
+// ----------------------------------------------------------------------------
 // ClosureVal
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UpValueDesc {
+pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
     pub typ: ValueType,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum UpValue {
+pub enum UpValueState {
     /// Parent CallFrame is still alive, pointing to a local variable
-    Open(UpValueDesc), // (what func is the var defined, the index of the var)
+    Open(ValueDesc), // (what func is the var defined, the index of the var)
     // Parent CallFrame is released, pointing to a Boxed value in the global pool
     Closed(GosValue),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UpValue {
+    pub inner: Rc<RefCell<UpValueState>>,
+}
+
+impl UpValue {
+    pub fn downgrade(&self) -> WeakUpValue {
+        WeakUpValue {
+            inner: Rc::downgrade(&self.inner),
+        }
+    }
+
+    pub fn desc(&self) -> ValueDesc {
+        let r: &UpValueState = &self.inner.borrow();
+        match r {
+            UpValueState::Open(d) => d.clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn close(&self, val: GosValue) {
+        *self.inner.borrow_mut() = UpValueState::Closed(val);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WeakUpValue {
+    pub inner: Weak<RefCell<UpValueState>>,
+}
+
+impl WeakUpValue {
+    pub fn upgrade(&self) -> Option<UpValue> {
+        Weak::upgrade(&self.inner).map(|x| UpValue { inner: x })
+    }
 }
 
 /// ClosureVal is a variable containing a pinter to a function and
@@ -617,20 +689,25 @@ pub enum UpValue {
 pub struct ClosureVal {
     pub func: FunctionKey,
     pub receiver: Option<GosValue>,
-    upvalues: Option<Vec<Rc<RefCell<UpValue>>>>,
+    upvalues: Option<Vec<UpValue>>,
 }
 
 impl ClosureVal {
     pub fn new(
         key: FunctionKey,
         receiver: Option<GosValue>,
-        upvalues: Option<Vec<UpValue>>,
+        upvalues: Option<Vec<ValueDesc>>,
     ) -> ClosureVal {
         ClosureVal {
             func: key,
             receiver: receiver,
-            upvalues: upvalues
-                .map(|uvs| uvs.into_iter().map(|x| Rc::new(RefCell::new(x))).collect()),
+            upvalues: upvalues.map(|uvs| {
+                uvs.into_iter()
+                    .map(|x| UpValue {
+                        inner: Rc::new(RefCell::new(UpValueState::Open(x))),
+                    })
+                    .collect()
+            }),
         }
     }
 
@@ -640,7 +717,7 @@ impl ClosureVal {
     }
 
     #[inline]
-    pub fn upvalues(&self) -> &Vec<Rc<RefCell<UpValue>>> {
+    pub fn upvalues(&self) -> &Vec<UpValue> {
         self.upvalues.as_ref().unwrap()
     }
 }
@@ -765,7 +842,7 @@ pub struct FunctionVal {
     pub meta: GosValue,
     pub code: Vec<Instruction>,
     pub consts: Vec<GosValue>,
-    pub up_ptrs: Vec<UpValue>,
+    pub up_ptrs: Vec<ValueDesc>,
     // param_count, ret_count can be read from typ,
     // these fields are for faster access
     pub param_count: usize,
@@ -882,7 +959,7 @@ impl FunctionVal {
         }
     }
 
-    pub fn try_add_upvalue(&mut self, entity: &EntityKey, uv: UpValue) -> EntIndex {
+    pub fn try_add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
         self.entities
             .get(entity)
             .map(|x| *x)
