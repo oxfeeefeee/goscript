@@ -199,18 +199,7 @@ impl Fiber {
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    let uv: &UpValueState = &upvalue.inner.borrow();
-                    match &uv {
-                        UpValueState::Open(desc) => {
-                            let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
-                            let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
-                            stack.push_from_index(stack_ptr, inst.t0());
-                            frame = self.frames.last_mut().unwrap();
-                        }
-                        UpValueState::Closed(val) => {
-                            stack.push(val.clone());
-                        }
-                    }
+                    push_up_value!(upvalue, self, stack, frame);
                 }
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm2();
@@ -343,8 +332,43 @@ impl Fiber {
                 Opcode::LEQ => stack.compare_leq(inst.t0()),
                 Opcode::GEQ => stack.compare_geq(inst.t0()),
                 Opcode::ARROW => unimplemented!(),
-                //Opcode::REF => stack.unary_ref(inst.t0()),
-                //Opcode::DEREF => stack.unary_deref(inst.t0()),
+                Opcode::REF_UPVALUE => {
+                    let index = inst.imm();
+                    let upvalue = frame.closure().upvalues()[index as usize].clone();
+                    stack.push(GosValue::new_boxed(BoxedVal::UpVal(upvalue.clone())));
+                }
+                Opcode::REF_LOCAL => {
+                    let t = inst.t0();
+                    let index = inst.imm();
+                    let boxed = if t.has_real_pointer() {
+                        BoxedVal::new_var_pointer(stack.get_with_type(index as usize, t))
+                    } else {
+                        BoxedVal::new_var_up_val(ValueDesc {
+                            func: frame.func(),
+                            index: index,
+                            typ: t,
+                        })
+                    };
+                    stack.push(GosValue::new_boxed(boxed));
+                }
+                Opcode::DEREF => {
+                    match stack.pop_with_type(inst.t0()) {
+                        GosValue::Boxed(b) => {
+                            match b {
+                                BoxedVal::Nil => unimplemented!(), //panic?
+                                BoxedVal::UpVal(uv) => {
+                                    push_up_value!(&uv, self, stack, frame);
+                                }
+                                BoxedVal::Slice(s) => stack.push(GosValue::Slice(s)),
+                                BoxedVal::Map(m) => stack.push(GosValue::Map(m)),
+                                BoxedVal::Struct(s) => stack.push(GosValue::Struct(s)),
+                                BoxedVal::SliceMember(s, index) => unimplemented!(),
+                                BoxedVal::StructField(s, index) => unimplemented!(),
+                            };
+                        }
+                        _ => unreachable!(),
+                    }
+                }
                 Opcode::PRE_CALL => {
                     let val = stack.pop_with_type(ValueType::Closure);
                     let sbase = stack.len();
@@ -646,7 +670,10 @@ impl Fiber {
                         assert!(false, "Opcode::ASSERT: not true!");
                     }
                 }
-                _ => unimplemented!(),
+                _ => {
+                    dbg!(inst_op);
+                    unimplemented!();
+                }
             };
             //dbg!(inst_op, stack.len());
         }

@@ -88,7 +88,7 @@ pub enum GosValue {
     Metadata(MetadataKey),
 
     Str(Rc<StringVal>), // "String" is taken
-    Boxed(Rc<RefCell<BoxedVal>>),
+    Boxed(BoxedVal),
     Closure(Rc<ClosureVal>),
     Slice(Rc<SliceVal>),
     Map(Rc<MapVal>),
@@ -105,7 +105,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_boxed(v: BoxedVal) -> GosValue {
-        GosValue::Boxed(Rc::new(RefCell::new(v)))
+        GosValue::Boxed(v)
     }
 
     #[inline]
@@ -230,7 +230,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_boxed(&self) -> &Rc<RefCell<BoxedVal>> {
+    pub fn as_boxed(&self) -> &BoxedVal {
         unwrap_gos_val!(Boxed, self)
     }
 

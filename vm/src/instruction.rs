@@ -49,7 +49,8 @@ pub enum Opcode {
     UNARY_SUB, // -
     UNARY_XOR, // ^
     //REF,       // &
-    REF_VAR,
+    REF_LOCAL,
+    REF_UPVALUE,
     REF_SLICE,
     REF_STRUCT,
     DEREF, // *
@@ -66,7 +67,6 @@ pub enum Opcode {
     PRE_CALL,
     CALL,
     CALL_ELLIPSIS, // call with the past parameter followed by ellipsis
-    CLOSE_UPVALUE,
     RETURN,
     RETURN_INIT_PKG,
 
@@ -134,8 +134,8 @@ impl Opcode {
             Opcode::UNARY_ADD => ("UNARY_ADD", 0),
             Opcode::UNARY_SUB => ("UNARY_SUB", 0),
             Opcode::UNARY_XOR => ("UNARY_XOR", 0),
-            //Opcode::REF => ("REF", 0),
-            Opcode::REF_VAR => ("REF_VAR", 0),
+            Opcode::REF_LOCAL => ("REF_LOCAL", 0),
+            Opcode::REF_UPVALUE => ("REF_UPVALUE", 0),
             Opcode::REF_SLICE => ("REF_SLICE", 0),
             Opcode::REF_STRUCT => ("REF_STRUCT", 0),
             Opcode::DEREF => ("DEREF", 0),
@@ -151,7 +151,6 @@ impl Opcode {
             Opcode::PRE_CALL => ("PRE_CALL", -128),
             Opcode::CALL => ("CALL", -128),
             Opcode::CALL_ELLIPSIS => ("CALL_ELLIPSIS", -128),
-            Opcode::CLOSE_UPVALUE => ("CLOSE_UPVALUE", -1),
             Opcode::RETURN => ("RETURN", -128),
             Opcode::RETURN_INIT_PKG => ("RETURN_INIT_PKG", -128),
 
@@ -211,6 +210,15 @@ pub enum ValueType {
 
     Str,
     Struct,
+}
+
+impl ValueType {
+    pub fn has_real_pointer(&self) -> bool {
+        match self {
+            ValueType::Slice | ValueType::Map | ValueType::Struct => true,
+            _ => false,
+        }
+    }
 }
 
 /// Instruction is 64 bit

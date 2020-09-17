@@ -223,21 +223,47 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
-        self.visit_expr(expr)?;
         let t = self.get_expr_value_type(expr);
+        if op == &Token::AND {
+            match expr {
+                Expr::Ident(ident) => {
+                    let index = self.resolve_ident(ident)?;
+                    match index {
+                        EntIndex::LocalVar(i) => {
+                            let func = current_func_mut!(self);
+                            func.emit_inst(Opcode::REF_LOCAL, Some(t), None, None, Some(i))
+                        }
+                        EntIndex::UpValue(i) => {
+                            let func = current_func_mut!(self);
+                            func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                Expr::Index(iexpr) => {
+                    let t0 = self.get_expr_value_type(&iexpr.expr);
+                    let t1 = self.get_expr_value_type(&iexpr.index);
+                    self.visit_expr(&iexpr.expr)?;
+                    self.visit_expr(&iexpr.index)?;
+                    current_func_mut!(self).emit_inst(
+                        Opcode::REF_SLICE,
+                        Some(t0),
+                        Some(t1),
+                        None,
+                        None,
+                    );
+                }
+                Expr::Selector(_) => unimplemented!(),
+                _ => unimplemented!(),
+            }
+            return Ok(());
+        }
+
+        self.visit_expr(expr)?;
         let code = match op {
             Token::ADD => Opcode::UNARY_ADD,
             Token::SUB => Opcode::UNARY_SUB,
             Token::XOR => Opcode::UNARY_XOR,
-            Token::AND => unimplemented!(), /* match expr {
-            Expr::Ident(ident) => {
-            let index = self.resolve_ident(ident)?;
-            Opcode::REF_VAR
-            }
-            Expr::Index(iexpr) => Opcode::REF_SLICE,
-            Expr::Selector(sexpr) => unimplemented!(),
-            _ => unimplemented!(),
-            },*/
             _ => unreachable!(),
         };
         current_func_mut!(self).emit_code_with_type(code, t);

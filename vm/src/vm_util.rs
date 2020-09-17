@@ -11,6 +11,27 @@ macro_rules! upframe {
     };
 }
 
+macro_rules! push_up_value {
+    ($upvalue:expr, $self_:ident, $stack:ident, $frame:ident) => {{
+        let uv: &UpValueState = &$upvalue.inner.borrow();
+        match &uv {
+            UpValueState::Open(desc) => {
+                if desc.func == $frame.func() {
+                    $stack.push_from_index(desc.index as usize, desc.typ);
+                } else {
+                    let upframe = upframe!($self_.frames.iter().rev().skip(1), desc.func);
+                    let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
+                    $stack.push_from_index(stack_ptr, desc.typ);
+                    $frame = $self_.frames.last_mut().unwrap();
+                }
+            }
+            UpValueState::Closed(val) => {
+                $stack.push(val.clone());
+            }
+        }
+    }};
+}
+
 macro_rules! range_vars {
     ($m_ref:ident, $m_ptr:ident, $m_iter:ident, $l_ref:ident, $l_ptr:ident, $l_iter:ident,
         $s_ref:ident, $s_ptr:ident, $s_iter:ident) => {

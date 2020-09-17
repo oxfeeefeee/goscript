@@ -127,9 +127,7 @@ impl ZeroVal {
         ZeroVal {
             zero_val_mark: mark.clone(),
             str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
-            boxed_zero_val: GosValue::Boxed(Rc::new(RefCell::new(BoxedVal::Var(
-                BoxedVar::Pointer(mark.clone()),
-            )))),
+            boxed_zero_val: GosValue::Boxed(BoxedVal::Nil),
             closure_zero_val: GosValue::Closure(Rc::new(ClosureVal::new(null_key!(), None, None))),
             slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
             map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
@@ -595,25 +593,32 @@ pub struct ChannelVal {}
 
 // ----------------------------------------------------------------------------
 // BoxedVal
-/// There are two kinds of BoxedVars, which is determined by the behavior of
+/// There are two kinds of boxed vars, which is determined by the behavior of
 /// copy_semantic. Struct, Slice and Map have true pointers
-/// Others don't have true pointers, so a unvalue-like open/close mechanism is needed
-#[derive(Debug, Clone)]
-pub enum BoxedVar {
-    Desc(ValueDesc),
-    Pointer(GosValue),
-}
-
+/// Others don't have true pointers, so a upvalue-like open/close mechanism is needed
 #[derive(Debug, Clone)]
 pub enum BoxedVal {
-    Var(BoxedVar),
+    Nil,
+    UpVal(UpValue),
+    Slice(Rc<SliceVal>),
+    Map(Rc<MapVal>),
+    Struct(Rc<RefCell<StructVal>>),
     SliceMember(Rc<SliceVal>, OpIndex),
     StructField(Rc<RefCell<StructVal>>, OpIndex),
 }
 
 impl BoxedVal {
-    pub fn new_var(d: ValueDesc) -> BoxedVal {
-        BoxedVal::Var(BoxedVar::Desc(d))
+    pub fn new_var_up_val(d: ValueDesc) -> BoxedVal {
+        BoxedVal::UpVal(UpValue::new(d))
+    }
+
+    pub fn new_var_pointer(val: GosValue) -> BoxedVal {
+        match val {
+            GosValue::Slice(s) => BoxedVal::Slice(s),
+            GosValue::Map(m) => BoxedVal::Map(m),
+            GosValue::Struct(s) => BoxedVal::Struct(s),
+            _ => unreachable!(),
+        }
     }
 
     pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedVal {
@@ -651,6 +656,12 @@ pub struct UpValue {
 }
 
 impl UpValue {
+    pub fn new(d: ValueDesc) -> UpValue {
+        UpValue {
+            inner: Rc::new(RefCell::new(UpValueState::Open(d))),
+        }
+    }
+
     pub fn downgrade(&self) -> WeakUpValue {
         WeakUpValue {
             inner: Rc::downgrade(&self.inner),
@@ -701,13 +712,7 @@ impl ClosureVal {
         ClosureVal {
             func: key,
             receiver: receiver,
-            upvalues: upvalues.map(|uvs| {
-                uvs.into_iter()
-                    .map(|x| UpValue {
-                        inner: Rc::new(RefCell::new(UpValueState::Open(x))),
-                    })
-                    .collect()
-            }),
+            upvalues: upvalues.map(|uvs| uvs.into_iter().map(|x| UpValue::new(x)).collect()),
         }
     }
 
