@@ -127,7 +127,7 @@ impl ZeroVal {
         ZeroVal {
             zero_val_mark: mark.clone(),
             str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
-            boxed_zero_val: GosValue::Boxed(BoxedVal::Nil),
+            boxed_zero_val: GosValue::Boxed(Box::new(BoxedVal::Nil)),
             closure_zero_val: GosValue::Closure(Rc::new(ClosureVal::new(null_key!(), None, None))),
             slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
             map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),

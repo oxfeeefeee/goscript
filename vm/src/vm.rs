@@ -188,40 +188,17 @@ impl Fiber {
                 Opcode::STORE_LOCAL => {
                     let (rhs_index, index) = inst.imm2();
                     let s_index = Stack::offset(stack_base, index);
-                    if rhs_index < 0 {
-                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                        stack.store_copy_semantic(s_index, rhs_s_index, inst.t0(), zval);
-                    } else {
-                        let op_ex = Instruction::index2code(rhs_index);
-                        stack.store_with_op(s_index, stack.len() - 1, op_ex, inst.t0());
-                    }
+                    store_local!(stack, s_index, rhs_index, inst.t0(), zval);
                 }
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    push_up_value!(upvalue, self, stack, frame);
+                    load_up_value!(upvalue, self, stack, frame);
                 }
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm2();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    let uv: &mut UpValueState = &mut upvalue.inner.borrow_mut();
-                    match uv {
-                        UpValueState::Open(desc) => {
-                            let upframe = upframe!(self.frames.iter().rev().skip(1), desc.func);
-                            let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
-                            if rhs_index < 0 {
-                                let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                stack.store_copy_semantic(stack_ptr, rhs_s_index, inst.t0(), zval);
-                            } else {
-                                let op_ex = Instruction::index2code(rhs_index);
-                                stack.store_with_op(stack_ptr, stack.len() - 1, op_ex, inst.t0());
-                            }
-                            frame = self.frames.last_mut().unwrap();
-                        }
-                        UpValueState::Closed(v) => {
-                            stack.store_val(v, rhs_index, inst.t0(), zval);
-                        }
-                    }
+                    store_up_value!(upvalue, self, stack, frame, rhs_index, inst.t0(), zval);
                 }
                 Opcode::LOAD_INDEX => {
                     let ind = stack.pop_with_type(inst.t1());
@@ -299,16 +276,38 @@ impl Fiber {
                     stack.store_val(pkg.member_mut(index), rhs_index, inst.t0(), zval);
                 }
                 Opcode::STORE_DEREF => {
-                    // let (rhs_index, index) = inst.imm2();
-                    // let s_index = Stack::offset(stack.len(), index);
-                    // let store = stack.get_with_type(s_index, ValueType::Boxed);
+                    let (rhs_index, index) = inst.imm2();
+                    let s_index = Stack::offset(stack.len(), index);
+                    match stack.get_with_type(s_index, ValueType::Boxed) {
+                        GosValue::Boxed(b) => {
+                            match *b {
+                                BoxedVal::Nil => unimplemented!(), //panic?
+                                BoxedVal::UpVal(uv) => {
+                                    store_up_value!(
+                                        uv,
+                                        self,
+                                        stack,
+                                        frame,
+                                        rhs_index,
+                                        inst.t0(),
+                                        zval
+                                    );
+                                }
+                                BoxedVal::Slice(s) => stack.push(GosValue::Slice(s)),
+                                BoxedVal::Map(m) => stack.push(GosValue::Map(m)),
+                                BoxedVal::Struct(s) => stack.push(GosValue::Struct(s)),
+                                BoxedVal::SliceMember(s, index) => unimplemented!(),
+                                BoxedVal::StructField(s, index) => unimplemented!(),
+                            };
+                        }
+                        _ => unreachable!(),
+                    }
                     // stack.store_val(
                     //     &mut store.as_boxed().borrow_mut(),
                     //     rhs_index,
                     //     inst.t0(),
                     //     zval,
                     // );
-                    unimplemented!()
                 }
                 Opcode::ADD => stack.add(inst.t0()),
                 Opcode::SUB => stack.sub(inst.t0()),
@@ -354,10 +353,10 @@ impl Fiber {
                 Opcode::DEREF => {
                     match stack.pop_with_type(inst.t0()) {
                         GosValue::Boxed(b) => {
-                            match b {
+                            match *b {
                                 BoxedVal::Nil => unimplemented!(), //panic?
                                 BoxedVal::UpVal(uv) => {
-                                    push_up_value!(&uv, self, stack, frame);
+                                    load_up_value!(&uv, self, stack, frame);
                                 }
                                 BoxedVal::Slice(s) => stack.push(GosValue::Slice(s)),
                                 BoxedVal::Map(m) => stack.push(GosValue::Map(m)),

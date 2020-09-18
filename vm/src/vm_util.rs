@@ -11,7 +11,19 @@ macro_rules! upframe {
     };
 }
 
-macro_rules! push_up_value {
+macro_rules! store_local {
+    ($stack:ident, $s_index:expr, $rhs_index:expr, $typ:expr, $zval:ident) => {{
+        if $rhs_index < 0 {
+            let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
+            $stack.store_copy_semantic($s_index, rhs_s_index, $typ, $zval);
+        } else {
+            let op_ex = Instruction::index2code($rhs_index);
+            $stack.store_with_op($s_index, $stack.len() - 1, op_ex, $typ);
+        }   
+    }};
+}
+
+macro_rules! load_up_value {
     ($upvalue:expr, $self_:ident, $stack:ident, $frame:ident) => {{
         let uv: &UpValueState = &$upvalue.inner.borrow();
         match &uv {
@@ -27,6 +39,27 @@ macro_rules! push_up_value {
             }
             UpValueState::Closed(val) => {
                 $stack.push(val.clone());
+            }
+        }
+    }};
+}
+
+macro_rules! store_up_value {
+    ($upvalue:expr, $self_:ident, $stack:ident, $frame:ident, $rhs_index:ident, $typ:expr, $zval:ident) => {{
+        let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
+        match uv {
+            UpValueState::Open(desc) => {
+                if desc.func == $frame.func() {
+                    store_local!($stack, desc.index as usize, $rhs_index, $typ, $zval);
+                } else {
+                    let upframe = upframe!($self_.frames.iter().rev().skip(1), desc.func);
+                    let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
+                    store_local!($stack, stack_ptr, $rhs_index, $typ, $zval);
+                    $frame = $self_.frames.last_mut().unwrap();
+                }
+            }
+            UpValueState::Closed(v) => {
+                $stack.store_val(v, $rhs_index, $typ, $zval);
             }
         }
     }};

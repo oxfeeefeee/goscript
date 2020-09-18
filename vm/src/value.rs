@@ -88,7 +88,7 @@ pub enum GosValue {
     Metadata(MetadataKey),
 
     Str(Rc<StringVal>), // "String" is taken
-    Boxed(BoxedVal),
+    Boxed(Box<BoxedVal>),
     Closure(Rc<ClosureVal>),
     Slice(Rc<SliceVal>),
     Map(Rc<MapVal>),
@@ -105,7 +105,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_boxed(v: BoxedVal) -> GosValue {
-        GosValue::Boxed(v)
+        GosValue::Boxed(Box::new(v))
     }
 
     #[inline]
