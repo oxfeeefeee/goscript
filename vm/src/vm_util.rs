@@ -29,16 +29,17 @@ macro_rules! load_up_value {
         match &uv {
             UpValueState::Open(desc) => {
                 if desc.func == $frame.func() {
-                    $stack.push_from_index(desc.index as usize, desc.typ);
+                    $stack.get_with_type(desc.index as usize, desc.typ)
                 } else {
                     let upframe = upframe!($self_.frames.iter().rev().skip(1), desc.func);
                     let stack_ptr = Stack::offset(upframe.stack_base, desc.index);
-                    $stack.push_from_index(stack_ptr, desc.typ);
+                    let val = $stack.get_with_type(stack_ptr, desc.typ);
                     $frame = $self_.frames.last_mut().unwrap();
+                    val
                 }
             }
             UpValueState::Closed(val) => {
-                $stack.push(val.clone());
+                val.clone()
             }
         }
     }};
@@ -61,6 +62,23 @@ macro_rules! store_up_value {
             UpValueState::Closed(v) => {
                 $stack.store_val(v, $rhs_index, $typ, $zval);
             }
+        }
+    }};
+}
+
+macro_rules! deref_value {
+    ($boxed:expr, $self_:ident, $stack:ident, $frame:ident) => {{
+        match $boxed {
+            GosValue::Boxed(b) => {
+                match *b {
+                    BoxedVal::Nil => unimplemented!(), //panic?
+                    BoxedVal::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
+                    BoxedVal::Struct(s) => GosValue::Struct(s),
+                    BoxedVal::SliceMember(s, index) => unimplemented!(),
+                    BoxedVal::StructField(s, index) => unimplemented!(),
+                }
+            }
+            _ => unreachable!(),
         }
     }};
 }

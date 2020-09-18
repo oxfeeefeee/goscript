@@ -193,7 +193,7 @@ impl Fiber {
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    load_up_value!(upvalue, self, stack, frame);
+                    stack.push(load_up_value!(upvalue, self, stack, frame));
                 }
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm2();
@@ -236,12 +236,14 @@ impl Fiber {
                     } else {
                         GosValue::Int(inst.imm() as isize)
                     };
-                    let val = &stack.pop_with_type(inst.t0());
-                    //stack.push(match val {
-                    //    GosValue::Boxed(b) => vm_util::load_field(&*b.borrow(), &ind, objs),
-                    //    _ => vm_util::load_field(val, &ind, objs),
-                    //});
-                    stack.push(vm_util::load_field(val, &ind, objs));
+                    let val = stack.pop_with_type(inst.t0());
+                    stack.push(match val {
+                        GosValue::Boxed(_) => {
+                            let unboxed = deref_value!(val, self, stack, frame);
+                            vm_util::load_field(&unboxed, &ind, objs)
+                        }
+                        _ => vm_util::load_field(&val, &ind, objs),
+                    });
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
                     let (rhs_index, index) = inst.imm2();
@@ -251,19 +253,14 @@ impl Fiber {
                     } else {
                         GosValue::Int(index as isize)
                     };
-                    let target = &stack.get_with_type(s_index, inst.t1());
-                    // match target {
-                    //     GosValue::Boxed(b) => vm_util::store_field(
-                    //         stack,
-                    //         &*b.borrow(),
-                    //         &key,
-                    //         rhs_index,
-                    //         inst.t0(),
-                    //         objs,
-                    //     ),
-                    //     _ => vm_util::store_field(stack, target, &key, rhs_index, inst.t0(), objs),
-                    // };
-                    vm_util::store_field(stack, target, &key, rhs_index, inst.t0(), objs);
+                    let target = stack.get_with_type(s_index, inst.t1());
+                    match target {
+                        GosValue::Boxed(_) => {
+                            let unboxed = deref_value!(target, self, stack, frame);
+                            vm_util::store_field(stack, &unboxed, &key, rhs_index, inst.t0(), objs);
+                        }
+                        _ => vm_util::store_field(stack, &target, &key, rhs_index, inst.t0(), objs),
+                    };
                 }
                 Opcode::LOAD_THIS_PKG_FIELD => {
                     let index = inst.imm();
@@ -293,21 +290,17 @@ impl Fiber {
                                         zval
                                     );
                                 }
-                                BoxedVal::Slice(s) => stack.push(GosValue::Slice(s)),
-                                BoxedVal::Map(m) => stack.push(GosValue::Map(m)),
-                                BoxedVal::Struct(s) => stack.push(GosValue::Struct(s)),
+                                BoxedVal::Struct(s) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, ValueType::Struct);
+                                    s.replace(RefCell::clone(&*val.as_struct()).into_inner());
+                                }
                                 BoxedVal::SliceMember(s, index) => unimplemented!(),
                                 BoxedVal::StructField(s, index) => unimplemented!(),
                             };
                         }
                         _ => unreachable!(),
                     }
-                    // stack.store_val(
-                    //     &mut store.as_boxed().borrow_mut(),
-                    //     rhs_index,
-                    //     inst.t0(),
-                    //     zval,
-                    // );
                 }
                 Opcode::ADD => stack.add(inst.t0()),
                 Opcode::SUB => stack.sub(inst.t0()),
@@ -339,8 +332,9 @@ impl Fiber {
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
                     let index = inst.imm();
-                    let boxed = if t.has_real_pointer() {
-                        BoxedVal::new_var_pointer(stack.get_with_type(index as usize, t))
+                    let boxed = if t == ValueType::Struct {
+                        let s_index = index as usize;
+                        BoxedVal::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
                         BoxedVal::new_var_up_val(ValueDesc {
                             func: frame.func(),
@@ -351,22 +345,9 @@ impl Fiber {
                     stack.push(GosValue::new_boxed(boxed));
                 }
                 Opcode::DEREF => {
-                    match stack.pop_with_type(inst.t0()) {
-                        GosValue::Boxed(b) => {
-                            match *b {
-                                BoxedVal::Nil => unimplemented!(), //panic?
-                                BoxedVal::UpVal(uv) => {
-                                    load_up_value!(&uv, self, stack, frame);
-                                }
-                                BoxedVal::Slice(s) => stack.push(GosValue::Slice(s)),
-                                BoxedVal::Map(m) => stack.push(GosValue::Map(m)),
-                                BoxedVal::Struct(s) => stack.push(GosValue::Struct(s)),
-                                BoxedVal::SliceMember(s, index) => unimplemented!(),
-                                BoxedVal::StructField(s, index) => unimplemented!(),
-                            };
-                        }
-                        _ => unreachable!(),
-                    }
+                    let boxed = stack.pop_with_type(inst.t0());
+                    let val = deref_value!(boxed, self, stack, frame);
+                    stack.push(val);
                 }
                 Opcode::PRE_CALL => {
                     let val = stack.pop_with_type(ValueType::Closure);

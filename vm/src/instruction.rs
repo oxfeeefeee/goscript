@@ -212,15 +212,6 @@ pub enum ValueType {
     Struct,
 }
 
-impl ValueType {
-    pub fn has_real_pointer(&self) -> bool {
-        match self {
-            ValueType::Slice | ValueType::Map | ValueType::Struct => true,
-            _ => false,
-        }
-    }
-}
-
 /// Instruction is 64 bit
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    32bit     |
 /// |  Opcode   |  <TypeA>  |  <TypeB>  |  <TypeC>  |   immediate  |

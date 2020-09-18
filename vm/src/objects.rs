@@ -600,8 +600,6 @@ pub struct ChannelVal {}
 pub enum BoxedVal {
     Nil,
     UpVal(UpValue),
-    Slice(Rc<SliceVal>),
-    Map(Rc<MapVal>),
     Struct(Rc<RefCell<StructVal>>),
     SliceMember(Rc<SliceVal>, OpIndex),
     StructField(Rc<RefCell<StructVal>>, OpIndex),
@@ -614,8 +612,6 @@ impl BoxedVal {
 
     pub fn new_var_pointer(val: GosValue) -> BoxedVal {
         match val {
-            GosValue::Slice(s) => BoxedVal::Slice(s),
-            GosValue::Map(m) => BoxedVal::Map(m),
             GosValue::Struct(s) => BoxedVal::Struct(s),
             _ => unreachable!(),
         }
