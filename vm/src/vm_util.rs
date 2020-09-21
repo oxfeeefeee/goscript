@@ -74,7 +74,7 @@ macro_rules! deref_value {
                     BoxedVal::Nil => unimplemented!(), //panic?
                     BoxedVal::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
                     BoxedVal::Struct(s) => GosValue::Struct(s),
-                    BoxedVal::SliceMember(s, index) => unimplemented!(),
+                    BoxedVal::SliceMember(s, index) => s.get(index as usize).unwrap(),
                     BoxedVal::StructField(s, index) => unimplemented!(),
                 }
             }

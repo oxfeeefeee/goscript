@@ -8,6 +8,7 @@ use super::value::*;
 use super::vm_util;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -295,7 +296,11 @@ impl Fiber {
                                     let val = stack.get_with_type(rhs_s_index, ValueType::Struct);
                                     s.replace(RefCell::clone(&*val.as_struct()).into_inner());
                                 }
-                                BoxedVal::SliceMember(s, index) => unimplemented!(),
+                                BoxedVal::SliceMember(s, index) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    s.set(index as usize, val);
+                                }
                                 BoxedVal::StructField(s, index) => unimplemented!(),
                             };
                         }
@@ -343,6 +348,14 @@ impl Fiber {
                         })
                     };
                     stack.push(GosValue::new_boxed(boxed));
+                }
+                Opcode::REF_SLICE => {
+                    let index = stack.pop_int();
+                    let slice = stack.pop_with_type(inst.t0());
+                    stack.push(GosValue::new_boxed(BoxedVal::new_slice_member(
+                        &slice,
+                        index.try_into().unwrap(),
+                    )));
                 }
                 Opcode::DEREF => {
                     let boxed = stack.pop_with_type(inst.t0());

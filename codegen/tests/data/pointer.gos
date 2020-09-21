@@ -2,20 +2,40 @@ package main
 
 type Node struct{
     i int
-    j int
+    j string
 }
 
-func main() {/*
-    var a = "aa"
-    var b = "bb"
-    var c = a + b
-    assert(c == "aabb")
-    var d = &c
-    var arr = []int{6,7}
-    *d = "ccc"
-    i, j := 8, arr[0]
-    var e = *d
-    assert(i == 8)
-    assert(j == 6)
-    assert(e == "ccc") */   
+func main() {
+    a := 1
+    b := &a
+    *b = 2
+    assert(2 == a)
+
+    f := func() *int {
+        return &a
+    }
+
+    d := f()
+    e := *d
+    assert(a == e)
+
+    var n, n2 Node
+    n.i = 1
+    n2.i = 222
+    m := &n
+    *m = n2
+    assert(n.i == 222)
+    assert(m.i == 222)
+    m.i = 333
+    m.j = "abc"
+    assert(n.i == 333)
+    assert(n.j == "abc")
+
+    sl1 := []int{1,2}
+    sl2 := sl1
+    assert(sl2[0] == 1) 
+    i := 3
+    psl := &sl2[i-3]
+    *psl = 3
+    assert(sl1[0] == 3) 
 }
