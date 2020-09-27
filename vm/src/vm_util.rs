@@ -74,7 +74,7 @@ macro_rules! deref_value {
                     BoxedVal::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
                     BoxedVal::Struct(s) => GosValue::Struct(s),
                     BoxedVal::SliceMember(s, index) => s.get(index as usize).unwrap(),
-                    BoxedVal::StructField(s, index) => unimplemented!(),
+                    BoxedVal::StructField(s, index) => s.borrow().fields[index as usize].clone(),
                 }
             }
             _ => unreachable!(),
@@ -252,6 +252,7 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
         GosValue::Struct(sval) => {
             match &ind {
                 GosValue::Int(i) => {
+                    dbg!(i, &sval.borrow().fields[*i as usize]);
                     sval.borrow().fields[*i as usize].clone()
                 }
                 _ => unreachable!(),

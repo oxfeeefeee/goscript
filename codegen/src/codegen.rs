@@ -273,7 +273,21 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         None,
                     );
                 }
-                Expr::Selector(_) => unimplemented!(),
+                Expr::Selector(sexpr) => {
+                    self.visit_expr(&sexpr.expr)?;
+                    let t0 = self
+                        .tlookup
+                        .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
+                    let name = &self.ast_objs.idents[sexpr.sel].name;
+                    let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
+                    current_func_mut!(self).emit_inst(
+                        Opcode::REF_STRUCT_FIELD,
+                        None,
+                        None,
+                        None,
+                        Some(i),
+                    );
+                }
                 _ => unimplemented!(),
             }
             return Ok(());

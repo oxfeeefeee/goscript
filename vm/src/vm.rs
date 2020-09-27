@@ -310,7 +310,11 @@ impl Fiber {
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.set(index as usize, val);
                                 }
-                                BoxedVal::StructField(s, index) => unimplemented!(),
+                                BoxedVal::StructField(s, index) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    s.borrow_mut().fields[index as usize] = val;
+                                }
                             };
                         }
                         _ => unreachable!(),
@@ -364,6 +368,13 @@ impl Fiber {
                     stack.push(GosValue::new_boxed(BoxedVal::new_slice_member(
                         &slice,
                         index.try_into().unwrap(),
+                    )));
+                }
+                Opcode::REF_STRUCT_FIELD => {
+                    let struct_ = stack.pop_with_type(ValueType::Struct);
+                    stack.push(GosValue::new_boxed(BoxedVal::new_struct_field(
+                        &struct_,
+                        inst.imm(),
                     )));
                 }
                 Opcode::DEREF => {
