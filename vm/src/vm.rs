@@ -246,6 +246,15 @@ impl Fiber {
                         _ => vm_util::load_field(&val, &ind, objs),
                     });
                 }
+                Opcode::BIND_METHOD => {
+                    let val = stack.pop_with_type(inst.t0());
+                    let func = *consts[inst.imm() as usize].as_function();
+                    stack.push(GosValue::Closure(Rc::new(ClosureVal::new(
+                        func,
+                        Some(val.copy_semantic(None)),
+                        None,
+                    ))));
+                }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
                     let (rhs_index, index) = inst.imm2();
                     let s_index = Stack::offset(stack.len(), index);
@@ -370,8 +379,8 @@ impl Fiber {
                     let next_func = &objs.functions[func_key];
                     // init return values
                     if next_func.ret_count > 0 {
-                        let meta_type = objs.metas[*next_func.meta.as_meta()].typ();
-                        let rs = &meta_type.sig_metadata().results;
+                        let meta = &objs.metas[*next_func.meta.as_meta()];
+                        let rs = &meta.sig_metadata().results;
                         let mut returns = rs
                             .iter()
                             .map(|x| objs.metas[*x.as_meta()].zero_val().clone())

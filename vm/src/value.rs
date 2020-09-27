@@ -236,7 +236,7 @@ impl GosValue {
 
     #[inline]
     pub fn meta_get_value_type(&self, metas: &MetadataObjs) -> ValueType {
-        metas[*self.as_meta()].get_value_type(metas)
+        MetadataVal::get_value_type(&self, metas)
     }
 
     #[inline]

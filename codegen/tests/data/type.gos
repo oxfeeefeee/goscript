@@ -1,11 +1,22 @@
 package main
 
-type S1 struct {i int}
+type S1 struct {i int; j int}
 
-func (s S1) Inc() int {
-    s.i = s.i + 1
+
+func (s *S1) Inc() int {
+    assert(s.i == 0)
+    s.i += 66
+    assert(s.i == 66)
     return s.i
 }
+
+func (s S1) Inc2() int {
+    assert(s.j == 0)
+    s.j += 1
+    assert(s.j == 1)
+    return s.j
+}
+
 
 type Add func(a int, b int) int
 
@@ -13,19 +24,16 @@ type Add func(a int, b int) int
 func main() {
     type S2 struct {i int}
 	var s1 S1
-    var s2 S2
+    //var s2 S2
+
+    s1.Inc()
+    s1.Inc2()
+    assert(s1.i == 66)
+    assert(s1.j == 0)
 
     var afunc Add = func(i int, j int) int { return i + j + 1}
+    d := afunc(s1.i, s1.j)
+    assert(d == 67)
 
-    s1.i = 1
-    s2.i = s1.i + 2
-
-    _, _ = 2, s2.i
-    var b int
-    b, s2.i = 8, 9
-    c := s2.i
-    d := afunc(b, c)
-    s1.i = d
-    _ = s1.Inc()
 }
 // 3, 8, 9

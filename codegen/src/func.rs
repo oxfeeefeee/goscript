@@ -82,6 +82,8 @@ pub trait FuncGen {
 
     fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType);
 
+    fn emit_bind_method(&mut self, imm: OpIndex, typ: ValueType);
+
     fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType);
 
     fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType);
@@ -236,6 +238,10 @@ impl FuncGen for FunctionVal {
 
     fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType) {
         self.emit_inst(Opcode::LOAD_FIELD_IMM, Some(typ), None, None, Some(imm));
+    }
+
+    fn emit_bind_method(&mut self, imm: OpIndex, typ: ValueType) {
+        self.emit_inst(Opcode::BIND_METHOD, Some(typ), None, None, Some(imm));
     }
 
     fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType) {

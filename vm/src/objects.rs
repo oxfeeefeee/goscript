@@ -553,15 +553,7 @@ pub struct StructVal {
     pub fields: Vec<GosValue>,
 }
 
-impl StructVal {
-    pub fn field_method_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
-        if let MetadataType::Struct(_, map) = metas[*self.meta.as_meta()].typ() {
-            map[name] as OpIndex
-        } else {
-            unreachable!()
-        }
-    }
-}
+impl StructVal {}
 
 // ----------------------------------------------------------------------------
 // InterfaceVal
@@ -569,9 +561,8 @@ impl StructVal {
 #[derive(Clone, Debug)]
 pub struct InterfaceVal {
     pub meta: GosValue,
-    pub obj: Option<GosValue>,      // the Named object behind the interface
-    pub obj_meta: Option<GosValue>, // the type of the named object
-    pub mapping: Vec<OpIndex>,      // mapping from interface's methods to object's methods
+    pub obj: Option<GosValue>, // the Named object behind the interface
+    pub mapping: Vec<OpIndex>, // mapping from interface's methods to object's methods
 }
 
 impl InterfaceVal {
@@ -579,7 +570,6 @@ impl InterfaceVal {
         InterfaceVal {
             meta: meta,
             obj: None,
-            obj_meta: None,
             mapping: vec![],
         }
     }
@@ -590,6 +580,17 @@ impl InterfaceVal {
 
 #[derive(Clone, Debug)]
 pub struct ChannelVal {}
+
+// ----------------------------------------------------------------------------
+// NamedVal
+#[derive(Clone, Debug)]
+pub struct NamedVal {
+    pub dark: bool,
+    pub meta: GosValue,
+    pub val: GosValue,
+}
+
+impl NamedVal {}
 
 // ----------------------------------------------------------------------------
 // BoxedVal
@@ -985,6 +986,21 @@ pub struct SigMetadata {
     pub variadic: Option<ValueType>,
 }
 
+impl SigMetadata {
+    pub fn boxed_recv(&self, metas: &MetadataObjs) -> bool {
+        self.recv.as_ref().map_or(false, |x| {
+            MetadataVal::get_value_type(&x, metas) == ValueType::Boxed
+        })
+    }
+}
+
+#[derive(Debug)]
+pub struct NamedMetadata {
+    pub underlying: GosValue,
+    pub methods: Vec<GosValue>,
+    pub mapping: HashMap<String, OpIndex>,
+}
+
 #[derive(Debug)]
 pub enum MetadataType {
     None,
@@ -995,33 +1011,7 @@ pub enum MetadataType {
     Struct(Vec<GosValue>, HashMap<String, OpIndex>),
     Channel(GosValue),
     Boxed(GosValue),
-    Named(GosValue, Vec<String>), //(base_type, methods)
-}
-
-impl MetadataType {
-    pub fn sig_metadata(&self) -> &SigMetadata {
-        match self {
-            MetadataType::Signature(stdata) => stdata,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn add_struct_member(&mut self, name: String, val: GosValue) {
-        match self {
-            MetadataType::Struct(members, mapping) => {
-                members.push(val);
-                mapping.insert(name, members.len() as OpIndex - 1);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn get_struct_member(&self, index: OpIndex) -> GosValue {
-        match self {
-            MetadataType::Struct(members, _) => members[index as usize].clone(),
-            _ => unreachable!(),
-        }
-    }
+    Named(NamedMetadata),
 }
 
 #[derive(Debug)]
@@ -1117,7 +1107,7 @@ impl MetadataVal {
             .collect();
         let struct_val = StructVal {
             dark: false,
-            meta: objs.zero_val.zero_val_mark.clone(),
+            meta: objs.zero_val.zero_val_mark.clone(), // placeholder
             fields: field_zeros,
         };
         let meta = MetadataVal {
@@ -1145,21 +1135,64 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
+    pub fn new_named(underlying: GosValue, objs: &mut VMObjects) -> GosValue {
+        let m = MetadataVal {
+            zero_val: objs.zero_val.zero_val_mark.clone(), // placeholder
+            typ: MetadataType::Named(NamedMetadata {
+                underlying: underlying,
+                methods: vec![],
+                mapping: HashMap::new(),
+            }),
+        };
+        GosValue::new_meta(m, &mut objs.metas)
+    }
+
+    #[inline]
     pub fn zero_val(&self) -> &GosValue {
         &self.zero_val
     }
 
+    #[inline]
     pub fn typ(&self) -> &MetadataType {
         &self.typ
     }
 
+    #[inline]
     pub fn typ_mut(&mut self) -> &mut MetadataType {
         &mut self.typ
     }
 
-    pub fn get_value_type(&self, metas: &MetadataObjs) -> ValueType {
+    #[inline]
+    pub fn sig_metadata(&self) -> &SigMetadata {
         match &self.typ {
-            MetadataType::None => match &self.zero_val {
+            MetadataType::Signature(stdata) => stdata,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn add_method(&mut self, name: String, val: GosValue) {
+        match &mut self.typ {
+            MetadataType::Named(nt) => {
+                nt.methods.push(val);
+                nt.mapping.insert(name, nt.methods.len() as OpIndex - 1);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_underlying<'a>(v: &GosValue, metas: &'a MetadataObjs) -> &'a MetadataVal {
+        let meta = &metas[*v.as_meta()];
+        match &meta.typ {
+            MetadataType::Named(nt) => &metas[*nt.underlying.as_meta()],
+            _ => meta,
+        }
+    }
+
+    #[inline]
+    pub fn get_value_type(v: &GosValue, metas: &MetadataObjs) -> ValueType {
+        let meta = &metas[*v.as_meta()];
+        match &meta.typ {
+            MetadataType::None => match &meta.zero_val {
                 GosValue::Bool(_) => ValueType::Bool,
                 GosValue::Int(_) => ValueType::Int,
                 GosValue::Float64(_) => ValueType::Float64,
@@ -1174,7 +1207,43 @@ impl MetadataVal {
             MetadataType::Struct(_, _) => ValueType::Struct,
             MetadataType::Channel(_) => ValueType::Channel,
             MetadataType::Boxed(_) => ValueType::Boxed,
-            MetadataType::Named(btype, _) => metas[*btype.as_meta()].get_value_type(metas),
+            MetadataType::Named(v) => MetadataVal::get_value_type(&v.underlying, metas),
+        }
+    }
+
+    #[inline]
+    pub fn get_method(v: &GosValue, index: OpIndex, metas: &MetadataObjs) -> GosValue {
+        match &metas[*v.as_meta()].typ {
+            MetadataType::Named(nt) => nt.methods[index as usize].clone(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn field_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
+        let v = if let MetadataType::Boxed(b) = metas[*v.as_meta()].typ() {
+            b
+        } else {
+            v
+        };
+        let v = if let MetadataType::Named(nt) = metas[*v.as_meta()].typ() {
+            &nt.underlying
+        } else {
+            v
+        };
+        if let MetadataType::Struct(_, map) = metas[*v.as_meta()].typ() {
+            map[name] as OpIndex
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
+        if let MetadataType::Named(t) = metas[*v.as_meta()].typ() {
+            t.mapping[name] as OpIndex
+        } else {
+            unreachable!()
         }
     }
 }

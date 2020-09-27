@@ -114,11 +114,32 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) -> Self::Result {
-        self.visit_expr(expr)?;
-        // todo: use index instead of string when Type Checker is in place
-        self.gen_push_ident_str(ident);
-        let (t0, _) = self.tlookup.get_selection_value_types(id);
-        current_func_mut!(self).emit_load_field(t0, ValueType::Str);
+        let (t0, t1) = self.tlookup.get_selection_value_types(id);
+        let t = self
+            .tlookup
+            .gen_type_meta_by_node_id(expr.id(), self.objects);
+        let name = &self.ast_objs.idents[*ident].name;
+        if t1 == ValueType::Closure {
+            let i = MetadataVal::method_index(&t, name, &self.objects.metas);
+            let method = MetadataVal::get_method(&t, i, &self.objects.metas);
+            let fkey = method.as_closure().func;
+            let boxed_recv = self.objects.metas[*self.objects.functions[fkey].meta.as_meta()]
+                .sig_metadata()
+                .boxed_recv(&self.objects.metas);
+            if boxed_recv {
+                // desugar
+                self.visit_expr_unary(expr, &Token::AND)?;
+            } else {
+                self.visit_expr(expr)?;
+            }
+            let func = current_func_mut!(self);
+            let mi = func.add_const(None, GosValue::Function(fkey));
+            func.emit_bind_method(mi.into(), t0);
+        } else {
+            self.visit_expr(expr)?;
+            let i = MetadataVal::field_index(&t, name, &self.objects.metas);
+            current_func_mut!(self).emit_load_field_imm(i, t0);
+        }
         Ok(())
     }
 
@@ -381,9 +402,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
-                    let typ = self
-                        .tlookup
-                        .gen_type_meta_by_node_id(ts.typ.id(), self.objects);
+                    let typ = self.tlookup.gen_def_type_meta(ts.name, self.objects);
                     self.current_func_add_const_def(ident_key.unwrap(), typ);
                 }
                 Spec::Value(vs) => match &gdecl.token {
@@ -422,12 +441,10 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let meta_key = *self.get_use_type_meta(&field.typ).as_meta();
             let key = match self.objects.metas[meta_key].typ() {
                 MetadataType::Boxed(b) => *b.as_meta(),
-                MetadataType::Struct(_, _) => meta_key,
+                MetadataType::Named(_) => meta_key,
                 _ => unreachable!(),
             };
-            self.objects.metas[key]
-                .typ_mut()
-                .add_struct_member(name.clone(), cls);
+            self.objects.metas[key].add_method(name.clone(), cls);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
@@ -899,12 +916,11 @@ impl<'a> CodeGen<'a> {
             types
         } else if values.len() == 0 {
             // define without values
-            let val = self.get_type_default(&typ.as_ref().unwrap())?;
+            let (val, t) = self.get_type_default(&typ.as_ref().unwrap());
             let mut types = Vec::with_capacity(lhs.len());
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                let t = val.get_type();
                 func.emit_load(i, t);
                 types.push(t);
             }
@@ -1037,8 +1053,7 @@ impl<'a> CodeGen<'a> {
         body: &BlockStmt,
     ) -> Result<FunctionKey, ()> {
         let typ = &self.ast_objs.ftypes[fkey];
-        let meta_type = self.objects.metas[*fmeta.as_meta()].typ();
-        let sig_metadata = meta_type.sig_metadata();
+        let sig_metadata = &self.objects.metas[*fmeta.as_meta()].sig_metadata();
         let fval = FunctionVal::new(
             self.pkg_key.clone(),
             fmeta.clone(),
@@ -1107,10 +1122,12 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn get_type_default(&mut self, expr: &Expr) -> Result<GosValue, ()> {
+    fn get_type_default(&mut self, expr: &Expr) -> (GosValue, ValueType) {
         let meta = self.get_use_type_meta(expr);
-        let meta_val = &self.objects.metas[*meta.as_meta()];
-        Ok(meta_val.zero_val().clone())
+        let t = MetadataVal::get_value_type(&meta, &self.objects.metas);
+        let meta_val = MetadataVal::get_underlying(&meta, &self.objects.metas);
+        let zero_val = meta_val.zero_val().clone();
+        (zero_val, t)
     }
 
     fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> Result<GosValue, ()> {
@@ -1148,7 +1165,7 @@ impl<'a> CodeGen<'a> {
                         }
                     })
                     .collect::<Result<Vec<(GosValue, GosValue)>, ()>>()?;
-                let val = self.get_type_default(&map.val)?;
+                let (val, _) = self.get_type_default(&map.val);
                 let map = GosValue::new_map(val, &mut self.objects.maps);
                 for kv in key_vals.iter() {
                     map.as_map().insert(kv.0.clone(), kv.1.clone());

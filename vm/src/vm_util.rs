@@ -1,8 +1,9 @@
 //#![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::instruction::*;
-use super::value::{VMObjects, GosValue, ClosureVal};
+use super::value::{VMObjects, GosValue, ClosureVal, MetadataVal};
 use std::rc::Rc;
+use super::objects::FunctionKey;
 use super::stack::Stack;
 
 macro_rules! upframe {
@@ -252,23 +253,8 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
     match val {
         GosValue::Struct(sval) => {
             match &ind {
-                GosValue::Int(i) => sval.borrow().fields[*i as usize].clone(),
-                GosValue::Str(s) => {
-                    let struct_ref = sval.borrow();
-                    let index = struct_ref.field_method_index(s.as_str(), &objs.metas);
-                    if index < struct_ref.fields.len() as OpIndex {
-                        struct_ref.fields[index as usize].clone()
-                    } else {
-                        GosValue::Closure(
-                            Rc::new(ClosureVal::new(
-                                objs.metas[*sval.borrow().meta.as_meta()].typ()
-                                    .get_struct_member(index)
-                                    .as_closure().func,
-                                Some(val.copy_semantic(None)),
-                                None,
-                            )),
-                        )
-                    }
+                GosValue::Int(i) => {
+                    sval.borrow().fields[*i as usize].clone()
                 }
                 _ => unreachable!(),
             }
@@ -326,7 +312,7 @@ pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
                     stack.store_val(target, r_index, t, &objs.zero_val);
                 }
                 GosValue::Str(sval) => {
-                    let i = s.borrow().field_method_index(sval.as_str(), &objs.metas);
+                    let i = MetadataVal::field_index(&s.borrow().meta, sval.as_str(), &objs.metas);
                     let target = &mut s.borrow_mut().fields[i as usize];
                     stack.store_val(target, r_index, t, &objs.zero_val);
                 }

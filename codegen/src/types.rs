@@ -206,8 +206,9 @@ impl<'a> TypeLookup<'a> {
                 MetadataVal::new_boxed(inner, vm_objs)
             }
             Type::Named(detail) => {
-                // this is incorrect
-                self.type_from_tc(detail.underlying(), vm_objs)
+                dbg!("Named");
+                let underlying = self.type_from_tc(detail.underlying(), vm_objs);
+                MetadataVal::new_named(underlying, vm_objs)
             }
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
