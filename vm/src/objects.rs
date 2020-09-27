@@ -611,6 +611,7 @@ impl BoxedVal {
         BoxedVal::UpVal(UpValue::new(d))
     }
 
+    // supports only Struct for now
     pub fn new_var_pointer(val: GosValue) -> BoxedVal {
         match val {
             GosValue::Struct(s) => BoxedVal::Struct(s),

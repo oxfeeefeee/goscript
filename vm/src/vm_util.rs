@@ -1,9 +1,7 @@
 //#![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::instruction::*;
-use super::value::{VMObjects, GosValue, ClosureVal, MetadataVal};
-use std::rc::Rc;
-use super::objects::FunctionKey;
+use super::value::{VMObjects, GosValue, MetadataVal};
 use super::stack::Stack;
 
 macro_rules! upframe {

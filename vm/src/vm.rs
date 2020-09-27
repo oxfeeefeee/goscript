@@ -358,7 +358,7 @@ impl Fiber {
                     };
                     stack.push(GosValue::new_boxed(boxed));
                 }
-                Opcode::REF_SLICE => {
+                Opcode::REF_SLICE_MEMBER => {
                     let index = stack.pop_int();
                     let slice = stack.pop_with_type(inst.t0());
                     stack.push(GosValue::new_boxed(BoxedVal::new_slice_member(

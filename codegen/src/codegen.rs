@@ -266,7 +266,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     self.visit_expr(&iexpr.expr)?;
                     self.visit_expr(&iexpr.index)?;
                     current_func_mut!(self).emit_inst(
-                        Opcode::REF_SLICE,
+                        Opcode::REF_SLICE_MEMBER,
                         Some(t0),
                         Some(t1),
                         None,
