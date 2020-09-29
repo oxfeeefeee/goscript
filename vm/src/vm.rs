@@ -180,7 +180,7 @@ impl Fiber {
                 Opcode::PUSH_TRUE => stack.push_bool(true),
                 Opcode::PUSH_IMM => stack.push_int(inst.imm() as isize),
                 Opcode::POP => {
-                    stack.pop_discard();
+                    stack.pop_discard_n(inst.imm() as usize);
                 }
                 Opcode::LOAD_LOCAL => {
                     let index = Stack::offset(stack_base, inst.imm());
@@ -400,6 +400,7 @@ impl Fiber {
                     }
                     // push receiver on stack as the first parameter
                     if let Some(r) = next_frame.receiver() {
+                        // don't call copy_semantic because BIND_METHOD did it already
                         stack.push(r.clone());
                     }
                     self.next_frame = Some(next_frame);

@@ -252,7 +252,6 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
         GosValue::Struct(sval) => {
             match &ind {
                 GosValue::Int(i) => {
-                    dbg!(i, &sval.borrow().fields[*i as usize]);
                     sval.borrow().fields[*i as usize].clone()
                 }
                 _ => unreachable!(),

@@ -2,8 +2,11 @@
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
-use goscript_types::{BasicType, ConstValue, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey};
+use goscript_types::{
+    BasicType, ConstValue, ObjKey, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
+};
 use goscript_vm::instruction::{OpIndex, ValueType};
+use goscript_vm::objects::OrderedMembers;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 
@@ -145,7 +148,6 @@ impl<'a> TypeLookup<'a> {
     }
 
     // get vm_type from tc_type
-    // todo: cache result
     fn type_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosValue {
         match &self.tc_objs.types[typ] {
             Type::Basic(_) => self.const_value_or_type_from_tc(typ, None, vm_objs),
@@ -159,15 +161,21 @@ impl<'a> TypeLookup<'a> {
                 MetadataVal::new_map(ktype, vtype, vm_objs)
             }
             Type::Struct(detail) => {
-                let mut fields = Vec::new();
+                let mut vec = Vec::new();
                 let mut map = HashMap::<String, OpIndex>::new();
                 for (i, f) in detail.fields().iter().enumerate() {
                     let field = &self.tc_objs.lobjs[*f];
+                    dbg!(&field);
                     let f_type = self.type_from_tc(field.typ().unwrap(), vm_objs);
-                    fields.push(f_type);
+                    vec.push(f_type);
                     map.insert(field.name().clone(), i as OpIndex);
                 }
-                MetadataVal::new_struct(fields, map, vm_objs)
+                MetadataVal::new_struct(OrderedMembers::new(vec, map), vm_objs)
+            }
+            Type::Interface(detail) => {
+                let methods = detail.all_methods();
+                let fields = self.get_ordered_members(methods.as_ref().unwrap(), vm_objs);
+                MetadataVal::new_interface(fields, vm_objs)
             }
             Type::Signature(detail) => {
                 let mut convert = |tuple_key| {
@@ -181,10 +189,14 @@ impl<'a> TypeLookup<'a> {
                 };
                 let params = convert(detail.params());
                 let results = convert(detail.results());
-                let recv = detail.recv().map(|x| {
-                    let recv_tc_type = self.tc_objs.lobjs[x].typ().unwrap();
-                    self.type_from_tc(recv_tc_type, vm_objs)
-                });
+                let mut recv = None;
+                if let Some(r) = detail.recv() {
+                    let recv_tc_type = self.tc_objs.lobjs[*r].typ().unwrap();
+                    // to avoid infinite recursion
+                    if !self.tc_objs.types[recv_tc_type].is_interface(self.tc_objs) {
+                        recv = Some(self.type_from_tc(recv_tc_type, vm_objs));
+                    }
+                }
                 let variadic = if detail.variadic() {
                     let slice = self.tc_objs.types[detail.params()]
                         .try_as_tuple()
@@ -206,7 +218,6 @@ impl<'a> TypeLookup<'a> {
                 MetadataVal::new_boxed(inner, vm_objs)
             }
             Type::Named(detail) => {
-                dbg!("Named");
                 let underlying = self.type_from_tc(detail.underlying(), vm_objs);
                 MetadataVal::new_named(underlying, vm_objs)
             }
@@ -251,6 +262,7 @@ impl<'a> TypeLookup<'a> {
             Type::Slice(_) => ValueType::Slice,
             Type::Map(_) => ValueType::Map,
             Type::Struct(_) => ValueType::Struct,
+            Type::Interface(_) => ValueType::Interface,
             Type::Signature(_) => ValueType::Closure,
             Type::Pointer(_) => ValueType::Boxed,
             Type::Named(detail) => self.value_type_from_tc(detail.underlying()),
@@ -297,5 +309,21 @@ impl<'a> TypeLookup<'a> {
                 .collect(),
             _ => unreachable!(),
         }
+    }
+
+    fn get_ordered_members(
+        &mut self,
+        fields: &Vec<ObjKey>,
+        vm_objs: &mut VMObjects,
+    ) -> OrderedMembers {
+        let mut vec = Vec::new();
+        let mut map = HashMap::<String, OpIndex>::new();
+        for (i, f) in fields.iter().enumerate() {
+            let field = &self.tc_objs.lobjs[*f];
+            let f_type = self.type_from_tc(field.typ().unwrap(), vm_objs);
+            vec.push(f_type);
+            map.insert(field.name().clone(), i as OpIndex);
+        }
+        OrderedMembers::new(vec, map)
     }
 }

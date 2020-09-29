@@ -455,7 +455,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let meta_key = *self.get_use_type_meta(&field.typ).as_meta();
             let key = match self.objects.metas[meta_key].typ() {
                 MetadataType::Boxed(b) => *b.as_meta(),
-                MetadataType::Named(_) => meta_key,
+                MetadataType::Named(_, _) => meta_key,
                 _ => unreachable!(),
             };
             self.objects.metas[key].add_method(name.clone(), cls);
@@ -513,7 +513,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 None,
                 t,
             );
-            f.emit_pop(t);
+            f.emit_pop(1);
         }
         current_func_mut!(self).emit_return();
         Ok(())
@@ -992,22 +992,21 @@ impl<'a> CodeGen<'a> {
         }
 
         // pop rhs
-        for t in types.iter().rev() {
-            func.emit_pop(*t);
-        }
+        let mut total_pop = types.iter().count() as OpIndex;
         // pop lhs
         for i in lhs.iter().rev() {
             match i {
                 LeftHandSide::Primitive(_) => {}
                 LeftHandSide::IndexSelExpr(info) => {
-                    if let Some(t) = info.t2 {
-                        func.emit_pop(t);
+                    if let Some(_t) = info.t2 {
+                        total_pop += 1;
                     }
-                    func.emit_pop(info.t1);
+                    total_pop += 1;
                 }
-                LeftHandSide::Deref(_) => func.emit_pop(ValueType::Boxed),
+                LeftHandSide::Deref(_) => total_pop += 1,
             }
         }
+        func.emit_pop(total_pop);
         Ok(range_marker)
     }
 
@@ -1031,7 +1030,7 @@ impl<'a> CodeGen<'a> {
                 // why no magic number?
                 // local index is resolved in gen_assign
                 func.emit_store(left, -1, Some(op), typ);
-                func.emit_pop(typ);
+                func.emit_pop(1);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
@@ -1042,18 +1041,17 @@ impl<'a> CodeGen<'a> {
                     Some(op),
                     typ,
                 );
-                func.emit_pop(typ);
-                if let Some(t) = info.t2 {
-                    func.emit_pop(t);
+                let mut total_pop = 2;
+                if let Some(_) = info.t2 {
+                    total_pop += 1;
                 }
-                func.emit_pop(info.t1);
+                func.emit_pop(total_pop);
             }
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
                 //  [... target, value]
                 func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), typ);
-                func.emit_pop(typ);
-                func.emit_pop(ValueType::Boxed);
+                func.emit_pop(2);
             }
         }
         Ok(())

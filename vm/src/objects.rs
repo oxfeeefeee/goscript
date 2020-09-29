@@ -133,6 +133,7 @@ impl ZeroVal {
             map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
             iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceVal::new(
                 mark.clone(),
+                None,
             )))),
             chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal {}))),
             pkg_zero_val: GosValue::Package(null_key!()),
@@ -561,17 +562,21 @@ impl StructVal {}
 #[derive(Clone, Debug)]
 pub struct InterfaceVal {
     pub meta: GosValue,
-    pub obj: Option<GosValue>, // the Named object behind the interface
-    pub mapping: Vec<OpIndex>, // mapping from interface's methods to object's methods
+    // the Named object behind the interface
+    // mapping from interface's methods to object's methods
+    pub underlying: Option<(GosValue, Rc<Vec<OpIndex>>)>,
 }
 
 impl InterfaceVal {
-    pub fn new(meta: GosValue) -> InterfaceVal {
+    pub fn new(meta: GosValue, underlying: Option<(GosValue, Rc<Vec<OpIndex>>)>) -> InterfaceVal {
         InterfaceVal {
             meta: meta,
-            obj: None,
-            mapping: vec![],
+            underlying: underlying,
         }
+    }
+
+    pub fn set_underlying(&mut self, named: GosValue, mapping: Rc<Vec<OpIndex>>) {
+        self.underlying = Some((named, mapping));
     }
 }
 
@@ -580,17 +585,6 @@ impl InterfaceVal {
 
 #[derive(Clone, Debug)]
 pub struct ChannelVal {}
-
-// ----------------------------------------------------------------------------
-// NamedVal
-#[derive(Clone, Debug)]
-pub struct NamedVal {
-    pub dark: bool,
-    pub meta: GosValue,
-    pub val: GosValue,
-}
-
-impl NamedVal {}
 
 // ----------------------------------------------------------------------------
 // BoxedVal
@@ -996,10 +990,26 @@ impl SigMetadata {
 }
 
 #[derive(Debug)]
-pub struct NamedMetadata {
-    pub underlying: GosValue,
-    pub methods: Vec<GosValue>,
+pub struct OrderedMembers {
+    pub members: Vec<GosValue>,
     pub mapping: HashMap<String, OpIndex>,
+}
+
+impl OrderedMembers {
+    pub fn new(members: Vec<GosValue>, mapping: HashMap<String, OpIndex>) -> OrderedMembers {
+        OrderedMembers {
+            members: members,
+            mapping: mapping,
+        }
+    }
+
+    pub fn iface_mapping(&self, named_obj: &OrderedMembers) -> Vec<OpIndex> {
+        let mut result = vec![0; self.members.len()];
+        for (n, i) in self.mapping.iter() {
+            result[*i as usize] = named_obj.mapping[n];
+        }
+        result
+    }
 }
 
 #[derive(Debug)]
@@ -1008,11 +1018,11 @@ pub enum MetadataType {
     Signature(SigMetadata),
     Slice(GosValue),
     Map(GosValue, GosValue),
-    Interface(Vec<GosValue>),
-    Struct(Vec<GosValue>, HashMap<String, OpIndex>),
+    Interface(OrderedMembers),
+    Struct(OrderedMembers),
     Channel(GosValue),
     Boxed(GosValue),
-    Named(NamedMetadata),
+    Named(OrderedMembers, GosValue),
 }
 
 #[derive(Debug)]
@@ -1089,7 +1099,7 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
-    pub fn new_interface(fields: Vec<GosValue>, objs: &mut VMObjects) -> GosValue {
+    pub fn new_interface(fields: OrderedMembers, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: objs.zero_val.iface_zero_val.clone(),
             typ: MetadataType::Interface(fields),
@@ -1097,12 +1107,9 @@ impl MetadataVal {
         GosValue::new_meta(m, &mut objs.metas)
     }
 
-    pub fn new_struct(
-        fields: Vec<GosValue>,
-        fields_index: HashMap<String, OpIndex>,
-        objs: &mut VMObjects,
-    ) -> GosValue {
+    pub fn new_struct(fields: OrderedMembers, objs: &mut VMObjects) -> GosValue {
         let field_zeros: Vec<GosValue> = fields
+            .members
             .iter()
             .map(|x| objs.metas[*x.as_meta()].zero_val().clone())
             .collect();
@@ -1113,7 +1120,7 @@ impl MetadataVal {
         };
         let meta = MetadataVal {
             zero_val: GosValue::Struct(Rc::new(RefCell::new(struct_val))),
-            typ: MetadataType::Struct(fields, fields_index),
+            typ: MetadataType::Struct(fields),
         };
         let key = objs.metas.insert(meta);
         objs.metas[key].zero_val().as_struct().borrow_mut().meta = GosValue::Metadata(key);
@@ -1139,11 +1146,7 @@ impl MetadataVal {
     pub fn new_named(underlying: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: objs.zero_val.zero_val_mark.clone(), // placeholder
-            typ: MetadataType::Named(NamedMetadata {
-                underlying: underlying,
-                methods: vec![],
-                mapping: HashMap::new(),
-            }),
+            typ: MetadataType::Named(OrderedMembers::new(vec![], HashMap::new()), underlying),
         };
         GosValue::new_meta(m, &mut objs.metas)
     }
@@ -1173,9 +1176,9 @@ impl MetadataVal {
 
     pub fn add_method(&mut self, name: String, val: GosValue) {
         match &mut self.typ {
-            MetadataType::Named(nt) => {
-                nt.methods.push(val);
-                nt.mapping.insert(name, nt.methods.len() as OpIndex - 1);
+            MetadataType::Named(m, _) => {
+                m.members.push(val);
+                m.mapping.insert(name, m.members.len() as OpIndex - 1);
             }
             _ => unreachable!(),
         }
@@ -1184,7 +1187,7 @@ impl MetadataVal {
     pub fn get_underlying<'a>(v: &GosValue, metas: &'a MetadataObjs) -> &'a MetadataVal {
         let meta = &metas[*v.as_meta()];
         match &meta.typ {
-            MetadataType::Named(nt) => &metas[*nt.underlying.as_meta()],
+            MetadataType::Named(_, underlying) => &metas[*underlying.as_meta()],
             _ => meta,
         }
     }
@@ -1205,17 +1208,17 @@ impl MetadataVal {
             MetadataType::Slice(_) => ValueType::Slice,
             MetadataType::Map(_, _) => ValueType::Map,
             MetadataType::Interface(_) => ValueType::Interface,
-            MetadataType::Struct(_, _) => ValueType::Struct,
+            MetadataType::Struct(_) => ValueType::Struct,
             MetadataType::Channel(_) => ValueType::Channel,
             MetadataType::Boxed(_) => ValueType::Boxed,
-            MetadataType::Named(v) => MetadataVal::get_value_type(&v.underlying, metas),
+            MetadataType::Named(_, u) => MetadataVal::get_value_type(u, metas),
         }
     }
 
     #[inline]
     pub fn get_method(v: &GosValue, index: OpIndex, metas: &MetadataObjs) -> GosValue {
         match &metas[*v.as_meta()].typ {
-            MetadataType::Named(nt) => nt.methods[index as usize].clone(),
+            MetadataType::Named(m, _) => m.members[index as usize].clone(),
             _ => unreachable!(),
         }
     }
@@ -1227,13 +1230,13 @@ impl MetadataVal {
         } else {
             v
         };
-        let v = if let MetadataType::Named(nt) = metas[*v.as_meta()].typ() {
-            &nt.underlying
+        let v = if let MetadataType::Named(_, u) = metas[*v.as_meta()].typ() {
+            u
         } else {
             v
         };
-        if let MetadataType::Struct(_, map) = metas[*v.as_meta()].typ() {
-            map[name] as OpIndex
+        if let MetadataType::Struct(m) = metas[*v.as_meta()].typ() {
+            m.mapping[name] as OpIndex
         } else {
             unreachable!()
         }
@@ -1241,8 +1244,8 @@ impl MetadataVal {
 
     #[inline]
     pub fn method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
-        if let MetadataType::Named(t) = metas[*v.as_meta()].typ() {
-            t.mapping[name] as OpIndex
+        if let MetadataType::Named(m, _) = metas[*v.as_meta()].typ() {
+            m.mapping[name] as OpIndex
         } else {
             unreachable!()
         }

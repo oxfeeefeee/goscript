@@ -93,6 +93,11 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pop_discard_n(&mut self, n: usize) {
+        self.cursor -= n;
+    }
+
+    #[inline]
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         self.cursor -= 1;
         if t <= COPYABLE_END {
@@ -183,7 +188,6 @@ impl Stack {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
             *self.get_rc_mut(li) = self.get_rc(ri).copy_semantic(Some((zero, t)));
-            //self.set_with_type(li, self.inner[ri].copy_semantic(t, zero), t);
         }
     }
 

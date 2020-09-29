@@ -76,7 +76,7 @@ pub trait FuncGen {
 
     fn emit_import(&mut self, index: OpIndex);
 
-    fn emit_pop(&mut self, typ: ValueType);
+    fn emit_pop(&mut self, count: OpIndex);
 
     fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType);
 
@@ -228,8 +228,8 @@ impl FuncGen for FunctionVal {
         self.code.append(&mut cd);
     }
 
-    fn emit_pop(&mut self, typ: ValueType) {
-        self.emit_inst(Opcode::POP, Some(typ), None, None, None);
+    fn emit_pop(&mut self, count: OpIndex) {
+        self.emit_inst(Opcode::POP, None, None, None, Some(count));
     }
 
     fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType) {

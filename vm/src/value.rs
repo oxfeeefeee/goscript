@@ -147,12 +147,14 @@ impl GosValue {
         GosValue::Closure(Rc::new(val))
     }
 
+    /*
     #[inline]
     pub fn new_iface(meta: GosValue, ifaces: &mut InterfaceObjs) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceVal::new(meta)));
         ifaces.push(Rc::downgrade(&val));
         GosValue::Interface(val)
     }
+    */
 
     #[inline]
     pub fn new_meta(t: MetadataVal, metas: &mut MetadataObjs) -> GosValue {
