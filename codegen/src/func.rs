@@ -62,7 +62,7 @@ pub enum LeftHandSide {
 }
 
 pub trait FuncGen {
-    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()>;
+    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize;
 
     fn emit_load(&mut self, index: EntIndex, typ: ValueType);
 
@@ -102,9 +102,8 @@ pub trait FuncGen {
 }
 
 impl FuncGen for FunctionVal {
-    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> Result<usize, ()> {
-        let re = fl
-            .list
+    fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize {
+        fl.list
             .iter()
             .map(|f| {
                 let names = &o.fields[*f].names;
@@ -121,8 +120,7 @@ impl FuncGen for FunctionVal {
                         .count()
                 }
             })
-            .sum();
-        Ok(re)
+            .sum()
     }
 
     fn emit_load(&mut self, index: EntIndex, typ: ValueType) {

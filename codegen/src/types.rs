@@ -30,10 +30,10 @@ impl<'a> TypeLookup<'a> {
         typ_val.get_const_val()
     }
 
-    pub fn get_const_value(&mut self, id: NodeId, objects: &mut VMObjects) -> Result<GosValue, ()> {
+    pub fn get_const_value(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
-        Ok(self.const_value(typ_val.typ, const_val, objects))
+        self.const_value(typ_val.typ, const_val, objects)
     }
 
     pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {

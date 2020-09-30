@@ -63,57 +63,53 @@ pub struct CodeGen<'a> {
 }
 
 impl<'a> ExprVisitor for CodeGen<'a> {
-    type Result = Result<(), ()>;
+    type Result = ();
 
-    fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
+    fn visit_expr(&mut self, expr: &Expr) {
         walk_expr(self, expr)
     }
 
-    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
-        let index = self.resolve_ident(ident)?;
+    fn visit_expr_ident(&mut self, ident: &IdentKey) {
+        let index = self.resolve_ident(ident);
         let t = self.tlookup.get_use_value_type(*ident);
         current_func_mut!(self).emit_load(index, t);
-        Ok(())
     }
 
-    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) -> Self::Result {
+    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
         unreachable!();
     }
 
-    fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) -> Self::Result {
-        let val = self.tlookup.get_const_value(id, self.objects)?;
+    fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) {
+        let val = self.tlookup.get_const_value(id, self.objects);
         let func = current_func_mut!(self);
         let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
-        Ok(())
     }
 
     /// Add function as a const and then generate a closure of it
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) -> Self::Result {
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
         let vm_ftype = self.tlookup.gen_type_meta_by_node_id(id, self.objects);
-        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body)?;
+        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
         func.emit_load(i, ValueType::Function);
         func.emit_new(ValueType::Function);
-        Ok(())
     }
 
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
-        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit)?;
+    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
+        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
         let func = current_func_mut!(self);
         let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
-        Ok(())
     }
 
-    fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result {
+    fn visit_expr_paren(&mut self, expr: &Expr) {
         self.visit_expr(expr)
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) -> Self::Result {
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
         let (t0, t1) = self.tlookup.get_selection_value_types(id);
         let t = self
             .tlookup
@@ -128,35 +124,33 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 .boxed_recv(&self.objects.metas);
             if boxed_recv {
                 // desugar
-                self.visit_expr_unary(expr, &Token::AND)?;
+                self.visit_expr_unary(expr, &Token::AND);
             } else {
-                self.visit_expr(expr)?;
+                self.visit_expr(expr);
             }
             let func = current_func_mut!(self);
             let mi = func.add_const(None, GosValue::Function(fkey));
             func.emit_bind_method(mi.into(), t0);
         } else {
-            self.visit_expr(expr)?;
+            self.visit_expr(expr);
             let i = MetadataVal::field_index(&t, name, &self.objects.metas);
             current_func_mut!(self).emit_load_field_imm(i, t0);
         }
-        Ok(())
     }
 
-    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
+    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) {
         let t0 = self.tlookup.get_expr_value_type(expr);
         let t1 = self.tlookup.get_expr_value_type(index);
-        self.visit_expr(expr)?;
+        self.visit_expr(expr);
         if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
             let (ival, _) = const_val.to_int().int_as_i64();
             if let Ok(i) = OpIndex::try_from(ival) {
                 current_func_mut!(self).emit_load_index_imm(i, t0);
-                return Ok(());
+                return;
             }
         }
-        self.visit_expr(index)?;
+        self.visit_expr(index);
         current_func_mut!(self).emit_load_index(t0, t1);
-        Ok(())
     }
 
     fn visit_expr_slice(
@@ -166,31 +160,30 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         high: &Option<Expr>,
         max: &Option<Expr>,
     ) -> Self::Result {
-        self.visit_expr(expr)?;
+        self.visit_expr(expr);
         let t = self.tlookup.get_expr_value_type(expr);
         match low {
             None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM),
-            Some(e) => self.visit_expr(e)?,
+            Some(e) => self.visit_expr(e),
         }
         match high {
             None => current_func_mut!(self).emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1)),
-            Some(e) => self.visit_expr(e)?,
+            Some(e) => self.visit_expr(e),
         }
         match max {
             None => current_func_mut!(self).emit_code_with_type(Opcode::SLICE, t),
             Some(e) => {
-                self.visit_expr(e)?;
+                self.visit_expr(e);
                 current_func_mut!(self).emit_code_with_type(Opcode::SLICE_FULL, t);
             }
         }
-        Ok(())
     }
 
-    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) -> Self::Result {
+    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) {
         unimplemented!();
     }
 
-    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) -> Self::Result {
+    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) {
         // check if this is a built in function first
         if let Expr::Ident(ikey) = func {
             let ident = self.ast_objs.idents[*ikey].clone();
@@ -214,40 +207,34 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         (None, None)
                     };
                     func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
-                    Ok(())
                 } else {
-                    Err(())
+                    unreachable!()
                 };
             }
         }
 
         // normal goscript function
-        self.visit_expr(func)?;
+        self.visit_expr(func);
         current_func_mut!(self).emit_pre_call();
-        let _ = params
-            .iter()
-            .map(|e| -> Self::Result { self.visit_expr(e) })
-            .count();
+        let _ = params.iter().map(|e| self.visit_expr(e)).count();
         // do not pack params if there is ellipsis
         current_func_mut!(self).emit_call(ellipsis);
-        Ok(())
     }
 
-    fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result {
-        self.visit_expr(expr)?;
+    fn visit_expr_star(&mut self, expr: &Expr) {
+        self.visit_expr(expr);
         let t = self.tlookup.get_expr_value_type(expr);
         //todo: could this be a pointer type?
         let code = Opcode::DEREF;
         current_func_mut!(self).emit_code_with_type(code, t);
-        Ok(())
     }
 
-    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
+    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) {
         let t = self.tlookup.get_expr_value_type(expr);
         if op == &Token::AND {
             match expr {
                 Expr::Ident(ident) => {
-                    let index = self.resolve_ident(ident)?;
+                    let index = self.resolve_ident(ident);
                     match index {
                         EntIndex::LocalVar(i) => {
                             let func = current_func_mut!(self);
@@ -263,8 +250,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 Expr::Index(iexpr) => {
                     let t0 = self.tlookup.get_expr_value_type(&iexpr.expr);
                     let t1 = self.tlookup.get_expr_value_type(&iexpr.index);
-                    self.visit_expr(&iexpr.expr)?;
-                    self.visit_expr(&iexpr.index)?;
+                    self.visit_expr(&iexpr.expr);
+                    self.visit_expr(&iexpr.index);
                     current_func_mut!(self).emit_inst(
                         Opcode::REF_SLICE_MEMBER,
                         Some(t0),
@@ -274,7 +261,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     );
                 }
                 Expr::Selector(sexpr) => {
-                    self.visit_expr(&sexpr.expr)?;
+                    self.visit_expr(&sexpr.expr);
                     let t0 = self
                         .tlookup
                         .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
@@ -290,10 +277,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 }
                 _ => unimplemented!(),
             }
-            return Ok(());
+            return;
         }
 
-        self.visit_expr(expr)?;
+        self.visit_expr(expr);
         let code = match op {
             Token::ADD => Opcode::UNARY_ADD,
             Token::SUB => Opcode::UNARY_SUB,
@@ -301,11 +288,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             _ => unreachable!(),
         };
         current_func_mut!(self).emit_code_with_type(code, t);
-        Ok(())
     }
 
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
-        self.visit_expr(left)?;
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) {
+        self.visit_expr(left);
         let t = self.tlookup.get_expr_value_type(left);
         let code = match op {
             Token::ADD => Opcode::ADD,
@@ -344,7 +330,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
             _ => None,
         };
-        self.visit_expr(right)?;
+        self.visit_expr(right);
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::JUMP, None, None, None, Some(1));
@@ -354,14 +340,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         } else {
             current_func_mut!(self).emit_code_with_type(code, t);
         }
-        Ok(())
     }
 
-    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) -> Self::Result {
+    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) {
         unimplemented!();
     }
 
-    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) -> Self::Result {
+    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
         let val = self
             .tlookup
             .gen_type_meta_by_node_id(arr.id(), self.objects);
@@ -369,46 +354,45 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let t = val.get_type();
         let i = func.add_const(None, val);
         func.emit_load(i, t);
-        Ok(())
     }
 
-    fn visit_expr_struct_type(&mut self, _s: &StructType) -> Self::Result {
+    fn visit_expr_struct_type(&mut self, _s: &StructType) {
         unimplemented!();
     }
 
-    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) -> Self::Result {
+    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) {
         unimplemented!();
     }
 
-    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) -> Self::Result {
+    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) {
         unimplemented!();
     }
 
-    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) -> Self::Result {
+    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) {
         unimplemented!();
     }
 
-    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) -> Self::Result {
+    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) {
         unimplemented!();
     }
 
-    fn visit_bad_expr(&mut self, _e: &BadExpr) -> Self::Result {
+    fn visit_bad_expr(&mut self, _e: &BadExpr) {
         unreachable!();
     }
 }
 
 impl<'a> StmtVisitor for CodeGen<'a> {
-    type Result = Result<(), ()>;
+    type Result = ();
 
-    fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Result {
+    fn visit_stmt(&mut self, stmt: &Stmt) {
         walk_stmt(self, stmt)
     }
 
-    fn visit_decl(&mut self, decl: &Decl) -> Self::Result {
+    fn visit_decl(&mut self, decl: &Decl) {
         walk_decl(self, decl)
     }
 
-    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) -> Self::Result {
+    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) {
         for s in gdecl.specs.iter() {
             let spec = &self.ast_objs.specs[*s];
             match spec {
@@ -424,19 +408,18 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                         let lhs = vs
                             .names
                             .iter()
-                            .map(|n| -> Result<LeftHandSide, ()> {
-                                let index = self.add_local_or_resolve_ident(n, true)?;
-                                Ok(LeftHandSide::Primitive(index))
+                            .map(|n| -> LeftHandSide {
+                                let index = self.add_local_or_resolve_ident(n, true);
+                                LeftHandSide::Primitive(index)
                             })
-                            .collect::<Result<Vec<LeftHandSide>, ()>>()?;
-                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None)?;
+                            .collect::<Vec<LeftHandSide>>();
+                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
                     }
-                    Token::CONST => self.gen_def_const(&vs.names, &vs.values)?,
+                    Token::CONST => self.gen_def_const(&vs.names, &vs.values),
                     _ => unreachable!(),
                 },
             }
         }
-        Ok(())
     }
 
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
@@ -446,7 +429,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
         let vm_ftype = self.tlookup.gen_def_type_meta(decl.name, self.objects);
         let stmt = decl.body.as_ref().unwrap();
-        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt)?;
+        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt);
         let cls = GosValue::new_closure(fkey);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
@@ -467,44 +450,41 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 pkg.set_main_func(index);
             }
         }
-        Ok(())
     }
 
-    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) -> Self::Result {
+    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) {
         unimplemented!();
     }
 
-    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) -> Self::Result {
+    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) -> Self::Result {
-        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None)?;
-        Ok(())
+    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None);
     }
 
-    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) -> Self::Result {
+    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
         let stmt = &self.ast_objs.a_stmts[*astmt];
         self.gen_assign(
             &stmt.token,
             &stmt.lhs.iter().map(|x| x).collect(),
             &stmt.rhs,
             None,
-        )?;
-        Ok(())
+        );
     }
 
-    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) -> Self::Result {
+    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) -> Self::Result {
+    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) -> Self::Result {
+    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
         for (i, expr) in rstmt.results.iter().enumerate() {
-            self.visit_expr(expr)?;
+            self.visit_expr(expr);
             let t = self.tlookup.get_expr_value_type(expr);
             let f = current_func_mut!(self);
             f.emit_store(
@@ -516,31 +496,29 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             f.emit_pop(1);
         }
         current_func_mut!(self).emit_return();
-        Ok(())
     }
 
-    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) -> Self::Result {
+    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) -> Self::Result {
+    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {
         for stmt in bstmt.list.iter() {
-            self.visit_stmt(stmt)?;
+            self.visit_stmt(stmt);
         }
-        Ok(())
     }
 
-    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) -> Self::Result {
+    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
         if let Some(init) = &ifstmt.init {
-            self.visit_stmt(init)?;
+            self.visit_stmt(init);
         }
-        self.visit_expr(&ifstmt.cond)?;
+        self.visit_expr(&ifstmt.cond);
         let func = current_func_mut!(self);
         func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
         let top_marker = func.code.len();
 
         drop(func);
-        self.visit_stmt_block(&ifstmt.body)?;
+        self.visit_stmt_block(&ifstmt.body);
         let marker_if_arm_end = if ifstmt.els.is_some() {
             let func = current_func_mut!(self);
             // imm to be set later
@@ -557,7 +535,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         func.code[top_marker - 1].set_imm(offset);
 
         if let Some(els) = &ifstmt.els {
-            self.visit_stmt(els)?;
+            self.visit_stmt(els);
             // set the correct if_arm_end jump target
             let func = current_func_mut!(self);
             let marker = marker_if_arm_end.unwrap();
@@ -565,45 +543,44 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
             func.code[marker - 1].set_imm(offset);
         }
-        Ok(())
     }
 
-    fn visit_stmt_case(&mut self, _cclause: &CaseClause) -> Self::Result {
+    fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
         unimplemented!();
     }
 
-    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) -> Self::Result {
+    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) -> Self::Result {
+    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_comm(&mut self, _cclause: &CommClause) -> Self::Result {
+    fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
         unimplemented!();
     }
 
-    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) -> Self::Result {
+    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) {
         unimplemented!();
     }
 
-    fn visit_stmt_for(&mut self, fstmt: &ForStmt) -> Self::Result {
+    fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
         if let Some(init) = &fstmt.init {
-            self.visit_stmt(init)?;
+            self.visit_stmt(init);
         }
         let top_marker = current_func!(self).code.len();
         let out_marker = if let Some(cond) = &fstmt.cond {
-            self.visit_expr(&cond)?;
+            self.visit_expr(&cond);
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
             Some(func.code.len())
         } else {
             None
         };
-        self.visit_stmt_block(&fstmt.body)?;
+        self.visit_stmt_block(&fstmt.body);
         if let Some(post) = &fstmt.post {
-            self.visit_stmt(post)?;
+            self.visit_stmt(post);
         }
 
         // jump to the top
@@ -619,20 +596,19 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let offset = OpIndex::try_from(func.code.len() - m).unwrap();
             func.code[m - 1].set_imm(offset);
         }
-        Ok(())
     }
 
-    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Self::Result {
+    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
         let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
             rstmt.key.as_ref().unwrap_or(&blank),
             rstmt.val.as_ref().unwrap_or(&blank),
         ];
         let marker = self
-            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))?
+            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))
             .unwrap();
 
-        self.visit_stmt_block(&rstmt.body)?;
+        self.visit_stmt_block(&rstmt.body);
         // jump to the top
         let func = current_func_mut!(self);
         // todo: don't crash if OpIndex overflows
@@ -642,18 +618,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         // todo: don't crash if OpIndex overflows
         let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
         func.code[marker].set_imm(end_offset);
-        Ok(())
     }
 
-    fn visit_empty_stmt(&mut self, _e: &EmptyStmt) -> Self::Result {
-        Ok(())
-    }
+    fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
 
-    fn visit_bad_stmt(&mut self, _b: &BadStmt) -> Self::Result {
+    fn visit_bad_stmt(&mut self, _b: &BadStmt) {
         unreachable!();
     }
 
-    fn visit_bad_decl(&mut self, _b: &BadDecl) -> Self::Result {
+    fn visit_bad_decl(&mut self, _b: &BadDecl) {
         unreachable!();
     }
 }
@@ -692,14 +665,14 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn resolve_ident(&mut self, ident: &IdentKey) -> Result<EntIndex, ()> {
+    fn resolve_ident(&mut self, ident: &IdentKey) -> EntIndex {
         let id = &self.ast_objs.idents[*ident];
         // 0. try built-ins
         if id.entity_key().is_none() {
             if let Some(op) = self.built_in_vals.get(&*id.name) {
-                return Ok(EntIndex::BuiltIn(*op));
+                return EntIndex::BuiltIn(*op);
             } else {
-                return Err(());
+                unreachable!();
             }
         }
 
@@ -709,7 +682,7 @@ impl<'a> CodeGen<'a> {
             .entity_index(&entity_key)
             .map(|x| *x);
         if local.is_some() {
-            return Ok(local.unwrap());
+            return local.unwrap();
         }
         // 2. try upvalue
         let upvalue = self
@@ -736,25 +709,21 @@ impl<'a> CodeGen<'a> {
         if let Some(uv) = upvalue {
             let func = current_func_mut!(self);
             let index = func.try_add_upvalue(&entity_key, uv);
-            return Ok(index);
+            return index;
         }
         // 3. try the package level
         let pkg = &self.objects.packages[self.pkg_key];
         if let Some(index) = pkg.get_member_index(&entity_key) {
-            return Ok(EntIndex::PackageMember(*index));
+            return EntIndex::PackageMember(*index);
         }
 
         unreachable!();
     }
 
-    fn add_local_or_resolve_ident(
-        &mut self,
-        ikey: &IdentKey,
-        is_def: bool,
-    ) -> Result<EntIndex, ()> {
+    fn add_local_or_resolve_ident(&mut self, ikey: &IdentKey, is_def: bool) -> EntIndex {
         let ident = &self.ast_objs.idents[*ikey];
         if ident.is_blank() {
-            return Ok(EntIndex::Blank);
+            return EntIndex::Blank;
         }
         if is_def {
             let meta = *self
@@ -774,23 +743,20 @@ impl<'a> CodeGen<'a> {
                     self.objects.zero_val.zero_val_mark.clone(),
                 );
             }
-            Ok(index)
+            index
         } else {
             self.resolve_ident(ikey)
         }
     }
 
-    fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) -> Result<(), ()> {
-        if names.len() != values.len() {
-            return Err(());
-        }
+    fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) {
+        assert!(names.len() == values.len());
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
-            let val = self.tlookup.get_const_value(values[i].id(), self.objects)?;
+            let val = self.tlookup.get_const_value(values[i].id(), self.objects);
             let ident_key = ident.entity.into_key();
             self.current_func_add_const_def(ident_key.unwrap(), val);
         }
-        Ok(())
     }
 
     /// entrance for all assign related stmts
@@ -805,19 +771,19 @@ impl<'a> CodeGen<'a> {
         lhs_exprs: &Vec<&Expr>,
         rhs_exprs: &Vec<Expr>,
         range: Option<&Expr>,
-    ) -> Result<Option<usize>, ()> {
+    ) -> Option<usize> {
         let is_def = *token == Token::DEFINE;
         let lhs = lhs_exprs
             .iter()
             .map(|expr| {
                 match expr {
                     Expr::Ident(ident) => {
-                        let idx = self.add_local_or_resolve_ident(ident, is_def)?;
-                        Ok(LeftHandSide::Primitive(idx))
+                        let idx = self.add_local_or_resolve_ident(ident, is_def);
+                        LeftHandSide::Primitive(idx)
                     }
                     Expr::Index(ind_expr) => {
                         let obj = &ind_expr.as_ref().expr;
-                        self.visit_expr(obj)?;
+                        self.visit_expr(obj);
                         let obj_typ = self.tlookup.get_expr_value_type(obj);
                         let ind = &ind_expr.as_ref().index;
 
@@ -830,38 +796,38 @@ impl<'a> CodeGen<'a> {
                             }
                         }
                         if index_const.is_none() {
-                            self.visit_expr(ind)?;
+                            self.visit_expr(ind);
                             index_typ = Some(self.tlookup.get_expr_value_type(ind));
                         }
-                        Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                        LeftHandSide::IndexSelExpr(IndexSelInfo::new(
                             0,
                             obj_typ,
                             index_typ,
                             true,
                             index_const,
-                        ))) // the true index will be calculated later
+                        )) // the true index will be calculated later
                     }
                     Expr::Selector(sexpr) => {
-                        self.visit_expr(&sexpr.expr)?;
+                        self.visit_expr(&sexpr.expr);
                         self.gen_push_ident_str(&sexpr.sel);
                         let obj_typ = self.tlookup.get_expr_value_type(&sexpr.expr);
                         // the true index will be calculated later
-                        Ok(LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                        LeftHandSide::IndexSelExpr(IndexSelInfo::new(
                             0,
                             obj_typ,
                             Some(ValueType::Str),
                             false,
                             None,
-                        )))
+                        ))
                     }
                     Expr::Star(sexpr) => {
-                        self.visit_expr(&sexpr.expr)?;
-                        Ok(LeftHandSide::Deref(0)) // the true index will be calculated later
+                        self.visit_expr(&sexpr.expr);
+                        LeftHandSide::Deref(0) // the true index will be calculated later
                     }
                     _ => unreachable!(),
                 }
             })
-            .collect::<Result<Vec<LeftHandSide>, ()>>()?;
+            .collect::<Vec<LeftHandSide>>();
 
         let simple_op = match token {
             Token::ADD_ASSIGN | Token::INC => Some(Opcode::ADD), // +=
@@ -882,14 +848,14 @@ impl<'a> CodeGen<'a> {
         if let Some(code) = simple_op {
             if *token == Token::INC || *token == Token::DEC {
                 let typ = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
-                self.gen_op_assign(&lhs[0], code, None, typ)?;
+                self.gen_op_assign(&lhs[0], code, None, typ);
             } else {
                 assert_eq!(lhs_exprs.len(), 1);
                 assert_eq!(rhs_exprs.len(), 1);
                 let typ = self.tlookup.get_expr_value_type(&rhs_exprs[0]);
-                self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]), typ)?;
+                self.gen_op_assign(&lhs[0], code, Some(&rhs_exprs[0]), typ);
             }
-            Ok(None)
+            None
         } else {
             self.gen_assign_def_var(&lhs, &rhs_exprs, &None, range)
         }
@@ -901,12 +867,12 @@ impl<'a> CodeGen<'a> {
         values: &Vec<Expr>,
         typ: &Option<Expr>,
         range: Option<&Expr>,
-    ) -> Result<Option<usize>, ()> {
+    ) -> Option<usize> {
         let mut range_marker = None;
         // handle the right hand side
         let types = if let Some(r) = range {
             // the range statement
-            self.visit_expr(r)?;
+            self.visit_expr(r);
             let tkv = self.tlookup.get_range_value_types(r);
             let func = current_func_mut!(self);
             func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
@@ -924,7 +890,7 @@ impl<'a> CodeGen<'a> {
             // define or assign with values
             let mut types = Vec::with_capacity(values.len());
             for val in values.iter() {
-                self.visit_expr(val)?;
+                self.visit_expr(val);
                 types.push(self.tlookup.get_expr_value_type(val));
             }
             types
@@ -942,13 +908,13 @@ impl<'a> CodeGen<'a> {
         } else if values.len() == 1 {
             // define or assign with function call on the right
             if let Expr::Call(_) = values[0] {
-                self.visit_expr(&values[0])?;
+                self.visit_expr(&values[0]);
                 self.tlookup.get_return_value_types(&values[0])
             } else {
-                return Err(());
+                unreachable!();
             }
         } else {
-            return Err(());
+            unreachable!();
         };
 
         // now the values should be on stack, generate code to set them to the lhs
@@ -1007,7 +973,7 @@ impl<'a> CodeGen<'a> {
             }
         }
         func.emit_pop(total_pop);
-        Ok(range_marker)
+        range_marker
     }
 
     fn gen_op_assign(
@@ -1016,9 +982,9 @@ impl<'a> CodeGen<'a> {
         op: Opcode,
         right: Option<&Expr>,
         typ: ValueType,
-    ) -> Result<(), ()> {
+    ) {
         if let Some(e) = right {
-            self.visit_expr(e)?;
+            self.visit_expr(e);
         } else {
             // it's inc/dec
             let func = current_func_mut!(self);
@@ -1054,7 +1020,6 @@ impl<'a> CodeGen<'a> {
                 func.emit_pop(2);
             }
         }
-        Ok(())
     }
 
     fn gen_func_def(
@@ -1063,7 +1028,7 @@ impl<'a> CodeGen<'a> {
         fkey: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
-    ) -> Result<FunctionKey, ()> {
+    ) -> FunctionKey {
         let typ = &self.ast_objs.ftypes[fkey];
         let sig_metadata = &self.objects.metas[*fmeta.as_meta()].sig_metadata();
         let fval = FunctionVal::new(
@@ -1075,25 +1040,25 @@ impl<'a> CodeGen<'a> {
         let fkey = self.objects.functions.insert(fval);
         let mut func = &mut self.objects.functions[fkey];
         func.ret_count = match &typ.results {
-            Some(fl) => func.add_params(&fl, self.ast_objs)?,
+            Some(fl) => func.add_params(&fl, self.ast_objs),
             None => 0,
         };
         func.param_count = match recv {
             Some(recv) => {
                 let mut fields = recv;
                 fields.list.append(&mut typ.params.list.clone());
-                func.add_params(&fields, self.ast_objs)?
+                func.add_params(&fields, self.ast_objs)
             }
-            None => func.add_params(&typ.params, self.ast_objs)?,
+            None => func.add_params(&typ.params, self.ast_objs),
         };
         self.func_stack.push(fkey);
         // process function body
-        self.visit_stmt_block(body)?;
+        self.visit_stmt_block(body);
         // it will not be executed if it's redundant
         self.objects.functions[fkey].emit_return();
 
         self.func_stack.pop();
-        Ok(fkey)
+        fkey
     }
 
     fn get_use_type_meta(&mut self, expr: &Expr) -> GosValue {
@@ -1106,7 +1071,7 @@ impl<'a> CodeGen<'a> {
         match self.tc_objs.types[typ].try_as_basic() {
             Some(_) => self.tlookup.type_from_tc(typ, self.objects),
             None => {
-                let i = self.resolve_ident(&ikey).unwrap();
+                let i = self.resolve_ident(&ikey);
                 match i {
                     EntIndex::Const(i) => {
                         let func = current_func_mut!(self);
@@ -1122,7 +1087,7 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> Result<GosValue, ()> {
+    fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match typ {
             Some(type_expr) => match type_expr {
                 Expr::Array(_) | Expr::Map(_) | Expr::Struct(_) => {
@@ -1142,14 +1107,14 @@ impl<'a> CodeGen<'a> {
         (zero_val, t)
     }
 
-    fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> Result<GosValue, ()> {
+    fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> GosValue {
         match expr {
             Expr::CompositeLit(lit) => self.get_comp_value(typ, lit),
             _ => unreachable!(),
         }
     }
 
-    fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> Result<GosValue, ()> {
+    fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> GosValue {
         match typ {
             Expr::Array(arr) => {
                 if arr.as_ref().len.is_some() {
@@ -1160,8 +1125,8 @@ impl<'a> CodeGen<'a> {
                     .elts
                     .iter()
                     .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
-                    .collect::<Result<Vec<GosValue>, ()>>()?;
-                Ok(GosValue::with_slice_val(vals, &mut self.objects.slices))
+                    .collect::<Vec<GosValue>>();
+                GosValue::with_slice_val(vals, &mut self.objects.slices)
             }
             Expr::Map(map) => {
                 let key_vals = literal
@@ -1169,20 +1134,20 @@ impl<'a> CodeGen<'a> {
                     .iter()
                     .map(|etl| {
                         if let Expr::KeyValue(kv) = etl {
-                            let k = self.value_from_literal(Some(&map.key), &kv.as_ref().key)?;
-                            let v = self.value_from_literal(Some(&map.val), &kv.as_ref().val)?;
-                            Ok((k, v))
+                            let k = self.value_from_literal(Some(&map.key), &kv.as_ref().key);
+                            let v = self.value_from_literal(Some(&map.val), &kv.as_ref().val);
+                            (k, v)
                         } else {
                             unreachable!()
                         }
                     })
-                    .collect::<Result<Vec<(GosValue, GosValue)>, ()>>()?;
+                    .collect::<Vec<(GosValue, GosValue)>>();
                 let (val, _) = self.get_type_default(&map.val);
                 let map = GosValue::new_map(val, &mut self.objects.maps);
                 for kv in key_vals.iter() {
                     map.as_map().insert(kv.0.clone(), kv.1.clone());
                 }
-                Ok(map)
+                map
             }
             _ => unimplemented!(),
         }
@@ -1229,9 +1194,7 @@ impl<'a> CodeGen<'a> {
         self.func_stack.push(fkey);
         for f in files.iter() {
             for d in f.decls.iter() {
-                if let Err(_) = self.visit_decl(d) {
-                    dbg!("error when generating");
-                }
+                self.visit_decl(d)
             }
         }
         let func = &mut self.objects.functions[fkey];
