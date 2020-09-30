@@ -56,7 +56,7 @@ pub struct CodeGen<'a> {
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     tlookup: TypeLookup<'a>,
-    iface_mapping: IfaceMapping,
+    iface_mapping: &'a mut IfaceMapping,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     built_in_funcs: Vec<BuiltInFunc>,
@@ -633,6 +633,7 @@ impl<'a> CodeGen<'a> {
         asto: &'a AstObjects,
         tco: &'a TCObjects,
         ti: &'a TypeInfo,
+        mapping: &'a mut IfaceMapping,
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
@@ -653,7 +654,7 @@ impl<'a> CodeGen<'a> {
             ast_objs: asto,
             tc_objs: tco,
             tlookup: TypeLookup::new(tco, ti),
-            iface_mapping: IfaceMapping::new(),
+            iface_mapping: mapping,
             pkg_key: pkg,
             func_stack: Vec::new(),
             built_in_funcs: funcs,
@@ -1079,12 +1080,16 @@ impl<'a> CodeGen<'a> {
         if let Some(t1) = lhs {
             if self.tlookup.value_type_from_tc(t1) == ValueType::Interface {
                 let t2 = self.tlookup.get_expr_tc_type(expr);
-                dbg!(t1, t2);
-                if self.tlookup.value_type_from_tc(t2) != ValueType::Interface {
+                let vt2 = self.tlookup.value_type_from_tc(t2);
+                if vt2 != ValueType::Interface {
                     let m_index =
                         self.iface_mapping
                             .get_index(&(t1, t2), &mut self.tlookup, self.objects);
-                    current_func_mut!(self).emit_code_with_imm(Opcode::CAST_TO_INTERFACE, m_index);
+                    current_func_mut!(self).emit_code_with_type_imm(
+                        Opcode::CAST_TO_INTERFACE,
+                        vt2,
+                        m_index,
+                    );
                 }
             }
         }

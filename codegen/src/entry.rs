@@ -4,6 +4,7 @@ use std::pin::Pin;
 
 use super::codegen::CodeGen;
 use super::func::FuncGen;
+use super::interface::IfaceMapping;
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
@@ -20,6 +21,7 @@ pub struct EntryGen<'a> {
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     packages: Vec<PackageKey>,
+    iface_mapping: IfaceMapping,
     // pkg_indices maps TCPackageKey to the index (in the generated code) of the package
     pkg_indices: HashMap<TCPackageKey, OpIndex>,
     blank_ident: IdentKey,
@@ -32,6 +34,7 @@ impl<'a> EntryGen<'a> {
             ast_objs: asto,
             tc_objs: tco,
             packages: Vec::new(),
+            iface_mapping: IfaceMapping::new(),
             pkg_indices: HashMap::new(),
             blank_ident: bk,
         }
@@ -76,6 +79,7 @@ impl<'a> EntryGen<'a> {
                 self.ast_objs,
                 self.tc_objs,
                 ti,
+                &mut self.iface_mapping,
                 pkey,
                 self.blank_ident,
             )
@@ -86,6 +90,7 @@ impl<'a> EntryGen<'a> {
         ByteCode {
             objects: self.objects,
             packages: self.packages,
+            ifaces: self.iface_mapping.ifaces,
             entry: entry,
         }
     }

@@ -4,18 +4,19 @@ use super::types::TypeLookup;
 use goscript_types::TypeKey as TCTypeKey;
 use goscript_vm::instruction::*;
 use goscript_vm::objects::{MetadataType, VMObjects};
+use goscript_vm::value::GosValue;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct IfaceMapping {
-    mappings: Vec<Rc<Vec<OpIndex>>>,
+    pub ifaces: Vec<(GosValue, Rc<Vec<OpIndex>>)>,
     indices: HashMap<(TCTypeKey, TCTypeKey), OpIndex>,
 }
 
 impl IfaceMapping {
     pub fn new() -> IfaceMapping {
         IfaceMapping {
-            mappings: vec![],
+            ifaces: vec![],
             indices: HashMap::new(),
         }
     }
@@ -29,18 +30,18 @@ impl IfaceMapping {
         if let Some(i) = self.indices.get(i_s) {
             return *i;
         }
-        let mapping = IfaceMapping::get_index_impl(i_s, lookup, objs);
-        let index = self.mappings.len() as OpIndex;
-        self.mappings.push(mapping);
+        let mapping = IfaceMapping::get_iface_info(i_s, lookup, objs);
+        let index = self.ifaces.len() as OpIndex;
+        self.ifaces.push(mapping);
         self.indices.insert(*i_s, index);
         index
     }
 
-    fn get_index_impl(
+    fn get_iface_info(
         i_s: &(TCTypeKey, TCTypeKey),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
-    ) -> Rc<Vec<OpIndex>> {
+    ) -> (GosValue, Rc<Vec<OpIndex>>) {
         let i = lookup.type_from_tc(i_s.0, objs);
         let s = lookup.type_from_tc(i_s.1, objs);
         let imember = match objs.metas[*i.as_meta()].typ() {
@@ -59,6 +60,6 @@ impl IfaceMapping {
             MetadataType::Named(m, _) => m,
             _ => unreachable!(),
         };
-        Rc::new(imember.iface_mapping(smember))
+        (i, Rc::new(imember.iface_mapping(smember)))
     }
 }

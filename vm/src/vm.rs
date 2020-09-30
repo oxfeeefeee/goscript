@@ -16,6 +16,7 @@ use std::rc::Rc;
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
+    pub ifaces: Vec<(GosValue, Rc<Vec<OpIndex>>)>,
     pub entry: FunctionKey,
 }
 
@@ -106,14 +107,17 @@ impl Fiber {
         }
     }
 
-    fn run(&mut self, fkey: FunctionKey, pkgs: &Vec<PackageKey>, objs: &mut VMObjects) {
-        let cls = GosValue::new_closure(fkey);
+    fn run(&mut self, code: &mut ByteCode) {
+        let cls = GosValue::new_closure(code.entry);
         let frame = CallFrame::with_closure(cls, 0);
         self.frames.push(frame);
-        self.main_loop(pkgs, objs);
+        self.main_loop(code);
     }
 
-    fn main_loop(&mut self, pkgs: &Vec<PackageKey>, objs: &mut VMObjects) {
+    fn main_loop(&mut self, code: &mut ByteCode) {
+        let objs: &mut VMObjects = &mut code.objects;
+        let pkgs = &code.packages;
+        let ifaces = &code.ifaces;
         let mut frame = self.frames.last_mut().unwrap();
         let fkey = frame.func();
         let mut func = &objs.functions[fkey];
@@ -319,6 +323,16 @@ impl Fiber {
                         }
                         _ => unreachable!(),
                     }
+                }
+                Opcode::CAST_TO_INTERFACE => {
+                    let iface = ifaces[inst.imm() as usize].clone();
+                    let named = stack.pop_with_type(inst.t0());
+                    dbg!(&iface, &named);
+                    stack.push(GosValue::new_iface(
+                        iface.0,
+                        Some((named, iface.1)),
+                        &mut objs.interfaces,
+                    ));
                 }
                 Opcode::ADD => stack.add(inst.t0()),
                 Opcode::SUB => stack.sub(inst.t0()),
@@ -697,9 +711,7 @@ impl Fiber {
 pub struct GosVM {
     fibers: Vec<Rc<RefCell<Fiber>>>,
     current_fiber: Option<Rc<RefCell<Fiber>>>,
-    objects: Pin<Box<VMObjects>>,
-    packages: Vec<PackageKey>,
-    entry: FunctionKey,
+    code: ByteCode,
 }
 
 impl GosVM {
@@ -707,9 +719,7 @@ impl GosVM {
         let mut vm = GosVM {
             fibers: Vec::new(),
             current_fiber: None,
-            objects: bc.objects,
-            packages: bc.packages,
-            entry: bc.entry,
+            code: bc,
         };
         let fb = Rc::new(RefCell::new(Fiber::new(None)));
         vm.fibers.push(fb.clone());
@@ -719,7 +729,7 @@ impl GosVM {
 
     pub fn run(&mut self) {
         let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
-        fb.run(self.entry, &self.packages, &mut self.objects);
+        fb.run(&mut self.code);
     }
 }
 
