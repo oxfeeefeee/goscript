@@ -17,7 +17,6 @@ pub enum Opcode {
     POP,
     LOAD_LOCAL,
     STORE_LOCAL, // stores the value on the top of the stack to local
-    // STORE_INTERFACE
     LOAD_UPVALUE,
     STORE_UPVALUE,
     LOAD_INDEX,
@@ -34,6 +33,7 @@ pub enum Opcode {
     LOAD_THIS_PKG_FIELD,
     STORE_THIS_PKG_FIELD,
     STORE_DEREF,
+    CAST_TO_INTERFACE,
     // arithmetic, logical, ref, deref, arrow
     ADD,       // +
     SUB,       // -
@@ -121,6 +121,7 @@ impl Opcode {
             Opcode::LOAD_THIS_PKG_FIELD => ("LOAD_THIS_PKG_FIELD", -1),
             Opcode::STORE_THIS_PKG_FIELD => ("STORE_THIS_PKG_FIELD", 0),
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
+            Opcode::CAST_TO_INTERFACE => ("CAST_TO_INTERFACE", 0),
 
             Opcode::ADD => ("ADD", -1),
             Opcode::SUB => ("SUB", -1),

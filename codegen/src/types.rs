@@ -36,25 +36,17 @@ impl<'a> TypeLookup<'a> {
         self.const_value(typ_val.typ, const_val, objects)
     }
 
-    pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {
-        let typ = self.ti.types.get(&id).unwrap().typ;
-        self.type_from_tc(typ, objects)
-    }
-
-    pub fn gen_def_type_meta(&mut self, ikey: IdentKey, objects: &mut VMObjects) -> GosValue {
-        let obj = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()];
-        let typ = obj.typ().unwrap();
-        self.type_from_tc(typ, objects)
+    pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
+        self.ti.types.get(&e.id()).unwrap().typ
     }
 
     pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
-        let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        self.value_type_from_tc(typ)
+        self.value_type_from_tc(self.get_expr_tc_type(e))
     }
 
-    pub fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
-        let typ = &self.tc_objs.lobjs[self.ti.uses[&ikey]].typ().unwrap();
-        self.value_type_from_tc(*typ)
+    pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {
+        let typ = self.ti.types.get(&id).unwrap().typ;
+        self.type_from_tc(typ, objects)
     }
 
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
@@ -62,11 +54,21 @@ impl<'a> TypeLookup<'a> {
         obj.typ().unwrap()
     }
 
+    pub fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
+        self.value_type_from_tc(self.get_use_tc_type(ikey))
+    }
+
+    pub fn get_def_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
+        let obj = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()];
+        obj.typ().unwrap()
+    }
+
     pub fn get_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
-        let typ = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()]
-            .typ()
-            .unwrap();
-        self.value_type_from_tc(*typ)
+        self.value_type_from_tc(self.get_def_tc_type(ikey))
+    }
+
+    pub fn gen_def_type_meta(&mut self, ikey: IdentKey, objects: &mut VMObjects) -> GosValue {
+        self.type_from_tc(self.get_def_tc_type(ikey), objects)
     }
 
     pub fn get_range_value_types(&mut self, e: &Expr) -> [ValueType; 3] {
@@ -161,16 +163,8 @@ impl<'a> TypeLookup<'a> {
                 MetadataVal::new_map(ktype, vtype, vm_objs)
             }
             Type::Struct(detail) => {
-                let mut vec = Vec::new();
-                let mut map = HashMap::<String, OpIndex>::new();
-                for (i, f) in detail.fields().iter().enumerate() {
-                    let field = &self.tc_objs.lobjs[*f];
-                    dbg!(&field);
-                    let f_type = self.type_from_tc(field.typ().unwrap(), vm_objs);
-                    vec.push(f_type);
-                    map.insert(field.name().clone(), i as OpIndex);
-                }
-                MetadataVal::new_struct(OrderedMembers::new(vec, map), vm_objs)
+                let fields = self.get_ordered_members(detail.fields(), vm_objs);
+                MetadataVal::new_struct(fields, vm_objs)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
@@ -228,7 +222,7 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
+    pub fn value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
                 BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
