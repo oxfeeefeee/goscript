@@ -167,7 +167,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Some(e) => self.visit_expr(e),
         }
         match high {
-            None => current_func_mut!(self).emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1)),
+            None => current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, -1),
             Some(e) => self.visit_expr(e),
         }
         match max {
@@ -267,13 +267,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
                     let name = &self.ast_objs.idents[sexpr.sel].name;
                     let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
-                    current_func_mut!(self).emit_inst(
-                        Opcode::REF_STRUCT_FIELD,
-                        None,
-                        None,
-                        None,
-                        Some(i),
-                    );
+                    current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
                 }
                 _ => unimplemented!(),
             }
@@ -320,12 +314,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let mark_code = match op {
             Token::LAND => {
                 let func = current_func_mut!(self);
-                func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
+                func.emit_code(Opcode::JUMP_IF_NOT);
                 Some((func.code.len(), code))
             }
             Token::LOR => {
                 let func = current_func_mut!(self);
-                func.emit_inst(Opcode::JUMP_IF, None, None, None, None);
+                func.emit_code(Opcode::JUMP_IF);
                 Some((func.code.len(), code))
             }
             _ => None,
@@ -333,7 +327,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(right);
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
-            func.emit_inst(Opcode::JUMP, None, None, None, Some(1));
+            func.emit_code_with_imm(Opcode::JUMP, 1);
             func.emit_code_with_type(c, t);
             let diff = func.code.len() - i - 1;
             func.code[i - 1].set_imm(diff as OpIndex);
@@ -514,7 +508,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
         self.visit_expr(&ifstmt.cond);
         let func = current_func_mut!(self);
-        func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
+        func.emit_code(Opcode::JUMP_IF_NOT);
         let top_marker = func.code.len();
 
         drop(func);
@@ -522,7 +516,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let marker_if_arm_end = if ifstmt.els.is_some() {
             let func = current_func_mut!(self);
             // imm to be set later
-            func.emit_inst(Opcode::JUMP, None, None, None, None);
+            func.emit_code(Opcode::JUMP);
             Some(func.code.len())
         } else {
             None
@@ -573,7 +567,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let out_marker = if let Some(cond) = &fstmt.cond {
             self.visit_expr(&cond);
             let func = current_func_mut!(self);
-            func.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, None);
+            func.emit_code(Opcode::JUMP_IF_NOT);
             Some(func.code.len())
         } else {
             None
@@ -587,7 +581,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         // todo: don't crash if OpIndex overflows
         let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
-        func.emit_inst(Opcode::JUMP, None, None, None, Some(offset));
+        func.emit_code_with_imm(Opcode::JUMP, offset);
 
         // set the correct else jump out target
         if let Some(m) = out_marker {
@@ -613,7 +607,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         // todo: don't crash if OpIndex overflows
         let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
-        func.emit_inst(Opcode::JUMP, None, None, None, Some(offset));
+        func.emit_code_with_imm(Opcode::JUMP, offset);
         // now tell Opcode::RANGE where to jump after it's done
         // todo: don't crash if OpIndex overflows
         let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
@@ -875,7 +869,7 @@ impl<'a> CodeGen<'a> {
             self.visit_expr(r);
             let tkv = self.tlookup.get_range_value_types(r);
             let func = current_func_mut!(self);
-            func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
+            func.emit_code_with_imm(Opcode::PUSH_IMM, -1);
             range_marker = Some(func.code.len());
             // the block_end address to be set
             func.emit_inst(
@@ -988,7 +982,7 @@ impl<'a> CodeGen<'a> {
         } else {
             // it's inc/dec
             let func = current_func_mut!(self);
-            func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(1));
+            func.emit_code_with_imm(Opcode::PUSH_IMM, 1);
         }
         let func = current_func_mut!(self);
         match left {

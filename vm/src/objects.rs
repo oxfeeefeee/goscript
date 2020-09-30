@@ -910,6 +910,10 @@ impl FunctionVal {
         self.emit_inst(code, Some(t), None, None, None);
     }
 
+    pub fn emit_code_with_imm(&mut self, code: Opcode, imm: OpIndex) {
+        self.emit_inst(code, None, None, None, Some(imm));
+    }
+
     pub fn emit_code(&mut self, code: Opcode) {
         self.emit_inst(code, None, None, None, None);
     }
