@@ -176,15 +176,18 @@ impl<'a> Parser<'a> {
             match expr { 
                 Expr::Ident(id) => {
                     let ident = ident_mut!(self, *id);
-                    let entity = new_entity!(self, EntityKind::Var, 
-                        ident.name.clone(), DeclObj::AssignStmt(assign), 
-                        EntityData::NoData);
-                    ident.entity = IdentEntity::Entity(entity);
                     if ident.name != "_" {
                         let top_scope = scope_mut!(self, self.top_scope.unwrap());
-                        match top_scope.insert(ident.name.clone(), entity) {
-                            Some(e) => { ident.entity = IdentEntity::Entity(e); },
-                            None => { n += 1; },
+                        match top_scope.look_up(&ident.name) {
+                            Some(e) => { ident.entity = IdentEntity::Entity(*e); },
+                            None => {
+                                let entity = new_entity!(self, EntityKind::Var, 
+                                    ident.name.clone(), DeclObj::AssignStmt(assign), 
+                                    EntityData::NoData);
+                                top_scope.insert(ident.name.clone(), entity);
+                                ident.entity = IdentEntity::Entity(entity);
+                                n += 1;
+                            },
                         }
                     }
                 },
