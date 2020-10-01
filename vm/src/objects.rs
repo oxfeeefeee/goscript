@@ -24,12 +24,12 @@ new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 
-pub type InterfaceObjs = Vec<Weak<RefCell<InterfaceVal>>>;
-pub type ClosureObjs = Vec<Weak<RefCell<ClosureVal>>>;
-pub type SliceObjs = Vec<Weak<SliceVal>>;
-pub type MapObjs = Vec<Weak<MapVal>>;
-pub type StructObjs = Vec<Weak<RefCell<StructVal>>>;
-pub type ChannelObjs = Vec<Weak<RefCell<ChannelVal>>>;
+pub type InterfaceObjs = Vec<Weak<RefCell<InterfaceObj>>>;
+pub type ClosureObjs = Vec<Weak<RefCell<ClosureObj>>>;
+pub type SliceObjs = Vec<Weak<SliceObj>>;
+pub type MapObjs = Vec<Weak<MapObj>>;
+pub type StructObjs = Vec<Weak<RefCell<StructObj>>>;
+pub type ChannelObjs = Vec<Weak<RefCell<ChannelObj>>>;
 pub type BoxedObjs = Vec<Weak<GosValue>>;
 pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataVal>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
@@ -126,16 +126,16 @@ impl ZeroVal {
         let mark = GosValue::Int(95279527);
         ZeroVal {
             zero_val_mark: mark.clone(),
-            str_zero_val: GosValue::Str(Rc::new(StringVal::with_str("".to_string()))),
-            boxed_zero_val: GosValue::Boxed(Box::new(BoxedVal::Nil)),
-            closure_zero_val: GosValue::Closure(Rc::new(ClosureVal::new(null_key!(), None, None))),
-            slice_zero_val: GosValue::Slice(Rc::new(SliceVal::new(0, 0, &mark))),
-            map_zero_val: GosValue::Map(Rc::new(MapVal::new(mark.clone()))),
-            iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceVal::new(
+            str_zero_val: GosValue::Str(Rc::new(StringObj::with_str("".to_string()))),
+            boxed_zero_val: GosValue::Boxed(Box::new(BoxedObj::Nil)),
+            closure_zero_val: GosValue::Closure(Rc::new(ClosureObj::new(null_key!(), None, None))),
+            slice_zero_val: GosValue::Slice(Rc::new(SliceObj::new(0, 0, &mark))),
+            map_zero_val: GosValue::Map(Rc::new(MapObj::new(mark.clone()))),
+            iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceObj::new(
                 mark.clone(),
                 None,
             )))),
-            chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelVal {}))),
+            chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelObj {}))),
             pkg_zero_val: GosValue::Package(null_key!()),
         }
     }
@@ -155,24 +155,24 @@ impl ZeroVal {
 }
 
 // ----------------------------------------------------------------------------
-// StringVal
+// StringObj
 
 pub type StringIter<'a> = std::str::Chars<'a>;
 
 pub type StringEnumIter<'a> = std::iter::Enumerate<std::str::Chars<'a>>;
 
 #[derive(Debug)]
-pub struct StringVal {
+pub struct StringObj {
     data: Rc<String>,
     begin: usize,
     end: usize,
 }
 
-impl StringVal {
+impl StringObj {
     #[inline]
-    pub fn with_str(s: String) -> StringVal {
+    pub fn with_str(s: String) -> StringObj {
         let len = s.len();
-        StringVal {
+        StringObj {
             data: Rc::new(s),
             begin: 0,
             end: len,
@@ -199,11 +199,11 @@ impl StringVal {
         self.as_str().as_bytes()[i]
     }
 
-    pub fn slice(&self, begin: isize, end: isize) -> StringVal {
+    pub fn slice(&self, begin: isize, end: isize) -> StringObj {
         let self_len = self.len() as isize + 1;
         let bi = begin as usize;
         let ei = ((self_len + end) % self_len) as usize;
-        StringVal {
+        StringObj {
             data: Rc::clone(&self.data),
             begin: bi,
             end: ei,
@@ -215,10 +215,10 @@ impl StringVal {
     }
 }
 
-impl Clone for StringVal {
+impl Clone for StringObj {
     #[inline]
     fn clone(&self) -> Self {
-        StringVal {
+        StringObj {
             data: Rc::clone(&self.data),
             begin: self.begin,
             end: self.end,
@@ -226,23 +226,23 @@ impl Clone for StringVal {
     }
 }
 
-impl PartialEq for StringVal {
+impl PartialEq for StringObj {
     #[inline]
-    fn eq(&self, other: &StringVal) -> bool {
+    fn eq(&self, other: &StringObj) -> bool {
         self.as_str().eq(other.as_str())
     }
 }
 
-impl Eq for StringVal {}
+impl Eq for StringObj {}
 
-impl PartialOrd for StringVal {
+impl PartialOrd for StringObj {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for StringVal {
+impl Ord for StringObj {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         dbg!(self.as_str());
@@ -252,29 +252,29 @@ impl Ord for StringVal {
 }
 
 // ----------------------------------------------------------------------------
-// MapVal
+// MapObj
 
 pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
 
 #[derive(Debug)]
-pub struct MapVal {
+pub struct MapObj {
     pub dark: bool,
     default_val: RefCell<GosValue>,
     map: Rc<RefCell<GosHashMap>>,
 }
 
-impl MapVal {
-    pub fn new(default_val: GosValue) -> MapVal {
-        MapVal {
+impl MapObj {
+    pub fn new(default_val: GosValue) -> MapObj {
+        MapObj {
             dark: false,
             default_val: RefCell::new(default_val),
             map: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
-    /// deep_clone creates a new MapVal with duplicated content of 'self.map'
-    pub fn deep_clone(&self) -> MapVal {
-        MapVal {
+    /// deep_clone creates a new MapObj with duplicated content of 'self.map'
+    pub fn deep_clone(&self) -> MapObj {
+        MapObj {
             dark: false,
             default_val: self.default_val.clone(),
             map: Rc::new(RefCell::new(self.map.borrow().clone())),
@@ -331,9 +331,9 @@ impl MapVal {
     }
 }
 
-impl Clone for MapVal {
+impl Clone for MapObj {
     fn clone(&self) -> Self {
-        MapVal {
+        MapObj {
             dark: false,
             default_val: self.default_val.clone(),
             map: Rc::clone(&self.map),
@@ -341,21 +341,21 @@ impl Clone for MapVal {
     }
 }
 
-impl PartialEq for MapVal {
-    fn eq(&self, _other: &MapVal) -> bool {
+impl PartialEq for MapObj {
+    fn eq(&self, _other: &MapObj) -> bool {
         unreachable!() //false
     }
 }
 
-impl Eq for MapVal {}
+impl Eq for MapObj {}
 
 // ----------------------------------------------------------------------------
-// SliceVal
+// SliceObj
 
 pub type GosVec = Vec<RefCell<GosValue>>;
 
 #[derive(Debug)]
-pub struct SliceVal {
+pub struct SliceObj {
     pub dark: bool,
     begin: usize,
     end: usize,
@@ -363,10 +363,10 @@ pub struct SliceVal {
     vec: Rc<RefCell<GosVec>>,
 }
 
-impl<'a> SliceVal {
-    pub fn new(len: usize, cap: usize, default_val: &GosValue) -> SliceVal {
+impl<'a> SliceObj {
+    pub fn new(len: usize, cap: usize, default_val: &GosValue) -> SliceObj {
         assert!(cap >= len);
-        let mut val = SliceVal {
+        let mut val = SliceObj {
             dark: false,
             begin: 0,
             end: 0,
@@ -379,8 +379,8 @@ impl<'a> SliceVal {
         val
     }
 
-    pub fn with_data(val: Vec<GosValue>) -> SliceVal {
-        SliceVal {
+    pub fn with_data(val: Vec<GosValue>) -> SliceObj {
+        SliceObj {
             dark: false,
             begin: 0,
             end: val.len(),
@@ -391,10 +391,10 @@ impl<'a> SliceVal {
         }
     }
 
-    /// deep_clone creates a new SliceVal with duplicated content of 'self.vec'
-    pub fn deep_clone(&self) -> SliceVal {
+    /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
+    pub fn deep_clone(&self) -> SliceObj {
         let vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
-        SliceVal {
+        SliceObj {
             dark: false,
             begin: 0,
             end: self.cap(),
@@ -457,13 +457,13 @@ impl<'a> SliceVal {
     }
 
     #[inline]
-    pub fn slice(&self, begin: isize, end: isize, max: isize) -> SliceVal {
+    pub fn slice(&self, begin: isize, end: isize, max: isize) -> SliceObj {
         let self_len = self.len() as isize + 1;
         let self_cap = self.cap() as isize + 1;
         let bi = begin as usize;
         let ei = ((self_len + end) % self_len) as usize;
         let mi = ((self_cap + max) % self_cap) as usize;
-        SliceVal {
+        SliceObj {
             dark: false,
             begin: self.begin + bi,
             end: self.begin + ei,
@@ -495,9 +495,9 @@ impl<'a> SliceVal {
     }
 }
 
-impl Clone for SliceVal {
+impl Clone for SliceObj {
     fn clone(&self) -> Self {
-        SliceVal {
+        SliceObj {
             dark: false,
             begin: self.begin,
             end: self.end,
@@ -518,7 +518,7 @@ pub type SliceIter<'a> = std::slice::Iter<'a, RefCell<GosValue>>;
 pub type SliceEnumIter<'a> = std::iter::Enumerate<std::slice::Iter<'a, RefCell<GosValue>>>;
 
 impl<'a> SliceRef<'a> {
-    pub fn new(s: &SliceVal) -> SliceRef {
+    pub fn new(s: &SliceObj) -> SliceRef {
         SliceRef {
             vec_ref: s.vec.borrow(),
             begin: s.begin,
@@ -536,43 +536,43 @@ impl<'a> SliceRef<'a> {
     }
 }
 
-impl PartialEq for SliceVal {
-    fn eq(&self, _other: &SliceVal) -> bool {
+impl PartialEq for SliceObj {
+    fn eq(&self, _other: &SliceObj) -> bool {
         unreachable!() //false
     }
 }
 
-impl Eq for SliceVal {}
+impl Eq for SliceObj {}
 
 // ----------------------------------------------------------------------------
-// StructVal
+// StructObj
 
 #[derive(Clone, Debug)]
-pub struct StructVal {
+pub struct StructObj {
     pub dark: bool,
     pub meta: GosValue,
     pub fields: Vec<GosValue>,
 }
 
-impl StructVal {}
+impl StructObj {}
 
 // ----------------------------------------------------------------------------
-// InterfaceVal
+// InterfaceObj
 
 #[derive(Clone, Debug)]
-pub struct InterfaceVal {
+pub struct InterfaceObj {
     pub meta: GosValue,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
     underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
 }
 
-impl InterfaceVal {
+impl InterfaceObj {
     pub fn new(
         meta: GosValue,
         underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
-    ) -> InterfaceVal {
-        InterfaceVal {
+    ) -> InterfaceObj {
+        InterfaceObj {
             meta: meta,
             underlying: underlying,
         }
@@ -590,51 +590,51 @@ impl InterfaceVal {
 }
 
 // ----------------------------------------------------------------------------
-// ChannelVal
+// ChannelObj
 
 #[derive(Clone, Debug)]
-pub struct ChannelVal {}
+pub struct ChannelObj {}
 
 // ----------------------------------------------------------------------------
-// BoxedVal
+// BoxedObj
 /// There are two kinds of boxed vars, which is determined by the behavior of
 /// copy_semantic. Struct, Slice and Map have true pointers
 /// Others don't have true pointers, so a upvalue-like open/close mechanism is needed
 #[derive(Debug, Clone)]
-pub enum BoxedVal {
+pub enum BoxedObj {
     Nil,
     UpVal(UpValue),
-    Struct(Rc<RefCell<StructVal>>),
-    SliceMember(Rc<SliceVal>, OpIndex),
-    StructField(Rc<RefCell<StructVal>>, OpIndex),
+    Struct(Rc<RefCell<StructObj>>),
+    SliceMember(Rc<SliceObj>, OpIndex),
+    StructField(Rc<RefCell<StructObj>>, OpIndex),
 }
 
-impl BoxedVal {
-    pub fn new_var_up_val(d: ValueDesc) -> BoxedVal {
-        BoxedVal::UpVal(UpValue::new(d))
+impl BoxedObj {
+    pub fn new_var_up_val(d: ValueDesc) -> BoxedObj {
+        BoxedObj::UpVal(UpValue::new(d))
     }
 
     // supports only Struct for now
-    pub fn new_var_pointer(val: GosValue) -> BoxedVal {
+    pub fn new_var_pointer(val: GosValue) -> BoxedObj {
         match val {
-            GosValue::Struct(s) => BoxedVal::Struct(s),
+            GosValue::Struct(s) => BoxedObj::Struct(s),
             _ => unreachable!(),
         }
     }
 
-    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedVal {
+    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedObj {
         let s = slice.as_slice();
-        BoxedVal::SliceMember(s.clone(), index)
+        BoxedObj::SliceMember(s.clone(), index)
     }
 
-    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedVal {
+    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedObj {
         let s = stru.as_struct();
-        BoxedVal::StructField(s.clone(), index)
+        BoxedObj::StructField(s.clone(), index)
     }
 }
 
 // ----------------------------------------------------------------------------
-// ClosureVal
+// ClosureObj
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValueDesc {
@@ -693,24 +693,24 @@ impl WeakUpValue {
     }
 }
 
-/// ClosureVal is a variable containing a pinter to a function and
+/// ClosureObj is a variable containing a pinter to a function and
 /// a. a receiver, in which case, it is a bound-method
 /// b. upvalues, in which case, it is a "real" closure
 ///
 #[derive(Clone, Debug)]
-pub struct ClosureVal {
+pub struct ClosureObj {
     pub func: FunctionKey,
     pub receiver: Option<GosValue>,
     upvalues: Option<Vec<UpValue>>,
 }
 
-impl ClosureVal {
+impl ClosureObj {
     pub fn new(
         key: FunctionKey,
         receiver: Option<GosValue>,
         upvalues: Option<Vec<ValueDesc>>,
-    ) -> ClosureVal {
-        ClosureVal {
+    ) -> ClosureObj {
+        ClosureObj {
             func: key,
             receiver: receiver,
             upvalues: upvalues.map(|uvs| uvs.into_iter().map(|x| UpValue::new(x)).collect()),
@@ -1132,7 +1132,7 @@ impl MetadataVal {
             .iter()
             .map(|x| objs.metas[*x.as_meta()].zero_val().clone())
             .collect();
-        let struct_val = StructVal {
+        let struct_val = StructObj {
             dark: false,
             meta: objs.zero_val.zero_val_mark.clone(), // placeholder
             fields: field_zeros,

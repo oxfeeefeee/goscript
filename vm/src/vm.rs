@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::instruction::*;
 use super::objects::{
-    ClosureVal, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
+    ClosureObj, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
 };
 use super::stack::Stack;
 use super::value::*;
@@ -28,7 +28,7 @@ struct Referers {
 
 #[derive(Clone, Debug)]
 struct CallFrame {
-    closure: Rc<ClosureVal>,
+    closure: Rc<ClosureObj>,
     pc: usize,
     stack_base: usize,
     // closures that have upvalues pointing to this frame
@@ -74,7 +74,7 @@ impl CallFrame {
     }
 
     #[inline]
-    fn closure(&self) -> &Rc<ClosureVal> {
+    fn closure(&self) -> &Rc<ClosureObj> {
         &self.closure
     }
 
@@ -253,7 +253,7 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(Rc::new(ClosureVal::new(
+                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
                         func,
                         Some(val.copy_semantic(None)),
                         None,
@@ -264,7 +264,7 @@ impl Fiber {
                     let borrowed = val.as_interface().borrow();
                     let (val, funcs) = borrowed.underlying().as_ref().unwrap();
                     let func = funcs[inst.imm() as usize];
-                    stack.push(GosValue::Closure(Rc::new(ClosureVal::new(
+                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
                         func,
                         Some(val.copy_semantic(None)),
                         None,
@@ -303,8 +303,8 @@ impl Fiber {
                     match stack.get_with_type(s_index, ValueType::Boxed) {
                         GosValue::Boxed(b) => {
                             match *b {
-                                BoxedVal::Nil => unimplemented!(), //panic?
-                                BoxedVal::UpVal(uv) => {
+                                BoxedObj::Nil => unimplemented!(), //panic?
+                                BoxedObj::UpVal(uv) => {
                                     store_up_value!(
                                         uv,
                                         self,
@@ -315,17 +315,17 @@ impl Fiber {
                                         zval
                                     );
                                 }
-                                BoxedVal::Struct(s) => {
+                                BoxedObj::Struct(s) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, ValueType::Struct);
                                     s.replace(RefCell::clone(&*val.as_struct()).into_inner());
                                 }
-                                BoxedVal::SliceMember(s, index) => {
+                                BoxedObj::SliceMember(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.set(index as usize, val);
                                 }
-                                BoxedVal::StructField(s, index) => {
+                                BoxedObj::StructField(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.borrow_mut().fields[index as usize] = val;
@@ -369,16 +369,16 @@ impl Fiber {
                 Opcode::REF_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    stack.push(GosValue::new_boxed(BoxedVal::UpVal(upvalue.clone())));
+                    stack.push(GosValue::new_boxed(BoxedObj::UpVal(upvalue.clone())));
                 }
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
                     let index = inst.imm();
                     let boxed = if t == ValueType::Struct {
                         let s_index = index as usize;
-                        BoxedVal::new_var_pointer(stack.get_with_type(s_index, t))
+                        BoxedObj::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
-                        BoxedVal::new_var_up_val(ValueDesc {
+                        BoxedObj::new_var_up_val(ValueDesc {
                             func: frame.func(),
                             index: index,
                             typ: t,
@@ -389,14 +389,14 @@ impl Fiber {
                 Opcode::REF_SLICE_MEMBER => {
                     let index = stack.pop_int();
                     let slice = stack.pop_with_type(inst.t0());
-                    stack.push(GosValue::new_boxed(BoxedVal::new_slice_member(
+                    stack.push(GosValue::new_boxed(BoxedObj::new_slice_member(
                         &slice,
                         index.try_into().unwrap(),
                     )));
                 }
                 Opcode::REF_STRUCT_FIELD => {
                     let struct_ = stack.pop_with_type(ValueType::Struct);
-                    stack.push(GosValue::new_boxed(BoxedVal::new_struct_field(
+                    stack.push(GosValue::new_boxed(BoxedObj::new_struct_field(
                         &struct_,
                         inst.imm(),
                     )));
@@ -636,7 +636,7 @@ impl Fiber {
                         GosValue::Function(fkey) => {
                             // NEW a closure
                             let func = &objs.functions[fkey];
-                            let val = ClosureVal::new(fkey, None, Some(func.up_ptrs.clone()));
+                            let val = ClosureObj::new(fkey, None, Some(func.up_ptrs.clone()));
                             for uv in val.upvalues().iter() {
                                 drop(frame);
                                 let desc = uv.desc();

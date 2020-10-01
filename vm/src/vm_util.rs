@@ -70,11 +70,11 @@ macro_rules! deref_value {
         match $boxed {
             GosValue::Boxed(b) => {
                 match *b {
-                    BoxedVal::Nil => unimplemented!(), //panic?
-                    BoxedVal::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
-                    BoxedVal::Struct(s) => GosValue::Struct(s),
-                    BoxedVal::SliceMember(s, index) => s.get(index as usize).unwrap(),
-                    BoxedVal::StructField(s, index) => s.borrow().fields[index as usize].clone(),
+                    BoxedObj::Nil => unimplemented!(), //panic?
+                    BoxedObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
+                    BoxedObj::Struct(s) => GosValue::Struct(s),
+                    BoxedObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
+                    BoxedObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),
                 }
             }
             _ => unreachable!(),
@@ -88,11 +88,11 @@ macro_rules! range_vars {
         let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
         let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
         let mut $m_iter: Option<std::collections::hash_map::Iter<GosValue, RefCell<GosValue>>> = None;
-        let mut $l_ref: Option<Rc<SliceVal>> = None;
+        let mut $l_ref: Option<Rc<SliceObj>> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
-        let mut $s_ref: Option<Rc<StringVal>> = None;
-        let mut $s_ptr: Option<*mut Rc<StringVal>> = None;
+        let mut $s_ref: Option<Rc<StringObj>> = None;
+        let mut $s_ptr: Option<*mut Rc<StringObj>> = None;
         let mut $s_iter: Option<StringEnumIter> = None;
     };
 }
@@ -191,7 +191,7 @@ macro_rules! range_body {
                     // release the pointer
                     if let Some(p) = $str_ptr {
                         unsafe {
-                            drop(Box::<Rc<StringVal>>::from_raw(p));
+                            drop(Box::<Rc<StringObj>>::from_raw(p));
                         }
                         $str_ptr = None
                     }

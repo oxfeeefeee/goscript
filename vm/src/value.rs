@@ -87,44 +87,44 @@ pub enum GosValue {
     Package(PackageKey),
     Metadata(MetadataKey),
 
-    Str(Rc<StringVal>), // "String" is taken
-    Boxed(Box<BoxedVal>),
-    Closure(Rc<ClosureVal>),
-    Slice(Rc<SliceVal>),
-    Map(Rc<MapVal>),
-    Interface(Rc<RefCell<InterfaceVal>>),
-    Struct(Rc<RefCell<StructVal>>),
-    Channel(Rc<RefCell<ChannelVal>>),
+    Str(Rc<StringObj>), // "String" is taken
+    Boxed(Box<BoxedObj>),
+    Closure(Rc<ClosureObj>),
+    Slice(Rc<SliceObj>),
+    Map(Rc<MapObj>),
+    Interface(Rc<RefCell<InterfaceObj>>),
+    Struct(Rc<RefCell<StructObj>>),
+    Channel(Rc<RefCell<ChannelObj>>),
 }
 
 impl GosValue {
     #[inline]
     pub fn new_str(s: String) -> GosValue {
-        GosValue::Str(Rc::new(StringVal::with_str(s)))
+        GosValue::Str(Rc::new(StringObj::with_str(s)))
     }
 
     #[inline]
-    pub fn new_boxed(v: BoxedVal) -> GosValue {
+    pub fn new_boxed(v: BoxedObj) -> GosValue {
         GosValue::Boxed(Box::new(v))
     }
 
     #[inline]
     pub fn new_slice(len: usize, cap: usize, dval: &GosValue, slices: &mut SliceObjs) -> GosValue {
-        let s = Rc::new(SliceVal::new(len, cap, dval));
+        let s = Rc::new(SliceObj::new(len, cap, dval));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
 
     #[inline]
     pub fn with_slice_val(val: Vec<GosValue>, slices: &mut SliceObjs) -> GosValue {
-        let s = Rc::new(SliceVal::with_data(val));
+        let s = Rc::new(SliceObj::with_data(val));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
 
     #[inline]
     pub fn new_map(default_val: GosValue, maps: &mut MapObjs) -> GosValue {
-        let val = Rc::new(MapVal::new(default_val));
+        let val = Rc::new(MapObj::new(default_val));
         maps.push(Rc::downgrade(&val));
         GosValue::Map(val)
     }
@@ -143,7 +143,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_closure(fkey: FunctionKey) -> GosValue {
-        let val = ClosureVal::new(fkey, None, None);
+        let val = ClosureObj::new(fkey, None, None);
         GosValue::Closure(Rc::new(val))
     }
 
@@ -153,7 +153,7 @@ impl GosValue {
         underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
         ifaces: &mut InterfaceObjs,
     ) -> GosValue {
-        let val = Rc::new(RefCell::new(InterfaceVal::new(meta, underlying)));
+        let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
         ifaces.push(Rc::downgrade(&val));
         GosValue::Interface(val)
     }
@@ -184,27 +184,27 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_str(&self) -> &Rc<StringVal> {
+    pub fn as_str(&self) -> &Rc<StringObj> {
         unwrap_gos_val!(Str, self)
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &Rc<SliceVal> {
+    pub fn as_slice(&self) -> &Rc<SliceObj> {
         unwrap_gos_val!(Slice, self)
     }
 
     #[inline]
-    pub fn as_map(&self) -> &Rc<MapVal> {
+    pub fn as_map(&self) -> &Rc<MapObj> {
         unwrap_gos_val!(Map, self)
     }
 
     #[inline]
-    pub fn as_interface(&self) -> &Rc<RefCell<InterfaceVal>> {
+    pub fn as_interface(&self) -> &Rc<RefCell<InterfaceObj>> {
         unwrap_gos_val!(Interface, self)
     }
 
     #[inline]
-    pub fn as_channel(&self) -> &Rc<RefCell<ChannelVal>> {
+    pub fn as_channel(&self) -> &Rc<RefCell<ChannelObj>> {
         unwrap_gos_val!(Channel, self)
     }
 
@@ -219,12 +219,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> &Rc<RefCell<StructVal>> {
+    pub fn as_struct(&self) -> &Rc<RefCell<StructObj>> {
         unwrap_gos_val!(Struct, self)
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &Rc<ClosureVal> {
+    pub fn as_closure(&self) -> &Rc<ClosureObj> {
         unwrap_gos_val!(Closure, self)
     }
 
@@ -234,7 +234,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_boxed(&self) -> &BoxedVal {
+    pub fn as_boxed(&self) -> &BoxedObj {
         unwrap_gos_val!(Boxed, self)
     }
 
@@ -273,8 +273,8 @@ impl GosValue {
                 let (zv, t) = nil.unwrap();
                 zv.nil_zero_val(t).clone()
             }
-            GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceVal::clone(s))),
-            GosValue::Map(m) => GosValue::Map(Rc::new(MapVal::clone(m))),
+            GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
+            GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
             _ => self.clone(),
         }
@@ -729,7 +729,7 @@ mod test {
         dbg!(mem::size_of::<HashMap<GosValue, GosValue>>());
         dbg!(mem::size_of::<String>());
         dbg!(mem::size_of::<Rc<String>>());
-        dbg!(mem::size_of::<SliceVal>());
+        dbg!(mem::size_of::<SliceObj>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
         dbg!(mem::size_of::<GosValue64>());
