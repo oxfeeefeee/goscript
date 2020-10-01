@@ -16,7 +16,7 @@ use std::rc::Rc;
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
-    pub ifaces: Vec<(GosValue, Rc<Vec<OpIndex>>)>,
+    pub ifaces: Vec<(GosValue, Rc<Vec<FunctionKey>>)>,
     pub entry: FunctionKey,
 }
 
@@ -259,6 +259,17 @@ impl Fiber {
                         None,
                     ))));
                 }
+                Opcode::BIND_INTERFACE_METHOD => {
+                    let val = stack.pop_with_type(ValueType::Interface);
+                    let borrowed = val.as_interface().borrow();
+                    let (val, funcs) = borrowed.underlying().as_ref().unwrap();
+                    let func = funcs[inst.imm() as usize];
+                    stack.push(GosValue::Closure(Rc::new(ClosureVal::new(
+                        func,
+                        Some(val.copy_semantic(None)),
+                        None,
+                    ))));
+                }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
                     let (rhs_index, index) = inst.imm2();
                     let s_index = Stack::offset(stack.len(), index);
@@ -327,7 +338,6 @@ impl Fiber {
                 Opcode::CAST_TO_INTERFACE => {
                     let iface = ifaces[inst.imm() as usize].clone();
                     let named = stack.pop_with_type(inst.t0());
-                    dbg!(&iface, &named);
                     stack.push(GosValue::new_iface(
                         iface.0,
                         Some((named, iface.1)),

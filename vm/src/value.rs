@@ -1,5 +1,5 @@
 //#![allow(dead_code)]
-use super::instruction::{OpIndex, Opcode, ValueType};
+use super::instruction::{Opcode, ValueType};
 pub use super::objects::*;
 use ordered_float;
 use std::cell::RefCell;
@@ -150,7 +150,7 @@ impl GosValue {
     #[inline]
     pub fn new_iface(
         meta: GosValue,
-        underlying: Option<(GosValue, Rc<Vec<OpIndex>>)>,
+        underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
         ifaces: &mut InterfaceObjs,
     ) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceVal::new(meta, underlying)));

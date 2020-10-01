@@ -118,21 +118,27 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             .gen_type_meta_by_node_id(expr.id(), self.objects);
         let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
-            let i = MetadataVal::method_index(&t, name, &self.objects.metas);
-            let method = MetadataVal::get_method(&t, i, &self.objects.metas);
-            let fkey = method.as_closure().func;
-            let boxed_recv = self.objects.metas[*self.objects.functions[fkey].meta.as_meta()]
-                .sig_metadata()
-                .boxed_recv(&self.objects.metas);
-            if boxed_recv {
-                // desugar
-                self.visit_expr_unary(expr, &Token::AND);
-            } else {
+            if self.tlookup.get_expr_value_type(expr) == ValueType::Interface {
+                let i = MetadataVal::iface_method_index(&t, name, &self.objects.metas);
                 self.visit_expr(expr);
+                current_func_mut!(self).emit_code_with_imm(Opcode::BIND_INTERFACE_METHOD, i);
+            } else {
+                let i = MetadataVal::method_index(&t, name, &self.objects.metas);
+                let method = MetadataVal::get_method(&t, i, &self.objects.metas);
+                let fkey = method.as_closure().func;
+                let boxed_recv = self.objects.metas[*self.objects.functions[fkey].meta.as_meta()]
+                    .sig_metadata()
+                    .boxed_recv(&self.objects.metas);
+                if boxed_recv {
+                    // desugar
+                    self.visit_expr_unary(expr, &Token::AND);
+                } else {
+                    self.visit_expr(expr);
+                }
+                let func = current_func_mut!(self);
+                let mi = func.add_const(None, GosValue::Function(fkey));
+                func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into());
             }
-            let func = current_func_mut!(self);
-            let mi = func.add_const(None, GosValue::Function(fkey));
-            func.emit_bind_method(mi.into(), t0);
         } else {
             self.visit_expr(expr);
             let i = MetadataVal::field_index(&t, name, &self.objects.metas);

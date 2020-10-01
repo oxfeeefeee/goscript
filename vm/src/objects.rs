@@ -564,18 +564,27 @@ pub struct InterfaceVal {
     pub meta: GosValue,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
-    pub underlying: Option<(GosValue, Rc<Vec<OpIndex>>)>,
+    underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
 }
 
 impl InterfaceVal {
-    pub fn new(meta: GosValue, underlying: Option<(GosValue, Rc<Vec<OpIndex>>)>) -> InterfaceVal {
+    pub fn new(
+        meta: GosValue,
+        underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
+    ) -> InterfaceVal {
         InterfaceVal {
             meta: meta,
             underlying: underlying,
         }
     }
 
-    pub fn set_underlying(&mut self, named: GosValue, mapping: Rc<Vec<OpIndex>>) {
+    #[inline]
+    pub fn underlying(&self) -> &Option<(GosValue, Rc<Vec<FunctionKey>>)> {
+        &self.underlying
+    }
+
+    #[inline]
+    pub fn set_underlying(&mut self, named: GosValue, mapping: Rc<Vec<FunctionKey>>) {
         self.underlying = Some((named, mapping));
     }
 }
@@ -1011,10 +1020,12 @@ impl OrderedMembers {
         }
     }
 
-    pub fn iface_mapping(&self, named_obj: &OrderedMembers) -> Vec<OpIndex> {
-        let mut result = vec![0; self.members.len()];
+    pub fn iface_mapping(&self, named_obj: &OrderedMembers) -> Vec<FunctionKey> {
+        let mut result = vec![null_key!(); self.members.len()];
         for (n, i) in self.mapping.iter() {
-            result[*i as usize] = named_obj.mapping[n];
+            result[*i as usize] = named_obj.members[named_obj.mapping[n] as usize]
+                .as_closure()
+                .func;
         }
         result
     }
@@ -1232,6 +1243,14 @@ impl MetadataVal {
     }
 
     #[inline]
+    pub fn get_all_methods(v: &GosValue, metas: &MetadataObjs) -> Vec<FunctionKey> {
+        match &metas[*v.as_meta()].typ {
+            MetadataType::Named(m, _) => m.members.iter().map(|x| x.as_closure().func).collect(),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn field_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
         let v = if let MetadataType::Boxed(b) = metas[*v.as_meta()].typ() {
             b
@@ -1250,10 +1269,25 @@ impl MetadataVal {
         }
     }
 
+    /// method_index returns the index of the method of a non-interface
     #[inline]
     pub fn method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
         if let MetadataType::Named(m, _) = metas[*v.as_meta()].typ() {
             m.mapping[name] as OpIndex
+        } else {
+            unreachable!()
+        }
+    }
+
+    /// iface_method_index returns the index of the method of an interface
+    #[inline]
+    pub fn iface_method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
+        if let MetadataType::Named(_, under) = metas[*v.as_meta()].typ() {
+            if let MetadataType::Interface(m) = metas[*under.as_meta()].typ() {
+                m.mapping[name] as OpIndex
+            } else {
+                unreachable!()
+            }
         } else {
             unreachable!()
         }
