@@ -437,7 +437,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let meta_key = *self.get_use_type_meta(&field.typ).as_meta();
+            let (meta, _) = self.get_use_type_meta(&field.typ);
+            let meta_key = *meta.as_meta();
             let key = match self.objects.metas[meta_key].typ() {
                 MetadataType::Boxed(b) => *b.as_meta(),
                 MetadataType::Named(_, _) => meta_key,
@@ -682,9 +683,7 @@ impl<'a> CodeGen<'a> {
 
         // 1. try local first
         let entity_key = id.entity_key().unwrap();
-        let local = current_func_mut!(self)
-            .entity_index(&entity_key)
-            .map(|x| *x);
+        let local = current_func!(self).entity_index(&entity_key).map(|x| *x);
         if local.is_some() {
             return local.unwrap();
         }
@@ -721,6 +720,7 @@ impl<'a> CodeGen<'a> {
             return EntIndex::PackageMember(*index);
         }
 
+        dbg!(&self.ast_objs.idents[*ident]);
         unreachable!();
     }
 
@@ -783,12 +783,20 @@ impl<'a> CodeGen<'a> {
         rhs_exprs: &Vec<Expr>,
         range: Option<&Expr>,
     ) -> Option<usize> {
-        let is_def = *token == Token::DEFINE;
         let lhs = lhs_exprs
             .iter()
             .map(|expr| {
                 match expr {
                     Expr::Ident(ident) => {
+                        // cannot only determined by token, because it could be a mixture
+                        let mut is_def = *token == Token::DEFINE;
+                        if is_def {
+                            let entity = &self.ast_objs.idents[*ident].entity_key();
+                            is_def = entity.is_some()
+                                && current_func!(self)
+                                    .entity_index(entity.as_ref().unwrap())
+                                    .is_none();
+                        }
                         let (idx, t) = self.add_local_or_resolve_ident(ident, is_def);
                         (LeftHandSide::Primitive(idx), t)
                     }
@@ -893,26 +901,26 @@ impl<'a> CodeGen<'a> {
         let types = if let Some(r) = range {
             // the range statement
             self.visit_expr(r);
-            let tkv = self.tlookup.get_range_value_types(r);
+            let tkv = self.tlookup.get_range_tc_types(r);
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::PUSH_IMM, -1);
             range_marker = Some(func.code.len());
             // the block_end address to be set
             func.emit_inst(
                 Opcode::RANGE,
-                Some(tkv[0]),
-                Some(tkv[1]),
-                Some(tkv[2]),
+                Some(self.tlookup.value_type_from_tc(tkv[0])),
+                Some(self.tlookup.value_type_from_tc(tkv[1])),
+                Some(self.tlookup.value_type_from_tc(tkv[2])),
                 None,
             );
             tkv[1..].to_vec()
         } else if values.len() == lhs.len() {
             // define or assign with values
             let mut types = Vec::with_capacity(values.len());
-            for (i, val) in values.iter().enumerate() {
+            for val in values.iter() {
                 self.visit_expr(val);
-                self.try_cast_to_iface(lhs[i].1, val);
-                types.push(self.tlookup.get_expr_value_type(val));
+                let rhs_type = self.tlookup.get_expr_tc_type(val);
+                types.push(rhs_type);
             }
             types
         } else if values.len() == 0 {
@@ -922,7 +930,7 @@ impl<'a> CodeGen<'a> {
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                func.emit_load(i, t);
+                func.emit_load(i, self.tlookup.value_type_from_tc(t));
                 types.push(t);
             }
             types
@@ -930,7 +938,7 @@ impl<'a> CodeGen<'a> {
             // define or assign with function call on the right
             if let Expr::Call(_) = values[0] {
                 self.visit_expr(&values[0]);
-                self.tlookup.get_return_value_types(&values[0])
+                self.tlookup.get_return_tc_types(&values[0])
             } else {
                 unreachable!();
             }
@@ -939,7 +947,6 @@ impl<'a> CodeGen<'a> {
         };
 
         // now the values should be on stack, generate code to set them to the lhs
-        let func = current_func_mut!(self);
         let total_lhs_val = lhs.iter().fold(0, |acc, (x, _)| match x {
             LeftHandSide::Primitive(_) => acc,
             LeftHandSide::IndexSelExpr(info) => acc + info.stack_space(),
@@ -951,7 +958,9 @@ impl<'a> CodeGen<'a> {
         let mut current_indexing_index = -total_val;
         for (i, (l, _)) in lhs.iter().enumerate() {
             let val_index = i as OpIndex - total_rhs_val;
-            let typ = types[i];
+            self.try_cast_to_iface(lhs[i].1, types[i], val_index);
+            let typ = self.tlookup.value_type_from_tc(types[i]);
+            let func = current_func_mut!(self);
             match l {
                 LeftHandSide::Primitive(_) => {
                     func.emit_store(l, val_index, None, typ);
@@ -993,7 +1002,7 @@ impl<'a> CodeGen<'a> {
                 LeftHandSide::Deref(_) => total_pop += 1,
             }
         }
-        func.emit_pop(total_pop);
+        current_func_mut!(self).emit_pop(total_pop);
         range_marker
     }
 
@@ -1082,33 +1091,29 @@ impl<'a> CodeGen<'a> {
         fkey
     }
 
-    fn try_cast_to_iface(&mut self, lhs: Option<TCTypeKey>, expr: &Expr) {
+    fn try_cast_to_iface(&mut self, lhs: Option<TCTypeKey>, rhs: TCTypeKey, rhs_index: OpIndex) {
         if let Some(t1) = lhs {
             if self.tlookup.value_type_from_tc(t1) == ValueType::Interface {
-                let t2 = self.tlookup.get_expr_tc_type(expr);
+                let t2 = rhs;
                 let vt2 = self.tlookup.value_type_from_tc(t2);
                 if vt2 != ValueType::Interface {
                     let m_index =
                         self.iface_mapping
                             .get_index(&(t1, t2), &mut self.tlookup, self.objects);
-                    current_func_mut!(self).emit_code_with_type_imm(
-                        Opcode::CAST_TO_INTERFACE,
-                        vt2,
-                        m_index,
-                    );
+                    current_func_mut!(self).emit_cast_to_interface(vt2, rhs_index, m_index);
                 }
             }
         }
     }
 
-    fn get_use_type_meta(&mut self, expr: &Expr) -> GosValue {
+    fn get_use_type_meta(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
         let ikey = match expr {
             Expr::Star(s) => *s.expr.try_as_ident().unwrap(),
             Expr::Ident(i) => *i,
             _ => unreachable!(),
         };
         let typ = self.tlookup.get_use_tc_type(ikey);
-        match self.tc_objs.types[typ].try_as_basic() {
+        let val = match self.tc_objs.types[typ].try_as_basic() {
             Some(_) => self.tlookup.type_from_tc(typ, self.objects),
             None => {
                 let i = self.resolve_ident(&ikey);
@@ -1124,7 +1129,8 @@ impl<'a> CodeGen<'a> {
                     _ => unreachable!(),
                 }
             }
-        }
+        };
+        (val, typ)
     }
 
     fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
@@ -1139,9 +1145,8 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn get_type_default(&mut self, expr: &Expr) -> (GosValue, ValueType) {
-        let meta = self.get_use_type_meta(expr);
-        let t = MetadataVal::get_value_type(&meta, &self.objects.metas);
+    fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
+        let (meta, t) = self.get_use_type_meta(expr);
         let meta_val = MetadataVal::get_underlying(&meta, &self.objects.metas);
         let zero_val = meta_val.zero_val().clone();
         (zero_val, t)

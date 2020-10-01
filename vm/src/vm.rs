@@ -336,13 +336,13 @@ impl Fiber {
                     }
                 }
                 Opcode::CAST_TO_INTERFACE => {
-                    let iface = ifaces[inst.imm() as usize].clone();
-                    let named = stack.pop_with_type(inst.t0());
-                    stack.push(GosValue::new_iface(
-                        iface.0,
-                        Some((named, iface.1)),
-                        &mut objs.interfaces,
-                    ));
+                    let (target, mapping) = inst.imm2();
+                    let rhs_s_index = Stack::offset(stack.len(), target);
+                    let iface = ifaces[mapping as usize].clone();
+                    let named = stack.get_with_type(rhs_s_index, inst.t0());
+                    let val =
+                        GosValue::new_iface(iface.0, Some((named, iface.1)), &mut objs.interfaces);
+                    stack.set(rhs_s_index, val);
                 }
                 Opcode::ADD => stack.add(inst.t0()),
                 Opcode::SUB => stack.sub(inst.t0()),

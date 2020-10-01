@@ -71,14 +71,14 @@ impl<'a> TypeLookup<'a> {
         self.type_from_tc(self.get_def_tc_type(ikey), objects)
     }
 
-    pub fn get_range_value_types(&mut self, e: &Expr) -> [ValueType; 3] {
+    pub fn get_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        self.range_value_types(typ)
+        self.range_tc_types(typ)
     }
 
-    pub fn get_return_value_types(&mut self, e: &Expr) -> Vec<ValueType> {
+    pub fn get_return_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        self.return_value_types(typ)
+        self.return_tc_types(typ)
     }
 
     pub fn get_selection_value_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
@@ -267,23 +267,15 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn range_value_types(&self, typ: TCTypeKey) -> [ValueType; 3] {
+    fn range_tc_types(&self, typ: TCTypeKey) -> [TCTypeKey; 3] {
+        let t_int = self.tc_objs.universe().types()[&BasicType::Int];
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
-                BasicType::Str | BasicType::UntypedString => {
-                    [ValueType::Str, ValueType::Int, ValueType::Int]
-                }
+                BasicType::Str | BasicType::UntypedString => [typ, t_int, t_int],
                 _ => unreachable!(),
             },
-            Type::Slice(detail) => {
-                let elem = self.value_type_from_tc(detail.elem());
-                [ValueType::Slice, ValueType::Int, elem]
-            }
-            Type::Map(detail) => {
-                let key = self.value_type_from_tc(detail.key());
-                let elem = self.value_type_from_tc(detail.elem());
-                [ValueType::Map, key, elem]
-            }
+            Type::Slice(detail) => [typ, t_int, detail.elem()],
+            Type::Map(detail) => [typ, detail.key(), detail.elem()],
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
                 unreachable!()
@@ -291,15 +283,12 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn return_value_types(&self, typ: TCTypeKey) -> Vec<ValueType> {
+    fn return_tc_types(&self, typ: TCTypeKey) -> Vec<TCTypeKey> {
         match &self.tc_objs.types[typ] {
             Type::Tuple(detail) => detail
                 .vars()
                 .iter()
-                .map(|x| {
-                    let typ = self.tc_objs.lobjs[*x].typ().unwrap();
-                    self.value_type_from_tc(typ)
-                })
+                .map(|x| self.tc_objs.lobjs[*x].typ().unwrap())
                 .collect(),
             _ => unreachable!(),
         }
