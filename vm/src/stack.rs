@@ -181,9 +181,6 @@ impl Stack {
 
     #[inline]
     pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, zero: &ZeroVal) {
-        //dbg!(t, self.inner[li].debug_type, self.inner[ri].debug_type);
-        //debug_assert!(t == self.inner[li].debug_type);
-        //debug_assert!(t == self.inner[ri].debug_type);
         if t <= COPYABLE_END {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {

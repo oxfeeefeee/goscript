@@ -375,7 +375,6 @@ impl Fiber {
                     let t = inst.t0();
                     let s_index = Stack::offset(stack_base, inst.imm());
                     let boxed = if t == ValueType::Struct {
-                        dbg!(s_index, t, stack.get_with_type(s_index, t));
                         BoxedObj::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
                         BoxedObj::new_var_up_val(ValueDesc {
