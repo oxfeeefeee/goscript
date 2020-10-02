@@ -127,6 +127,12 @@ fn test_for() {
 }
 
 #[test]
+fn test_interface() {
+    let err_cnt = load_parse_gen("./tests/data/interface.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 
