@@ -175,7 +175,7 @@ impl Fiber {
                             let map = m.deep_clone();
                             GosValue::Map(Rc::new(map))
                         }
-                        _ => gos_val.clone(),
+                        _ => gos_val.copy_semantic(None),
                     };
                     stack.push(val);
                 }
@@ -373,14 +373,14 @@ impl Fiber {
                 }
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
-                    let index = inst.imm();
+                    let s_index = Stack::offset(stack_base, inst.imm());
                     let boxed = if t == ValueType::Struct {
-                        let s_index = index as usize;
+                        dbg!(s_index, t, stack.get_with_type(s_index, t));
                         BoxedObj::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
                         BoxedObj::new_var_up_val(ValueDesc {
                             func: frame.func(),
-                            index: index,
+                            index: s_index as OpIndex,
                             typ: t,
                         })
                     };
