@@ -200,6 +200,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let t = self.tlookup.get_expr_value_type(&params[0]);
                     let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
+                    //self.try_cast_params_to_iface(func, params);
                     let bf = &self.built_in_funcs[i as usize];
                     let func = current_func_mut!(self);
                     let (t_variadic, count) = if bf.variadic {
@@ -225,6 +226,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(func);
         current_func_mut!(self).emit_pre_call();
         let _ = params.iter().map(|e| self.visit_expr(e)).count();
+        self.try_cast_params_to_iface(func, params);
         // do not pack params if there is ellipsis
         current_func_mut!(self).emit_call(ellipsis);
     }
@@ -1061,12 +1063,11 @@ impl<'a> CodeGen<'a> {
     ) -> FunctionKey {
         let typ = &self.ast_objs.ftypes[fkey];
         let sig_metadata = &self.objects.metas[*fmeta.as_meta()].sig_metadata();
-        let fval = FunctionVal::new(
-            self.pkg_key.clone(),
-            fmeta.clone(),
-            sig_metadata.variadic,
-            false,
-        );
+        let variadic = sig_metadata
+            .variadic
+            .as_ref()
+            .map(|x| MetadataVal::get_value_type(x, &self.objects.metas));
+        let fval = FunctionVal::new(self.pkg_key.clone(), fmeta.clone(), variadic, false);
         let fkey = self.objects.functions.insert(fval);
         let mut func = &mut self.objects.functions[fkey];
         func.ret_count = match &typ.results {
@@ -1101,6 +1102,26 @@ impl<'a> CodeGen<'a> {
                         self.iface_mapping
                             .get_index(&(t1, t2), &mut self.tlookup, self.objects);
                     current_func_mut!(self).emit_cast_to_interface(vt2, rhs_index, m_index);
+                }
+            }
+        }
+    }
+
+    fn try_cast_params_to_iface(&mut self, func: &Expr, params: &Vec<Expr>) {
+        let ftype = self.tlookup.get_expr_tc_type(func);
+        let (sig_params, variadic) = self.tlookup.get_sig_params_tc_types(ftype);
+        let non_variadic_params = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
+        for (i, v) in sig_params[..non_variadic_params].iter().enumerate() {
+            let rhs_index = i as OpIndex - params.len() as OpIndex;
+            let rhs = self.tlookup.get_expr_tc_type(&params[i]);
+            self.try_cast_to_iface(Some(*v), rhs, rhs_index);
+        }
+        if let Some(t) = variadic {
+            if self.tlookup.value_type_from_tc(t) == ValueType::Interface {
+                for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
+                    let rhs_index = i as OpIndex - params.len() as OpIndex;
+                    let rhs = self.tlookup.get_expr_tc_type(p);
+                    self.try_cast_to_iface(Some(t), rhs, rhs_index);
                 }
             }
         }

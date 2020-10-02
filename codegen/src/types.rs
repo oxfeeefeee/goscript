@@ -96,6 +96,30 @@ impl<'a> TypeLookup<'a> {
         self.types.get(&typ).unwrap().clone()
     }
 
+    pub fn get_sig_params_tc_types(
+        &mut self,
+        func: TCTypeKey,
+    ) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
+        let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
+        let sig = typ.try_as_signature().unwrap();
+        let params: Vec<TCTypeKey> = self.tc_objs.types[sig.params()]
+            .try_as_tuple()
+            .unwrap()
+            .vars()
+            .iter()
+            .map(|&x| self.tc_objs.lobjs[x].typ().unwrap())
+            .collect();
+        let variadic = if sig.variadic() {
+            let slice = &self.tc_objs.types[*params.last().unwrap()]
+                .try_as_slice()
+                .unwrap();
+            Some(slice.elem())
+        } else {
+            None
+        };
+        (params, variadic)
+    }
+
     // returns const value if val is_some, otherwise returns vm_type for the tc_type
     fn const_value_or_type_from_tc(
         &self,
@@ -172,7 +196,7 @@ impl<'a> TypeLookup<'a> {
                 MetadataVal::new_interface(fields, vm_objs)
             }
             Type::Signature(detail) => {
-                let mut convert = |tuple_key| {
+                let mut convert = |tuple_key| -> Vec<GosValue> {
                     self.tc_objs.types[tuple_key]
                         .try_as_tuple()
                         .unwrap()
@@ -192,16 +216,11 @@ impl<'a> TypeLookup<'a> {
                     }
                 }
                 let variadic = if detail.variadic() {
-                    let slice = self.tc_objs.types[detail.params()]
-                        .try_as_tuple()
-                        .unwrap()
-                        .vars()
-                        .last()
-                        .unwrap();
-                    let sval = self.tc_objs.lobjs[*slice].typ().unwrap();
-                    let elem = self.tc_objs.types[sval].try_as_slice().unwrap().elem();
-                    let typ = self.type_from_tc(elem, vm_objs);
-                    Some(vm_objs.metas[*typ.as_meta()].zero_val().get_type())
+                    let slice = params.last().unwrap();
+                    match vm_objs.metas[*slice.as_meta()].typ() {
+                        MetadataType::Slice(elem) => Some(elem.clone()),
+                        _ => unreachable!(),
+                    }
                 } else {
                     None
                 };

@@ -995,7 +995,7 @@ pub struct SigMetadata {
     pub recv: Option<GosValue>,
     pub params: Vec<GosValue>,
     pub results: Vec<GosValue>,
-    pub variadic: Option<ValueType>,
+    pub variadic: Option<GosValue>,
 }
 
 impl SigMetadata {
@@ -1087,7 +1087,7 @@ impl MetadataVal {
         recv: Option<GosValue>,
         params: Vec<GosValue>,
         results: Vec<GosValue>,
-        variadic: Option<ValueType>,
+        variadic: Option<GosValue>,
         objs: &mut VMObjects,
     ) -> GosValue {
         let m = MetadataVal {

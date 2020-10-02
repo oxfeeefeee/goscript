@@ -23,6 +23,26 @@ func measure(x geometry) float64 {
     return x.perim()
 }
 
+func measure2(x geometry, f float64, y geometry) float64 {
+    return x.perim() + f + y.perim()
+}
+
+func measure3(x geometry, c float64, v... geometry) float64 {
+    total := x.perim() + c
+    for _, g := range v {
+        total += g.perim()
+    }
+    return total
+}
+
+func measure4(x geometry, v... float64) float64 {
+    total := x.perim()
+    for _, g := range v {
+        total += g
+    }
+    return total
+}
+
 /*
 type circle struct {
     radius float64
@@ -71,6 +91,14 @@ func main() {
     assert(f == 1)
     assert(4 == measure(g))
 
+    assert(37 == measure2(r, 5, r))
+
+    assert(16 * 3 + 5 == 53)
+
+    //measure3(r, 2, r, r, r)
+    assert(53 == measure3(r, 5, r, r))
+
+    assert(30 == measure4(r, 2, 3,4,5))
 
     /*
     r := rect{width: 1, height: 1}
