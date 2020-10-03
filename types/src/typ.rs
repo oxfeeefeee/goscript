@@ -192,6 +192,12 @@ impl Type {
             _ => false,
         }
     }
+    pub fn is_invalid(&self, objs: &TCObjects) -> bool {
+        match self.underlying_val(objs) {
+            Type::Basic(b) => b.info() == BasicInfo::IsInvalid,
+            _ => false,
+        }
+    }
     pub fn is_boolean(&self, objs: &TCObjects) -> bool {
         match self.underlying_val(objs) {
             Type::Basic(b) => b.info() == BasicInfo::IsBoolean,
