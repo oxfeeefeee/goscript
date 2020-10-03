@@ -40,6 +40,22 @@ impl<'a> TypeLookup<'a> {
         self.ti.types.get(&e.id()).unwrap().typ
     }
 
+    // some of the built in funcs are not recorded
+    pub fn try_get_expr_tc_type(&self, e: &Expr) -> Option<TCTypeKey> {
+        self.ti
+            .types
+            .get(&e.id())
+            .map(|x| {
+                let typ = x.typ;
+                if self.tc_objs.types[typ].is_invalid(self.tc_objs) {
+                    None
+                } else {
+                    Some(typ)
+                }
+            })
+            .flatten()
+    }
+
     pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
         self.value_type_from_tc(self.get_expr_tc_type(e))
     }

@@ -200,7 +200,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let t = self.tlookup.get_expr_value_type(&params[0]);
                     let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
-                    //self.try_cast_params_to_iface(func, params);
+                    // some of the built in funcs are not recorded
+                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func) {
+                        self.try_cast_params_to_iface(t, params);
+                    }
                     let bf = &self.built_in_funcs[i as usize];
                     let func = current_func_mut!(self);
                     let (t_variadic, count) = if bf.variadic {
@@ -226,7 +229,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(func);
         current_func_mut!(self).emit_pre_call();
         let _ = params.iter().map(|e| self.visit_expr(e)).count();
-        self.try_cast_params_to_iface(func, params);
+        let t = self.tlookup.get_expr_tc_type(func);
+        self.try_cast_params_to_iface(t, params);
         // do not pack params if there is ellipsis
         current_func_mut!(self).emit_call(ellipsis);
     }
@@ -1107,9 +1111,8 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn try_cast_params_to_iface(&mut self, func: &Expr, params: &Vec<Expr>) {
-        let ftype = self.tlookup.get_expr_tc_type(func);
-        let (sig_params, variadic) = self.tlookup.get_sig_params_tc_types(ftype);
+    fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>) {
+        let (sig_params, variadic) = self.tlookup.get_sig_params_tc_types(func);
         let non_variadic_params = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
         for (i, v) in sig_params[..non_variadic_params].iter().enumerate() {
             let rhs_index = i as OpIndex - params.len() as OpIndex;
