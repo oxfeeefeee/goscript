@@ -191,7 +191,7 @@ impl Fiber {
                     stack.push_from_index(index, inst.t0()); // (index![stack, index]);
                 }
                 Opcode::STORE_LOCAL => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack_base, index);
                     store_local!(stack, s_index, rhs_index, inst.t0(), zval);
                 }
@@ -201,7 +201,7 @@ impl Fiber {
                     stack.push(load_up_value!(upvalue, self, stack, frame));
                 }
                 Opcode::STORE_UPVALUE => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
                     store_up_value!(upvalue, self, stack, frame, rhs_index, inst.t0(), zval);
                 }
@@ -215,7 +215,7 @@ impl Fiber {
                     stack.push(vm_util::load_index_int(val, inst.imm() as usize));
                 }
                 Opcode::STORE_INDEX => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack.len(), index);
                     let key = stack.get_with_type(s_index + 1, inst.t2());
                     let target = &stack.get_with_type(s_index, inst.t1());
@@ -223,7 +223,7 @@ impl Fiber {
                 }
                 Opcode::STORE_INDEX_IMM => {
                     // the only place we can store the immediate index is t2
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack.len(), index);
                     let target = &stack.get_with_type(s_index, inst.t1());
                     vm_util::store_index_int(
@@ -271,7 +271,7 @@ impl Fiber {
                     ))));
                 }
                 Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack.len(), index);
                     let key = if inst_op == Opcode::STORE_FIELD {
                         stack.get_with_type(s_index + 1, inst.t2())
@@ -293,12 +293,12 @@ impl Fiber {
                     stack.push(pkg.member(index).clone());
                 }
                 Opcode::STORE_THIS_PKG_FIELD => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let pkg = &mut objs.packages[func.package];
                     stack.store_val(pkg.member_mut(index), rhs_index, inst.t0(), zval);
                 }
                 Opcode::STORE_DEREF => {
-                    let (rhs_index, index) = inst.imm2();
+                    let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack.len(), index);
                     match stack.get_with_type(s_index, ValueType::Boxed) {
                         GosValue::Boxed(b) => {
@@ -336,7 +336,7 @@ impl Fiber {
                     }
                 }
                 Opcode::CAST_TO_INTERFACE => {
-                    let (target, mapping) = inst.imm2();
+                    let (target, mapping) = inst.imm824();
                     let rhs_s_index = Stack::offset(stack.len(), target);
                     let iface = ifaces[mapping as usize].clone();
                     let named = stack.get_with_type(rhs_s_index, inst.t0());

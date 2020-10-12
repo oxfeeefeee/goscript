@@ -63,7 +63,7 @@ impl<'a> EntryGen<'a> {
         main_pkg: TCPackageKey,
     ) -> ByteCode {
         let mut main_pkg_idx = None;
-        for (&tcpkg, ti) in checker_result.iter() {
+        for (&tcpkg, _) in checker_result.iter() {
             // create vm packages and store the indices
             let name = self.tc_objs.pkgs[tcpkg].name().clone().unwrap();
             let pkey = self.objects.packages.insert(PackageVal::new(name));
@@ -73,17 +73,21 @@ impl<'a> EntryGen<'a> {
             if tcpkg == main_pkg {
                 main_pkg_idx = Some(index);
             }
-
+        }
+        for (i, (_, ti)) in checker_result.iter().enumerate() {
+            dbg!(&ti.init_order);
             CodeGen::new(
                 &mut self.objects,
                 self.ast_objs,
                 self.tc_objs,
-                ti,
+                &ti,
                 &mut self.iface_mapping,
-                pkey,
+                &self.pkg_indices,
+                &self.packages,
+                self.packages[i],
                 self.blank_ident,
             )
-            .gen_with_files(&ti.ast_files, index);
+            .gen_with_files(&ti.ast_files, i as OpIndex);
         }
 
         let entry = self.gen_entry_func(main_pkg_idx.unwrap());

@@ -17,7 +17,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
-use goscript_types::{TCObjects, TypeInfo, TypeKey as TCTypeKey};
+use goscript_types::{PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey};
 
 macro_rules! current_func_mut {
     ($owner:ident) => {
@@ -57,6 +57,8 @@ pub struct CodeGen<'a> {
     tc_objs: &'a TCObjects,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
+    pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
+    pkgs: &'a Vec<PackageKey>,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     built_in_funcs: Vec<BuiltInFunc>,
@@ -112,6 +114,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
+        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
+            let index = self.pkg_indices[&key];
+            let pkg = self.pkgs[index as usize];
+            dbg!(pkg);
+            return;
+        }
+
         let (t0, t1) = self.tlookup.get_selection_value_types(id);
         let t = self
             .tlookup
@@ -404,7 +413,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         for s in gdecl.specs.iter() {
             let spec = &self.ast_objs.specs[*s];
             match spec {
-                Spec::Import(_is) => unimplemented!(),
+                Spec::Import(is) => {
+                    dbg!(is);
+                }
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let ident_key = ident.entity.into_key();
@@ -647,6 +658,8 @@ impl<'a> CodeGen<'a> {
         tco: &'a TCObjects,
         ti: &'a TypeInfo,
         mapping: &'a mut IfaceMapping,
+        pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
+        pkgs: &'a Vec<PackageKey>,
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
@@ -668,6 +681,8 @@ impl<'a> CodeGen<'a> {
             tc_objs: tco,
             tlookup: TypeLookup::new(tco, ti),
             iface_mapping: mapping,
+            pkg_indices: pkg_indices,
+            pkgs: pkgs,
             pkg_key: pkg,
             func_stack: Vec::new(),
             built_in_funcs: funcs,

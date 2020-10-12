@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 /// TypeAndValue reports the type and value (for constants, stored in 'mode')
 /// of the corresponding expression.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypeAndValue {
     pub mode: OperandMode,
     pub typ: TypeKey,
@@ -117,7 +117,7 @@ pub struct TypeInfo {
     /// in source order. Variables without an initialization expression do not
     /// appear in this list.
     pub init_order: Vec<Initializer>,
-    /// oxfeeefeee: pares result of the package, to be used by code gen
+    /// oxfeeefeee: parse result of the package, to be used by code gen
     pub ast_files: Vec<ast::File>,
 }
 

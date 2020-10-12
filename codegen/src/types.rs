@@ -3,7 +3,8 @@ use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
 use goscript_types::{
-    BasicType, ConstValue, ObjKey, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
+    BasicType, ConstValue, EntityType, ObjKey, PackageKey as TCPackageKey, TCObjects, Type,
+    TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::instruction::{OpIndex, ValueType};
 use goscript_vm::objects::OrderedMembers;
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
-    types: HashMap<TCTypeKey, GosValue>,
+    types_cache: HashMap<TCTypeKey, GosValue>,
 }
 
 impl<'a> TypeLookup<'a> {
@@ -21,7 +22,7 @@ impl<'a> TypeLookup<'a> {
         TypeLookup {
             tc_objs: tc_objs,
             ti: ti,
-            types: HashMap::new(),
+            types_cache: HashMap::new(),
         }
     }
 
@@ -54,6 +55,24 @@ impl<'a> TypeLookup<'a> {
                 }
             })
             .flatten()
+    }
+
+    pub fn try_get_pkg_key(&self, e: &Expr) -> Option<TCPackageKey> {
+        if let Expr::Ident(ikey) = e {
+            self.ti
+                .uses
+                .get(ikey)
+                .map(|x| {
+                    if let EntityType::PkgName(pkg, _) = self.tc_objs.lobjs[*x].entity_type() {
+                        Some(*pkg)
+                    } else {
+                        None
+                    }
+                })
+                .flatten()
+        } else {
+            None
+        }
     }
 
     pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
@@ -105,11 +124,11 @@ impl<'a> TypeLookup<'a> {
     }
 
     pub fn type_from_tc(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosValue {
-        if !self.types.contains_key(&typ) {
+        if !self.types_cache.contains_key(&typ) {
             let val = self.type_from_tc_impl(typ, vm_objs);
-            self.types.insert(typ, val);
+            self.types_cache.insert(typ, val);
         }
-        self.types.get(&typ).unwrap().clone()
+        self.types_cache.get(&typ).unwrap().clone()
     }
 
     pub fn get_sig_params_tc_types(

@@ -262,8 +262,9 @@ impl Instruction {
         self.val = (self.val & 0xffff_ffff_0000_0000) | uv as u64;
     }
 
+    /// set_imm824 sets an 8bit imm and a 24bit imm at the lower 4 bytes
     #[inline]
-    pub fn set_imm2(&mut self, imm0: OpIndex, imm1: OpIndex) {
+    pub fn set_imm824(&mut self, imm0: OpIndex, imm1: OpIndex) {
         assert!(Instruction::in_8bit_range(imm0));
         assert!(Instruction::in_24bit_range(imm1));
         let u0: u8 = unsafe { std::mem::transmute(imm0 as i8) };
@@ -319,7 +320,7 @@ impl Instruction {
     }
 
     #[inline]
-    pub fn imm2(&self) -> (OpIndex, OpIndex) {
+    pub fn imm824(&self) -> (OpIndex, OpIndex) {
         let all = (self.val & 0xffff_ffff) as u32;
         let i0: i8 = unsafe { std::mem::transmute((all >> 24) as u8) };
         let all = all & 0x00ff_ffff;
@@ -360,7 +361,7 @@ impl fmt::Debug for Instruction {
             | Opcode::STORE_FIELD_IMM
             | Opcode::STORE_THIS_PKG_FIELD
             | Opcode::STORE_DEREF => {
-                let (i0, i1) = self.imm2();
+                let (i0, i1) = self.imm824();
                 if i0 < 0 {
                     write!(f, "{}, IMM0: {}, IMM1: {}", op, i0, i1)
                 } else {
@@ -401,12 +402,12 @@ mod test {
         assert_eq!(i.imm(), -99);
 
         dbg!(1 << 8);
-        i.set_imm2(-128, -(1 << 23));
-        assert_eq!(i.imm2().0, -128);
-        assert_eq!(i.imm2().1, -(1 << 23));
-        i.set_imm2(127, 1 << 23 - 1);
-        assert_eq!(i.imm2().0, 127);
-        assert_eq!(i.imm2().1, 1 << 23 - 1);
+        i.set_imm824(-128, -(1 << 23));
+        assert_eq!(i.imm824().0, -128);
+        assert_eq!(i.imm824().1, -(1 << 23));
+        i.set_imm824(127, 1 << 23 - 1);
+        assert_eq!(i.imm824().0, 127);
+        assert_eq!(i.imm824().1, 1 << 23 - 1);
 
         assert!(!Instruction::in_8bit_range(128));
         i.set_t2_with_index(-128);
@@ -416,7 +417,7 @@ mod test {
         assert_eq!(i.t0(), ValueType::Str);
         assert_eq!(i.t1(), ValueType::Closure);
         assert_ne!(i.t2(), ValueType::Int);
-        assert_eq!(i.imm2().0, 127);
-        assert_eq!(i.imm2().1, 1 << 23 - 1);
+        assert_eq!(i.imm824().0, 127);
+        assert_eq!(i.imm824().1, 1 << 23 - 1);
     }
 }

@@ -203,13 +203,13 @@ impl FuncGen for FunctionVal {
         }
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
-        inst.set_imm2(imm0, *i);
+        inst.set_imm824(imm0, *i);
         self.code.push(inst);
     }
 
     fn emit_cast_to_interface(&mut self, typ: ValueType, rhs: OpIndex, m_index: OpIndex) {
         let mut inst = Instruction::new(Opcode::CAST_TO_INTERFACE, Some(typ), None, None, None);
-        inst.set_imm2(rhs, m_index);
+        inst.set_imm824(rhs, m_index);
         self.code.push(inst);
     }
 

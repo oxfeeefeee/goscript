@@ -10,7 +10,7 @@ extern crate goscript_vm as vm;
 fn load_parse_gen(path: &str, trace: bool) -> usize {
     let config = types::Config {
         work_dir: Some("./".to_string()),
-        base_path: None,
+        base_path: Some("./tests/std/".to_string()),
         trace_parser: trace,
         trace_checker: trace,
     };
