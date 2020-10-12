@@ -66,591 +66,6 @@ pub struct CodeGen<'a> {
     blank_ident: IdentKey,
 }
 
-impl<'a> ExprVisitor for CodeGen<'a> {
-    type Result = ();
-
-    fn visit_expr(&mut self, expr: &Expr) {
-        walk_expr(self, expr)
-    }
-
-    fn visit_expr_ident(&mut self, ident: &IdentKey) {
-        let index = self.resolve_ident(ident);
-        let t = self.tlookup.get_use_value_type(*ident);
-        current_func_mut!(self).emit_load(index, t);
-    }
-
-    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
-        unreachable!();
-    }
-
-    fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) {
-        let val = self.tlookup.get_const_value(id, self.objects);
-        let func = current_func_mut!(self);
-        let t = val.get_type();
-        let i = func.add_const(None, val);
-        func.emit_load(i, t);
-    }
-
-    /// Add function as a const and then generate a closure of it
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
-        let vm_ftype = self.tlookup.gen_type_meta_by_node_id(id, self.objects);
-        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
-        let func = current_func_mut!(self);
-        let i = func.add_const(None, GosValue::Function(fkey));
-        func.emit_load(i, ValueType::Function);
-        func.emit_new(ValueType::Function);
-    }
-
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
-        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
-        let func = current_func_mut!(self);
-        let t = val.get_type();
-        let i = func.add_const(None, val);
-        func.emit_load(i, t);
-    }
-
-    fn visit_expr_paren(&mut self, expr: &Expr) {
-        self.visit_expr(expr)
-    }
-
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
-        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
-            let index = self.pkg_indices[&key];
-            let pkg = self.pkgs[index as usize];
-            dbg!(pkg);
-            return;
-        }
-
-        let (t0, t1) = self.tlookup.get_selection_value_types(id);
-        let t = self
-            .tlookup
-            .gen_type_meta_by_node_id(expr.id(), self.objects);
-        let name = &self.ast_objs.idents[*ident].name;
-        if t1 == ValueType::Closure {
-            if self.tlookup.get_expr_value_type(expr) == ValueType::Interface {
-                let i = MetadataVal::iface_method_index(&t, name, &self.objects.metas);
-                self.visit_expr(expr);
-                current_func_mut!(self).emit_code_with_imm(Opcode::BIND_INTERFACE_METHOD, i);
-            } else {
-                let i = MetadataVal::method_index(&t, name, &self.objects.metas);
-                let method = MetadataVal::get_method(&t, i, &self.objects.metas);
-                let fkey = method.as_closure().func;
-                let boxed_recv = self.objects.metas[*self.objects.functions[fkey].meta.as_meta()]
-                    .sig_metadata()
-                    .boxed_recv(&self.objects.metas);
-                if boxed_recv {
-                    // desugar
-                    self.visit_expr_unary(expr, &Token::AND);
-                } else {
-                    self.visit_expr(expr);
-                }
-                let func = current_func_mut!(self);
-                let mi = func.add_const(None, GosValue::Function(fkey));
-                func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into());
-            }
-        } else {
-            self.visit_expr(expr);
-            let i = MetadataVal::field_index(&t, name, &self.objects.metas);
-            current_func_mut!(self).emit_load_field_imm(i, t0);
-        }
-    }
-
-    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) {
-        let t0 = self.tlookup.get_expr_value_type(expr);
-        let t1 = self.tlookup.get_expr_value_type(index);
-        self.visit_expr(expr);
-        if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
-            let (ival, _) = const_val.to_int().int_as_i64();
-            if let Ok(i) = OpIndex::try_from(ival) {
-                current_func_mut!(self).emit_load_index_imm(i, t0);
-                return;
-            }
-        }
-        self.visit_expr(index);
-        current_func_mut!(self).emit_load_index(t0, t1);
-    }
-
-    fn visit_expr_slice(
-        &mut self,
-        expr: &Expr,
-        low: &Option<Expr>,
-        high: &Option<Expr>,
-        max: &Option<Expr>,
-    ) -> Self::Result {
-        self.visit_expr(expr);
-        let t = self.tlookup.get_expr_value_type(expr);
-        match low {
-            None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM),
-            Some(e) => self.visit_expr(e),
-        }
-        match high {
-            None => current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, -1),
-            Some(e) => self.visit_expr(e),
-        }
-        match max {
-            None => current_func_mut!(self).emit_code_with_type(Opcode::SLICE, t),
-            Some(e) => {
-                self.visit_expr(e);
-                current_func_mut!(self).emit_code_with_type(Opcode::SLICE_FULL, t);
-            }
-        }
-    }
-
-    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) {
-        unimplemented!();
-    }
-
-    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) {
-        // check if this is a built in function first
-        if let Expr::Ident(ikey) = func {
-            let ident = self.ast_objs.idents[*ikey].clone();
-            if ident.entity.into_key().is_none() {
-                return if let Some(i) = self.built_in_func_index(&ident.name) {
-                    let t = self.tlookup.get_expr_value_type(&params[0]);
-                    let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
-                    let count = params.iter().map(|e| self.visit_expr(e)).count();
-                    // some of the built in funcs are not recorded
-                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func) {
-                        self.try_cast_params_to_iface(t, params);
-                    }
-                    let bf = &self.built_in_funcs[i as usize];
-                    let func = current_func_mut!(self);
-                    let (t_variadic, count) = if bf.variadic {
-                        if ellipsis {
-                            (None, Some(0)) // do not pack params if there is ellipsis
-                        } else {
-                            (
-                                Some(t_last),
-                                Some((bf.params_count - 1 - count as isize) as OpIndex),
-                            )
-                        }
-                    } else {
-                        (None, None)
-                    };
-                    func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
-                } else {
-                    unreachable!()
-                };
-            }
-        }
-
-        // normal goscript function
-        self.visit_expr(func);
-        current_func_mut!(self).emit_pre_call();
-        let _ = params.iter().map(|e| self.visit_expr(e)).count();
-        let t = self.tlookup.get_expr_tc_type(func);
-        self.try_cast_params_to_iface(t, params);
-        // do not pack params if there is ellipsis
-        current_func_mut!(self).emit_call(ellipsis);
-    }
-
-    fn visit_expr_star(&mut self, expr: &Expr) {
-        self.visit_expr(expr);
-        let t = self.tlookup.get_expr_value_type(expr);
-        //todo: could this be a pointer type?
-        let code = Opcode::DEREF;
-        current_func_mut!(self).emit_code_with_type(code, t);
-    }
-
-    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) {
-        let t = self.tlookup.get_expr_value_type(expr);
-        if op == &Token::AND {
-            match expr {
-                Expr::Ident(ident) => {
-                    let index = self.resolve_ident(ident);
-                    match index {
-                        EntIndex::LocalVar(i) => {
-                            let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_LOCAL, Some(t), None, None, Some(i))
-                        }
-                        EntIndex::UpValue(i) => {
-                            let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i))
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                Expr::Index(iexpr) => {
-                    let t0 = self.tlookup.get_expr_value_type(&iexpr.expr);
-                    let t1 = self.tlookup.get_expr_value_type(&iexpr.index);
-                    self.visit_expr(&iexpr.expr);
-                    self.visit_expr(&iexpr.index);
-                    current_func_mut!(self).emit_inst(
-                        Opcode::REF_SLICE_MEMBER,
-                        Some(t0),
-                        Some(t1),
-                        None,
-                        None,
-                    );
-                }
-                Expr::Selector(sexpr) => {
-                    self.visit_expr(&sexpr.expr);
-                    let t0 = self
-                        .tlookup
-                        .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
-                    let name = &self.ast_objs.idents[sexpr.sel].name;
-                    let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
-                    current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
-                }
-                _ => unimplemented!(),
-            }
-            return;
-        }
-
-        self.visit_expr(expr);
-        let code = match op {
-            Token::ADD => Opcode::UNARY_ADD,
-            Token::SUB => Opcode::UNARY_SUB,
-            Token::XOR => Opcode::UNARY_XOR,
-            _ => unreachable!(),
-        };
-        current_func_mut!(self).emit_code_with_type(code, t);
-    }
-
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) {
-        self.visit_expr(left);
-        let t = self.tlookup.get_expr_value_type(left);
-        let code = match op {
-            Token::ADD => Opcode::ADD,
-            Token::SUB => Opcode::SUB,
-            Token::MUL => Opcode::MUL,
-            Token::QUO => Opcode::QUO,
-            Token::REM => Opcode::REM,
-            Token::AND => Opcode::AND,
-            Token::OR => Opcode::OR,
-            Token::XOR => Opcode::XOR,
-            Token::SHL => Opcode::SHL,
-            Token::SHR => Opcode::SHR,
-            Token::AND_NOT => Opcode::AND_NOT,
-            Token::LAND => Opcode::PUSH_FALSE,
-            Token::LOR => Opcode::PUSH_TRUE,
-            Token::NOT => Opcode::NOT,
-            Token::EQL => Opcode::EQL,
-            Token::LSS => Opcode::LSS,
-            Token::GTR => Opcode::GTR,
-            Token::NEQ => Opcode::NEQ,
-            Token::LEQ => Opcode::LEQ,
-            Token::GEQ => Opcode::GEQ,
-            _ => unreachable!(),
-        };
-        // handles short circuit
-        let mark_code = match op {
-            Token::LAND => {
-                let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF_NOT);
-                Some((func.code.len(), code))
-            }
-            Token::LOR => {
-                let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF);
-                Some((func.code.len(), code))
-            }
-            _ => None,
-        };
-        self.visit_expr(right);
-        if let Some((i, c)) = mark_code {
-            let func = current_func_mut!(self);
-            func.emit_code_with_imm(Opcode::JUMP, 1);
-            func.emit_code_with_type(c, t);
-            let diff = func.code.len() - i - 1;
-            func.code[i - 1].set_imm(diff as OpIndex);
-        } else {
-            current_func_mut!(self).emit_code_with_type(code, t);
-        }
-    }
-
-    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) {
-        unimplemented!();
-    }
-
-    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
-        let val = self
-            .tlookup
-            .gen_type_meta_by_node_id(arr.id(), self.objects);
-        let func = current_func_mut!(self);
-        let t = val.get_type();
-        let i = func.add_const(None, val);
-        func.emit_load(i, t);
-    }
-
-    fn visit_expr_struct_type(&mut self, _s: &StructType) {
-        unimplemented!();
-    }
-
-    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) {
-        unimplemented!();
-    }
-
-    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) {
-        unimplemented!();
-    }
-
-    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) {
-        unimplemented!();
-    }
-
-    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) {
-        unimplemented!();
-    }
-
-    fn visit_bad_expr(&mut self, _e: &BadExpr) {
-        unreachable!();
-    }
-}
-
-impl<'a> StmtVisitor for CodeGen<'a> {
-    type Result = ();
-
-    fn visit_stmt(&mut self, stmt: &Stmt) {
-        walk_stmt(self, stmt)
-    }
-
-    fn visit_decl(&mut self, decl: &Decl) {
-        walk_decl(self, decl)
-    }
-
-    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) {
-        for s in gdecl.specs.iter() {
-            let spec = &self.ast_objs.specs[*s];
-            match spec {
-                Spec::Import(is) => {
-                    dbg!(is);
-                }
-                Spec::Type(ts) => {
-                    let ident = self.ast_objs.idents[ts.name].clone();
-                    let ident_key = ident.entity.into_key();
-                    let typ = self.tlookup.gen_def_type_meta(ts.name, self.objects);
-                    self.current_func_add_const_def(ident_key.unwrap(), typ);
-                }
-                Spec::Value(vs) => match &gdecl.token {
-                    Token::VAR => {
-                        let lhs = vs
-                            .names
-                            .iter()
-                            .map(|n| -> (LeftHandSide, Option<TCTypeKey>) {
-                                let (index, t) = self.add_local_or_resolve_ident(n, true);
-                                (LeftHandSide::Primitive(index), t)
-                            })
-                            .collect::<Vec<(LeftHandSide, Option<TCTypeKey>)>>();
-                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
-                    }
-                    Token::CONST => self.gen_def_const(&vs.names, &vs.values),
-                    _ => unreachable!(),
-                },
-            }
-        }
-    }
-
-    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
-        let decl = &self.ast_objs.fdecls[*fdecl];
-        if decl.body.is_none() {
-            unimplemented!()
-        }
-        let vm_ftype = self.tlookup.gen_def_type_meta(decl.name, self.objects);
-        let stmt = decl.body.as_ref().unwrap();
-        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt);
-        let cls = GosValue::new_closure(fkey);
-        // this is a struct method
-        if let Some(self_ident) = &decl.recv {
-            let field = &self.ast_objs.fields[self_ident.list[0]];
-            let name = &self.ast_objs.idents[decl.name].name;
-            let (meta, _) = self.get_use_type_meta(&field.typ);
-            let meta_key = *meta.as_meta();
-            let key = match self.objects.metas[meta_key].typ() {
-                MetadataType::Boxed(b) => *b.as_meta(),
-                MetadataType::Named(_, _) => meta_key,
-                _ => unreachable!(),
-            };
-            self.objects.metas[key].add_method(name.clone(), cls);
-        } else {
-            let ident = &self.ast_objs.idents[decl.name];
-            let pkg = &mut self.objects.packages[self.pkg_key];
-            let index = pkg.add_member(ident.entity_key().unwrap(), cls);
-            if ident.name == "main" {
-                pkg.set_main_func(index);
-            }
-        }
-    }
-
-    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
-        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None);
-    }
-
-    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
-        let stmt = &self.ast_objs.a_stmts[*astmt];
-        self.gen_assign(
-            &stmt.token,
-            &stmt.lhs.iter().map(|x| x).collect(),
-            &stmt.rhs,
-            None,
-        );
-    }
-
-    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
-        for (i, expr) in rstmt.results.iter().enumerate() {
-            self.visit_expr(expr);
-            let t = self.tlookup.get_expr_value_type(expr);
-            let f = current_func_mut!(self);
-            f.emit_store(
-                &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
-                -1,
-                None,
-                t,
-            );
-            f.emit_pop(1);
-        }
-        current_func_mut!(self).emit_return();
-    }
-
-    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {
-        for stmt in bstmt.list.iter() {
-            self.visit_stmt(stmt);
-        }
-    }
-
-    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
-        if let Some(init) = &ifstmt.init {
-            self.visit_stmt(init);
-        }
-        self.visit_expr(&ifstmt.cond);
-        let func = current_func_mut!(self);
-        func.emit_code(Opcode::JUMP_IF_NOT);
-        let top_marker = func.code.len();
-
-        drop(func);
-        self.visit_stmt_block(&ifstmt.body);
-        let marker_if_arm_end = if ifstmt.els.is_some() {
-            let func = current_func_mut!(self);
-            // imm to be set later
-            func.emit_code(Opcode::JUMP);
-            Some(func.code.len())
-        } else {
-            None
-        };
-
-        // set the correct else jump target
-        let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(func.code.len() - top_marker).unwrap();
-        func.code[top_marker - 1].set_imm(offset);
-
-        if let Some(els) = &ifstmt.els {
-            self.visit_stmt(els);
-            // set the correct if_arm_end jump target
-            let func = current_func_mut!(self);
-            let marker = marker_if_arm_end.unwrap();
-            // todo: don't crash if OpIndex overflows
-            let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
-            func.code[marker - 1].set_imm(offset);
-        }
-    }
-
-    fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) {
-        unimplemented!();
-    }
-
-    fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
-        if let Some(init) = &fstmt.init {
-            self.visit_stmt(init);
-        }
-        let top_marker = current_func!(self).code.len();
-        let out_marker = if let Some(cond) = &fstmt.cond {
-            self.visit_expr(&cond);
-            let func = current_func_mut!(self);
-            func.emit_code(Opcode::JUMP_IF_NOT);
-            Some(func.code.len())
-        } else {
-            None
-        };
-        self.visit_stmt_block(&fstmt.body);
-        if let Some(post) = &fstmt.post {
-            self.visit_stmt(post);
-        }
-
-        // jump to the top
-        let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
-        func.emit_code_with_imm(Opcode::JUMP, offset);
-
-        // set the correct else jump out target
-        if let Some(m) = out_marker {
-            let func = current_func_mut!(self);
-            // todo: don't crash if OpIndex overflows
-            let offset = OpIndex::try_from(func.code.len() - m).unwrap();
-            func.code[m - 1].set_imm(offset);
-        }
-    }
-
-    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        let blank = Expr::Ident(self.blank_ident);
-        let lhs = vec![
-            rstmt.key.as_ref().unwrap_or(&blank),
-            rstmt.val.as_ref().unwrap_or(&blank),
-        ];
-        let marker = self
-            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))
-            .unwrap();
-
-        self.visit_stmt_block(&rstmt.body);
-        // jump to the top
-        let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
-        func.emit_code_with_imm(Opcode::JUMP, offset);
-        // now tell Opcode::RANGE where to jump after it's done
-        // todo: don't crash if OpIndex overflows
-        let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
-        func.code[marker].set_imm(end_offset);
-    }
-
-    fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
-
-    fn visit_bad_stmt(&mut self, _b: &BadStmt) {
-        unreachable!();
-    }
-
-    fn visit_bad_decl(&mut self, _b: &BadDecl) {
-        unreachable!();
-    }
-}
-
 impl<'a> CodeGen<'a> {
     pub fn new(
         vmo: &'a mut VMObjects,
@@ -1284,5 +699,590 @@ impl<'a> CodeGen<'a> {
         let func = &mut self.objects.functions[fkey];
         func.emit_return_init_pkg(index);
         self.func_stack.pop();
+    }
+}
+
+impl<'a> ExprVisitor for CodeGen<'a> {
+    type Result = ();
+
+    fn visit_expr(&mut self, expr: &Expr) {
+        walk_expr(self, expr)
+    }
+
+    fn visit_expr_ident(&mut self, ident: &IdentKey) {
+        let index = self.resolve_ident(ident);
+        let t = self.tlookup.get_use_value_type(*ident);
+        current_func_mut!(self).emit_load(index, t);
+    }
+
+    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
+        unreachable!();
+    }
+
+    fn visit_expr_basic_lit(&mut self, _blit: &BasicLit, id: NodeId) {
+        let val = self.tlookup.get_const_value(id, self.objects);
+        let func = current_func_mut!(self);
+        let t = val.get_type();
+        let i = func.add_const(None, val);
+        func.emit_load(i, t);
+    }
+
+    /// Add function as a const and then generate a closure of it
+    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
+        let vm_ftype = self.tlookup.gen_type_meta_by_node_id(id, self.objects);
+        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
+        let func = current_func_mut!(self);
+        let i = func.add_const(None, GosValue::Function(fkey));
+        func.emit_load(i, ValueType::Function);
+        func.emit_new(ValueType::Function);
+    }
+
+    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
+        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
+        let func = current_func_mut!(self);
+        let t = val.get_type();
+        let i = func.add_const(None, val);
+        func.emit_load(i, t);
+    }
+
+    fn visit_expr_paren(&mut self, expr: &Expr) {
+        self.visit_expr(expr)
+    }
+
+    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
+        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
+            let index = self.pkg_indices[&key];
+            let pkg = self.pkgs[index as usize];
+            dbg!(pkg);
+            return;
+        }
+
+        let (t0, t1) = self.tlookup.get_selection_value_types(id);
+        let t = self
+            .tlookup
+            .gen_type_meta_by_node_id(expr.id(), self.objects);
+        let name = &self.ast_objs.idents[*ident].name;
+        if t1 == ValueType::Closure {
+            if self.tlookup.get_expr_value_type(expr) == ValueType::Interface {
+                let i = MetadataVal::iface_method_index(&t, name, &self.objects.metas);
+                self.visit_expr(expr);
+                current_func_mut!(self).emit_code_with_imm(Opcode::BIND_INTERFACE_METHOD, i);
+            } else {
+                let i = MetadataVal::method_index(&t, name, &self.objects.metas);
+                let method = MetadataVal::get_method(&t, i, &self.objects.metas);
+                let fkey = method.as_closure().func;
+                let boxed_recv = self.objects.metas[*self.objects.functions[fkey].meta.as_meta()]
+                    .sig_metadata()
+                    .boxed_recv(&self.objects.metas);
+                if boxed_recv {
+                    // desugar
+                    self.visit_expr_unary(expr, &Token::AND);
+                } else {
+                    self.visit_expr(expr);
+                }
+                let func = current_func_mut!(self);
+                let mi = func.add_const(None, GosValue::Function(fkey));
+                func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into());
+            }
+        } else {
+            self.visit_expr(expr);
+            let i = MetadataVal::field_index(&t, name, &self.objects.metas);
+            current_func_mut!(self).emit_load_field_imm(i, t0);
+        }
+    }
+
+    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) {
+        let t0 = self.tlookup.get_expr_value_type(expr);
+        let t1 = self.tlookup.get_expr_value_type(index);
+        self.visit_expr(expr);
+        if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
+            let (ival, _) = const_val.to_int().int_as_i64();
+            if let Ok(i) = OpIndex::try_from(ival) {
+                current_func_mut!(self).emit_load_index_imm(i, t0);
+                return;
+            }
+        }
+        self.visit_expr(index);
+        current_func_mut!(self).emit_load_index(t0, t1);
+    }
+
+    fn visit_expr_slice(
+        &mut self,
+        expr: &Expr,
+        low: &Option<Expr>,
+        high: &Option<Expr>,
+        max: &Option<Expr>,
+    ) -> Self::Result {
+        self.visit_expr(expr);
+        let t = self.tlookup.get_expr_value_type(expr);
+        match low {
+            None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM),
+            Some(e) => self.visit_expr(e),
+        }
+        match high {
+            None => current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, -1),
+            Some(e) => self.visit_expr(e),
+        }
+        match max {
+            None => current_func_mut!(self).emit_code_with_type(Opcode::SLICE, t),
+            Some(e) => {
+                self.visit_expr(e);
+                current_func_mut!(self).emit_code_with_type(Opcode::SLICE_FULL, t);
+            }
+        }
+    }
+
+    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) {
+        unimplemented!();
+    }
+
+    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) {
+        // check if this is a built in function first
+        if let Expr::Ident(ikey) = func {
+            let ident = self.ast_objs.idents[*ikey].clone();
+            if ident.entity.into_key().is_none() {
+                return if let Some(i) = self.built_in_func_index(&ident.name) {
+                    let t = self.tlookup.get_expr_value_type(&params[0]);
+                    let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
+                    let count = params.iter().map(|e| self.visit_expr(e)).count();
+                    // some of the built in funcs are not recorded
+                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func) {
+                        self.try_cast_params_to_iface(t, params);
+                    }
+                    let bf = &self.built_in_funcs[i as usize];
+                    let func = current_func_mut!(self);
+                    let (t_variadic, count) = if bf.variadic {
+                        if ellipsis {
+                            (None, Some(0)) // do not pack params if there is ellipsis
+                        } else {
+                            (
+                                Some(t_last),
+                                Some((bf.params_count - 1 - count as isize) as OpIndex),
+                            )
+                        }
+                    } else {
+                        (None, None)
+                    };
+                    func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
+                } else {
+                    unreachable!()
+                };
+            }
+        }
+
+        // normal goscript function
+        self.visit_expr(func);
+        current_func_mut!(self).emit_pre_call();
+        let _ = params.iter().map(|e| self.visit_expr(e)).count();
+        let t = self.tlookup.get_expr_tc_type(func);
+        self.try_cast_params_to_iface(t, params);
+        // do not pack params if there is ellipsis
+        current_func_mut!(self).emit_call(ellipsis);
+    }
+
+    fn visit_expr_star(&mut self, expr: &Expr) {
+        self.visit_expr(expr);
+        let t = self.tlookup.get_expr_value_type(expr);
+        //todo: could this be a pointer type?
+        let code = Opcode::DEREF;
+        current_func_mut!(self).emit_code_with_type(code, t);
+    }
+
+    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) {
+        let t = self.tlookup.get_expr_value_type(expr);
+        if op == &Token::AND {
+            match expr {
+                Expr::Ident(ident) => {
+                    let index = self.resolve_ident(ident);
+                    match index {
+                        EntIndex::LocalVar(i) => {
+                            let func = current_func_mut!(self);
+                            func.emit_inst(Opcode::REF_LOCAL, Some(t), None, None, Some(i))
+                        }
+                        EntIndex::UpValue(i) => {
+                            let func = current_func_mut!(self);
+                            func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                Expr::Index(iexpr) => {
+                    let t0 = self.tlookup.get_expr_value_type(&iexpr.expr);
+                    let t1 = self.tlookup.get_expr_value_type(&iexpr.index);
+                    self.visit_expr(&iexpr.expr);
+                    self.visit_expr(&iexpr.index);
+                    current_func_mut!(self).emit_inst(
+                        Opcode::REF_SLICE_MEMBER,
+                        Some(t0),
+                        Some(t1),
+                        None,
+                        None,
+                    );
+                }
+                Expr::Selector(sexpr) => {
+                    self.visit_expr(&sexpr.expr);
+                    let t0 = self
+                        .tlookup
+                        .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
+                    let name = &self.ast_objs.idents[sexpr.sel].name;
+                    let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
+                    current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
+                }
+                _ => unimplemented!(),
+            }
+            return;
+        }
+
+        self.visit_expr(expr);
+        let code = match op {
+            Token::ADD => Opcode::UNARY_ADD,
+            Token::SUB => Opcode::UNARY_SUB,
+            Token::XOR => Opcode::UNARY_XOR,
+            _ => unreachable!(),
+        };
+        current_func_mut!(self).emit_code_with_type(code, t);
+    }
+
+    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) {
+        self.visit_expr(left);
+        let t = self.tlookup.get_expr_value_type(left);
+        let code = match op {
+            Token::ADD => Opcode::ADD,
+            Token::SUB => Opcode::SUB,
+            Token::MUL => Opcode::MUL,
+            Token::QUO => Opcode::QUO,
+            Token::REM => Opcode::REM,
+            Token::AND => Opcode::AND,
+            Token::OR => Opcode::OR,
+            Token::XOR => Opcode::XOR,
+            Token::SHL => Opcode::SHL,
+            Token::SHR => Opcode::SHR,
+            Token::AND_NOT => Opcode::AND_NOT,
+            Token::LAND => Opcode::PUSH_FALSE,
+            Token::LOR => Opcode::PUSH_TRUE,
+            Token::NOT => Opcode::NOT,
+            Token::EQL => Opcode::EQL,
+            Token::LSS => Opcode::LSS,
+            Token::GTR => Opcode::GTR,
+            Token::NEQ => Opcode::NEQ,
+            Token::LEQ => Opcode::LEQ,
+            Token::GEQ => Opcode::GEQ,
+            _ => unreachable!(),
+        };
+        // handles short circuit
+        let mark_code = match op {
+            Token::LAND => {
+                let func = current_func_mut!(self);
+                func.emit_code(Opcode::JUMP_IF_NOT);
+                Some((func.code.len(), code))
+            }
+            Token::LOR => {
+                let func = current_func_mut!(self);
+                func.emit_code(Opcode::JUMP_IF);
+                Some((func.code.len(), code))
+            }
+            _ => None,
+        };
+        self.visit_expr(right);
+        if let Some((i, c)) = mark_code {
+            let func = current_func_mut!(self);
+            func.emit_code_with_imm(Opcode::JUMP, 1);
+            func.emit_code_with_type(c, t);
+            let diff = func.code.len() - i - 1;
+            func.code[i - 1].set_imm(diff as OpIndex);
+        } else {
+            current_func_mut!(self).emit_code_with_type(code, t);
+        }
+    }
+
+    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) {
+        unimplemented!();
+    }
+
+    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
+        let val = self
+            .tlookup
+            .gen_type_meta_by_node_id(arr.id(), self.objects);
+        let func = current_func_mut!(self);
+        let t = val.get_type();
+        let i = func.add_const(None, val);
+        func.emit_load(i, t);
+    }
+
+    fn visit_expr_struct_type(&mut self, _s: &StructType) {
+        unimplemented!();
+    }
+
+    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) {
+        unimplemented!();
+    }
+
+    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) {
+        unimplemented!();
+    }
+
+    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) {
+        unimplemented!();
+    }
+
+    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) {
+        unimplemented!();
+    }
+
+    fn visit_bad_expr(&mut self, _e: &BadExpr) {
+        unreachable!();
+    }
+}
+
+impl<'a> StmtVisitor for CodeGen<'a> {
+    type Result = ();
+
+    fn visit_stmt(&mut self, stmt: &Stmt) {
+        walk_stmt(self, stmt)
+    }
+
+    fn visit_decl(&mut self, decl: &Decl) {
+        walk_decl(self, decl)
+    }
+
+    fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) {
+        for s in gdecl.specs.iter() {
+            let spec = &self.ast_objs.specs[*s];
+            match spec {
+                Spec::Import(is) => {
+                    dbg!(is);
+                }
+                Spec::Type(ts) => {
+                    let ident = self.ast_objs.idents[ts.name].clone();
+                    let ident_key = ident.entity.into_key();
+                    let typ = self.tlookup.gen_def_type_meta(ts.name, self.objects);
+                    self.current_func_add_const_def(ident_key.unwrap(), typ);
+                }
+                Spec::Value(vs) => match &gdecl.token {
+                    Token::VAR => {
+                        let lhs = vs
+                            .names
+                            .iter()
+                            .map(|n| -> (LeftHandSide, Option<TCTypeKey>) {
+                                let (index, t) = self.add_local_or_resolve_ident(n, true);
+                                (LeftHandSide::Primitive(index), t)
+                            })
+                            .collect::<Vec<(LeftHandSide, Option<TCTypeKey>)>>();
+                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
+                    }
+                    Token::CONST => self.gen_def_const(&vs.names, &vs.values),
+                    _ => unreachable!(),
+                },
+            }
+        }
+    }
+
+    fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
+        let decl = &self.ast_objs.fdecls[*fdecl];
+        if decl.body.is_none() {
+            unimplemented!()
+        }
+        let vm_ftype = self.tlookup.gen_def_type_meta(decl.name, self.objects);
+        let stmt = decl.body.as_ref().unwrap();
+        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt);
+        let cls = GosValue::new_closure(fkey);
+        // this is a struct method
+        if let Some(self_ident) = &decl.recv {
+            let field = &self.ast_objs.fields[self_ident.list[0]];
+            let name = &self.ast_objs.idents[decl.name].name;
+            let (meta, _) = self.get_use_type_meta(&field.typ);
+            let meta_key = *meta.as_meta();
+            let key = match self.objects.metas[meta_key].typ() {
+                MetadataType::Boxed(b) => *b.as_meta(),
+                MetadataType::Named(_, _) => meta_key,
+                _ => unreachable!(),
+            };
+            self.objects.metas[key].add_method(name.clone(), cls);
+        } else {
+            let ident = &self.ast_objs.idents[decl.name];
+            let pkg = &mut self.objects.packages[self.pkg_key];
+            let index = pkg.add_member(ident.entity_key().unwrap(), cls);
+            if ident.name == "main" {
+                pkg.set_main_func(index);
+            }
+        }
+    }
+
+    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None);
+    }
+
+    fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
+        let stmt = &self.ast_objs.a_stmts[*astmt];
+        self.gen_assign(
+            &stmt.token,
+            &stmt.lhs.iter().map(|x| x).collect(),
+            &stmt.rhs,
+            None,
+        );
+    }
+
+    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
+        for (i, expr) in rstmt.results.iter().enumerate() {
+            self.visit_expr(expr);
+            let t = self.tlookup.get_expr_value_type(expr);
+            let f = current_func_mut!(self);
+            f.emit_store(
+                &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
+                -1,
+                None,
+                t,
+            );
+            f.emit_pop(1);
+        }
+        current_func_mut!(self).emit_return();
+    }
+
+    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {
+        for stmt in bstmt.list.iter() {
+            self.visit_stmt(stmt);
+        }
+    }
+
+    fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
+        if let Some(init) = &ifstmt.init {
+            self.visit_stmt(init);
+        }
+        self.visit_expr(&ifstmt.cond);
+        let func = current_func_mut!(self);
+        func.emit_code(Opcode::JUMP_IF_NOT);
+        let top_marker = func.code.len();
+
+        drop(func);
+        self.visit_stmt_block(&ifstmt.body);
+        let marker_if_arm_end = if ifstmt.els.is_some() {
+            let func = current_func_mut!(self);
+            // imm to be set later
+            func.emit_code(Opcode::JUMP);
+            Some(func.code.len())
+        } else {
+            None
+        };
+
+        // set the correct else jump target
+        let func = current_func_mut!(self);
+        // todo: don't crash if OpIndex overflows
+        let offset = OpIndex::try_from(func.code.len() - top_marker).unwrap();
+        func.code[top_marker - 1].set_imm(offset);
+
+        if let Some(els) = &ifstmt.els {
+            self.visit_stmt(els);
+            // set the correct if_arm_end jump target
+            let func = current_func_mut!(self);
+            let marker = marker_if_arm_end.unwrap();
+            // todo: don't crash if OpIndex overflows
+            let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
+            func.code[marker - 1].set_imm(offset);
+        }
+    }
+
+    fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) {
+        unimplemented!();
+    }
+
+    fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
+        if let Some(init) = &fstmt.init {
+            self.visit_stmt(init);
+        }
+        let top_marker = current_func!(self).code.len();
+        let out_marker = if let Some(cond) = &fstmt.cond {
+            self.visit_expr(&cond);
+            let func = current_func_mut!(self);
+            func.emit_code(Opcode::JUMP_IF_NOT);
+            Some(func.code.len())
+        } else {
+            None
+        };
+        self.visit_stmt_block(&fstmt.body);
+        if let Some(post) = &fstmt.post {
+            self.visit_stmt(post);
+        }
+
+        // jump to the top
+        let func = current_func_mut!(self);
+        // todo: don't crash if OpIndex overflows
+        let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
+        func.emit_code_with_imm(Opcode::JUMP, offset);
+
+        // set the correct else jump out target
+        if let Some(m) = out_marker {
+            let func = current_func_mut!(self);
+            // todo: don't crash if OpIndex overflows
+            let offset = OpIndex::try_from(func.code.len() - m).unwrap();
+            func.code[m - 1].set_imm(offset);
+        }
+    }
+
+    fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
+        let blank = Expr::Ident(self.blank_ident);
+        let lhs = vec![
+            rstmt.key.as_ref().unwrap_or(&blank),
+            rstmt.val.as_ref().unwrap_or(&blank),
+        ];
+        let marker = self
+            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))
+            .unwrap();
+
+        self.visit_stmt_block(&rstmt.body);
+        // jump to the top
+        let func = current_func_mut!(self);
+        // todo: don't crash if OpIndex overflows
+        let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
+        func.emit_code_with_imm(Opcode::JUMP, offset);
+        // now tell Opcode::RANGE where to jump after it's done
+        // todo: don't crash if OpIndex overflows
+        let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
+        func.code[marker].set_imm(end_offset);
+    }
+
+    fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
+
+    fn visit_bad_stmt(&mut self, _b: &BadStmt) {
+        unreachable!();
+    }
+
+    fn visit_bad_decl(&mut self, _b: &BadDecl) {
+        unreachable!();
     }
 }
