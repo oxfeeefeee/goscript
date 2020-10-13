@@ -75,7 +75,6 @@ impl<'a> EntryGen<'a> {
             }
         }
         for (i, (_, ti)) in checker_result.iter().enumerate() {
-            dbg!(&ti.init_order);
             CodeGen::new(
                 &mut self.objects,
                 self.ast_objs,

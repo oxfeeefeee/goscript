@@ -26,6 +26,10 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn type_info(&self) -> &TypeInfo {
+        self.ti
+    }
+
     pub fn get_tc_const_value(&mut self, id: NodeId) -> Option<&ConstValue> {
         let typ_val = self.ti.types.get(&id).unwrap();
         typ_val.get_const_val()

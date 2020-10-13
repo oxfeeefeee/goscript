@@ -133,6 +133,12 @@ fn test_interface() {
 }
 
 #[test]
+fn test_initorder() {
+    let err_cnt = load_parse_gen("./tests/data/initorder.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 

@@ -761,9 +761,8 @@ impl PackageVal {
         index as OpIndex
     }
 
-    /// add placeholder for vars, will be initialized when imported
-    pub fn add_var(&mut self, entity: EntityKey, fn_index: OpIndex, ph: GosValue) -> OpIndex {
-        let index = self.add_member(entity, ph);
+    pub fn add_var_mapping(&mut self, entity: EntityKey, fn_index: OpIndex) -> OpIndex {
+        let index = *self.get_member_index(&entity).unwrap();
         self.var_mapping
             .as_mut()
             .unwrap()

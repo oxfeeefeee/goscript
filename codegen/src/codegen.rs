@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::rc::Rc;
 
 use super::func::*;
 use super::interface::IfaceMapping;
@@ -181,11 +182,7 @@ impl<'a> CodeGen<'a> {
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
-                pkg.add_var(
-                    ident_key.unwrap(),
-                    index.into(),
-                    self.objects.zero_val.zero_val_mark.clone(),
-                );
+                pkg.add_var_mapping(ident_key.unwrap(), index.into());
             }
             let t = self.tlookup.get_def_tc_type(*ikey);
             (index, Some(t))
@@ -194,6 +191,18 @@ impl<'a> CodeGen<'a> {
             let t = self.tlookup.get_use_tc_type(*ikey);
             (index, Some(t))
         }
+    }
+
+    fn gen_def_var(&mut self, vs: &ValueSpec) {
+        let lhs = vs
+            .names
+            .iter()
+            .map(|n| -> (LeftHandSide, Option<TCTypeKey>) {
+                let (index, t) = self.add_local_or_resolve_ident(n, true);
+                (LeftHandSide::Primitive(index), t)
+            })
+            .collect::<Vec<(LeftHandSide, Option<TCTypeKey>)>>();
+        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
     }
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) {
@@ -672,7 +681,7 @@ impl<'a> CodeGen<'a> {
         func.emit_load(index, ValueType::Str);
     }
 
-    fn built_in_func_index(&self, name: &str) -> Option<OpIndex> {
+    fn builtin_func_index(&self, name: &str) -> Option<OpIndex> {
         self.built_in_funcs.iter().enumerate().find_map(|(i, x)| {
             if x.name == name {
                 Some(i as OpIndex)
@@ -680,6 +689,54 @@ impl<'a> CodeGen<'a> {
                 None
             }
         })
+    }
+
+    // sort_var_decls returns a vec of sorted var decl statments
+    pub fn sort_var_decls(&self, files: &Vec<File>, ti: &TypeInfo) -> Vec<Rc<ValueSpec>> {
+        let mut orders = HashMap::new();
+        for (i, init) in ti.init_order.iter().enumerate() {
+            for okey in init.lhs.iter() {
+                let name = self.tc_objs.lobjs[*okey].name();
+                orders.insert(name, i);
+            }
+        }
+
+        let mut decls = vec![];
+        for f in files.iter() {
+            for d in f.decls.iter() {
+                match d {
+                    Decl::Gen(gdecl) => {
+                        for spec_key in gdecl.specs.iter() {
+                            if gdecl.token == Token::VAR {
+                                let spec = &self.ast_objs.specs[*spec_key];
+                                match spec {
+                                    Spec::Value(v) => {
+                                        let name = &self.ast_objs.idents[v.names[0]].name;
+                                        let order = orders[name];
+                                        decls.push((v.clone(), order));
+                                    }
+                                    _ => unimplemented!(),
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        decls.sort_by(|a, b| a.1.cmp(&b.1));
+        decls.into_iter().map(|x| x.0).collect()
+    }
+
+    fn add_pkg_var_member(&mut self, pkey: PackageKey, vars: &Vec<Rc<ValueSpec>>) {
+        for v in vars.iter() {
+            for n in v.names.iter() {
+                let ident = &self.ast_objs.idents[*n];
+                let entity_key = ident.entity.clone().into_key().unwrap();
+                let val = self.objects.zero_val.zero_val_mark.clone();
+                self.objects.packages[pkey].add_member(entity_key, val);
+            }
+        }
     }
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
@@ -691,11 +748,19 @@ impl<'a> CodeGen<'a> {
         self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey));
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
+
+        let vars = self.sort_var_decls(files, self.tlookup.type_info());
+        self.add_pkg_var_member(pkey, &vars);
+
         for f in files.iter() {
             for d in f.decls.iter() {
                 self.visit_decl(d)
             }
         }
+        for v in vars.iter() {
+            self.gen_def_var(v);
+        }
+
         let func = &mut self.objects.functions[fkey];
         func.emit_return_init_pkg(index);
         self.func_stack.pop();
@@ -841,7 +906,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if let Expr::Ident(ikey) = func {
             let ident = self.ast_objs.idents[*ikey].clone();
             if ident.entity.into_key().is_none() {
-                return if let Some(i) = self.built_in_func_index(&ident.name) {
+                return if let Some(i) = self.builtin_func_index(&ident.name) {
                     let t = self.tlookup.get_expr_value_type(&params[0]);
                     let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
@@ -1060,15 +1125,10 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
-                        let lhs = vs
-                            .names
-                            .iter()
-                            .map(|n| -> (LeftHandSide, Option<TCTypeKey>) {
-                                let (index, t) = self.add_local_or_resolve_ident(n, true);
-                                (LeftHandSide::Primitive(index), t)
-                            })
-                            .collect::<Vec<(LeftHandSide, Option<TCTypeKey>)>>();
-                        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
+                        // package level vars are handled elsewhere due to ordering
+                        if !current_func!(self).is_ctor() {
+                            self.gen_def_var(vs);
+                        }
                     }
                     Token::CONST => self.gen_def_const(&vs.names, &vs.values),
                     _ => unreachable!(),
