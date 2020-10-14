@@ -6,10 +6,10 @@ use std::rc::Rc;
 
 use super::func::*;
 use super::interface::IfaceMapping;
+use super::package::PkgUtil;
 use super::types::TypeLookup;
 
 use goscript_vm::instruction::*;
-use goscript_vm::null_key;
 use goscript_vm::objects::{EntIndex, MetadataType};
 use goscript_vm::value::*;
 
@@ -58,8 +58,7 @@ pub struct CodeGen<'a> {
     tc_objs: &'a TCObjects,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
-    pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
-    pkgs: &'a Vec<PackageKey>,
+    pkg_util: PkgUtil<'a>,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     built_in_funcs: Vec<BuiltInFunc>,
@@ -97,14 +96,17 @@ impl<'a> CodeGen<'a> {
             tc_objs: tco,
             tlookup: TypeLookup::new(tco, ti),
             iface_mapping: mapping,
-            pkg_indices: pkg_indices,
-            pkgs: pkgs,
+            pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
             pkg_key: pkg,
             func_stack: Vec::new(),
             built_in_funcs: funcs,
             built_in_vals: vals,
             blank_ident: bk,
         }
+    }
+
+    pub fn pkg_util(&mut self) -> &mut PkgUtil<'a> {
+        &mut self.pkg_util
     }
 
     fn resolve_ident(&mut self, ident: &IdentKey) -> EntIndex {
@@ -153,7 +155,7 @@ impl<'a> CodeGen<'a> {
         }
         // 3. try the package level
         let pkg = &self.objects.packages[self.pkg_key];
-        if let Some(index) = pkg.get_member_index(&entity_key) {
+        if let Some(index) = pkg.get_member_index(&id.name) {
             return EntIndex::PackageMember(*index);
         }
 
@@ -182,7 +184,7 @@ impl<'a> CodeGen<'a> {
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
-                pkg.add_var_mapping(ident_key.unwrap(), index.into());
+                pkg.add_var_mapping(ident.name.clone(), index.into());
             }
             let t = self.tlookup.get_def_tc_type(*ikey);
             (index, Some(t))
@@ -210,8 +212,7 @@ impl<'a> CodeGen<'a> {
         for i in 0..names.len() {
             let ident = self.ast_objs.idents[names[i]].clone();
             let val = self.tlookup.get_const_value(values[i].id(), self.objects);
-            let ident_key = ident.entity.into_key();
-            self.current_func_add_const_def(ident_key.unwrap(), val);
+            self.current_func_add_const_def(&ident, val);
         }
     }
 
@@ -375,7 +376,7 @@ impl<'a> CodeGen<'a> {
             for _ in 0..lhs.len() {
                 let func = current_func_mut!(self);
                 let i = func.add_const(None, val.clone());
-                func.emit_load(i, self.tlookup.value_type_from_tc(t));
+                func.emit_load(i, None, self.tlookup.value_type_from_tc(t));
                 types.push(t);
             }
             types
@@ -408,12 +409,13 @@ impl<'a> CodeGen<'a> {
             let func = current_func_mut!(self);
             match l {
                 LeftHandSide::Primitive(_) => {
-                    func.emit_store(l, val_index, None, typ);
+                    func.emit_store(l, val_index, None, None, typ);
                 }
                 LeftHandSide::IndexSelExpr(info) => {
                     func.emit_store(
                         &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_index)),
                         val_index,
+                        None,
                         None,
                         typ,
                     );
@@ -424,6 +426,7 @@ impl<'a> CodeGen<'a> {
                     func.emit_store(
                         &LeftHandSide::Deref(current_indexing_index),
                         val_index,
+                        None,
                         None,
                         typ,
                     );
@@ -470,7 +473,7 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?
                 // local index is resolved in gen_assign
-                func.emit_store(left, -1, Some(op), typ);
+                func.emit_store(left, -1, Some(op), None, typ);
                 func.emit_pop(1);
             }
             LeftHandSide::IndexSelExpr(info) => {
@@ -480,6 +483,7 @@ impl<'a> CodeGen<'a> {
                     &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - 1)),
                     -1,
                     Some(op),
+                    None,
                     typ,
                 );
                 let mut total_pop = 2;
@@ -491,7 +495,7 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
                 //  [... target, value]
-                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), typ);
+                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), None, typ);
                 func.emit_pop(2);
             }
         }
@@ -661,14 +665,15 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn current_func_add_const_def(&mut self, entity: EntityKey, cst: GosValue) -> EntIndex {
+    fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
-        let index = func.add_const(Some(entity.clone()), cst.clone());
+        let entity = ident.entity.clone().into_key().unwrap();
+        let index = func.add_const(Some(entity), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
             let pkg = &mut self.objects.packages[pkg_key];
-            pkg.add_member(entity, cst);
+            pkg.add_member(ident.name.clone(), cst);
         }
         index
     }
@@ -678,7 +683,7 @@ impl<'a> CodeGen<'a> {
         let gos_val = GosValue::new_str(name);
         let func = current_func_mut!(self);
         let index = func.add_const(None, gos_val);
-        func.emit_load(index, ValueType::Str);
+        func.emit_load(index, None, ValueType::Str);
     }
 
     fn builtin_func_index(&self, name: &str) -> Option<OpIndex> {
@@ -691,50 +696,12 @@ impl<'a> CodeGen<'a> {
         })
     }
 
-    // sort_var_decls returns a vec of sorted var decl statments
-    pub fn sort_var_decls(&self, files: &Vec<File>, ti: &TypeInfo) -> Vec<Rc<ValueSpec>> {
-        let mut orders = HashMap::new();
-        for (i, init) in ti.init_order.iter().enumerate() {
-            for okey in init.lhs.iter() {
-                let name = self.tc_objs.lobjs[*okey].name();
-                orders.insert(name, i);
-            }
-        }
-
-        let mut decls = vec![];
-        for f in files.iter() {
-            for d in f.decls.iter() {
-                match d {
-                    Decl::Gen(gdecl) => {
-                        for spec_key in gdecl.specs.iter() {
-                            if gdecl.token == Token::VAR {
-                                let spec = &self.ast_objs.specs[*spec_key];
-                                match spec {
-                                    Spec::Value(v) => {
-                                        let name = &self.ast_objs.idents[v.names[0]].name;
-                                        let order = orders[name];
-                                        decls.push((v.clone(), order));
-                                    }
-                                    _ => unimplemented!(),
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-        decls.sort_by(|a, b| a.1.cmp(&b.1));
-        decls.into_iter().map(|x| x.0).collect()
-    }
-
     fn add_pkg_var_member(&mut self, pkey: PackageKey, vars: &Vec<Rc<ValueSpec>>) {
         for v in vars.iter() {
             for n in v.names.iter() {
                 let ident = &self.ast_objs.idents[*n];
-                let entity_key = ident.entity.clone().into_key().unwrap();
                 let val = self.objects.zero_val.zero_val_mark.clone();
-                self.objects.packages[pkey].add_member(entity_key, val);
+                self.objects.packages[pkey].add_member(ident.name.clone(), val);
             }
         }
     }
@@ -745,11 +712,13 @@ impl<'a> CodeGen<'a> {
         let fval = FunctionVal::new(pkey, fmeta, None, true);
         let fkey = self.objects.functions.insert(fval);
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(null_key!(), GosValue::new_closure(fkey));
+        self.objects.packages[pkey].add_member(String::new(), GosValue::new_closure(fkey));
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
 
-        let vars = self.sort_var_decls(files, self.tlookup.type_info());
+        let vars = self
+            .pkg_util
+            .sort_var_decls(files, self.tlookup.type_info());
         self.add_pkg_var_member(pkey, &vars);
 
         for f in files.iter() {
@@ -777,7 +746,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_ident(&mut self, ident: &IdentKey) {
         let index = self.resolve_ident(ident);
         let t = self.tlookup.get_use_value_type(*ident);
-        current_func_mut!(self).emit_load(index, t);
+        current_func_mut!(self).emit_load(index, None, t);
     }
 
     fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
@@ -789,7 +758,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         let t = val.get_type();
         let i = func.add_const(None, val);
-        func.emit_load(i, t);
+        func.emit_load(i, None, t);
     }
 
     /// Add function as a const and then generate a closure of it
@@ -798,7 +767,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
-        func.emit_load(i, ValueType::Function);
+        func.emit_load(i, None, ValueType::Function);
         func.emit_new(ValueType::Function);
     }
 
@@ -807,7 +776,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         let t = val.get_type();
         let i = func.add_const(None, val);
-        func.emit_load(i, t);
+        func.emit_load(i, None, t);
     }
 
     fn visit_expr_paren(&mut self, expr: &Expr) {
@@ -816,9 +785,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
         if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
-            let index = self.pkg_indices[&key];
-            let pkg = self.pkgs[index as usize];
-            dbg!(pkg);
+            let pkg = self.pkg_util.get_vm_pkg(key);
+            let t = self.tlookup.get_use_value_type(*ident);
+            current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
+            let func = self.func_stack.last().unwrap();
+            let i = current_func!(self).code.len() - 2;
+            dbg!(&self.ast_objs.idents[*ident]);
+            self.pkg_util.add_pair(pkg, *ident, *func, i);
             return;
         }
 
@@ -1071,7 +1044,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let func = current_func_mut!(self);
         let t = val.get_type();
         let i = func.add_const(None, val);
-        func.emit_load(i, t);
+        func.emit_load(i, None, t);
     }
 
     fn visit_expr_struct_type(&mut self, _s: &StructType) {
@@ -1114,14 +1087,13 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         for s in gdecl.specs.iter() {
             let spec = &self.ast_objs.specs[*s];
             match spec {
-                Spec::Import(is) => {
-                    dbg!(is);
+                Spec::Import(_) => {
+                    //handled elsewhere
                 }
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
-                    let ident_key = ident.entity.into_key();
                     let typ = self.tlookup.gen_def_type_meta(ts.name, self.objects);
-                    self.current_func_add_const_def(ident_key.unwrap(), typ);
+                    self.current_func_add_const_def(&ident, typ);
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
@@ -1161,7 +1133,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
-            let index = pkg.add_member(ident.entity_key().unwrap(), cls);
+            let index = pkg.add_member(ident.name.clone(), cls);
             if ident.name == "main" {
                 pkg.set_main_func(index);
             }
@@ -1206,6 +1178,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             f.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
                 -1,
+                None,
                 None,
                 t,
             );

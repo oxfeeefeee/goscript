@@ -3,7 +3,7 @@
 use std::convert::TryFrom;
 
 use goscript_vm::instruction::*;
-use goscript_vm::objects::{EntIndex, FunctionVal};
+use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
@@ -64,13 +64,14 @@ pub enum LeftHandSide {
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize;
 
-    fn emit_load(&mut self, index: EntIndex, typ: ValueType);
+    fn emit_load(&mut self, index: EntIndex, pkg: Option<PackageKey>, typ: ValueType);
 
     fn emit_store(
         &mut self,
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
+        pkg: Option<PackageKey>,
         typ: ValueType,
     );
 
@@ -123,7 +124,7 @@ impl FuncGen for FunctionVal {
             .sum()
     }
 
-    fn emit_load(&mut self, index: EntIndex, typ: ValueType) {
+    fn emit_load(&mut self, index: EntIndex, pkg: Option<PackageKey>, typ: ValueType) {
         match index {
             EntIndex::Const(i) => match self.const_val(i).clone() {
                 //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
@@ -138,13 +139,15 @@ impl FuncGen for FunctionVal {
                 }
             },
             EntIndex::LocalVar(i) => {
-                self.emit_inst(Opcode::LOAD_LOCAL, Some(typ), None, None, Some(i))
+                self.emit_inst(Opcode::LOAD_LOCAL, Some(typ), None, None, Some(i));
             }
             EntIndex::UpValue(i) => {
-                self.emit_inst(Opcode::LOAD_UPVALUE, Some(typ), None, None, Some(i))
+                self.emit_inst(Opcode::LOAD_UPVALUE, Some(typ), None, None, Some(i));
             }
             EntIndex::PackageMember(i) => {
-                self.emit_inst(Opcode::LOAD_THIS_PKG_FIELD, Some(typ), None, None, Some(i))
+                let pkg = pkg.unwrap_or(self.package);
+                self.emit_inst(Opcode::LOAD_PKG_FIELD, Some(typ), None, None, Some(i));
+                self.emit_raw_inst(key_to_u64(pkg));
             }
             EntIndex::BuiltIn(op) => self.emit_code(op),
             EntIndex::Blank => unreachable!(),
@@ -156,6 +159,7 @@ impl FuncGen for FunctionVal {
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
+        pkg: Option<PackageKey>,
         typ: ValueType,
     ) {
         if let LeftHandSide::Primitive(index) = lhs {
@@ -164,18 +168,22 @@ impl FuncGen for FunctionVal {
             }
         }
 
+        let mut pkg_key = None;
         let (code, i, t1, t2, imm_index) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
                 EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i, None, None, None),
                 EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i, None, None, None),
-                EntIndex::PackageMember(i) => (
-                    Opcode::STORE_THIS_PKG_FIELD,
-                    i,
-                    Some(ValueType::Package),
-                    None,
-                    None,
-                ),
+                EntIndex::PackageMember(i) => {
+                    pkg_key = Some(pkg.unwrap_or(self.package));
+                    (
+                        Opcode::STORE_PKG_FIELD,
+                        i,
+                        Some(ValueType::Package),
+                        None,
+                        None,
+                    )
+                }
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
@@ -205,6 +213,9 @@ impl FuncGen for FunctionVal {
         let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
         inst.set_imm824(imm0, *i);
         self.code.push(inst);
+        if let Some(key) = pkg_key {
+            self.emit_raw_inst(key_to_u64(key));
+        }
     }
 
     fn emit_cast_to_interface(&mut self, typ: ValueType, rhs: OpIndex, m_index: OpIndex) {

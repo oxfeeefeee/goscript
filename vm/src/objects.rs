@@ -35,6 +35,22 @@ pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataVal>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
 pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
 
+pub fn key_to_u64<K>(key: K) -> u64
+where
+    K: slotmap::Key,
+{
+    let data: slotmap::KeyData = key.into();
+    data.as_ffi()
+}
+
+pub fn u64_to_key<K>(u: u64) -> K
+where
+    K: slotmap::Key,
+{
+    let data = slotmap::KeyData::from_ffi(u);
+    data.into()
+}
+
 #[derive(Debug)]
 pub struct VMObjects {
     pub interfaces: InterfaceObjs,
@@ -737,7 +753,7 @@ impl ClosureObj {
 pub struct PackageVal {
     name: String,
     members: Vec<GosValue>, // imports, const, var, func are all stored here
-    member_indices: HashMap<EntityKey, OpIndex>,
+    member_indices: HashMap<String, OpIndex>,
     main_func_index: Option<usize>,
     // maps func_member_index of the constructor to pkg_member_index
     var_mapping: Option<HashMap<OpIndex, OpIndex>>,
@@ -754,15 +770,15 @@ impl PackageVal {
         }
     }
 
-    pub fn add_member(&mut self, entity: EntityKey, val: GosValue) -> OpIndex {
+    pub fn add_member(&mut self, name: String, val: GosValue) -> OpIndex {
         self.members.push(val);
         let index = (self.members.len() - 1) as OpIndex;
-        self.member_indices.insert(entity, index);
+        self.member_indices.insert(name, index);
         index as OpIndex
     }
 
-    pub fn add_var_mapping(&mut self, entity: EntityKey, fn_index: OpIndex) -> OpIndex {
-        let index = *self.get_member_index(&entity).unwrap();
+    pub fn add_var_mapping(&mut self, name: String, fn_index: OpIndex) -> OpIndex {
+        let index = *self.get_member_index(&name).unwrap();
         self.var_mapping
             .as_mut()
             .unwrap()
@@ -783,8 +799,9 @@ impl PackageVal {
         self.main_func_index = Some(index as usize);
     }
 
-    pub fn get_member_index(&self, entity: &EntityKey) -> Option<&OpIndex> {
-        self.member_indices.get(entity)
+    pub fn get_member_index(&self, name: &str) -> Option<&OpIndex> {
+        dbg!(&self.member_indices);
+        self.member_indices.get(name)
     }
 
     pub fn inited(&self) -> bool {
@@ -911,6 +928,11 @@ impl FunctionVal {
         imm: Option<i32>,
     ) {
         let i = Instruction::new(op, type0, type1, type2, imm);
+        self.code.push(i);
+    }
+
+    pub fn emit_raw_inst(&mut self, u: u64) {
+        let i = Instruction::from_u64(u);
         self.code.push(i);
     }
 

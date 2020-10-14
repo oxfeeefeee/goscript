@@ -1,10 +1,8 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
-use std::pin::Pin;
-
 use super::codegen::CodeGen;
 use super::func::FuncGen;
 use super::interface::IfaceMapping;
+use super::package::PkgVarPairs;
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
@@ -15,6 +13,8 @@ use goscript_vm::instruction::*;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
+use std::collections::HashMap;
+use std::pin::Pin;
 
 pub struct EntryGen<'a> {
     objects: Pin<Box<VMObjects>>,
@@ -74,8 +74,9 @@ impl<'a> EntryGen<'a> {
                 main_pkg_idx = Some(index);
             }
         }
+        let mut pairs = PkgVarPairs::new();
         for (i, (_, ti)) in checker_result.iter().enumerate() {
-            CodeGen::new(
+            let mut cgen = CodeGen::new(
                 &mut self.objects,
                 self.ast_objs,
                 self.tc_objs,
@@ -85,9 +86,11 @@ impl<'a> EntryGen<'a> {
                 &self.packages,
                 self.packages[i],
                 self.blank_ident,
-            )
-            .gen_with_files(&ti.ast_files, i as OpIndex);
+            );
+            cgen.gen_with_files(&ti.ast_files, i as OpIndex);
+            pairs.append_from_util(cgen.pkg_util());
         }
+        pairs.patch_index(self.ast_objs, &mut self.objects);
 
         let entry = self.gen_entry_func(main_pkg_idx.unwrap());
         ByteCode {

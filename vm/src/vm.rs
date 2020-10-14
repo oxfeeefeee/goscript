@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::instruction::*;
 use super::objects::{
-    ClosureObj, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
+    u64_to_key, ClosureObj, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
 };
 use super::stack::Stack;
 use super::value::*;
@@ -287,14 +287,18 @@ impl Fiber {
                         _ => vm_util::store_field(stack, &target, &key, rhs_index, inst.t0(), objs),
                     };
                 }
-                Opcode::LOAD_THIS_PKG_FIELD => {
+                Opcode::LOAD_PKG_FIELD => {
                     let index = inst.imm();
-                    let pkg = &objs.packages[func.package];
+                    let inst = code[frame.pc];
+                    frame.pc += 1;
+                    let pkg = &mut objs.packages[u64_to_key(inst.get_u64())];
                     stack.push(pkg.member(index).clone());
                 }
-                Opcode::STORE_THIS_PKG_FIELD => {
+                Opcode::STORE_PKG_FIELD => {
                     let (rhs_index, index) = inst.imm824();
-                    let pkg = &mut objs.packages[func.package];
+                    let inst = code[frame.pc];
+                    frame.pc += 1;
+                    let pkg = &mut objs.packages[u64_to_key(inst.get_u64())];
                     stack.store_val(pkg.member_mut(index), rhs_index, inst.t0(), zval);
                 }
                 Opcode::STORE_DEREF => {

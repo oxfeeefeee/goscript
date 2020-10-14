@@ -29,8 +29,8 @@ pub enum Opcode {
     STORE_FIELD_IMM,
     //LOAD_FIELD_BY_NAME,
     //STORE_FIELD_BY_NAME,
-    LOAD_THIS_PKG_FIELD,
-    STORE_THIS_PKG_FIELD,
+    LOAD_PKG_FIELD,
+    STORE_PKG_FIELD,
     STORE_DEREF,
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
@@ -118,8 +118,8 @@ impl Opcode {
             Opcode::STORE_FIELD => ("STORE_FIELD", 0),
             Opcode::LOAD_FIELD_IMM => ("LOAD_FIELD_IMM", 0),
             Opcode::STORE_FIELD_IMM => ("STORE_FIELD_IMM", 0),
-            Opcode::LOAD_THIS_PKG_FIELD => ("LOAD_THIS_PKG_FIELD", -1),
-            Opcode::STORE_THIS_PKG_FIELD => ("STORE_THIS_PKG_FIELD", 0),
+            Opcode::LOAD_PKG_FIELD => ("LOAD_PKG_FIELD", -1),
+            Opcode::STORE_PKG_FIELD => ("STORE_PKG_FIELD", 0),
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
@@ -226,6 +226,8 @@ pub enum ValueType {
 /// or
 /// |    8bit   |    8bit   |    8bit   |    8bit   |    8bit      |    24bit     |
 /// |  Opcode   |  <TypeA>  |  <TypeB>  |    ext    |     ext      |   immediate  |
+/// or
+/// | package_key|
 #[derive(Clone, Copy)]
 pub struct Instruction {
     val: u64,
@@ -257,6 +259,11 @@ impl Instruction {
     }
 
     #[inline]
+    pub fn from_u64(v: u64) -> Instruction {
+        Instruction { val: v }
+    }
+
+    #[inline]
     pub fn set_imm(&mut self, imm: OpIndex) {
         let uv: u32 = unsafe { std::mem::transmute(imm) };
         self.val = (self.val & 0xffff_ffff_0000_0000) | uv as u64;
@@ -282,6 +289,11 @@ impl Instruction {
         let val8: u8 = unsafe { std::mem::transmute(index) };
         let val64 = (val8 as u64) << 32;
         self.val = (self.val & 0xffff_ff00_ffff_ffff) | val64;
+    }
+
+    #[inline]
+    pub fn get_u64(&self) -> u64 {
+        self.val
     }
 
     #[inline]
@@ -359,7 +371,7 @@ impl fmt::Debug for Instruction {
             | Opcode::STORE_UPVALUE
             | Opcode::STORE_FIELD
             | Opcode::STORE_FIELD_IMM
-            | Opcode::STORE_THIS_PKG_FIELD
+            | Opcode::STORE_PKG_FIELD
             | Opcode::STORE_DEREF => {
                 let (i0, i1) = self.imm824();
                 if i0 < 0 {

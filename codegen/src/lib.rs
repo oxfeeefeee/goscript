@@ -1,5 +1,6 @@
 mod func;
 mod interface;
+mod package;
 mod types;
 
 pub mod codegen;
