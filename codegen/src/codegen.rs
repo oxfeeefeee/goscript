@@ -277,6 +277,7 @@ impl<'a> CodeGen<'a> {
                     }
                     Expr::Selector(sexpr) => {
                         self.visit_expr(&sexpr.expr);
+                        //fixme
                         self.gen_push_ident_str(&sexpr.sel);
                         let obj_typ = self.tlookup.get_expr_value_type(&sexpr.expr);
                         (
@@ -706,7 +707,20 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn gen_with_files(&mut self, files: &Vec<File>, index: OpIndex) {
+    fn gen_load_pkg_var(&mut self, expr: &Expr, ident: &IdentKey) -> bool {
+        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
+            let pkg = self.pkg_util.get_vm_pkg(key);
+            let t = self.tlookup.get_use_value_type(*ident);
+            current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
+            let func = self.func_stack.last().unwrap();
+            let i = current_func!(self).code.len() - 2;
+            self.pkg_util.add_pair(pkg, *ident, *func, i);
+            return true;
+        }
+        false
+    }
+
+    pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.default_sig_meta.clone().unwrap();
         let fval = FunctionVal::new(pkey, fmeta, None, true);
@@ -720,6 +734,8 @@ impl<'a> CodeGen<'a> {
             .pkg_util
             .sort_var_decls(files, self.tlookup.type_info());
         self.add_pkg_var_member(pkey, &vars);
+
+        self.pkg_util.gen_imports(tcpkg, current_func_mut!(self));
 
         for f in files.iter() {
             for d in f.decls.iter() {
@@ -784,14 +800,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
-        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
-            let pkg = self.pkg_util.get_vm_pkg(key);
-            let t = self.tlookup.get_use_value_type(*ident);
-            current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
-            let func = self.func_stack.last().unwrap();
-            let i = current_func!(self).code.len() - 2;
-            dbg!(&self.ast_objs.idents[*ident]);
-            self.pkg_util.add_pair(pkg, *ident, *func, i);
+        if self.gen_load_pkg_var(expr, ident) {
             return;
         }
 

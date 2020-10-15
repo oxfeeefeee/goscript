@@ -506,7 +506,7 @@ impl Fiber {
                                 pkg.init_var(&index, val);
                             }*/
                             // the one pushed by IMPORT was poped by LOAD_FIELD
-                            stack.push(GosValue::Package(pkey));
+                            //stack.push(GosValue::Package(pkey));
                         }
                         _ => unreachable!(),
                     }

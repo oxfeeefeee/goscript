@@ -1,16 +1,15 @@
 #![allow(dead_code)]
 
-use std::collections::HashMap;
-use std::rc::Rc;
-
-use goscript_vm::instruction::*;
-use goscript_vm::value::*;
-
+use super::func::FuncGen;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_types::{PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_vm::instruction::*;
+use goscript_vm::value::*;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 pub struct PkgVarPairs {
     data: Vec<(PackageKey, IdentKey, FunctionKey, usize)>,
@@ -61,6 +60,14 @@ impl<'a> PkgUtil<'a> {
             pkgs: pkgs,
             pkg: pkg,
             pairs: PkgVarPairs::new(),
+        }
+    }
+
+    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, func: &mut FunctionVal) {
+        let pkg = &self.tc_objs.pkgs[tcpkg];
+        for key in pkg.imports().iter() {
+            let index = self.pkg_indices[key];
+            func.emit_import(index);
         }
     }
 

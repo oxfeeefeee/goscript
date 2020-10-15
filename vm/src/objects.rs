@@ -800,7 +800,6 @@ impl PackageVal {
     }
 
     pub fn get_member_index(&self, name: &str) -> Option<&OpIndex> {
-        dbg!(&self.member_indices);
         self.member_indices.get(name)
     }
 

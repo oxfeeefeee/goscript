@@ -41,16 +41,19 @@ impl<'a> EntryGen<'a> {
     }
 
     // generate the entry function for ByteCode
-    fn gen_entry_func(&mut self, main_idx: OpIndex) -> FunctionKey {
+    fn gen_entry_func(&mut self, pkg: PackageKey, index: OpIndex) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
         let fval = FunctionVal::new(null_key!(), fmeta.clone(), None, false);
         let fkey = self.objects.functions.insert(fval);
+        let main_func_index = *self.objects.packages[pkg].get_member_index("main").unwrap();
         let func = &mut self.objects.functions[fkey];
-        func.emit_import(main_idx);
-        // negative index for main func
-        func.emit_inst(Opcode::PUSH_IMM, None, None, None, Some(-1));
-        func.emit_load_field(ValueType::Package, ValueType::Int);
+        func.emit_import(index);
+        func.emit_load(
+            EntIndex::PackageMember(main_func_index),
+            Some(pkg),
+            ValueType::Function,
+        );
         func.emit_pre_call();
         func.emit_call(false);
         func.emit_return();
@@ -75,7 +78,7 @@ impl<'a> EntryGen<'a> {
             }
         }
         let mut pairs = PkgVarPairs::new();
-        for (i, (_, ti)) in checker_result.iter().enumerate() {
+        for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
             let mut cgen = CodeGen::new(
                 &mut self.objects,
                 self.ast_objs,
@@ -87,12 +90,13 @@ impl<'a> EntryGen<'a> {
                 self.packages[i],
                 self.blank_ident,
             );
-            cgen.gen_with_files(&ti.ast_files, i as OpIndex);
+            cgen.gen_with_files(&ti.ast_files, *tcpkg, i as OpIndex);
             pairs.append_from_util(cgen.pkg_util());
         }
         pairs.patch_index(self.ast_objs, &mut self.objects);
 
-        let entry = self.gen_entry_func(main_pkg_idx.unwrap());
+        let index = main_pkg_idx.unwrap();
+        let entry = self.gen_entry_func(self.packages[index as usize], index);
         ByteCode {
             objects: self.objects,
             packages: self.packages,

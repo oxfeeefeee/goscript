@@ -234,10 +234,6 @@ impl ObjContext {
             has_call_or_recv: false,
         }
     }
-
-    //pub fn lookup<'a>(&self, name: &str, tc_objs: &'a TCObjects) -> Option<&'a ObjKey> {
-    //    tc_objs.scopes[self.scope.unwrap()].lookup(name)
-    //}
 }
 
 impl FilesContext<'_> {
