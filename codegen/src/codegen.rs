@@ -256,7 +256,7 @@ impl<'a> CodeGen<'a> {
                         let mut index_typ = None;
                         if let Some(const_val) = self.tlookup.get_tc_const_value(ind.id()) {
                             let (ival, _) = const_val.to_int().int_as_i64();
-                            if let Ok(i) = i8::try_from(ival) {
+                            if let Ok(i) = OpIndex::try_from(ival) {
                                 index_const = Some(i);
                             }
                         }
@@ -267,30 +267,53 @@ impl<'a> CodeGen<'a> {
                         (
                             LeftHandSide::IndexSelExpr(IndexSelInfo::new(
                                 0,
+                                index_const,
                                 obj_typ,
                                 index_typ,
-                                true,
-                                index_const,
+                                IndexSelType::Indexing,
                             )), // the true index will be calculated later
                             Some(self.tlookup.get_expr_tc_type(expr)),
                         )
                     }
                     Expr::Selector(sexpr) => {
-                        self.visit_expr(&sexpr.expr);
-                        //fixme
-                        self.gen_push_ident_str(&sexpr.sel);
-                        let obj_typ = self.tlookup.get_expr_value_type(&sexpr.expr);
-                        (
-                            // the true index will be calculated later
-                            LeftHandSide::IndexSelExpr(IndexSelInfo::new(
-                                0,
-                                obj_typ,
-                                Some(ValueType::Str),
-                                false,
-                                None,
-                            )),
-                            Some(self.tlookup.get_expr_tc_type(expr)),
-                        )
+                        match self.tlookup.try_get_pkg_key(&sexpr.expr) {
+                            Some(key) => {
+                                let pkg = self.pkg_util.get_vm_pkg(key);
+                                let t = self.tlookup.get_use_value_type(sexpr.sel);
+                                (
+                                    // the true index will be calculated later
+                                    LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                                        0,
+                                        Some(0),
+                                        t,
+                                        None,
+                                        IndexSelType::PkgMember(pkg, sexpr.sel),
+                                    )),
+                                    Some(self.tlookup.get_expr_tc_type(expr)),
+                                )
+                            }
+                            None => {
+                                let t = self
+                                    .tlookup
+                                    .gen_type_meta_by_node_id(sexpr.expr.id(), self.objects);
+                                let name = &self.ast_objs.idents[sexpr.sel].name;
+                                let i = MetadataVal::field_index(&t, name, &self.objects.metas);
+
+                                self.visit_expr(&sexpr.expr);
+                                let obj_typ = self.tlookup.get_expr_value_type(&sexpr.expr);
+                                (
+                                    // the true index will be calculated later
+                                    LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                                        0,
+                                        Some(i),
+                                        obj_typ,
+                                        None,
+                                        IndexSelType::StructField,
+                                    )),
+                                    Some(self.tlookup.get_expr_tc_type(expr)),
+                                )
+                            }
+                        }
                     }
                     Expr::Star(sexpr) => {
                         self.visit_expr(&sexpr.expr);
@@ -407,24 +430,24 @@ impl<'a> CodeGen<'a> {
             let val_index = i as OpIndex - total_rhs_val;
             self.try_cast_to_iface(lhs[i].1, types[i], val_index);
             let typ = self.tlookup.value_type_from_tc(types[i]);
-            let func = current_func_mut!(self);
             match l {
                 LeftHandSide::Primitive(_) => {
-                    func.emit_store(l, val_index, None, None, typ);
+                    current_func_mut!(self).emit_store(l, val_index, None, None, typ);
                 }
                 LeftHandSide::IndexSelExpr(info) => {
-                    func.emit_store(
+                    current_func_mut!(self).emit_store(
                         &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_index)),
                         val_index,
                         None,
                         None,
                         typ,
                     );
+                    self.register_store_pkg_member(&info.typ);
                     // the lhs of IndexSelExpr takes two spots
                     current_indexing_index += 2;
                 }
                 LeftHandSide::Deref(_) => {
-                    func.emit_store(
+                    current_func_mut!(self).emit_store(
                         &LeftHandSide::Deref(current_indexing_index),
                         val_index,
                         None,
@@ -469,24 +492,26 @@ impl<'a> CodeGen<'a> {
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::PUSH_IMM, 1);
         }
-        let func = current_func_mut!(self);
         match left {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?
                 // local index is resolved in gen_assign
+                let func = current_func_mut!(self);
                 func.emit_store(left, -1, Some(op), None, typ);
                 func.emit_pop(1);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
-                func.emit_store(
+                current_func_mut!(self).emit_store(
                     &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - 1)),
                     -1,
                     Some(op),
                     None,
                     typ,
                 );
+                self.register_store_pkg_member(&info.typ);
+                let func = current_func_mut!(self);
                 let mut total_pop = 2;
                 if let Some(_) = info.t2 {
                     total_pop += 1;
@@ -496,6 +521,7 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
                 //  [... target, value]
+                let func = current_func_mut!(self);
                 func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), None, typ);
                 func.emit_pop(2);
             }
@@ -714,10 +740,19 @@ impl<'a> CodeGen<'a> {
             current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
             let func = self.func_stack.last().unwrap();
             let i = current_func!(self).code.len() - 2;
-            self.pkg_util.add_pair(pkg, *ident, *func, i);
+            self.pkg_util.add_pair(pkg, *ident, *func, i, false);
             return true;
         }
         false
+    }
+
+    fn register_store_pkg_member(&mut self, typ: &IndexSelType) {
+        // register pkg member for patching
+        if let IndexSelType::PkgMember(pkg, ident) = typ {
+            let func = self.func_stack.last().unwrap();
+            let i = current_func!(self).code.len() - 2;
+            self.pkg_util.add_pair(*pkg, *ident, *func, i, true);
+        }
     }
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
@@ -834,7 +869,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         } else {
             self.visit_expr(expr);
             let i = MetadataVal::field_index(&t, name, &self.objects.metas);
-            current_func_mut!(self).emit_load_field_imm(i, t0);
+            current_func_mut!(self).emit_load_struct_field(i, t0);
         }
     }
 

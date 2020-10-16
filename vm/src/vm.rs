@@ -223,24 +223,21 @@ impl Fiber {
                 }
                 Opcode::STORE_INDEX_IMM => {
                     // the only place we can store the immediate index is t2
-                    let (rhs_index, index) = inst.imm824();
+                    let (rhs_index, imm) = inst.imm824();
+                    let index = inst.t2_as_index();
                     let s_index = Stack::offset(stack.len(), index);
                     let target = &stack.get_with_type(s_index, inst.t1());
                     vm_util::store_index_int(
                         stack,
                         target,
-                        inst.t2_as_index() as usize,
+                        imm as usize,
                         rhs_index,
                         inst.t0(),
                         objs,
                     );
                 }
-                Opcode::LOAD_FIELD | Opcode::LOAD_FIELD_IMM => {
-                    let ind = if inst_op == Opcode::LOAD_FIELD {
-                        stack.pop_with_type(inst.t1())
-                    } else {
-                        GosValue::Int(inst.imm() as isize)
-                    };
+                Opcode::LOAD_FIELD => {
+                    let ind = stack.pop_with_type(inst.t1());
                     let val = stack.pop_with_type(inst.t0());
                     stack.push(match val {
                         GosValue::Boxed(_) => {
@@ -249,6 +246,19 @@ impl Fiber {
                         }
                         _ => vm_util::load_field(&val, &ind, objs),
                     });
+                }
+                Opcode::LOAD_STRUCT_FIELD => {
+                    let ind = inst.imm();
+                    let mut target = stack.pop_with_type(inst.t0());
+                    if let GosValue::Boxed(_) = &target {
+                        target = deref_value!(target, self, stack, frame);
+                    }
+                    let val = if let GosValue::Struct(sval) = &target {
+                        sval.borrow().fields[ind as usize].clone()
+                    } else {
+                        unreachable!()
+                    };
+                    stack.push(val);
                 }
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
@@ -270,14 +280,11 @@ impl Fiber {
                         None,
                     ))));
                 }
-                Opcode::STORE_FIELD | Opcode::STORE_FIELD_IMM => {
-                    let (rhs_index, index) = inst.imm824();
+                Opcode::STORE_FIELD => {
+                    let (rhs_index, _) = inst.imm824();
+                    let index = inst.t2_as_index();
                     let s_index = Stack::offset(stack.len(), index);
-                    let key = if inst_op == Opcode::STORE_FIELD {
-                        stack.get_with_type(s_index + 1, inst.t2())
-                    } else {
-                        GosValue::Int(index as isize)
-                    };
+                    let key = stack.get_with_type(s_index + 1, inst.t2());
                     let target = stack.get_with_type(s_index, inst.t1());
                     match target {
                         GosValue::Boxed(_) => {
@@ -287,6 +294,21 @@ impl Fiber {
                         _ => vm_util::store_field(stack, &target, &key, rhs_index, inst.t0(), objs),
                     };
                 }
+                Opcode::STORE_STRUCT_FIELD => {
+                    let (rhs_index, imm) = inst.imm824();
+                    let index = inst.t2_as_index();
+                    let s_index = Stack::offset(stack.len(), index);
+                    let mut target = stack.get_with_type(s_index, inst.t1());
+                    if let GosValue::Boxed(_) = &target {
+                        target = deref_value!(target, self, stack, frame);
+                    }
+                    if let GosValue::Struct(s) = &target {
+                        let field = &mut s.borrow_mut().fields[imm as usize];
+                        stack.store_val(field, rhs_index, inst.t0(), &objs.zero_val);
+                    } else {
+                        unreachable!();
+                    }
+                }
                 Opcode::LOAD_PKG_FIELD => {
                     let index = inst.imm();
                     let inst = code[frame.pc];
@@ -295,11 +317,12 @@ impl Fiber {
                     stack.push(pkg.member(index).clone());
                 }
                 Opcode::STORE_PKG_FIELD => {
-                    let (rhs_index, index) = inst.imm824();
+                    let (rhs_index, imm) = inst.imm824();
+                    let t = inst.t0();
                     let inst = code[frame.pc];
                     frame.pc += 1;
                     let pkg = &mut objs.packages[u64_to_key(inst.get_u64())];
-                    stack.store_val(pkg.member_mut(index), rhs_index, inst.t0(), zval);
+                    stack.store_val(pkg.member_mut(imm), rhs_index, t, zval);
                 }
                 Opcode::STORE_DEREF => {
                     let (rhs_index, index) = inst.imm824();
@@ -614,7 +637,6 @@ impl Fiber {
 
                 Opcode::IMPORT => {
                     let pkey = pkgs[inst.imm() as usize];
-                    stack.push(GosValue::Package(pkey));
                     stack.push(GosValue::Bool(!objs.packages[pkey].inited()));
                 }
                 Opcode::SLICE | Opcode::SLICE_FULL => {

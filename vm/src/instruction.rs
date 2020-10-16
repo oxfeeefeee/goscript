@@ -23,14 +23,12 @@ pub enum Opcode {
     STORE_INDEX,
     LOAD_INDEX_IMM,
     STORE_INDEX_IMM,
-    LOAD_FIELD,
-    STORE_FIELD,
-    LOAD_FIELD_IMM,
-    STORE_FIELD_IMM,
-    //LOAD_FIELD_BY_NAME,
-    //STORE_FIELD_BY_NAME,
+    LOAD_STRUCT_FIELD,
+    STORE_STRUCT_FIELD,
     LOAD_PKG_FIELD,
     STORE_PKG_FIELD,
+    LOAD_FIELD,
+    STORE_FIELD,
     STORE_DEREF,
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
@@ -114,12 +112,12 @@ impl Opcode {
             Opcode::STORE_INDEX => ("STORE_INDEX", 0),
             Opcode::LOAD_INDEX_IMM => ("LOAD_INDEX_IMM", 0),
             Opcode::STORE_INDEX_IMM => ("STORE_INDEX_IMM", 0),
+            Opcode::LOAD_STRUCT_FIELD => ("LOAD_STRUCT_FIELD", 0),
+            Opcode::STORE_STRUCT_FIELD => ("STORE_STRUCT_FIELD", 0),
+            Opcode::LOAD_PKG_FIELD => ("LOAD_PKG_FIELD", 1),
+            Opcode::STORE_PKG_FIELD => ("STORE_PKG_FIELD", 0),
             Opcode::LOAD_FIELD => ("LOAD_FIELD", -1),
             Opcode::STORE_FIELD => ("STORE_FIELD", 0),
-            Opcode::LOAD_FIELD_IMM => ("LOAD_FIELD_IMM", 0),
-            Opcode::STORE_FIELD_IMM => ("STORE_FIELD_IMM", 0),
-            Opcode::LOAD_PKG_FIELD => ("LOAD_PKG_FIELD", -1),
-            Opcode::STORE_PKG_FIELD => ("STORE_PKG_FIELD", 0),
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
@@ -283,7 +281,7 @@ impl Instruction {
 
     /// set_t2_with_index tries to set an OpIndex to the space of t2
     /// returns error if it's out of range
-    /// used by STORE_INDEX_IMM, STORE_FIELD_IMM
+    /// used by STORE_INDEX_IMM, STORE_STRUCT_FIELD
     #[inline]
     pub fn set_t2_with_index(&mut self, index: i8) {
         let val8: u8 = unsafe { std::mem::transmute(index) };
@@ -370,7 +368,7 @@ impl fmt::Debug for Instruction {
             Opcode::STORE_LOCAL
             | Opcode::STORE_UPVALUE
             | Opcode::STORE_FIELD
-            | Opcode::STORE_FIELD_IMM
+            | Opcode::STORE_STRUCT_FIELD
             | Opcode::STORE_PKG_FIELD
             | Opcode::STORE_DEREF => {
                 let (i0, i1) = self.imm824();

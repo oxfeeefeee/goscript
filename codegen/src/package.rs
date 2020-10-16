@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct PkgVarPairs {
-    data: Vec<(PackageKey, IdentKey, FunctionKey, usize)>,
+    data: Vec<(PackageKey, IdentKey, FunctionKey, usize, bool)>,
 }
 
 impl PkgVarPairs {
@@ -27,11 +27,16 @@ impl PkgVarPairs {
     /// patch_index sets correct var index of packages to the placeholder of
     /// previously generated code
     pub fn patch_index(&self, ast_objs: &AstObjects, vmo: &mut VMObjects) {
-        for (pkg, var, func, i) in self.data.iter() {
+        for (pkg, var, func, i, is_8_24) in self.data.iter() {
             let pkg_val = &vmo.packages[*pkg];
             let id = &ast_objs.idents[*var];
             let index = pkg_val.get_member_index(&id.name).unwrap();
-            vmo.functions[*func].code[*i].set_imm(*index);
+            if *is_8_24 {
+                let (imm0, _) = vmo.functions[*func].code[*i].imm824();
+                vmo.functions[*func].code[*i].set_imm824(imm0, *index);
+            } else {
+                vmo.functions[*func].code[*i].set_imm(*index);
+            }
         }
     }
 }
@@ -67,7 +72,7 @@ impl<'a> PkgUtil<'a> {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         for key in pkg.imports().iter() {
             let index = self.pkg_indices[key];
-            func.emit_import(index);
+            func.emit_import(index, self.pkgs[index as usize]);
         }
     }
 
@@ -77,8 +82,15 @@ impl<'a> PkgUtil<'a> {
     }
 
     /// recode information so that we can patch_index, when codegen is done
-    pub fn add_pair(&mut self, pkg: PackageKey, var: IdentKey, func: FunctionKey, i: usize) {
-        self.pairs.data.push((pkg, var, func, i));
+    pub fn add_pair(
+        &mut self,
+        pkg: PackageKey,
+        var: IdentKey,
+        func: FunctionKey,
+        i: usize,
+        is824: bool,
+    ) {
+        self.pairs.data.push((pkg, var, func, i, is824));
     }
 
     // sort_var_decls returns a vec of sorted var decl statments

@@ -7,37 +7,45 @@ use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
+use goscript_parser::objects::IdentKey;
 use goscript_parser::objects::Objects as AstObjects;
 
 #[derive(Clone, Copy, Debug)]
+pub enum IndexSelType {
+    Indexing,
+    StructField,
+    PkgMember(PackageKey, IdentKey),
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct IndexSelInfo {
-    pub index: OpIndex,
+    pub index: i8,
+    pub imm_index: Option<OpIndex>, // for IMM instructions
     pub t1: ValueType,
     pub t2: Option<ValueType>, // for non-IMM instructions
-    pub is_index: bool,        // is an index expresion not a selection expresion
-    pub const_val: Option<i8>, // for IMM instructions
+    pub typ: IndexSelType,     // is an index expresion not a selection expresion
 }
 
 impl IndexSelInfo {
     pub fn new(
-        index: OpIndex,
+        index: i8,
+        imm_index: Option<OpIndex>,
         t1: ValueType,
         t2: Option<ValueType>,
-        is_index: bool,
-        const_val: Option<i8>,
+        typ: IndexSelType,
     ) -> IndexSelInfo {
         IndexSelInfo {
             index: index,
+            imm_index: imm_index,
             t1: t1,
             t2: t2,
-            is_index: is_index,
-            const_val: const_val,
+            typ: typ,
         }
     }
 
     pub fn with_index(&self, i: OpIndex) -> IndexSelInfo {
         let mut v = *self;
-        v.index = i;
+        v.index = i8::try_from(i).unwrap();
         v
     }
 
@@ -75,13 +83,13 @@ pub trait FuncGen {
         typ: ValueType,
     );
 
-    fn emit_import(&mut self, index: OpIndex);
+    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey);
 
     fn emit_pop(&mut self, count: OpIndex);
 
     fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType);
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType);
+    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType);
 
     fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType);
 
@@ -169,16 +177,16 @@ impl FuncGen for FunctionVal {
         }
 
         let mut pkg_key = None;
-        let (code, i, t1, t2, imm_index) = match lhs {
+        let (code, int32, t1, t2, int8) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
-                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, i, None, None, None),
-                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, i, None, None, None),
+                EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, *i, None, None, None),
+                EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, *i, None, None, None),
                 EntIndex::PackageMember(i) => {
                     pkg_key = Some(pkg.unwrap_or(self.package));
                     (
                         Opcode::STORE_PKG_FIELD,
-                        i,
+                        *i,
                         Some(ValueType::Package),
                         None,
                         None,
@@ -187,31 +195,51 @@ impl FuncGen for FunctionVal {
                 EntIndex::BuiltIn(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(info) => {
-                let op = if info.is_index {
-                    if info.const_val.is_some() {
-                        Opcode::STORE_INDEX_IMM
-                    } else {
-                        Opcode::STORE_INDEX
-                    }
-                } else {
-                    if info.const_val.is_some() {
-                        Opcode::STORE_FIELD_IMM
-                    } else {
-                        Opcode::STORE_FIELD
-                    }
-                };
-                (op, &info.index, Some(info.t1), info.t2, info.const_val)
-            }
-            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, i, None, None, None),
+            LeftHandSide::IndexSelExpr(info) => match info.typ {
+                IndexSelType::Indexing => match info.imm_index {
+                    Some(i) => (
+                        Opcode::STORE_INDEX_IMM,
+                        i,
+                        Some(info.t1),
+                        None,
+                        Some(info.index),
+                    ),
+
+                    None => (
+                        Opcode::STORE_INDEX,
+                        info.index as i32,
+                        Some(info.t1),
+                        info.t2,
+                        None,
+                    ),
+                },
+                IndexSelType::StructField => (
+                    Opcode::STORE_STRUCT_FIELD,
+                    info.imm_index.unwrap(),
+                    Some(info.t1),
+                    None,
+                    Some(info.index),
+                ),
+                IndexSelType::PkgMember(pkg, _) => {
+                    pkg_key = Some(pkg);
+                    (
+                        Opcode::STORE_PKG_FIELD,
+                        info.imm_index.unwrap(),
+                        None,
+                        None,
+                        None,
+                    )
+                }
+            },
+            LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, *i, None, None, None),
         };
         let mut inst = Instruction::new(code, Some(typ), t1, t2, None);
-        if let Some(i) = imm_index {
+        if let Some(i) = int8 {
             inst.set_t2_with_index(i);
         }
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
-        inst.set_imm824(imm0, *i);
+        inst.set_imm824(imm0, int32);
         self.code.push(inst);
         if let Some(key) = pkg_key {
             self.emit_raw_inst(key_to_u64(key));
@@ -224,17 +252,17 @@ impl FuncGen for FunctionVal {
         self.code.push(inst);
     }
 
-    fn emit_import(&mut self, index: OpIndex) {
+    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey) {
         self.emit_inst(Opcode::IMPORT, None, None, None, Some(index));
         let mut cd = vec![
-            Instruction::new(Opcode::PUSH_IMM, None, None, None, Some(0)),
             Instruction::new(
-                Opcode::LOAD_FIELD,
-                Some(ValueType::Package),
+                Opcode::LOAD_PKG_FIELD,
                 Some(ValueType::Int),
                 None,
                 None,
+                Some(0),
             ),
+            Instruction::from_u64(key_to_u64(pkg)),
             Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
             Instruction::new(Opcode::CALL, None, None, None, None),
         ];
@@ -251,8 +279,8 @@ impl FuncGen for FunctionVal {
         self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(sel_type), None, None);
     }
 
-    fn emit_load_field_imm(&mut self, imm: OpIndex, typ: ValueType) {
-        self.emit_inst(Opcode::LOAD_FIELD_IMM, Some(typ), None, None, Some(imm));
+    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType) {
+        self.emit_inst(Opcode::LOAD_STRUCT_FIELD, Some(typ), None, None, Some(imm));
     }
 
     fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType) {

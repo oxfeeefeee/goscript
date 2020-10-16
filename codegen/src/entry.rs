@@ -48,7 +48,7 @@ impl<'a> EntryGen<'a> {
         let fkey = self.objects.functions.insert(fval);
         let main_func_index = *self.objects.packages[pkg].get_member_index("main").unwrap();
         let func = &mut self.objects.functions[fkey];
-        func.emit_import(index);
+        func.emit_import(index, pkg);
         func.emit_load(
             EntIndex::PackageMember(main_func_index),
             Some(pkg),
