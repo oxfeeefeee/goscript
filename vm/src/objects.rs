@@ -627,11 +627,13 @@ pub enum BoxedObj {
 }
 
 impl BoxedObj {
+    #[inline]
     pub fn new_var_up_val(d: ValueDesc) -> BoxedObj {
         BoxedObj::UpVal(UpValue::new(d))
     }
 
     // supports only Struct for now
+    #[inline]
     pub fn new_var_pointer(val: GosValue) -> BoxedObj {
         match val {
             GosValue::Struct(s) => BoxedObj::Struct(s),
@@ -639,18 +641,16 @@ impl BoxedObj {
         }
     }
 
+    #[inline]
     pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedObj {
         let s = slice.as_slice();
         BoxedObj::SliceMember(s.clone(), index)
     }
 
+    #[inline]
     pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedObj {
         let s = stru.as_struct();
         BoxedObj::StructField(s.clone(), index)
-    }
-
-    pub fn new_pkg_member(pkg: &GosValue, index: OpIndex) -> BoxedObj {
-        BoxedObj::PkgMember(*pkg.as_package(), index)
     }
 }
 

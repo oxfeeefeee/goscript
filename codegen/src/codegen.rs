@@ -979,11 +979,16 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     match index {
                         EntIndex::LocalVar(i) => {
                             let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_LOCAL, Some(t), None, None, Some(i))
+                            func.emit_inst(Opcode::REF_LOCAL, Some(t), None, None, Some(i));
                         }
                         EntIndex::UpValue(i) => {
                             let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i))
+                            func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i));
+                        }
+                        EntIndex::PackageMember(i) => {
+                            let func = current_func_mut!(self);
+                            func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(i));
+                            func.emit_raw_inst(key_to_u64(self.pkg_key));
                         }
                         _ => unreachable!(),
                     }
@@ -1001,15 +1006,26 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         None,
                     );
                 }
-                Expr::Selector(sexpr) => {
-                    self.visit_expr(&sexpr.expr);
-                    let t0 = self
-                        .tlookup
-                        .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
-                    let name = &self.ast_objs.idents[sexpr.sel].name;
-                    let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
-                    current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
-                }
+                Expr::Selector(sexpr) => match self.tlookup.try_get_pkg_key(&sexpr.expr) {
+                    Some(key) => {
+                        let pkey = self.pkg_util.get_vm_pkg(key);
+                        let func = current_func_mut!(self);
+                        func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(0));
+                        func.emit_raw_inst(key_to_u64(pkey));
+                        let func = self.func_stack.last().unwrap();
+                        let i = current_func!(self).code.len() - 2;
+                        self.pkg_util.add_pair(pkey, sexpr.sel, *func, i, false);
+                    }
+                    None => {
+                        self.visit_expr(&sexpr.expr);
+                        let t0 = self
+                            .tlookup
+                            .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
+                        let name = &self.ast_objs.idents[sexpr.sel].name;
+                        let i = MetadataVal::field_index(&t0, name, &self.objects.metas);
+                        current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
+                    }
+                },
                 _ => unimplemented!(),
             }
             return;

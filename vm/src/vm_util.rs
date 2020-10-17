@@ -10,6 +10,14 @@ macro_rules! upframe {
     };
 }
 
+macro_rules! read_imm_pkg {
+    ($code:ident, $frame:ident, $objs:ident) => {{
+        let inst = $code[$frame.pc];
+        $frame.pc += 1;
+        u64_to_key(inst.get_u64())
+    }};
+}
+
 macro_rules! store_local {
     ($stack:ident, $s_index:expr, $rhs_index:expr, $typ:expr, $zval:ident) => {{
         if $rhs_index < 0 {

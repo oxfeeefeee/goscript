@@ -311,18 +311,14 @@ impl Fiber {
                 }
                 Opcode::LOAD_PKG_FIELD => {
                     let index = inst.imm();
-                    let inst = code[frame.pc];
-                    frame.pc += 1;
-                    let pkg = &mut objs.packages[u64_to_key(inst.get_u64())];
+                    let pkg_key = read_imm_pkg!(code, frame, objs);
+                    let pkg = &mut objs.packages[pkg_key];
                     stack.push(pkg.member(index).clone());
                 }
                 Opcode::STORE_PKG_FIELD => {
                     let (rhs_index, imm) = inst.imm824();
-                    let t = inst.t0();
-                    let inst = code[frame.pc];
-                    frame.pc += 1;
-                    let pkg = &mut objs.packages[u64_to_key(inst.get_u64())];
-                    stack.store_val(pkg.member_mut(imm), rhs_index, t, zval);
+                    let pkg = &mut objs.packages[read_imm_pkg!(code, frame, objs)];
+                    stack.store_val(pkg.member_mut(imm), rhs_index, inst.t0(), zval);
                 }
                 Opcode::STORE_DEREF => {
                     let (rhs_index, index) = inst.imm824();
@@ -431,6 +427,10 @@ impl Fiber {
                         &struct_,
                         inst.imm(),
                     )));
+                }
+                Opcode::REF_PKG_MEMBER => {
+                    let pkg = read_imm_pkg!(code, frame, objs);
+                    stack.push(GosValue::new_boxed(BoxedObj::PkgMember(pkg, inst.imm())));
                 }
                 Opcode::DEREF => {
                     let boxed = stack.pop_with_type(inst.t0());
