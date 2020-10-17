@@ -53,6 +53,7 @@ pub enum Opcode {
     REF_UPVALUE,
     REF_SLICE_MEMBER,
     REF_STRUCT_FIELD,
+    REF_PKG_MEMBER,
     DEREF, // *
     ARROW, // <-
     NOT,   // !
@@ -141,6 +142,7 @@ impl Opcode {
             Opcode::REF_UPVALUE => ("REF_UPVALUE", 0),
             Opcode::REF_SLICE_MEMBER => ("REF_SLICE_MEMBER", 0),
             Opcode::REF_STRUCT_FIELD => ("REF_STRUCT_FIELD", 0),
+            Opcode::REF_PKG_MEMBER => ("REF_PKG_MEMBER", 0),
             Opcode::DEREF => ("DEREF", 0),
             Opcode::ARROW => ("ARROW", 0),
             Opcode::NOT => ("LNOT", 0),

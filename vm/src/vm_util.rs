@@ -66,7 +66,7 @@ macro_rules! store_up_value {
 }
 
 macro_rules! deref_value {
-    ($boxed:expr, $self_:ident, $stack:ident, $frame:ident) => {{
+    ($boxed:expr, $self_:ident, $stack:ident, $frame:ident, $objs:expr) => {{
         match $boxed {
             GosValue::Boxed(b) => {
                 match *b {
@@ -75,6 +75,7 @@ macro_rules! deref_value {
                     BoxedObj::Struct(s) => GosValue::Struct(s),
                     BoxedObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
                     BoxedObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),
+                    BoxedObj::PkgMember(pkg, index) => $objs.packages[pkg].member(index).clone(),
                 }
             }
             _ => unreachable!(),

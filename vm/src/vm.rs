@@ -241,7 +241,7 @@ impl Fiber {
                     let val = stack.pop_with_type(inst.t0());
                     stack.push(match val {
                         GosValue::Boxed(_) => {
-                            let unboxed = deref_value!(val, self, stack, frame);
+                            let unboxed = deref_value!(val, self, stack, frame, objs);
                             vm_util::load_field(&unboxed, &ind, objs)
                         }
                         _ => vm_util::load_field(&val, &ind, objs),
@@ -251,7 +251,7 @@ impl Fiber {
                     let ind = inst.imm();
                     let mut target = stack.pop_with_type(inst.t0());
                     if let GosValue::Boxed(_) = &target {
-                        target = deref_value!(target, self, stack, frame);
+                        target = deref_value!(target, self, stack, frame, objs);
                     }
                     let val = if let GosValue::Struct(sval) = &target {
                         sval.borrow().fields[ind as usize].clone()
@@ -288,7 +288,7 @@ impl Fiber {
                     let target = stack.get_with_type(s_index, inst.t1());
                     match target {
                         GosValue::Boxed(_) => {
-                            let unboxed = deref_value!(target, self, stack, frame);
+                            let unboxed = deref_value!(target, self, stack, frame, objs);
                             vm_util::store_field(stack, &unboxed, &key, rhs_index, inst.t0(), objs);
                         }
                         _ => vm_util::store_field(stack, &target, &key, rhs_index, inst.t0(), objs),
@@ -300,7 +300,7 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     let mut target = stack.get_with_type(s_index, inst.t1());
                     if let GosValue::Boxed(_) = &target {
-                        target = deref_value!(target, self, stack, frame);
+                        target = deref_value!(target, self, stack, frame, objs);
                     }
                     if let GosValue::Struct(s) = &target {
                         let field = &mut s.borrow_mut().fields[imm as usize];
@@ -356,6 +356,11 @@ impl Fiber {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.borrow_mut().fields[index as usize] = val;
+                                }
+                                BoxedObj::PkgMember(p, index) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    *objs.packages[p].member_mut(index) = val;
                                 }
                             };
                         }
@@ -429,7 +434,7 @@ impl Fiber {
                 }
                 Opcode::DEREF => {
                     let boxed = stack.pop_with_type(inst.t0());
-                    let val = deref_value!(boxed, self, stack, frame);
+                    let val = deref_value!(boxed, self, stack, frame, objs);
                     stack.push(val);
                 }
                 Opcode::PRE_CALL => {

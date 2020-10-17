@@ -623,6 +623,7 @@ pub enum BoxedObj {
     Struct(Rc<RefCell<StructObj>>),
     SliceMember(Rc<SliceObj>, OpIndex),
     StructField(Rc<RefCell<StructObj>>, OpIndex),
+    PkgMember(PackageKey, OpIndex),
 }
 
 impl BoxedObj {
@@ -646,6 +647,10 @@ impl BoxedObj {
     pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedObj {
         let s = stru.as_struct();
         BoxedObj::StructField(s.clone(), index)
+    }
+
+    pub fn new_pkg_member(pkg: &GosValue, index: OpIndex) -> BoxedObj {
+        BoxedObj::PkgMember(*pkg.as_package(), index)
     }
 }
 
@@ -754,7 +759,6 @@ pub struct PackageVal {
     name: String,
     members: Vec<GosValue>, // imports, const, var, func are all stored here
     member_indices: HashMap<String, OpIndex>,
-    main_func_index: Option<usize>,
     // maps func_member_index of the constructor to pkg_member_index
     var_mapping: Option<HashMap<OpIndex, OpIndex>>,
 }
@@ -765,7 +769,6 @@ impl PackageVal {
             name: name,
             members: Vec::new(),
             member_indices: HashMap::new(),
-            main_func_index: None,
             var_mapping: Some(HashMap::new()),
         }
     }
@@ -795,10 +798,6 @@ impl PackageVal {
         self.var_mapping.as_ref().unwrap().len()
     }
 
-    pub fn set_main_func(&mut self, index: OpIndex) {
-        self.main_func_index = Some(index as usize);
-    }
-
     pub fn get_member_index(&self, name: &str) -> Option<&OpIndex> {
         self.member_indices.get(name)
     }
@@ -811,21 +810,14 @@ impl PackageVal {
         self.var_mapping = None
     }
 
-    // negative index for main func
+    #[inline]
     pub fn member(&self, i: OpIndex) -> &GosValue {
-        if i >= 0 {
-            &self.members[i as usize]
-        } else {
-            &self.members[self.main_func_index.unwrap()]
-        }
+        &self.members[i as usize]
     }
 
+    #[inline]
     pub fn member_mut(&mut self, i: OpIndex) -> &mut GosValue {
-        if i >= 0 {
-            &mut self.members[i as usize]
-        } else {
-            &mut self.members[self.main_func_index.unwrap()]
-        }
+        &mut self.members[i as usize]
     }
 }
 

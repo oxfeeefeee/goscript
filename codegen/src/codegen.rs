@@ -1177,10 +1177,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
-            let index = pkg.add_member(ident.name.clone(), cls);
-            if ident.name == "main" {
-                pkg.set_main_func(index);
-            }
+            pkg.add_member(ident.name.clone(), cls);
         }
     }
 
