@@ -66,6 +66,76 @@ func range_set() {
     assert(s1[1] == 100)
 }
 
+func break_cont() {
+    j := 0
+    for i := 0; i < 1000; i++ {
+        if i >= 10 {
+            break
+        }
+        j += 1
+    }
+    assert(j == 10)
+
+    j = 0
+    for i := 0; i < 10; i++ {
+        j += 1
+        if i >= 6 {
+            continue
+        }
+        j -= 1
+    }
+    assert(j == 4)
+}
+
+func break_cont_2() {
+    j := 0
+    s := []int{3,3,3,3,3}
+    for i, r := range s {
+        if i >= 4 {
+            break
+        }
+        j += r
+    }
+    assert(j == 3 * 4)
+
+    j = 0
+    for i, r := range s {
+        if i >= 2 {
+            continue
+        }
+        j += r
+    }
+    assert(j == 3 * 2)
+
+}
+
+func break_cont_3() {
+    j := 0
+    for i := 0; i < 100; {
+        i += 1
+        if i >= 10 {
+            continue
+        }
+        j += 1
+    }
+    assert(j == 10 - 1)
+
+
+    j = 0
+    a, b := 60, 80
+    for i := 0; i < 100000; i++ {
+        j += 1
+        if i >= a {
+            if i >= b {
+                break
+            }
+            continue   
+        }
+        j -= 1
+    }
+    assert(j == b - a + 1)
+}
+
 
 func main() {
    f1()
@@ -73,6 +143,9 @@ func main() {
    //f3()
 
    range_set()
+
+   break_cont()
+   break_cont_2()
 
 /*
     s := []int{1,2,3}

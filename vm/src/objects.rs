@@ -6,6 +6,7 @@ use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::iter::FromIterator;
@@ -908,6 +909,11 @@ impl FunctionVal {
 
     pub fn const_val(&self, index: OpIndex) -> &GosValue {
         &self.consts[index as usize]
+    }
+
+    pub fn offset(&self, loc: usize) -> OpIndex {
+        // todo: don't crash if OpIndex overflows
+        OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
     }
 
     pub fn emit_inst(

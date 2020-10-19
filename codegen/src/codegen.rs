@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
+use super::branch::BreakContinue;
 use super::func::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
@@ -59,6 +60,7 @@ pub struct CodeGen<'a> {
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     pkg_util: PkgUtil<'a>,
+    break_cont: BreakContinue,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     built_in_funcs: Vec<BuiltInFunc>,
@@ -97,6 +99,7 @@ impl<'a> CodeGen<'a> {
             tlookup: TypeLookup::new(tco, ti),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
+            break_cont: BreakContinue::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
             built_in_funcs: funcs,
@@ -1244,8 +1247,16 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         current_func_mut!(self).emit_return();
     }
 
-    fn visit_stmt_branch(&mut self, _bstmt: &BranchStmt) {
-        unimplemented!();
+    fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
+        match bstmt.token {
+            Token::BREAK | Token::CONTINUE => {
+                self.break_cont
+                    .add_point(current_func_mut!(self), bstmt.token.clone());
+            }
+            Token::GOTO => {}
+            Token::FALLTHROUGH => {}
+            _ => unreachable!(),
+        }
     }
 
     fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {
@@ -1276,8 +1287,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         // set the correct else jump target
         let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(func.code.len() - top_marker).unwrap();
+        let offset = func.offset(top_marker);
         func.code[top_marker - 1].set_imm(offset);
 
         if let Some(els) = &ifstmt.els {
@@ -1285,8 +1295,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             // set the correct if_arm_end jump target
             let func = current_func_mut!(self);
             let marker = marker_if_arm_end.unwrap();
-            // todo: don't crash if OpIndex overflows
-            let offset = OpIndex::try_from(func.code.len() - marker).unwrap();
+            let offset = func.offset(marker);
             func.code[marker - 1].set_imm(offset);
         }
     }
@@ -1312,6 +1321,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
+        self.break_cont.enter_block();
+
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init);
         }
@@ -1325,26 +1336,36 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             None
         };
         self.visit_stmt_block(&fstmt.body);
-        if let Some(post) = &fstmt.post {
+        let continue_marker = if let Some(post) = &fstmt.post {
+            // "continue" jumps to post statements
+            let m = current_func!(self).code.len();
             self.visit_stmt(post);
-        }
+            m
+        } else {
+            // "continue" jumps to top directly if no post statements
+            top_marker
+        };
 
         // jump to the top
         let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(-((func.code.len() + 1 - top_marker) as isize)).unwrap();
+        let offset = -func.offset(top_marker) - 1;
         func.emit_code_with_imm(Opcode::JUMP, offset);
 
         // set the correct else jump out target
         if let Some(m) = out_marker {
             let func = current_func_mut!(self);
-            // todo: don't crash if OpIndex overflows
-            let offset = OpIndex::try_from(func.code.len() - m).unwrap();
+            let offset = func.offset(m);
             func.code[m - 1].set_imm(offset);
         }
+
+        let end = current_func!(self).code.len();
+        self.break_cont
+            .leave_block(current_func_mut!(self), continue_marker, end);
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
+        self.break_cont.enter_block();
+
         let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
             rstmt.key.as_ref().unwrap_or(&blank),
@@ -1357,13 +1378,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         self.visit_stmt_block(&rstmt.body);
         // jump to the top
         let func = current_func_mut!(self);
-        // todo: don't crash if OpIndex overflows
-        let offset = OpIndex::try_from(-((func.code.len() + 1 - marker) as isize)).unwrap();
-        func.emit_code_with_imm(Opcode::JUMP, offset);
-        // now tell Opcode::RANGE where to jump after it's done
-        // todo: don't crash if OpIndex overflows
-        let end_offset = OpIndex::try_from(func.code.len() - (marker + 1)).unwrap();
+        let offset = -func.offset(marker) - 1;
+        // tell Opcode::RANGE where to jump after it's done
+        let end_offset = func.offset(marker);
         func.code[marker].set_imm(end_offset);
+        func.emit_code_with_imm(Opcode::JUMP, offset);
+
+        let end = current_func!(self).code.len();
+        self.break_cont
+            .leave_block(current_func_mut!(self), marker, end);
     }
 
     fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
