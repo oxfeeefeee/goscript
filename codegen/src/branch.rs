@@ -1,14 +1,8 @@
 #![allow(dead_code)]
-use super::func::FuncGen;
 use goscript_parser::ast::*;
-use goscript_parser::objects::Objects as AstObjects;
-use goscript_parser::objects::*;
 use goscript_parser::token::Token;
-use goscript_types::{PackageKey as TCPackageKey, TCObjects, TypeInfo};
 use goscript_vm::instruction::*;
 use goscript_vm::value::*;
-use std::collections::HashMap;
-use std::rc::Rc;
 
 /// branch points of break and continue
 pub struct BranchPoints {
@@ -62,32 +56,32 @@ impl BreakContinue {
     }
 }
 
-pub struct SwitchHelper {
+pub struct SwitchJumpPoints {
     cases: Vec<Vec<usize>>,
-    default: usize,
+    default: Option<usize>,
 }
 
-impl SwitchHelper {
-    pub fn new() -> SwitchHelper {
-        SwitchHelper {
+impl SwitchJumpPoints {
+    fn new() -> SwitchJumpPoints {
+        SwitchJumpPoints {
             cases: vec![],
-            default: 0,
+            default: None,
         }
     }
 
-    pub fn add_case_clause(&mut self) {
+    fn add_case_clause(&mut self) {
         self.cases.push(vec![]);
     }
 
-    pub fn add_case(&mut self, index: usize) {
-        self.cases.last_mut().unwrap().push(index);
+    pub fn add_case(&mut self, case: usize, index: usize) {
+        self.cases[case].push(index);
     }
 
     pub fn add_default(&mut self, index: usize) {
-        self.default = index
+        self.default = Some(index)
     }
 
-    pub fn patch_case_clause(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
+    pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
             let imm = (loc - i) as OpIndex - 1;
             func.code[*i].set_imm(imm);
@@ -95,7 +89,50 @@ impl SwitchHelper {
     }
 
     pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
-        let imm = (loc - self.default) as OpIndex - 1;
-        func.code[self.default].set_imm(imm);
+        if let Some(de) = self.default {
+            let imm = (loc - de) as OpIndex - 1;
+            func.code[de].set_imm(imm);
+        }
+    }
+}
+
+pub struct SwitchHelper {
+    pub tags: SwitchJumpPoints,
+    pub ends: SwitchJumpPoints,
+}
+
+impl SwitchHelper {
+    pub fn new() -> SwitchHelper {
+        SwitchHelper {
+            tags: SwitchJumpPoints::new(),
+            ends: SwitchJumpPoints::new(),
+        }
+    }
+
+    pub fn add_case_clause(&mut self) {
+        self.tags.add_case_clause();
+        self.ends.add_case_clause();
+    }
+
+    pub fn patch_ends(&mut self, func: &mut FunctionVal, loc: usize) {
+        for i in 0..self.ends.cases.len() {
+            self.ends.patch_case(func, i, loc);
+        }
+        self.ends.patch_default(func, loc);
+    }
+
+    pub fn to_case_clause(s: &Stmt) -> &CaseClause {
+        match s {
+            Stmt::Case(c) => c,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn has_fall_through(s: &Stmt) -> bool {
+        let case = Self::to_case_clause(s);
+        case.body.last().map_or(false, |x| match x {
+            Stmt::Branch(b) => b.token == Token::FALLTHROUGH,
+            _ => false,
+        })
     }
 }

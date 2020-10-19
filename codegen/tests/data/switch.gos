@@ -1,0 +1,39 @@
+package main
+
+
+func test(v int) int {
+    var a = 0
+    switch v {
+    default:
+        a = 4
+    case 100:
+        a += 1
+        //fallthrough
+    case 200:
+        a += 2
+    }
+    return a
+}
+
+func test2(v int) int {
+    var a = 0
+    switch v {
+    case 100:
+        a += 1
+        //fallthrough
+    case 200:
+        a += 2
+    default:
+        a = 4
+    }
+    return a
+}
+
+func main() {
+    assert(test(100) == 1)
+    assert(test(200) == 2)
+    assert(test(201) == 4)
+    assert(test2(100) == 1)
+    assert(test2(200) == 2)
+    assert(test2(201) == 4)
+}

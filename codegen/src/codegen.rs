@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
-use super::branch::BreakContinue;
+use super::branch::*;
 use super::func::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
@@ -377,7 +377,7 @@ impl<'a> CodeGen<'a> {
             let tkv = self.tlookup.get_range_tc_types(r);
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::PUSH_IMM, -1);
-            range_marker = Some(func.code.len());
+            range_marker = Some(func.next_code_index());
             // the block_end address to be set
             func.emit_inst(
                 Opcode::RANGE,
@@ -742,7 +742,7 @@ impl<'a> CodeGen<'a> {
             let t = self.tlookup.get_use_value_type(*ident);
             current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
             let func = self.func_stack.last().unwrap();
-            let i = current_func!(self).code.len() - 2;
+            let i = current_func!(self).next_code_index() - 2;
             self.pkg_util.add_pair(pkg, *ident, *func, i, false);
             return true;
         }
@@ -753,7 +753,7 @@ impl<'a> CodeGen<'a> {
         // register pkg member for patching
         if let IndexSelType::PkgMember(pkg, ident) = typ {
             let func = self.func_stack.last().unwrap();
-            let i = current_func!(self).code.len() - 2;
+            let i = current_func!(self).next_code_index() - 2;
             self.pkg_util.add_pair(*pkg, *ident, *func, i, true);
         }
     }
@@ -1016,7 +1016,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(0));
                         func.emit_raw_inst(key_to_u64(pkey));
                         let func = self.func_stack.last().unwrap();
-                        let i = current_func!(self).code.len() - 2;
+                        let i = current_func!(self).next_code_index() - 2;
                         self.pkg_util.add_pair(pkey, sexpr.sel, *func, i, false);
                     }
                     None => {
@@ -1075,12 +1075,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Token::LAND => {
                 let func = current_func_mut!(self);
                 func.emit_code(Opcode::JUMP_IF_NOT);
-                Some((func.code.len(), code))
+                Some((func.next_code_index(), code))
             }
             Token::LOR => {
                 let func = current_func_mut!(self);
                 func.emit_code(Opcode::JUMP_IF);
-                Some((func.code.len(), code))
+                Some((func.next_code_index(), code))
             }
             _ => None,
         };
@@ -1089,7 +1089,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::JUMP, 1);
             func.emit_code_with_type(c, t);
-            let diff = func.code.len() - i - 1;
+            let diff = func.next_code_index() - i - 1;
             func.code[i - 1].set_imm(diff as OpIndex);
         } else {
             current_func_mut!(self).emit_code_with_type(code, t);
@@ -1272,7 +1272,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         self.visit_expr(&ifstmt.cond);
         let func = current_func_mut!(self);
         func.emit_code(Opcode::JUMP_IF_NOT);
-        let top_marker = func.code.len();
+        let top_marker = func.next_code_index();
 
         drop(func);
         self.visit_stmt_block(&ifstmt.body);
@@ -1280,7 +1280,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let func = current_func_mut!(self);
             // imm to be set later
             func.emit_code(Opcode::JUMP);
-            Some(func.code.len())
+            Some(func.next_code_index())
         } else {
             None
         };
@@ -1304,8 +1304,70 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_stmt_switch(&mut self, _sstmt: &SwitchStmt) {
-        unimplemented!();
+    fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
+        if let Some(init) = &sstmt.init {
+            self.visit_stmt(init);
+        }
+        let tag_type = match &sstmt.tag {
+            Some(e) => {
+                self.visit_expr(e);
+                self.tlookup.get_expr_value_type(e)
+            }
+            None => {
+                current_func_mut!(self).emit_code(Opcode::PUSH_TRUE);
+                ValueType::Bool
+            }
+        };
+
+        let mut helper = SwitchHelper::new();
+        let mut has_default = false;
+        for (i, stmt) in sstmt.body.list.iter().enumerate() {
+            helper.add_case_clause();
+            let cc = SwitchHelper::to_case_clause(stmt);
+            match &cc.list {
+                Some(l) => {
+                    for c in l.iter() {
+                        self.visit_expr(c);
+                        let func = current_func_mut!(self);
+                        helper.tags.add_case(i, func.next_code_index());
+                        func.emit_code_with_type(Opcode::SWITCH, tag_type);
+                    }
+                }
+                None => has_default = true,
+            }
+        }
+        // pop the tag
+        current_func_mut!(self).emit_pop(1);
+        if has_default {
+            let func = current_func_mut!(self);
+            helper.tags.add_default(func.next_code_index());
+            func.emit_code(Opcode::JUMP);
+        }
+
+        for (i, stmt) in sstmt.body.list.iter().enumerate() {
+            let cc = SwitchHelper::to_case_clause(stmt);
+            let func = current_func_mut!(self);
+            let default = cc.list.is_none();
+            if default {
+                helper.tags.patch_default(func, func.next_code_index());
+            } else {
+                helper.tags.patch_case(func, i, func.next_code_index());
+            }
+            for s in cc.body.iter() {
+                self.visit_stmt(s);
+            }
+            if !SwitchHelper::has_fall_through(stmt) {
+                let func = current_func_mut!(self);
+                if default {
+                    helper.ends.add_default(func.next_code_index());
+                } else {
+                    helper.ends.add_case(i, func.next_code_index());
+                }
+                func.emit_code(Opcode::JUMP);
+            }
+        }
+        let end = current_func!(self).next_code_index();
+        helper.patch_ends(current_func_mut!(self), end);
     }
 
     fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
@@ -1326,19 +1388,19 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init);
         }
-        let top_marker = current_func!(self).code.len();
+        let top_marker = current_func!(self).next_code_index();
         let out_marker = if let Some(cond) = &fstmt.cond {
             self.visit_expr(&cond);
             let func = current_func_mut!(self);
             func.emit_code(Opcode::JUMP_IF_NOT);
-            Some(func.code.len())
+            Some(func.next_code_index())
         } else {
             None
         };
         self.visit_stmt_block(&fstmt.body);
         let continue_marker = if let Some(post) = &fstmt.post {
             // "continue" jumps to post statements
-            let m = current_func!(self).code.len();
+            let m = current_func!(self).next_code_index();
             self.visit_stmt(post);
             m
         } else {
@@ -1358,7 +1420,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             func.code[m - 1].set_imm(offset);
         }
 
-        let end = current_func!(self).code.len();
+        let end = current_func!(self).next_code_index();
         self.break_cont
             .leave_block(current_func_mut!(self), continue_marker, end);
     }
@@ -1384,7 +1446,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         func.code[marker].set_imm(end_offset);
         func.emit_code_with_imm(Opcode::JUMP, offset);
 
-        let end = current_func!(self).code.len();
+        let end = current_func!(self).next_code_index();
         self.break_cont
             .leave_block(current_func_mut!(self), marker, end);
     }

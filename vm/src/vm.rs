@@ -571,6 +571,11 @@ impl Fiber {
                         frame.pc = Stack::offset(frame.pc, inst.imm());
                     }
                 }
+                Opcode::SWITCH => {
+                    if stack.switch_cmp(inst.t0()) {
+                        frame.pc = Stack::offset(frame.pc, inst.imm());
+                    }
+                }
                 // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
                 // and followed by a target jump address
                 Opcode::RANGE => {

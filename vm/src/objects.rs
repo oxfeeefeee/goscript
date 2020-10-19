@@ -916,6 +916,10 @@ impl FunctionVal {
         OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
     }
 
+    pub fn next_code_index(&self) -> usize {
+        self.code.len()
+    }
+
     pub fn emit_inst(
         &mut self,
         op: Opcode,

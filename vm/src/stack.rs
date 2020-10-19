@@ -257,6 +257,22 @@ impl Stack {
     }
 
     #[inline]
+    pub fn switch_cmp(&mut self, t: ValueType) -> bool {
+        let b = if t <= COPYABLE_END {
+            let len = self.len();
+            let a = self.get_c(len - 2);
+            let b = self.get_c(len - 1);
+            GosValue64::compare_eql(a, b, t)
+        } else {
+            let a = self.get_rc(self.len() - 2);
+            let b = self.get_rc(self.len() - 1);
+            a.eq(&b)
+        };
+        self.pop_discard();
+        b
+    }
+
+    #[inline]
     pub fn sub(&mut self, t: ValueType) {
         binary_op!(self, binary_op_sub, t)
     }
