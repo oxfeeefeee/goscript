@@ -39,12 +39,13 @@ impl BreakContinue {
         self.points_vec.push(BranchPoints::new())
     }
 
-    pub fn leave_block(&mut self, func: &mut FunctionVal, begin: usize, end: usize) {
+    pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>, end: usize) {
         let points = self.points_vec.pop().unwrap();
         for (index, token) in points.data.iter() {
             let offset = if *token == Token::BREAK {
                 (end - index) as OpIndex - 1
             } else {
+                let begin = begin.unwrap();
                 if begin >= *index {
                     (begin - index) as OpIndex - 1
                 } else {

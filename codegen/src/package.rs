@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::func::FuncGen;
+use super::emit::FuncGen;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;

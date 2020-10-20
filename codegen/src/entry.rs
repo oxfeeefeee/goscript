@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::codegen::CodeGen;
-use super::func::FuncGen;
+use super::emit::FuncGen;
 use super::interface::IfaceMapping;
 use super::package::PkgVarPairs;
 use goscript_parser::ast::Ident;

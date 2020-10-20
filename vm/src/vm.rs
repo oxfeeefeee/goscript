@@ -645,6 +645,11 @@ impl Fiber {
                     }
                 }
 
+                Opcode::TYPE_ASSERT => {}
+                Opcode::TYPE_TRY_ASSERT => {}
+                Opcode::TYPE => {}
+                Opcode::TYPE_ASSIGN => {}
+
                 Opcode::IMPORT => {
                     let pkey = pkgs[inst.imm() as usize];
                     stack.push(GosValue::Bool(!objs.packages[pkey].inited()));

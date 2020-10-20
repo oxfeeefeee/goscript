@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 
 use super::branch::*;
-use super::func::*;
+use super::emit::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
 use super::types::TypeLookup;
@@ -207,7 +207,12 @@ impl<'a> CodeGen<'a> {
                 (LeftHandSide::Primitive(index), t)
             })
             .collect::<Vec<(LeftHandSide, Option<TCTypeKey>)>>();
-        self.gen_assign_def_var(&lhs, &vs.values, &vs.typ, None);
+        let rhs = if vs.values.is_empty() {
+            RightHandSide::Nothing
+        } else {
+            RightHandSide::Values(&vs.values)
+        };
+        self.gen_assign_def_var(&lhs, &vs.typ, &rhs);
     }
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) {
@@ -358,65 +363,80 @@ impl<'a> CodeGen<'a> {
             }
             None
         } else {
-            self.gen_assign_def_var(&lhs, &rhs_exprs, &None, range)
+            let rhs = match range {
+                Some(r) => RightHandSide::Range(r),
+                None => RightHandSide::Values(rhs_exprs),
+            };
+            self.gen_assign_def_var(&lhs, &None, &rhs)
         }
     }
 
     fn gen_assign_def_var(
         &mut self,
         lhs: &Vec<(LeftHandSide, Option<TCTypeKey>)>,
-        values: &Vec<Expr>,
         typ: &Option<Expr>,
-        range: Option<&Expr>,
+        rhs: &RightHandSide,
     ) -> Option<usize> {
         let mut range_marker = None;
         // handle the right hand side
-        let types = if let Some(r) = range {
-            // the range statement
-            self.visit_expr(r);
-            let tkv = self.tlookup.get_range_tc_types(r);
-            let func = current_func_mut!(self);
-            func.emit_code_with_imm(Opcode::PUSH_IMM, -1);
-            range_marker = Some(func.next_code_index());
-            // the block_end address to be set
-            func.emit_inst(
-                Opcode::RANGE,
-                Some(self.tlookup.value_type_from_tc(tkv[0])),
-                Some(self.tlookup.value_type_from_tc(tkv[1])),
-                Some(self.tlookup.value_type_from_tc(tkv[2])),
-                None,
-            );
-            tkv[1..].to_vec()
-        } else if values.len() == lhs.len() {
-            // define or assign with values
-            let mut types = Vec::with_capacity(values.len());
-            for val in values.iter() {
-                self.visit_expr(val);
-                let rhs_type = self.tlookup.get_expr_tc_type(val);
-                types.push(rhs_type);
+        let types = match rhs {
+            RightHandSide::Nothing => {
+                // define without values
+                let (val, t) = self.get_type_default(&typ.as_ref().unwrap());
+                let mut types = Vec::with_capacity(lhs.len());
+                for _ in 0..lhs.len() {
+                    let func = current_func_mut!(self);
+                    let i = func.add_const(None, val.clone());
+                    func.emit_load(i, None, self.tlookup.value_type_from_tc(t));
+                    types.push(t);
+                }
+                types
             }
-            types
-        } else if values.len() == 0 {
-            // define without values
-            let (val, t) = self.get_type_default(&typ.as_ref().unwrap());
-            let mut types = Vec::with_capacity(lhs.len());
-            for _ in 0..lhs.len() {
+            RightHandSide::Values(values) => {
+                if values.len() == lhs.len() {
+                    // define or assign with values
+                    let mut types = Vec::with_capacity(values.len());
+                    for val in values.iter() {
+                        self.visit_expr(val);
+                        let rhs_type = self.tlookup.get_expr_tc_type(val);
+                        types.push(rhs_type);
+                    }
+                    types
+                } else if values.len() == 1 {
+                    // define or assign with function call on the right
+                    if let Expr::Call(_) = values[0] {
+                        self.visit_expr(&values[0]);
+                        self.tlookup.get_return_tc_types(&values[0])
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    unreachable!();
+                }
+            }
+            RightHandSide::Range(r) => {
+                // the range statement
+                self.visit_expr(r);
+                let tkv = self.tlookup.get_range_tc_types(r);
                 let func = current_func_mut!(self);
-                let i = func.add_const(None, val.clone());
-                func.emit_load(i, None, self.tlookup.value_type_from_tc(t));
-                types.push(t);
+                func.emit_code_with_imm(Opcode::PUSH_IMM, -1);
+                range_marker = Some(func.next_code_index());
+                // the block_end address to be set
+                func.emit_inst(
+                    Opcode::RANGE,
+                    Some(self.tlookup.value_type_from_tc(tkv[0])),
+                    Some(self.tlookup.value_type_from_tc(tkv[1])),
+                    Some(self.tlookup.value_type_from_tc(tkv[2])),
+                    None,
+                );
+                tkv[1..].to_vec()
             }
-            types
-        } else if values.len() == 1 {
-            // define or assign with function call on the right
-            if let Expr::Call(_) = values[0] {
-                self.visit_expr(&values[0]);
-                self.tlookup.get_return_tc_types(&values[0])
-            } else {
-                unreachable!();
+            RightHandSide::TypeSwitch(e) => {
+                self.visit_expr(e);
+                let func = current_func_mut!(self);
+                func.emit_code(Opcode::TYPE_ASSIGN);
+                vec![self.tlookup.get_expr_tc_type(e)]
             }
-        } else {
-            unreachable!();
         };
 
         // now the values should be on stack, generate code to set them to the lhs
@@ -1301,10 +1321,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
-        unimplemented!();
+        unreachable!(); // handled at upper level of the tree
     }
 
     fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
+        self.break_cont.enter_block();
+
         if let Some(init) = &sstmt.init {
             self.visit_stmt(init);
         }
@@ -1368,10 +1390,40 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
         let end = current_func!(self).next_code_index();
         helper.patch_ends(current_func_mut!(self), end);
+
+        self.break_cont
+            .leave_block(current_func_mut!(self), None, end);
     }
 
-    fn visit_stmt_type_switch(&mut self, _tstmt: &TypeSwitchStmt) {
-        unimplemented!();
+    fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
+        if let Some(init) = &tstmt.init {
+            self.visit_stmt(init);
+        }
+
+        let (ident_expr, assert) = match &tstmt.assign {
+            Stmt::Assign(ass_key) => {
+                let ass = &self.ast_objs.a_stmts[*ass_key];
+                (Some(&ass.lhs[0]), &ass.rhs[0])
+            }
+            Stmt::Expr(e) => (None, &**e),
+            _ => unreachable!(),
+        };
+        let v = match assert {
+            Expr::TypeAssert(ta) => &ta.expr,
+            _ => unreachable!(),
+        };
+
+        if let Some(iexpr) = ident_expr {
+            let ident = &self.ast_objs.idents[*iexpr.try_as_ident().unwrap()];
+            let ident_key = ident.entity.clone().into_key();
+            let func = current_func_mut!(self);
+            let index =
+                func.add_local(ident_key, Some(self.objects.zero_val.zero_val_mark.clone()));
+            let lhs = (LeftHandSide::Primitive(index), None);
+            let rhs = RightHandSide::TypeSwitch(v);
+            self.gen_assign_def_var(&vec![lhs], &None, &rhs);
+        }
+        //todo
     }
 
     fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
@@ -1422,7 +1474,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         let end = current_func!(self).next_code_index();
         self.break_cont
-            .leave_block(current_func_mut!(self), continue_marker, end);
+            .leave_block(current_func_mut!(self), Some(continue_marker), end);
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
@@ -1448,7 +1500,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         let end = current_func!(self).next_code_index();
         self.break_cont
-            .leave_block(current_func_mut!(self), marker, end);
+            .leave_block(current_func_mut!(self), Some(marker), end);
     }
 
     fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}

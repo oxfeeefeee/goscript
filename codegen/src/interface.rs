@@ -54,12 +54,17 @@ impl IfaceMapping {
         };
         let smember = match objs.metas[*s.as_meta()].typ() {
             MetadataType::Boxed(b) => match objs.metas[*b.as_meta()].typ() {
-                MetadataType::Named(m, _) => m,
+                MetadataType::Named(m, _) => Some(m),
                 _ => unreachable!(),
             },
-            MetadataType::Named(m, _) => m,
+            MetadataType::Named(m, _) => Some(m),
+            // primitive types
+            MetadataType::None => None,
             _ => unreachable!(),
         };
-        (i, Rc::new(imember.iface_mapping(smember)))
+        (
+            i,
+            Rc::new(smember.map_or(vec![], |x| imember.iface_mapping(x))),
+        )
     }
 }

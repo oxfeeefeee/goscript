@@ -79,6 +79,12 @@ pub enum Opcode {
     LOOP,
     RANGE, // for ... range statement
 
+    // type
+    TYPE_ASSERT,
+    TYPE_TRY_ASSERT,
+    TYPE,
+    TYPE_ASSIGN,
+
     // built-in functinalities
     IMPORT,     // imports a package
     SLICE,      //for slice expressions
@@ -166,6 +172,11 @@ impl Opcode {
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
             Opcode::SWITCH => ("SWITCH", -1),
             Opcode::RANGE => ("RANGE", 1),
+
+            Opcode::TYPE_ASSERT => ("TYPE_ASSERT", 0),
+            Opcode::TYPE_TRY_ASSERT => ("TYPE_TRY_ASSERT", 0),
+            Opcode::TYPE => ("TYPE", 1),
+            Opcode::TYPE_ASSIGN => ("TYPE_ASSIGN", 1),
 
             Opcode::IMPORT => ("IMPORT", 0),
             Opcode::SLICE => ("SLICE", -2),

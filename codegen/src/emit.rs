@@ -69,6 +69,13 @@ pub enum LeftHandSide {
     Deref(OpIndex),
 }
 
+pub enum RightHandSide<'a> {
+    Nothing,
+    Values(&'a Vec<Expr>),
+    Range(&'a Expr),
+    TypeSwitch(&'a Expr),
+}
+
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize;
 

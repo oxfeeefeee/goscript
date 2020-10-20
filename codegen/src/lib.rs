@@ -1,5 +1,5 @@
 mod branch;
-mod func;
+mod emit;
 mod interface;
 mod package;
 mod types;
