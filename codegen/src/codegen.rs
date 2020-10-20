@@ -750,7 +750,8 @@ impl<'a> CodeGen<'a> {
         for v in vars.iter() {
             for n in v.names.iter() {
                 let ident = &self.ast_objs.idents[*n];
-                let val = self.objects.zero_val.zero_val_mark.clone();
+                let meta = self.tlookup.gen_def_type_meta(*n, self.objects);
+                let val = self.objects.metas[*meta.as_meta()].zero_val().clone();
                 self.objects.packages[pkey].add_member(ident.name.clone(), val);
             }
         }
@@ -1417,8 +1418,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let ident = &self.ast_objs.idents[*iexpr.try_as_ident().unwrap()];
             let ident_key = ident.entity.clone().into_key();
             let func = current_func_mut!(self);
-            let index =
-                func.add_local(ident_key, Some(self.objects.zero_val.zero_val_mark.clone()));
+            let index = func.add_local(ident_key, Some(GosValue::Nil));
             let lhs = (LeftHandSide::Primitive(index), None);
             let rhs = RightHandSide::TypeSwitch(v);
             self.gen_assign_def_var(&vec![lhs], &None, &rhs);

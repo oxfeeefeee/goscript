@@ -11,11 +11,6 @@ use std::rc::Rc;
 type F32 = ordered_float::OrderedFloat<f32>;
 type F64 = ordered_float::OrderedFloat<f64>;
 
-pub const C_PLACE_HOLDER: GosValue64 = GosValue64 {
-    data: V64Union { uint: 95289528 },
-};
-pub const RC_PLACE_HOLDER: GosValue = GosValue::Int(95299529);
-
 macro_rules! unwrap_gos_val {
     ($name:tt, $self_:ident) => {
         if let GosValue::$name(k) = $self_ {
@@ -76,6 +71,7 @@ macro_rules! cmp_int_float {
 // GosValue
 #[derive(Debug, Clone)]
 pub enum GosValue {
+    Nil,
     Bool(bool),
     Int(isize),
     Float64(F64), // becasue in Go there is no "float", just float64
@@ -246,6 +242,7 @@ impl GosValue {
     #[inline]
     pub fn get_type(&self) -> ValueType {
         match self {
+            GosValue::Nil => ValueType::Nil,
             GosValue::Bool(_) => ValueType::Bool,
             GosValue::Int(_) => ValueType::Int,
             GosValue::Float64(_) => ValueType::Float64,
@@ -267,9 +264,7 @@ impl GosValue {
     #[inline]
     pub fn copy_semantic(&self, nil: Option<(&ZeroVal, ValueType)>) -> GosValue {
         match self {
-            GosValue::Int(_) => {
-                // this is nil
-                assert_eq!(self, &RC_PLACE_HOLDER);
+            GosValue::Nil => {
                 let (zv, t) = nil.unwrap();
                 zv.nil_zero_val(t).clone()
             }
@@ -378,7 +373,8 @@ impl<'a> GosValueDebug<'a> {
 impl<'a> fmt::Debug for GosValueDebug<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.val {
-            GosValue::Bool(_)
+            GosValue::Nil
+            | GosValue::Bool(_)
             | GosValue::Int(_)
             | GosValue::Float64(_)
             | GosValue::Complex64(_, _) => self.val.fmt(f),

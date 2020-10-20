@@ -127,7 +127,6 @@ impl VMObjects {
 
 #[derive(Debug)]
 pub struct ZeroVal {
-    pub zero_val_mark: GosValue,
     pub str_zero_val: GosValue,
     pub boxed_zero_val: GosValue,
     pub closure_zero_val: GosValue,
@@ -140,16 +139,14 @@ pub struct ZeroVal {
 
 impl ZeroVal {
     fn new() -> ZeroVal {
-        let mark = GosValue::Int(95279527);
         ZeroVal {
-            zero_val_mark: mark.clone(),
             str_zero_val: GosValue::Str(Rc::new(StringObj::with_str("".to_string()))),
             boxed_zero_val: GosValue::Boxed(Box::new(BoxedObj::Nil)),
             closure_zero_val: GosValue::Closure(Rc::new(ClosureObj::new(null_key!(), None, None))),
-            slice_zero_val: GosValue::Slice(Rc::new(SliceObj::new(0, 0, &mark))),
-            map_zero_val: GosValue::Map(Rc::new(MapObj::new(mark.clone()))),
+            slice_zero_val: GosValue::Slice(Rc::new(SliceObj::new(0, 0, &GosValue::Nil))),
+            map_zero_val: GosValue::Map(Rc::new(MapObj::new(GosValue::Nil))),
             iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceObj::new(
-                mark.clone(),
+                GosValue::Nil,
                 None,
             )))),
             chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelObj {}))),
@@ -1156,7 +1153,7 @@ impl MetadataVal {
             .collect();
         let struct_val = StructObj {
             dark: false,
-            meta: objs.zero_val.zero_val_mark.clone(), // placeholder
+            meta: GosValue::Nil, // placeholder
             fields: field_zeros,
         };
         let meta = MetadataVal {
@@ -1186,7 +1183,7 @@ impl MetadataVal {
 
     pub fn new_named(underlying: GosValue, objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
-            zero_val: objs.zero_val.zero_val_mark.clone(), // placeholder
+            zero_val: GosValue::Nil, // placeholder
             typ: MetadataType::Named(OrderedMembers::new(vec![], HashMap::new()), underlying),
         };
         GosValue::new_meta(m, &mut objs.metas)

@@ -35,8 +35,8 @@ pub struct Stack {
 impl Stack {
     pub fn new() -> Stack {
         Stack {
-            c: vec![C_PLACE_HOLDER; DEFAULT_SIZE],
-            rc: vec![RC_PLACE_HOLDER; DEFAULT_SIZE],
+            c: vec![GosValue64::nil(); DEFAULT_SIZE],
+            rc: vec![GosValue::Nil; DEFAULT_SIZE],
             cursor: 0,
             max: DEFAULT_SIZE - 1,
         }
@@ -68,7 +68,7 @@ impl Stack {
 
     #[inline]
     pub fn push_nil(&mut self) {
-        *self.get_rc_mut(self.cursor) = RC_PLACE_HOLDER;
+        *self.get_rc_mut(self.cursor) = GosValue::Nil;
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
     }
@@ -103,7 +103,7 @@ impl Stack {
         if t <= COPYABLE_END {
             self.get_c(self.cursor).into_v128(t)
         } else {
-            let mut ret = RC_PLACE_HOLDER;
+            let mut ret = GosValue::Nil;
             std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
             ret
         }
