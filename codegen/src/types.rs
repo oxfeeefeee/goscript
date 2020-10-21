@@ -169,9 +169,10 @@ impl<'a> TypeLookup<'a> {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
             //todo: fix: dont new MetadataVal
-            BasicType::Bool | BasicType::UntypedBool => val.map_or(vm_objs.metadata_bool(), |x| {
-                GosValue::Bool(x.bool_as_bool())
-            }),
+            BasicType::Bool | BasicType::UntypedBool => val
+                .map_or(vm_objs.bool_meta.clone(), |x| {
+                    GosValue::Bool(x.bool_as_bool())
+                }),
             BasicType::Int
             | BasicType::Int8
             | BasicType::Int16
@@ -187,18 +188,18 @@ impl<'a> TypeLookup<'a> {
             | BasicType::Uintptr
             | BasicType::UnsafePointer
             | BasicType::UntypedInt
-            | BasicType::UntypedRune => val.map_or(vm_objs.metadata_int(), |x| {
+            | BasicType::UntypedRune => val.map_or(vm_objs.int_meta.clone(), |x| {
                 let (i, _) = x.to_int().int_as_i64();
                 GosValue::Int(i as isize)
             }),
             BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-                val.map_or(vm_objs.metadata_float64(), |x| {
+                val.map_or(vm_objs.float64_meta.clone(), |x| {
                     let (f, _) = x.num_as_f64();
                     GosValue::Float64(f.into())
                 })
             }
             BasicType::Str | BasicType::UntypedString => val
-                .map_or(vm_objs.metadata_string(), |x| {
+                .map_or(vm_objs.string_meta.clone(), |x| {
                     GosValue::new_str(x.str_as_string())
                 }),
             _ => unreachable!(),

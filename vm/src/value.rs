@@ -262,6 +262,28 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn get_meta(&self, objs: &VMObjects) -> GosValue {
+        match self {
+            GosValue::Nil => GosValue::Nil,
+            GosValue::Bool(_) => objs.bool_meta.clone(),
+            GosValue::Int(_) => objs.int_meta.clone(),
+            GosValue::Float64(_) => objs.float64_meta.clone(),
+            GosValue::Complex64(_, _) => objs.complex64_meta.clone(),
+            GosValue::Str(_) => objs.string_meta.clone(),
+            GosValue::Boxed(_) => unreachable!(),
+            GosValue::Closure(_) => unreachable!(),
+            GosValue::Slice(_) => unimplemented!(),
+            GosValue::Map(_) => unimplemented!(),
+            GosValue::Interface(_) => unimplemented!(),
+            GosValue::Struct(_) => unimplemented!(),
+            GosValue::Channel(_) => unimplemented!(),
+            GosValue::Function(_) => unimplemented!(),
+            GosValue::Package(_) => unimplemented!(),
+            GosValue::Metadata(_) => unimplemented!(),
+        }
+    }
+
+    #[inline]
     pub fn copy_semantic(&self, nil: Option<(&ZeroVal, ValueType)>) -> GosValue {
         match self {
             GosValue::Nil => {

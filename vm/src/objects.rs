@@ -64,7 +64,11 @@ pub struct VMObjects {
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
-    pub basic_types: HashMap<&'static str, GosValue>,
+    pub bool_meta: GosValue,
+    pub int_meta: GosValue,
+    pub float64_meta: GosValue,
+    pub complex64_meta: GosValue,
+    pub string_meta: GosValue,
     pub default_sig_meta: Option<GosValue>,
     pub zero_val: ZeroVal,
 }
@@ -82,46 +86,22 @@ impl VMObjects {
             metas: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            basic_types: HashMap::new(),
+            bool_meta: GosValue::Nil,
+            int_meta: GosValue::Nil,
+            float64_meta: GosValue::Nil,
+            complex64_meta: GosValue::Nil,
+            string_meta: GosValue::Nil,
             default_sig_meta: None,
             zero_val: ZeroVal::new(),
         };
-        let btype = MetadataVal::new_bool(&mut objs);
-        objs.basic_types.insert("bool", btype);
-        let itype = MetadataVal::new_int(&mut objs);
-        objs.basic_types.insert("int", itype);
-        let ftype = MetadataVal::new_float64(&mut objs);
-        objs.basic_types.insert("float64", ftype);
-        let stype = MetadataVal::new_str(&mut objs);
-        objs.basic_types.insert("string", stype);
+        objs.bool_meta = MetadataVal::new_bool(&mut objs);
+        objs.int_meta = MetadataVal::new_int(&mut objs);
+        objs.float64_meta = MetadataVal::new_float64(&mut objs);
+        objs.complex64_meta = MetadataVal::new_complex64(&mut objs);
+        objs.string_meta = MetadataVal::new_str(&mut objs);
         // default_sig_meta is used by manually assembiled functions
         objs.default_sig_meta = Some(MetadataVal::new_sig(None, vec![], vec![], None, &mut objs));
         objs
-    }
-
-    #[inline]
-    pub fn metadata_bool(&self) -> GosValue {
-        self.basic_type("bool").clone()
-    }
-
-    #[inline]
-    pub fn metadata_int(&self) -> GosValue {
-        self.basic_type("int").clone()
-    }
-
-    #[inline]
-    pub fn metadata_float64(&self) -> GosValue {
-        self.basic_type("float64").clone()
-    }
-
-    #[inline]
-    pub fn metadata_string(&self) -> GosValue {
-        self.basic_type("string").clone()
-    }
-
-    #[inline]
-    fn basic_type(&self, name: &str) -> &GosValue {
-        &self.basic_types[name]
     }
 }
 
@@ -858,6 +838,8 @@ pub struct FunctionVal {
     // these fields are for faster access
     pub param_count: usize,
     pub ret_count: usize,
+    pub local_metas: Vec<GosValue>,
+    // from local_metas, for faster runtime access
     pub local_zeros: Vec<GosValue>,
     entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
@@ -880,6 +862,7 @@ impl FunctionVal {
             up_ptrs: Vec::new(),
             param_count: 0,
             ret_count: 0,
+            local_metas: Vec::new(),
             local_zeros: Vec::new(),
             entities: HashMap::new(),
             local_alloc: 0,
@@ -962,14 +945,15 @@ impl FunctionVal {
     }
 
     // for unnamed return values, entity == None
-    pub fn add_local(&mut self, entity: Option<EntityKey>, typ: Option<GosValue>) -> EntIndex {
+    // for parameters, zero == None
+    pub fn add_local(&mut self, entity: Option<EntityKey>, zero: Option<GosValue>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
             let old = self.entities.insert(key, EntIndex::LocalVar(result));
             assert_eq!(old, None);
         };
-        if let Some(t) = typ {
-            self.local_zeros.push(t);
+        if let Some(z) = zero {
+            self.local_zeros.push(z);
         }
         self.local_alloc += 1;
         EntIndex::LocalVar(result)
@@ -1081,6 +1065,14 @@ impl MetadataVal {
     fn new_int(objs: &mut VMObjects) -> GosValue {
         let m = MetadataVal {
             zero_val: GosValue::Int(0),
+            typ: MetadataType::None,
+        };
+        GosValue::new_meta(m, &mut objs.metas)
+    }
+
+    fn new_complex64(objs: &mut VMObjects) -> GosValue {
+        let m = MetadataVal {
+            zero_val: GosValue::Complex64(0.0.into(), 0.0.into()),
             typ: MetadataType::None,
         };
         GosValue::new_meta(m, &mut objs.metas)
