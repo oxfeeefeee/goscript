@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 use super::instruction::*;
-use super::objects::{
-    u64_to_key, ClosureObj, GosHashMap, MetadataType, SliceEnumIter, SliceRef, StringEnumIter,
-};
+use super::metadata::*;
+use super::objects::{u64_to_key, ClosureObj, GosHashMap, SliceEnumIter, SliceRef, StringEnumIter};
 use super::stack::Stack;
 use super::value::*;
 use super::vm_util;
@@ -16,7 +15,7 @@ use std::rc::Rc;
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
-    pub ifaces: Vec<(GosValue, Rc<Vec<FunctionKey>>)>,
+    pub ifaces: Vec<(GosMetadata, Rc<Vec<FunctionKey>>)>,
     pub entry: FunctionKey,
 }
 
@@ -81,7 +80,7 @@ impl CallFrame {
     #[inline]
     fn ret_count(&self, objs: &VMObjects) -> usize {
         let fkey = self.func();
-        objs.functions[fkey].ret_count
+        objs.functions[fkey].ret_count()
     }
 
     #[inline]
@@ -123,14 +122,10 @@ impl Fiber {
         let mut func = &objs.functions[fkey];
         let stack = &mut self.stack;
         // allocate local variables
-        for _ in 0..func.local_count() {
-            stack.push_nil();
-        }
+        stack.append(&mut func.local_zeros.clone());
         let mut consts = &func.consts;
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
-
-        let zval = &objs.zero_val;
 
         let mut range_slot = 0;
         range_vars!(mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0);
@@ -175,7 +170,7 @@ impl Fiber {
                             let map = m.deep_clone();
                             GosValue::Map(Rc::new(map))
                         }
-                        _ => gos_val.copy_semantic(None),
+                        _ => gos_val.copy_semantic(None, &objs.metadata),
                     };
                     stack.push(val);
                 }
@@ -193,7 +188,7 @@ impl Fiber {
                 Opcode::STORE_LOCAL => {
                     let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack_base, index);
-                    store_local!(stack, s_index, rhs_index, inst.t0(), zval);
+                    store_local!(stack, s_index, rhs_index, inst.t0(), &objs.metadata);
                 }
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
@@ -203,7 +198,15 @@ impl Fiber {
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm824();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    store_up_value!(upvalue, self, stack, frame, rhs_index, inst.t0(), zval);
+                    store_up_value!(
+                        upvalue,
+                        self,
+                        stack,
+                        frame,
+                        rhs_index,
+                        inst.t0(),
+                        &objs.metadata
+                    );
                 }
                 Opcode::LOAD_INDEX => {
                     let ind = stack.pop_with_type(inst.t1());
@@ -219,7 +222,7 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     let key = stack.get_with_type(s_index + 1, inst.t2());
                     let target = &stack.get_with_type(s_index, inst.t1());
-                    vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), objs);
+                    vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), &objs.metadata);
                 }
                 Opcode::STORE_INDEX_IMM => {
                     // the only place we can store the immediate index is t2
@@ -233,7 +236,7 @@ impl Fiber {
                         imm as usize,
                         rhs_index,
                         inst.t0(),
-                        objs,
+                        &objs.metadata,
                     );
                 }
                 Opcode::LOAD_FIELD => {
@@ -265,7 +268,7 @@ impl Fiber {
                     let func = *consts[inst.imm() as usize].as_function();
                     stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
                         func,
-                        Some(val.copy_semantic(None)),
+                        Some(val.copy_semantic(None, &objs.metadata)),
                         None,
                     ))));
                 }
@@ -276,7 +279,7 @@ impl Fiber {
                     let func = funcs[inst.imm() as usize];
                     stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
                         func,
-                        Some(val.copy_semantic(None)),
+                        Some(val.copy_semantic(None, &objs.metadata)),
                         None,
                     ))));
                 }
@@ -304,7 +307,7 @@ impl Fiber {
                     }
                     if let GosValue::Struct(s) = &target {
                         let field = &mut s.borrow_mut().fields[imm as usize];
-                        stack.store_val(field, rhs_index, inst.t0(), &objs.zero_val);
+                        stack.store_val(field, rhs_index, inst.t0(), &objs.metadata);
                     } else {
                         unreachable!();
                     }
@@ -318,7 +321,7 @@ impl Fiber {
                 Opcode::STORE_PKG_FIELD => {
                     let (rhs_index, imm) = inst.imm824();
                     let pkg = &mut objs.packages[read_imm_pkg!(code, frame, objs)];
-                    stack.store_val(pkg.member_mut(imm), rhs_index, inst.t0(), zval);
+                    stack.store_val(pkg.member_mut(imm), rhs_index, inst.t0(), &objs.metadata);
                 }
                 Opcode::STORE_DEREF => {
                     let (rhs_index, index) = inst.imm824();
@@ -335,7 +338,7 @@ impl Fiber {
                                         frame,
                                         rhs_index,
                                         inst.t0(),
-                                        zval
+                                        &objs.metadata
                                     );
                                 }
                                 BoxedObj::Struct(s) => {
@@ -443,16 +446,7 @@ impl Fiber {
                     let next_frame = CallFrame::with_closure(val, sbase);
                     let func_key = next_frame.func();
                     let next_func = &objs.functions[func_key];
-                    // init return values
-                    if next_func.ret_count > 0 {
-                        let meta = &objs.metas[*next_func.meta.as_meta()];
-                        let rs = &meta.sig_metadata().results;
-                        let mut returns = rs
-                            .iter()
-                            .map(|x| objs.metas[*x.as_meta()].zero_val().clone())
-                            .collect();
-                        stack.append(&mut returns);
-                    }
+                    stack.append(&mut next_func.ret_zeros.clone());
                     // push receiver on stack as the first parameter
                     if let Some(r) = next_frame.receiver() {
                         // don't call copy_semantic because BIND_METHOD did it already
@@ -473,22 +467,14 @@ impl Fiber {
 
                     if let Some(vt) = func.variadic() {
                         if inst_op != Opcode::CALL_ELLIPSIS {
-                            let index = stack_base
-                                + func.param_count
-                                + func.ret_count
-                                + if frame.receiver().is_some() { 1 } else { 0 }
-                                - 1;
+                            let index = stack_base + func.param_count() + func.ret_count() - 1;
                             stack.pack_variadic(index, vt, &mut objs.slices);
                         }
                     }
 
-                    // todo: clone parameters, initialize nil values
-
                     debug_assert!(func.local_count() == func.local_zeros.len());
                     // allocate local variables
-                    for v in func.local_zeros.iter() {
-                        stack.push(v.clone());
-                    }
+                    stack.append(&mut func.local_zeros.clone());
                 }
                 Opcode::RETURN | Opcode::RETURN_INIT_PKG => {
                     // close any active upvalue this frame contains
@@ -694,8 +680,8 @@ impl Fiber {
                     let index = inst.imm();
                     let i = Stack::offset(stack.len(), index - 1);
                     let meta = stack.get_with_type(i, ValueType::Metadata);
-                    let metadata = &objs.metas[*meta.as_meta()];
-                    let val = match metadata.typ() {
+                    let metadata = &objs.metas[meta.as_meta().as_non_ptr()];
+                    let val = match metadata {
                         MetadataType::Slice(vmeta) => {
                             let (cap, len) = match index {
                                 -2 => (stack.pop_int() as usize, stack.pop_int() as usize),
@@ -705,11 +691,15 @@ impl Fiber {
                                 }
                                 _ => unreachable!(),
                             };
-                            let vmetadata = &objs.metas[*vmeta.as_meta()];
-                            GosValue::new_slice(len, cap, vmetadata.zero_val(), &mut objs.slices)
+                            GosValue::new_slice(
+                                len,
+                                cap,
+                                Some(&vmeta.zero_val(objs)),
+                                &mut objs.slices,
+                            )
                         }
                         MetadataType::Map(_k, _v) => unimplemented!(),
-                        MetadataType::Channel(_st) => unimplemented!(),
+                        MetadataType::Channel => unimplemented!(),
                         _ => unreachable!(),
                     };
                     stack.pop_discard();

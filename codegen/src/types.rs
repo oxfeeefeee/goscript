@@ -7,14 +7,14 @@ use goscript_types::{
     TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::instruction::{OpIndex, ValueType};
-use goscript_vm::objects::OrderedMembers;
+use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 
 pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
-    types_cache: HashMap<TCTypeKey, GosValue>,
+    types_cache: HashMap<TCTypeKey, GosMetadata>,
 }
 
 impl<'a> TypeLookup<'a> {
@@ -35,10 +35,10 @@ impl<'a> TypeLookup<'a> {
         typ_val.get_const_val()
     }
 
-    pub fn get_const_value(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {
+    pub fn get_const_value(&mut self, id: NodeId) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
-        self.const_value(typ_val.typ, const_val, objects)
+        self.const_value(typ_val.typ, const_val)
     }
 
     pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
@@ -83,7 +83,7 @@ impl<'a> TypeLookup<'a> {
         self.value_type_from_tc(self.get_expr_tc_type(e))
     }
 
-    pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosValue {
+    pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosMetadata {
         let typ = self.ti.types.get(&id).unwrap().typ;
         self.type_from_tc(typ, objects)
     }
@@ -106,7 +106,7 @@ impl<'a> TypeLookup<'a> {
         self.value_type_from_tc(self.get_def_tc_type(ikey))
     }
 
-    pub fn gen_def_type_meta(&mut self, ikey: IdentKey, objects: &mut VMObjects) -> GosValue {
+    pub fn gen_def_type_meta(&mut self, ikey: IdentKey, objects: &mut VMObjects) -> GosMetadata {
         self.type_from_tc(self.get_def_tc_type(ikey), objects)
     }
 
@@ -127,7 +127,7 @@ impl<'a> TypeLookup<'a> {
         (t0, t1)
     }
 
-    pub fn type_from_tc(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosValue {
+    pub fn type_from_tc(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         if !self.types_cache.contains_key(&typ) {
             let val = self.type_from_tc_impl(typ, vm_objs);
             self.types_cache.insert(typ, val);
@@ -159,20 +159,11 @@ impl<'a> TypeLookup<'a> {
         (params, variadic)
     }
 
-    // returns const value if val is_some, otherwise returns vm_type for the tc_type
-    fn const_value_or_type_from_tc(
-        &self,
-        tkey: TCTypeKey,
-        val: Option<&ConstValue>,
-        vm_objs: &mut VMObjects,
-    ) -> GosValue {
+    // returns vm_type(metadata) for the tc_type
+    fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
-            //todo: fix: dont new MetadataVal
-            BasicType::Bool | BasicType::UntypedBool => val
-                .map_or(vm_objs.bool_meta.clone(), |x| {
-                    GosValue::Bool(x.bool_as_bool())
-                }),
+            BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
             BasicType::Int
             | BasicType::Int8
             | BasicType::Int16
@@ -188,20 +179,11 @@ impl<'a> TypeLookup<'a> {
             | BasicType::Uintptr
             | BasicType::UnsafePointer
             | BasicType::UntypedInt
-            | BasicType::UntypedRune => val.map_or(vm_objs.int_meta.clone(), |x| {
-                let (i, _) = x.to_int().int_as_i64();
-                GosValue::Int(i as isize)
-            }),
+            | BasicType::UntypedRune => vm_objs.metadata.mint,
             BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-                val.map_or(vm_objs.float64_meta.clone(), |x| {
-                    let (f, _) = x.num_as_f64();
-                    GosValue::Float64(f.into())
-                })
+                vm_objs.metadata.mfloat64
             }
-            BasicType::Str | BasicType::UntypedString => val
-                .map_or(vm_objs.string_meta.clone(), |x| {
-                    GosValue::new_str(x.str_as_string())
-                }),
+            BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
             _ => unreachable!(),
             //Complex64,  todo
             //Complex128, todo
@@ -209,34 +191,64 @@ impl<'a> TypeLookup<'a> {
     }
 
     // get GosValue from type checker's Obj
-    fn const_value(&self, tkey: TCTypeKey, val: &ConstValue, vm_objs: &mut VMObjects) -> GosValue {
-        self.const_value_or_type_from_tc(tkey, Some(val), vm_objs)
+    fn const_value(&self, tkey: TCTypeKey, val: &ConstValue) -> GosValue {
+        let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
+        match typ {
+            BasicType::Bool | BasicType::UntypedBool => GosValue::Bool(val.bool_as_bool()),
+            BasicType::Int
+            | BasicType::Int8
+            | BasicType::Int16
+            | BasicType::Int32
+            | BasicType::Rune
+            | BasicType::Int64
+            | BasicType::Uint
+            | BasicType::Uint8
+            | BasicType::Byte
+            | BasicType::Uint16
+            | BasicType::Uint32
+            | BasicType::Uint64
+            | BasicType::Uintptr
+            | BasicType::UnsafePointer
+            | BasicType::UntypedInt
+            | BasicType::UntypedRune => {
+                let (i, _) = val.to_int().int_as_i64();
+                GosValue::Int(i as isize)
+            }
+            BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
+                let (f, _) = val.num_as_f64();
+                GosValue::Float64(f.into())
+            }
+            BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
+            _ => unreachable!(),
+            //Complex64,  todo
+            //Complex128, todo
+        }
     }
 
     // get vm_type from tc_type
-    fn type_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosValue {
+    fn type_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         match &self.tc_objs.types[typ] {
-            Type::Basic(_) => self.const_value_or_type_from_tc(typ, None, vm_objs),
+            Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs),
             Type::Slice(detail) => {
                 let el_type = self.type_from_tc(detail.elem(), vm_objs);
-                MetadataVal::new_slice(el_type, vm_objs)
+                GosMetadata::new_slice(el_type, &mut vm_objs.metas)
             }
             Type::Map(detail) => {
                 let ktype = self.type_from_tc(detail.key(), vm_objs);
                 let vtype = self.type_from_tc(detail.elem(), vm_objs);
-                MetadataVal::new_map(ktype, vtype, vm_objs)
+                GosMetadata::new_map(ktype, vtype, &mut vm_objs.metas)
             }
             Type::Struct(detail) => {
-                let fields = self.get_ordered_members(detail.fields(), vm_objs);
-                MetadataVal::new_struct(fields, vm_objs)
+                let fields = self.get_fields(detail.fields(), vm_objs);
+                GosMetadata::new_struct(fields, vm_objs)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
-                let fields = self.get_ordered_members(methods.as_ref().unwrap(), vm_objs);
-                MetadataVal::new_interface(fields, vm_objs)
+                let fields = self.get_fields(methods.as_ref().unwrap(), vm_objs);
+                GosMetadata::new_interface(fields, &mut vm_objs.metas)
             }
             Type::Signature(detail) => {
-                let mut convert = |tuple_key| -> Vec<GosValue> {
+                let mut convert = |tuple_key| -> Vec<GosMetadata> {
                     self.tc_objs.types[tuple_key]
                         .try_as_tuple()
                         .unwrap()
@@ -257,22 +269,22 @@ impl<'a> TypeLookup<'a> {
                 }
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
-                    match vm_objs.metas[*slice.as_meta()].typ() {
+                    match &vm_objs.metas[slice.as_non_ptr()] {
                         MetadataType::Slice(elem) => Some(elem.clone()),
                         _ => unreachable!(),
                     }
                 } else {
                     None
                 };
-                MetadataVal::new_sig(recv, params, results, variadic, vm_objs)
+                GosMetadata::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
             }
             Type::Pointer(detail) => {
                 let inner = self.type_from_tc(detail.base(), vm_objs);
-                MetadataVal::new_boxed(inner, vm_objs)
+                inner.ptr_to()
             }
             Type::Named(detail) => {
                 let underlying = self.type_from_tc(detail.underlying(), vm_objs);
-                MetadataVal::new_named(underlying, vm_objs)
+                GosMetadata::new_named(underlying, &mut vm_objs.metas)
             }
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
@@ -353,11 +365,7 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn get_ordered_members(
-        &mut self,
-        fields: &Vec<ObjKey>,
-        vm_objs: &mut VMObjects,
-    ) -> OrderedMembers {
+    fn get_fields(&mut self, fields: &Vec<ObjKey>, vm_objs: &mut VMObjects) -> Fields {
         let mut vec = Vec::new();
         let mut map = HashMap::<String, OpIndex>::new();
         for (i, f) in fields.iter().enumerate() {
@@ -366,6 +374,6 @@ impl<'a> TypeLookup<'a> {
             vec.push(f_type);
             map.insert(field.name().clone(), i as OpIndex);
         }
-        OrderedMembers::new(vec, map)
+        Fields::new(vec, map)
     }
 }

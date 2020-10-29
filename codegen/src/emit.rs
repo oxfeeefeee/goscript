@@ -124,14 +124,14 @@ impl FuncGen for FunctionVal {
             .map(|f| {
                 let names = &o.fields[*f].names;
                 if names.len() == 0 {
-                    self.add_local(None, None);
+                    self.add_local(None);
                     1
                 } else {
                     names
                         .iter()
                         .map(|n| {
                             let ident = &o.idents[*n];
-                            self.add_local(ident.entity.clone().into_key(), None);
+                            self.add_local(ident.entity.clone().into_key());
                         })
                         .count()
                 }

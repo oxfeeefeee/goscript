@@ -203,7 +203,7 @@ impl fmt::Display for Opcode {
     }
 }
 
-pub const COPYABLE_END: ValueType = ValueType::Metadata;
+pub const COPYABLE_END: ValueType = ValueType::Package;
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]

@@ -1,5 +1,6 @@
 #![macro_use]
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
+use super::metadata::*;
 use super::value::GosValue;
 use goscript_parser::objects::EntityKey;
 use slotmap::{new_key_type, DenseSlotMap};
@@ -32,7 +33,7 @@ pub type MapObjs = Vec<Weak<MapObj>>;
 pub type StructObjs = Vec<Weak<RefCell<StructObj>>>;
 pub type ChannelObjs = Vec<Weak<RefCell<ChannelObj>>>;
 pub type BoxedObjs = Vec<Weak<GosValue>>;
-pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataVal>;
+pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataType>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
 pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
 
@@ -64,18 +65,14 @@ pub struct VMObjects {
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
-    pub bool_meta: GosValue,
-    pub int_meta: GosValue,
-    pub float64_meta: GosValue,
-    pub complex64_meta: GosValue,
-    pub string_meta: GosValue,
-    pub default_sig_meta: Option<GosValue>,
-    pub zero_val: ZeroVal,
+    pub metadata: Metadata,
 }
 
 impl VMObjects {
     pub fn new() -> VMObjects {
-        let mut objs = VMObjects {
+        let mut metas = DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
+        let md = Metadata::new(&mut metas);
+        VMObjects {
             interfaces: vec![],
             closures: vec![],
             slices: vec![],
@@ -83,67 +80,10 @@ impl VMObjects {
             structs: vec![],
             channels: vec![],
             boxed: vec![],
-            metas: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            metas: metas,
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            bool_meta: GosValue::Nil,
-            int_meta: GosValue::Nil,
-            float64_meta: GosValue::Nil,
-            complex64_meta: GosValue::Nil,
-            string_meta: GosValue::Nil,
-            default_sig_meta: None,
-            zero_val: ZeroVal::new(),
-        };
-        objs.bool_meta = MetadataVal::new_bool(&mut objs);
-        objs.int_meta = MetadataVal::new_int(&mut objs);
-        objs.float64_meta = MetadataVal::new_float64(&mut objs);
-        objs.complex64_meta = MetadataVal::new_complex64(&mut objs);
-        objs.string_meta = MetadataVal::new_str(&mut objs);
-        // default_sig_meta is used by manually assembiled functions
-        objs.default_sig_meta = Some(MetadataVal::new_sig(None, vec![], vec![], None, &mut objs));
-        objs
-    }
-}
-
-#[derive(Debug)]
-pub struct ZeroVal {
-    pub str_zero_val: GosValue,
-    pub boxed_zero_val: GosValue,
-    pub closure_zero_val: GosValue,
-    pub slice_zero_val: GosValue,
-    pub map_zero_val: GosValue,
-    pub iface_zero_val: GosValue,
-    pub chan_zero_val: GosValue,
-    pub pkg_zero_val: GosValue,
-}
-
-impl ZeroVal {
-    fn new() -> ZeroVal {
-        ZeroVal {
-            str_zero_val: GosValue::Str(Rc::new(StringObj::with_str("".to_string()))),
-            boxed_zero_val: GosValue::Boxed(Box::new(BoxedObj::Nil)),
-            closure_zero_val: GosValue::Closure(Rc::new(ClosureObj::new(null_key!(), None, None))),
-            slice_zero_val: GosValue::Slice(Rc::new(SliceObj::new(0, 0, &GosValue::Nil))),
-            map_zero_val: GosValue::Map(Rc::new(MapObj::new(GosValue::Nil))),
-            iface_zero_val: GosValue::Interface(Rc::new(RefCell::new(InterfaceObj::new(
-                GosValue::Nil,
-                None,
-            )))),
-            chan_zero_val: GosValue::Channel(Rc::new(RefCell::new(ChannelObj {}))),
-            pkg_zero_val: GosValue::Package(null_key!()),
-        }
-    }
-
-    #[inline]
-    pub fn nil_zero_val(&self, t: ValueType) -> &GosValue {
-        match t {
-            ValueType::Boxed => &self.boxed_zero_val,
-            ValueType::Interface => &self.iface_zero_val,
-            ValueType::Map => &self.map_zero_val,
-            ValueType::Slice => &self.slice_zero_val,
-            ValueType::Channel => &self.chan_zero_val,
-            ValueType::Function => &self.closure_zero_val,
-            _ => unreachable!(),
+            metadata: md,
         }
     }
 }
@@ -358,7 +298,7 @@ pub struct SliceObj {
 }
 
 impl<'a> SliceObj {
-    pub fn new(len: usize, cap: usize, default_val: &GosValue) -> SliceObj {
+    pub fn new(len: usize, cap: usize, default_val: Option<&GosValue>) -> SliceObj {
         assert!(cap >= len);
         let mut val = SliceObj {
             dark: false,
@@ -368,7 +308,7 @@ impl<'a> SliceObj {
             vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
         };
         for _ in 0..len {
-            val.push(default_val.clone());
+            val.push(default_val.unwrap().clone());
         }
         val
     }
@@ -544,7 +484,7 @@ impl Eq for SliceObj {}
 #[derive(Clone, Debug)]
 pub struct StructObj {
     pub dark: bool,
-    pub meta: GosValue,
+    pub meta: GosMetadata,
     pub fields: Vec<GosValue>,
 }
 
@@ -555,7 +495,7 @@ impl StructObj {}
 
 #[derive(Clone, Debug)]
 pub struct InterfaceObj {
-    pub meta: GosValue,
+    pub meta: GosMetadata,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
     underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
@@ -563,7 +503,7 @@ pub struct InterfaceObj {
 
 impl InterfaceObj {
     pub fn new(
-        meta: GosValue,
+        meta: GosMetadata,
         underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
     ) -> InterfaceObj {
         InterfaceObj {
@@ -830,17 +770,15 @@ impl From<EntIndex> for OpIndex {
 #[derive(Clone, Debug)]
 pub struct FunctionVal {
     pub package: PackageKey,
-    pub meta: GosValue,
+    pub meta: GosMetadata,
     pub code: Vec<Instruction>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<ValueDesc>,
-    // param_count, ret_count can be read from typ,
-    // these fields are for faster access
-    pub param_count: usize,
-    pub ret_count: usize,
-    pub local_metas: Vec<GosValue>,
-    // from local_metas, for faster runtime access
+
+    pub ret_zeros: Vec<GosValue>,
     pub local_zeros: Vec<GosValue>,
+
+    param_count: usize,
     entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
     variadic_type: Option<ValueType>,
@@ -850,56 +788,81 @@ pub struct FunctionVal {
 impl FunctionVal {
     pub fn new(
         package: PackageKey,
-        meta: GosValue,
-        variadic: Option<ValueType>,
+        meta: GosMetadata,
+        objs: &VMObjects,
         ctor: bool,
     ) -> FunctionVal {
-        FunctionVal {
-            package: package,
-            meta: meta,
-            code: Vec::new(),
-            consts: Vec::new(),
-            up_ptrs: Vec::new(),
-            param_count: 0,
-            ret_count: 0,
-            local_metas: Vec::new(),
-            local_zeros: Vec::new(),
-            entities: HashMap::new(),
-            local_alloc: 0,
-            variadic_type: variadic,
-            is_ctor: ctor,
+        match &objs.metas[meta.as_non_ptr()] {
+            MetadataType::Signature(s) => {
+                let returns: Vec<GosValue> = s.results.iter().map(|x| x.zero_val(objs)).collect();
+                let params = s.params.len() + s.recv.map_or(0, |_| 1);
+                let vtype = s.variadic.map(|x| x.get_value_type(&objs.metas));
+                FunctionVal {
+                    package: package,
+                    meta: meta,
+                    code: Vec::new(),
+                    consts: Vec::new(),
+                    up_ptrs: Vec::new(),
+                    ret_zeros: returns,
+                    local_zeros: Vec::new(),
+                    param_count: params,
+                    entities: HashMap::new(),
+                    local_alloc: 0,
+                    variadic_type: vtype,
+                    is_ctor: ctor,
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
+    #[inline]
+    pub fn param_count(&self) -> usize {
+        self.param_count
+    }
+
+    #[inline]
+    pub fn ret_count(&self) -> usize {
+        self.ret_zeros.len()
+    }
+
+    #[inline]
     pub fn is_ctor(&self) -> bool {
         self.is_ctor
     }
 
+    #[inline]
     pub fn variadic(&self) -> Option<ValueType> {
         self.variadic_type
     }
 
+    #[inline]
     pub fn local_count(&self) -> usize {
-        self.local_alloc as usize - self.param_count - self.ret_count
+        self.local_alloc as usize - self.param_count() - self.ret_count()
     }
 
+    #[inline]
     pub fn entity_index(&self, entity: &EntityKey) -> Option<&EntIndex> {
         self.entities.get(entity)
     }
 
+    #[inline]
     pub fn const_val(&self, index: OpIndex) -> &GosValue {
         &self.consts[index as usize]
     }
 
+    #[inline]
     pub fn offset(&self, loc: usize) -> OpIndex {
         // todo: don't crash if OpIndex overflows
         OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
     }
 
+    #[inline]
     pub fn next_code_index(&self) -> usize {
         self.code.len()
     }
 
+    #[inline]
     pub fn emit_inst(
         &mut self,
         op: Opcode,
@@ -944,19 +907,18 @@ impl FunctionVal {
         })
     }
 
-    // for unnamed return values, entity == None
-    // for parameters, zero == None
-    pub fn add_local(&mut self, entity: Option<EntityKey>, zero: Option<GosValue>) -> EntIndex {
+    pub fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
             let old = self.entities.insert(key, EntIndex::LocalVar(result));
             assert_eq!(old, None);
         };
-        if let Some(z) = zero {
-            self.local_zeros.push(z);
-        }
         self.local_alloc += 1;
         EntIndex::LocalVar(result)
+    }
+
+    pub fn add_local_zero(&mut self, zero: GosValue) {
+        self.local_zeros.push(zero)
     }
 
     /// add a const or get the index of a const.
@@ -988,319 +950,5 @@ impl FunctionVal {
                 i.map(|x| EntIndex::UpValue(x))
             })
             .unwrap()
-    }
-}
-
-// ----------------------------------------------------------------------------
-// MetadataVal
-#[derive(Debug)]
-pub struct SigMetadata {
-    pub recv: Option<GosValue>,
-    pub params: Vec<GosValue>,
-    pub results: Vec<GosValue>,
-    pub variadic: Option<GosValue>,
-}
-
-impl SigMetadata {
-    pub fn boxed_recv(&self, metas: &MetadataObjs) -> bool {
-        self.recv.as_ref().map_or(false, |x| {
-            MetadataVal::get_value_type(&x, metas) == ValueType::Boxed
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct OrderedMembers {
-    pub members: Vec<GosValue>,
-    pub mapping: HashMap<String, OpIndex>,
-}
-
-impl OrderedMembers {
-    pub fn new(members: Vec<GosValue>, mapping: HashMap<String, OpIndex>) -> OrderedMembers {
-        OrderedMembers {
-            members: members,
-            mapping: mapping,
-        }
-    }
-
-    pub fn iface_mapping(&self, named_obj: &OrderedMembers) -> Vec<FunctionKey> {
-        let mut result = vec![null_key!(); self.members.len()];
-        for (n, i) in self.mapping.iter() {
-            result[*i as usize] = named_obj.members[named_obj.mapping[n] as usize]
-                .as_closure()
-                .func;
-        }
-        result
-    }
-}
-
-#[derive(Debug)]
-pub enum MetadataType {
-    None,
-    Signature(SigMetadata),
-    Slice(GosValue),
-    Map(GosValue, GosValue),
-    Interface(OrderedMembers),
-    Struct(OrderedMembers),
-    Channel(GosValue),
-    Boxed(GosValue),
-    Named(OrderedMembers, GosValue),
-}
-
-#[derive(Debug)]
-pub struct MetadataVal {
-    zero_val: GosValue,
-    typ: MetadataType,
-}
-
-impl MetadataVal {
-    fn new_bool(objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: GosValue::Bool(false),
-            typ: MetadataType::None,
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    fn new_int(objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: GosValue::Int(0),
-            typ: MetadataType::None,
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    fn new_complex64(objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: GosValue::Complex64(0.0.into(), 0.0.into()),
-            typ: MetadataType::None,
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    fn new_float64(objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: GosValue::Float64(0.0.into()),
-            typ: MetadataType::None,
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    fn new_str(objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.str_zero_val.clone(),
-            typ: MetadataType::None,
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_sig(
-        recv: Option<GosValue>,
-        params: Vec<GosValue>,
-        results: Vec<GosValue>,
-        variadic: Option<GosValue>,
-        objs: &mut VMObjects,
-    ) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.closure_zero_val.clone(),
-            typ: MetadataType::Signature(SigMetadata {
-                recv: recv,
-                params: params,
-                results: results,
-                variadic: variadic,
-            }),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_slice(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.slice_zero_val.clone(),
-            typ: MetadataType::Slice(vtype),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_map(ktype: GosValue, vtype: GosValue, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.map_zero_val.clone(),
-            typ: MetadataType::Map(ktype, vtype),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_interface(fields: OrderedMembers, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.iface_zero_val.clone(),
-            typ: MetadataType::Interface(fields),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_struct(fields: OrderedMembers, objs: &mut VMObjects) -> GosValue {
-        let field_zeros: Vec<GosValue> = fields
-            .members
-            .iter()
-            .map(|x| objs.metas[*x.as_meta()].zero_val().clone())
-            .collect();
-        let struct_val = StructObj {
-            dark: false,
-            meta: GosValue::Nil, // placeholder
-            fields: field_zeros,
-        };
-        let meta = MetadataVal {
-            zero_val: GosValue::Struct(Rc::new(RefCell::new(struct_val))),
-            typ: MetadataType::Struct(fields),
-        };
-        let key = objs.metas.insert(meta);
-        objs.metas[key].zero_val().as_struct().borrow_mut().meta = GosValue::Metadata(key);
-        GosValue::Metadata(key)
-    }
-
-    pub fn new_channel(vtype: GosValue, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.chan_zero_val.clone(),
-            typ: MetadataType::Channel(vtype),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_boxed(inner: GosValue, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: objs.zero_val.boxed_zero_val.clone(),
-            typ: MetadataType::Boxed(inner),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    pub fn new_named(underlying: GosValue, objs: &mut VMObjects) -> GosValue {
-        let m = MetadataVal {
-            zero_val: GosValue::Nil, // placeholder
-            typ: MetadataType::Named(OrderedMembers::new(vec![], HashMap::new()), underlying),
-        };
-        GosValue::new_meta(m, &mut objs.metas)
-    }
-
-    #[inline]
-    pub fn zero_val(&self) -> &GosValue {
-        &self.zero_val
-    }
-
-    #[inline]
-    pub fn typ(&self) -> &MetadataType {
-        &self.typ
-    }
-
-    #[inline]
-    pub fn typ_mut(&mut self) -> &mut MetadataType {
-        &mut self.typ
-    }
-
-    #[inline]
-    pub fn sig_metadata(&self) -> &SigMetadata {
-        match &self.typ {
-            MetadataType::Signature(stdata) => stdata,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn add_method(&mut self, name: String, val: GosValue) {
-        match &mut self.typ {
-            MetadataType::Named(m, _) => {
-                m.members.push(val);
-                m.mapping.insert(name, m.members.len() as OpIndex - 1);
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn get_underlying<'a>(v: &GosValue, metas: &'a MetadataObjs) -> &'a MetadataVal {
-        let meta = &metas[*v.as_meta()];
-        match &meta.typ {
-            MetadataType::Named(_, underlying) => &metas[*underlying.as_meta()],
-            _ => meta,
-        }
-    }
-
-    #[inline]
-    pub fn get_value_type(v: &GosValue, metas: &MetadataObjs) -> ValueType {
-        let meta = &metas[*v.as_meta()];
-        match &meta.typ {
-            MetadataType::None => match &meta.zero_val {
-                GosValue::Bool(_) => ValueType::Bool,
-                GosValue::Int(_) => ValueType::Int,
-                GosValue::Float64(_) => ValueType::Float64,
-                GosValue::Complex64(_, _) => ValueType::Complex64,
-                GosValue::Str(_) => ValueType::Str,
-                _ => unreachable!(),
-            },
-            MetadataType::Signature(_) => ValueType::Function,
-            MetadataType::Slice(_) => ValueType::Slice,
-            MetadataType::Map(_, _) => ValueType::Map,
-            MetadataType::Interface(_) => ValueType::Interface,
-            MetadataType::Struct(_) => ValueType::Struct,
-            MetadataType::Channel(_) => ValueType::Channel,
-            MetadataType::Boxed(_) => ValueType::Boxed,
-            MetadataType::Named(_, u) => MetadataVal::get_value_type(u, metas),
-        }
-    }
-
-    #[inline]
-    pub fn get_method(v: &GosValue, index: OpIndex, metas: &MetadataObjs) -> GosValue {
-        match &metas[*v.as_meta()].typ {
-            MetadataType::Named(m, _) => m.members[index as usize].clone(),
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
-    pub fn get_all_methods(v: &GosValue, metas: &MetadataObjs) -> Vec<FunctionKey> {
-        match &metas[*v.as_meta()].typ {
-            MetadataType::Named(m, _) => m.members.iter().map(|x| x.as_closure().func).collect(),
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
-    pub fn field_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
-        let v = if let MetadataType::Boxed(b) = metas[*v.as_meta()].typ() {
-            b
-        } else {
-            v
-        };
-        let v = if let MetadataType::Named(_, u) = metas[*v.as_meta()].typ() {
-            u
-        } else {
-            v
-        };
-        if let MetadataType::Struct(m) = metas[*v.as_meta()].typ() {
-            m.mapping[name] as OpIndex
-        } else {
-            unreachable!()
-        }
-    }
-
-    /// method_index returns the index of the method of a non-interface
-    #[inline]
-    pub fn method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
-        if let MetadataType::Named(m, _) = metas[*v.as_meta()].typ() {
-            m.mapping[name] as OpIndex
-        } else {
-            unreachable!()
-        }
-    }
-
-    /// iface_method_index returns the index of the method of an interface
-    #[inline]
-    pub fn iface_method_index(v: &GosValue, name: &str, metas: &MetadataObjs) -> OpIndex {
-        if let MetadataType::Named(_, under) = metas[*v.as_meta()].typ() {
-            if let MetadataType::Interface(m) = metas[*under.as_meta()].typ() {
-                m.mapping[name] as OpIndex
-            } else {
-                unreachable!()
-            }
-        } else {
-            unreachable!()
-        }
     }
 }

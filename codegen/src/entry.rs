@@ -43,11 +43,10 @@ impl<'a> EntryGen<'a> {
     // generate the entry function for ByteCode
     fn gen_entry_func(&mut self, pkg: PackageKey, index: OpIndex) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
-        let fmeta = self.objects.default_sig_meta.as_ref().unwrap();
-        let fval = FunctionVal::new(null_key!(), fmeta.clone(), None, false);
-        let fkey = self.objects.functions.insert(fval);
+        let fmeta = self.objects.metadata.default_sig;
+        let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
         let main_func_index = *self.objects.packages[pkg].get_member_index("main").unwrap();
-        let func = &mut self.objects.functions[fkey];
+        let func = &mut self.objects.functions[*f.as_function()];
         func.emit_import(index, pkg);
         func.emit_load(
             EntIndex::PackageMember(main_func_index),
@@ -57,7 +56,7 @@ impl<'a> EntryGen<'a> {
         func.emit_pre_call();
         func.emit_call(false);
         func.emit_return();
-        fkey
+        *f.as_function()
     }
 
     pub fn gen(

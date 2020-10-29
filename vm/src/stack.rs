@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType, COPYABLE_END};
+use super::metadata::Metadata;
 use super::value::*;
 use std::cmp::Ordering;
 
@@ -36,7 +37,7 @@ impl Stack {
     pub fn new() -> Stack {
         Stack {
             c: vec![GosValue64::nil(); DEFAULT_SIZE],
-            rc: vec![GosValue::Nil; DEFAULT_SIZE],
+            rc: vec![GosValue::new_nil(); DEFAULT_SIZE],
             cursor: 0,
             max: DEFAULT_SIZE - 1,
         }
@@ -68,7 +69,7 @@ impl Stack {
 
     #[inline]
     pub fn push_nil(&mut self) {
-        *self.get_rc_mut(self.cursor) = GosValue::Nil;
+        *self.get_rc_mut(self.cursor) = GosValue::new_nil();
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
     }
@@ -103,7 +104,7 @@ impl Stack {
         if t <= COPYABLE_END {
             self.get_c(self.cursor).into_v128(t)
         } else {
-            let mut ret = GosValue::Nil;
+            let mut ret = GosValue::new_nil();
             std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
             ret
         }
@@ -180,11 +181,12 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, zero: &ZeroVal) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, md: &Metadata) {
         if t <= COPYABLE_END {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
-            *self.get_rc_mut(li) = self.get_rc(ri).copy_semantic(Some((zero, t)));
+            let v = self.get_rc(ri).copy_semantic(Some(self.get_rc(li)), md);
+            *self.get_rc_mut(li) = v;
         }
     }
 
@@ -202,13 +204,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, zero: &ZeroVal) {
+    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, md: &Metadata) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
             if t <= COPYABLE_END {
                 self.get_c(rhs_s_index).into_v128(t)
             } else {
-                self.get_rc(rhs_s_index).copy_semantic(Some((zero, t)))
+                self.get_rc(rhs_s_index).copy_semantic(Some(target), md)
             }
         } else {
             let ri = Stack::offset(self.len(), -1);

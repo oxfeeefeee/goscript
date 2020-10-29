@@ -1,6 +1,8 @@
 pub mod instruction;
 pub mod objects;
 
+pub mod metadata;
+
 pub mod value;
 
 mod stack;

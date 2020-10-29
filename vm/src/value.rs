@@ -1,5 +1,6 @@
 //#![allow(dead_code)]
 use super::instruction::{Opcode, ValueType};
+use super::metadata::*;
 pub use super::objects::*;
 use ordered_float;
 use std::cell::RefCell;
@@ -71,7 +72,7 @@ macro_rules! cmp_int_float {
 // GosValue
 #[derive(Debug, Clone)]
 pub enum GosValue {
-    Nil,
+    Nil(GosMetadata),
     Bool(bool),
     Int(isize),
     Float64(F64), // becasue in Go there is no "float", just float64
@@ -81,7 +82,7 @@ pub enum GosValue {
     // they are static data, don't use Rc for better performance
     Function(FunctionKey),
     Package(PackageKey),
-    Metadata(MetadataKey),
+    Metadata(GosMetadata),
 
     Str(Rc<StringObj>), // "String" is taken
     Boxed(Box<BoxedObj>),
@@ -95,6 +96,11 @@ pub enum GosValue {
 
 impl GosValue {
     #[inline]
+    pub fn new_nil() -> GosValue {
+        GosValue::Nil(GosMetadata::Untyped)
+    }
+
+    #[inline]
     pub fn new_str(s: String) -> GosValue {
         GosValue::Str(Rc::new(StringObj::with_str(s)))
     }
@@ -105,7 +111,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_slice(len: usize, cap: usize, dval: &GosValue, slices: &mut SliceObjs) -> GosValue {
+    pub fn new_slice(
+        len: usize,
+        cap: usize,
+        dval: Option<&GosValue>,
+        slices: &mut SliceObjs,
+    ) -> GosValue {
         let s = Rc::new(SliceObj::new(len, cap, dval));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
@@ -126,14 +137,20 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn new_struct(obj: StructObj, structs: &mut StructObjs) -> GosValue {
+        let val = Rc::new(RefCell::new(obj));
+        structs.push(Rc::downgrade(&val));
+        GosValue::Struct(val)
+    }
+
+    #[inline]
     pub fn new_function(
         package: PackageKey,
-        meta: GosValue,
-        variadic: Option<ValueType>,
-        ctor: bool,
+        meta: GosMetadata,
         objs: &mut VMObjects,
+        ctor: bool,
     ) -> GosValue {
-        let val = FunctionVal::new(package, meta, variadic, ctor);
+        let val = FunctionVal::new(package, meta, objs, ctor);
         GosValue::Function(objs.functions.insert(val))
     }
 
@@ -145,7 +162,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_iface(
-        meta: GosValue,
+        meta: GosMetadata,
         underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
         ifaces: &mut InterfaceObjs,
     ) -> GosValue {
@@ -155,8 +172,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_meta(t: MetadataVal, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(metas.insert(t))
+    pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
+        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t)))
     }
 
     #[inline]
@@ -225,7 +242,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_meta(&self) -> &MetadataKey {
+    pub fn as_meta(&self) -> &GosMetadata {
         unwrap_gos_val!(Metadata, self)
     }
 
@@ -235,14 +252,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn meta_get_value_type(&self, metas: &MetadataObjs) -> ValueType {
-        MetadataVal::get_value_type(&self, metas)
-    }
-
-    #[inline]
     pub fn get_type(&self) -> ValueType {
         match self {
-            GosValue::Nil => ValueType::Nil,
+            GosValue::Nil(_) => ValueType::Nil,
             GosValue::Bool(_) => ValueType::Bool,
             GosValue::Int(_) => ValueType::Int,
             GosValue::Float64(_) => ValueType::Float64,
@@ -262,20 +274,20 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_meta(&self, objs: &VMObjects) -> GosValue {
+    pub fn get_meta(&self, md: &Metadata) -> GosMetadata {
         match self {
-            GosValue::Nil => GosValue::Nil,
-            GosValue::Bool(_) => objs.bool_meta.clone(),
-            GosValue::Int(_) => objs.int_meta.clone(),
-            GosValue::Float64(_) => objs.float64_meta.clone(),
-            GosValue::Complex64(_, _) => objs.complex64_meta.clone(),
-            GosValue::Str(_) => objs.string_meta.clone(),
-            GosValue::Boxed(_) => unreachable!(),
-            GosValue::Closure(_) => unreachable!(),
+            GosValue::Nil(m) => *m,
+            GosValue::Bool(_) => md.mbool,
+            GosValue::Int(_) => md.mint,
+            GosValue::Float64(_) => md.mfloat64,
+            GosValue::Complex64(_, _) => md.mcomplex64,
+            GosValue::Str(_) => md.mstr,
+            GosValue::Boxed(_) => unimplemented!(),
+            GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => unimplemented!(),
             GosValue::Map(_) => unimplemented!(),
             GosValue::Interface(_) => unimplemented!(),
-            GosValue::Struct(_) => unimplemented!(),
+            GosValue::Struct(s) => s.borrow().meta,
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
@@ -284,12 +296,34 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, nil: Option<(&ZeroVal, ValueType)>) -> GosValue {
+    pub fn set_nil(&mut self, md: &Metadata) {
         match self {
-            GosValue::Nil => {
-                let (zv, t) = nil.unwrap();
-                zv.nil_zero_val(t).clone()
-            }
+            GosValue::Nil(_) => unreachable!(),
+            GosValue::Bool(_) => unreachable!(),
+            GosValue::Int(_) => unreachable!(),
+            GosValue::Float64(_) => unreachable!(),
+            GosValue::Complex64(_, _) => unreachable!(),
+            GosValue::Str(_) => unreachable!(),
+            GosValue::Boxed(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Closure(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Slice(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Map(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Interface(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Struct(_) => unreachable!(),
+            GosValue::Channel(_) => *self = GosValue::Nil(self.get_meta(md)),
+            GosValue::Function(_) => unreachable!(),
+            GosValue::Package(_) => unreachable!(),
+            GosValue::Metadata(_) => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn copy_semantic(&self, lhs: Option<&GosValue>, md: &Metadata) -> GosValue {
+        match self {
+            GosValue::Nil(m) => match m {
+                GosMetadata::Untyped => GosValue::Nil(lhs.unwrap().get_meta(md)),
+                _ => self.clone(),
+            },
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
@@ -395,7 +429,7 @@ impl<'a> GosValueDebug<'a> {
 impl<'a> fmt::Debug for GosValueDebug<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.val {
-            GosValue::Nil
+            GosValue::Nil(_)
             | GosValue::Bool(_)
             | GosValue::Int(_)
             | GosValue::Float64(_)
@@ -410,7 +444,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             GosValue::Boxed(k) => k.fmt(f),
             GosValue::Function(k) => self.objs.functions[*k].fmt(f),
             GosValue::Package(k) => self.objs.packages[*k].fmt(f),
-            GosValue::Metadata(k) => self.objs.metas[*k].fmt(f),
+            GosValue::Metadata(k) => k.fmt(f),
             //_ => unreachable!(),
         }
     }
@@ -428,7 +462,6 @@ pub union V64Union {
     uint: isize,
     ufloat64: F64,
     ucomplex64: (F32, F32),
-    umetadata: MetadataKey,
     ufunction: FunctionKey,
     upackage: PackageKey,
 }
@@ -457,7 +490,6 @@ impl GosValue64 {
             ),
             GosValue::Function(k) => (V64Union { ufunction: *k }, ValueType::Function),
             GosValue::Package(k) => (V64Union { upackage: *k }, ValueType::Package),
-            GosValue::Metadata(k) => (V64Union { umetadata: *k }, ValueType::Metadata),
             _ => unreachable!(),
         };
         (
@@ -523,7 +555,6 @@ impl GosValue64 {
                 }
                 ValueType::Function => GosValue::Function(self.data.ufunction),
                 ValueType::Package => GosValue::Package(self.data.upackage),
-                ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
                 _ => unreachable!(),
             }
         }
@@ -568,7 +599,6 @@ impl GosValue64 {
                 }
                 ValueType::Function => GosValue::Function(self.data.ufunction),
                 ValueType::Package => GosValue::Package(self.data.upackage),
-                ValueType::Metadata => GosValue::Metadata(self.data.umetadata),
                 _ => unreachable!(),
             }
         }
@@ -716,7 +746,7 @@ mod test {
     fn test_gosvalue_debug() {
         let mut o = VMObjects::new();
         let s = GosValue::new_str("test_string".to_string());
-        let slice = GosValue::new_slice(10, 10, &GosValue::Int(0), &mut o.slices);
+        let slice = GosValue::new_slice(10, 10, Some(&GosValue::Int(0)), &mut o.slices);
         dbg!(
             GosValueDebug::new(&s, &o),
             //GosValueDebug::new(&GosValue::Nil, &o),
