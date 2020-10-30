@@ -3,8 +3,8 @@ use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
 use goscript_types::{
-    BasicType, ConstValue, EntityType, ObjKey, PackageKey as TCPackageKey, TCObjects, Type,
-    TypeInfo, TypeKey as TCTypeKey,
+    BasicType, ConstValue, EntityType, ObjKey, OperandMode, PackageKey as TCPackageKey, TCObjects,
+    Type, TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::instruction::{OpIndex, ValueType};
 use goscript_vm::metadata::*;
@@ -45,6 +45,10 @@ impl<'a> TypeLookup<'a> {
         self.ti.types.get(&e.id()).unwrap().typ
     }
 
+    pub fn get_expr_mode(&self, e: &Expr) -> &OperandMode {
+        &self.ti.types.get(&e.id()).unwrap().mode
+    }
+
     // some of the built in funcs are not recorded
     pub fn try_get_expr_tc_type(&self, e: &Expr) -> Option<TCTypeKey> {
         self.ti
@@ -83,9 +87,9 @@ impl<'a> TypeLookup<'a> {
         self.value_type_from_tc(self.get_expr_tc_type(e))
     }
 
-    pub fn gen_type_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosMetadata {
+    pub fn get_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosMetadata {
         let typ = self.ti.types.get(&id).unwrap().typ;
-        self.type_from_tc(typ, objects)
+        self.meta_from_tc(typ, objects)
     }
 
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
@@ -107,7 +111,7 @@ impl<'a> TypeLookup<'a> {
     }
 
     pub fn gen_def_type_meta(&mut self, ikey: IdentKey, objects: &mut VMObjects) -> GosMetadata {
-        self.type_from_tc(self.get_def_tc_type(ikey), objects)
+        self.meta_from_tc(self.get_def_tc_type(ikey), objects)
     }
 
     pub fn get_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
@@ -127,9 +131,9 @@ impl<'a> TypeLookup<'a> {
         (t0, t1)
     }
 
-    pub fn type_from_tc(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
+    pub fn meta_from_tc(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         if !self.types_cache.contains_key(&typ) {
-            let val = self.type_from_tc_impl(typ, vm_objs);
+            let val = self.meta_from_tc_impl(typ, vm_objs);
             self.types_cache.insert(typ, val);
         }
         self.types_cache.get(&typ).unwrap().clone()
@@ -226,16 +230,16 @@ impl<'a> TypeLookup<'a> {
     }
 
     // get vm_type from tc_type
-    fn type_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
+    fn meta_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         match &self.tc_objs.types[typ] {
             Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs),
             Type::Slice(detail) => {
-                let el_type = self.type_from_tc(detail.elem(), vm_objs);
+                let el_type = self.meta_from_tc(detail.elem(), vm_objs);
                 GosMetadata::new_slice(el_type, &mut vm_objs.metas)
             }
             Type::Map(detail) => {
-                let ktype = self.type_from_tc(detail.key(), vm_objs);
-                let vtype = self.type_from_tc(detail.elem(), vm_objs);
+                let ktype = self.meta_from_tc(detail.key(), vm_objs);
+                let vtype = self.meta_from_tc(detail.elem(), vm_objs);
                 GosMetadata::new_map(ktype, vtype, &mut vm_objs.metas)
             }
             Type::Struct(detail) => {
@@ -254,7 +258,7 @@ impl<'a> TypeLookup<'a> {
                         .unwrap()
                         .vars()
                         .iter()
-                        .map(|&x| self.type_from_tc(self.tc_objs.lobjs[x].typ().unwrap(), vm_objs))
+                        .map(|&x| self.meta_from_tc(self.tc_objs.lobjs[x].typ().unwrap(), vm_objs))
                         .collect()
                 };
                 let params = convert(detail.params());
@@ -264,7 +268,7 @@ impl<'a> TypeLookup<'a> {
                     let recv_tc_type = self.tc_objs.lobjs[*r].typ().unwrap();
                     // to avoid infinite recursion
                     if !self.tc_objs.types[recv_tc_type].is_interface(self.tc_objs) {
-                        recv = Some(self.type_from_tc(recv_tc_type, vm_objs));
+                        recv = Some(self.meta_from_tc(recv_tc_type, vm_objs));
                     }
                 }
                 let variadic = if detail.variadic() {
@@ -279,11 +283,11 @@ impl<'a> TypeLookup<'a> {
                 GosMetadata::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
             }
             Type::Pointer(detail) => {
-                let inner = self.type_from_tc(detail.base(), vm_objs);
+                let inner = self.meta_from_tc(detail.base(), vm_objs);
                 inner.ptr_to()
             }
             Type::Named(detail) => {
-                let underlying = self.type_from_tc(detail.underlying(), vm_objs);
+                let underlying = self.meta_from_tc(detail.underlying(), vm_objs);
                 GosMetadata::new_named(underlying, &mut vm_objs.metas)
             }
             _ => {
@@ -370,7 +374,7 @@ impl<'a> TypeLookup<'a> {
         let mut map = HashMap::<String, OpIndex>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
-            let f_type = self.type_from_tc(field.typ().unwrap(), vm_objs);
+            let f_type = self.meta_from_tc(field.typ().unwrap(), vm_objs);
             vec.push(f_type);
             map.insert(field.name().clone(), i as OpIndex);
         }

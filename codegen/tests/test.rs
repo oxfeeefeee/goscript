@@ -145,6 +145,12 @@ fn test_switch() {
 }
 
 #[test]
+fn test_typeswitch() {
+    let err_cnt = load_parse_gen("./tests/data/typeswitch.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 

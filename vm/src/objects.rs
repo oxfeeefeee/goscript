@@ -749,7 +749,8 @@ pub enum EntIndex {
     LocalVar(OpIndex),
     UpValue(OpIndex),
     PackageMember(OpIndex),
-    BuiltIn(Opcode), // built-in identifiers
+    BuiltInVal(Opcode), // built-in identifiers
+    BuiltInType(GosMetadata),
     Blank,
 }
 
@@ -760,7 +761,8 @@ impl From<EntIndex> for OpIndex {
             EntIndex::LocalVar(i) => i,
             EntIndex::UpValue(i) => i,
             EntIndex::PackageMember(i) => i,
-            EntIndex::BuiltIn(_) => unreachable!(),
+            EntIndex::BuiltInVal(_) => unreachable!(),
+            EntIndex::BuiltInType(_) => unreachable!(),
             EntIndex::Blank => unreachable!(),
         }
     }

@@ -73,7 +73,6 @@ pub enum RightHandSide<'a> {
     Nothing,
     Values(&'a Vec<Expr>),
     Range(&'a Expr),
-    TypeSwitch(&'a Expr),
 }
 
 pub trait FuncGen {
@@ -164,7 +163,11 @@ impl FuncGen for FunctionVal {
                 self.emit_inst(Opcode::LOAD_PKG_FIELD, Some(typ), None, None, Some(i));
                 self.emit_raw_inst(key_to_u64(pkg));
             }
-            EntIndex::BuiltIn(op) => self.emit_code(op),
+            EntIndex::BuiltInVal(op) => self.emit_code(op),
+            EntIndex::BuiltInType(m) => {
+                let i = self.add_const(None, GosValue::Metadata(m));
+                self.emit_load(i, None, ValueType::Metadata);
+            }
             EntIndex::Blank => unreachable!(),
         }
     }
@@ -199,7 +202,8 @@ impl FuncGen for FunctionVal {
                         None,
                     )
                 }
-                EntIndex::BuiltIn(_) => unreachable!(),
+                EntIndex::BuiltInVal(_) => unreachable!(),
+                EntIndex::BuiltInType(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
             LeftHandSide::IndexSelExpr(info) => match info.typ {

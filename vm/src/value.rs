@@ -351,6 +351,7 @@ impl PartialEq for GosValue {
             (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
             (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
             (GosValue::Str(sa), GosValue::Str(sb)) => *sa == *sb,
+            (GosValue::Metadata(ma), GosValue::Metadata(mb)) => ma == mb,
             (GosValue::Closure(sa), GosValue::Closure(sb)) => Rc::ptr_eq(sa, sb),
             _ => false,
         }

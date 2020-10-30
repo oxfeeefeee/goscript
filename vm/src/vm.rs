@@ -153,7 +153,7 @@ impl Fiber {
             total_inst += 1;
             //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
             frame.pc += 1;
-            //dbg!(inst);
+            //dbg!(inst_op);
             match inst_op {
                 Opcode::PUSH_CONST => {
                     let index = inst.imm();
@@ -633,8 +633,23 @@ impl Fiber {
 
                 Opcode::TYPE_ASSERT => {}
                 Opcode::TYPE_TRY_ASSERT => {}
-                Opcode::TYPE => {}
-                Opcode::TYPE_ASSIGN => {}
+                Opcode::TYPE | Opcode::TYPE_ASSIGN => {
+                    match stack.pop_with_type(ValueType::Interface) {
+                        GosValue::Interface(iface) => {
+                            let val = match iface.borrow().underlying() {
+                                Some((v, _)) => v.copy_semantic(None, &objs.metadata),
+                                None => GosValue::new_nil(),
+                            };
+                            stack.push(GosValue::Metadata(val.get_meta(&objs.metadata)));
+                            if inst_op == Opcode::TYPE_ASSIGN {
+                                let index = inst.imm();
+                                let s_index = Stack::offset(stack_base, index);
+                                stack.set(s_index, val);
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
 
                 Opcode::IMPORT => {
                     let pkey = pkgs[inst.imm() as usize];

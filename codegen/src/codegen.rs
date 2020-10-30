@@ -1,10 +1,11 @@
-#![allow(dead_code)]
+//#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
 
 use super::branch::*;
+use super::builtins::Builtins;
 use super::emit::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
@@ -20,7 +21,9 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
-use goscript_types::{PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey};
+use goscript_types::{
+    OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey,
+};
 
 macro_rules! current_func_mut {
     ($owner:ident) => {
@@ -34,38 +37,17 @@ macro_rules! current_func {
     };
 }
 
-/// Built-in functions are not called like normal function for performance reasons
-pub struct BuiltInFunc {
-    name: &'static str,
-    opcode: Opcode,
-    params_count: isize,
-    variadic: bool,
-}
-
-impl BuiltInFunc {
-    pub fn new(name: &'static str, op: Opcode, params: isize, variadic: bool) -> BuiltInFunc {
-        BuiltInFunc {
-            name: name,
-            opcode: op,
-            params_count: params,
-            variadic: variadic,
-        }
-    }
-}
-
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
     ast_objs: &'a AstObjects,
-    tc_objs: &'a TCObjects,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     pkg_util: PkgUtil<'a>,
     break_cont: BreakContinue,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
-    built_in_funcs: Vec<BuiltInFunc>,
-    built_in_vals: HashMap<&'static str, Opcode>,
+    builtins: Builtins,
     blank_ident: IdentKey,
 }
 
@@ -81,30 +63,17 @@ impl<'a> CodeGen<'a> {
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
-        let funcs = vec![
-            BuiltInFunc::new("new", Opcode::NEW, 1, false),
-            BuiltInFunc::new("make", Opcode::MAKE, 2, true),
-            BuiltInFunc::new("len", Opcode::LEN, 1, false),
-            BuiltInFunc::new("cap", Opcode::CAP, 1, false),
-            BuiltInFunc::new("append", Opcode::APPEND, 2, true),
-            BuiltInFunc::new("assert", Opcode::ASSERT, 1, false),
-        ];
-        let mut vals = HashMap::new();
-        vals.insert("true", Opcode::PUSH_TRUE);
-        vals.insert("false", Opcode::PUSH_FALSE);
-        vals.insert("nil", Opcode::PUSH_NIL);
+        let builtins = Builtins::new(&vmo.metadata);
         CodeGen {
             objects: vmo,
             ast_objs: asto,
-            tc_objs: tco,
             tlookup: TypeLookup::new(tco, ti),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
             break_cont: BreakContinue::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
-            built_in_funcs: funcs,
-            built_in_vals: vals,
+            builtins: builtins,
             blank_ident: bk,
         }
     }
@@ -117,11 +86,7 @@ impl<'a> CodeGen<'a> {
         let id = &self.ast_objs.idents[*ident];
         // 0. try built-ins
         if id.entity_key().is_none() {
-            if let Some(op) = self.built_in_vals.get(&*id.name) {
-                return EntIndex::BuiltIn(*op);
-            } else {
-                unreachable!();
-            }
+            return self.builtins.val_type_index(&*id.name);
         }
 
         // 1. try local first
@@ -302,7 +267,7 @@ impl<'a> CodeGen<'a> {
                             None => {
                                 let t = self
                                     .tlookup
-                                    .gen_type_meta_by_node_id(sexpr.expr.id(), self.objects);
+                                    .get_meta_by_node_id(sexpr.expr.id(), self.objects);
                                 let name = &self.ast_objs.idents[sexpr.sel].name;
                                 let i = t.field_index(name, &self.objects.metas);
 
@@ -430,12 +395,6 @@ impl<'a> CodeGen<'a> {
                 );
                 tkv[1..].to_vec()
             }
-            RightHandSide::TypeSwitch(e) => {
-                self.visit_expr(e);
-                let func = current_func_mut!(self);
-                func.emit_code(Opcode::TYPE_ASSIGN);
-                vec![self.tlookup.get_expr_tc_type(e)]
-            }
         };
 
         // now the values should be on stack, generate code to set them to the lhs
@@ -550,6 +509,59 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    fn gen_switch_body(&mut self, body: &BlockStmt, tag_type: ValueType) {
+        let mut helper = SwitchHelper::new();
+        let mut has_default = false;
+        for (i, stmt) in body.list.iter().enumerate() {
+            helper.add_case_clause();
+            let cc = SwitchHelper::to_case_clause(stmt);
+            match &cc.list {
+                Some(l) => {
+                    for c in l.iter() {
+                        self.visit_expr(c);
+                        let func = current_func_mut!(self);
+                        helper.tags.add_case(i, func.next_code_index());
+                        func.emit_code_with_type(Opcode::SWITCH, tag_type);
+                    }
+                }
+                None => has_default = true,
+            }
+        }
+        if has_default {
+            let func = current_func_mut!(self);
+            helper.tags.add_default(func.next_code_index());
+            func.emit_code(Opcode::JUMP);
+        }
+
+        for (i, stmt) in body.list.iter().enumerate() {
+            let cc = SwitchHelper::to_case_clause(stmt);
+            let func = current_func_mut!(self);
+            let default = cc.list.is_none();
+            if default {
+                helper.tags.patch_default(func, func.next_code_index());
+            } else {
+                helper.tags.patch_case(func, i, func.next_code_index());
+            }
+            for s in cc.body.iter() {
+                self.visit_stmt(s);
+            }
+            if !SwitchHelper::has_fall_through(stmt) {
+                let func = current_func_mut!(self);
+                if default {
+                    helper.ends.add_default(func.next_code_index());
+                } else {
+                    helper.ends.add_case(i, func.next_code_index());
+                }
+                func.emit_code(Opcode::JUMP);
+            }
+        }
+        let end = current_func!(self).next_code_index();
+        helper.patch_ends(current_func_mut!(self), end);
+
+        // pop the tag
+        current_func_mut!(self).emit_pop(1);
+    }
+
     fn gen_func_def(
         &mut self,
         fmeta: GosMetadata,
@@ -616,17 +628,6 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn get_use_type_meta(&mut self, expr: &Expr) -> (GosMetadata, TCTypeKey) {
-        let ikey = match expr {
-            Expr::Star(s) => *s.expr.try_as_ident().unwrap(),
-            Expr::Ident(i) => *i,
-            _ => unreachable!(),
-        };
-        let typ = self.tlookup.get_use_tc_type(ikey);
-        let m = self.tlookup.type_from_tc(typ, self.objects);
-        (m, typ)
-    }
-
     fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
         match typ {
             Some(type_expr) => match type_expr {
@@ -640,7 +641,8 @@ impl<'a> CodeGen<'a> {
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
-        let (meta, t) = self.get_use_type_meta(expr);
+        let t = self.tlookup.get_expr_tc_type(expr);
+        let meta = self.tlookup.meta_from_tc(t, self.objects);
         let meta = meta.get_underlying(&self.objects.metas);
         let zero_val = meta.zero_val(&self.objects);
         (zero_val, t)
@@ -703,24 +705,6 @@ impl<'a> CodeGen<'a> {
             pkg.add_member(ident.name.clone(), cst);
         }
         index
-    }
-
-    fn gen_push_ident_str(&mut self, ident: &IdentKey) {
-        let name = self.ast_objs.idents[*ident].name.clone();
-        let gos_val = GosValue::new_str(name);
-        let func = current_func_mut!(self);
-        let index = func.add_const(None, gos_val);
-        func.emit_load(index, None, ValueType::Str);
-    }
-
-    fn builtin_func_index(&self, name: &str) -> Option<OpIndex> {
-        self.built_in_funcs.iter().enumerate().find_map(|(i, x)| {
-            if x.name == name {
-                Some(i as OpIndex)
-            } else {
-                None
-            }
-        })
     }
 
     fn add_pkg_var_member(&mut self, pkey: PackageKey, vars: &Vec<Rc<ValueSpec>>) {
@@ -815,7 +799,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
-        let vm_ftype = self.tlookup.gen_type_meta_by_node_id(id, self.objects);
+        let vm_ftype = self.tlookup.get_meta_by_node_id(id, self.objects);
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Function(fkey));
@@ -841,9 +825,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         let (t0, t1) = self.tlookup.get_selection_value_types(id);
-        let t = self
-            .tlookup
-            .gen_type_meta_by_node_id(expr.id(), self.objects);
+        let t = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
         let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
             if self.tlookup.get_expr_value_type(expr) == ValueType::Interface {
@@ -924,7 +906,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if let Expr::Ident(ikey) = func {
             let ident = self.ast_objs.idents[*ikey].clone();
             if ident.entity.into_key().is_none() {
-                return if let Some(i) = self.builtin_func_index(&ident.name) {
+                return if let Some(i) = self.builtins.func_index(&ident.name) {
                     let t = self.tlookup.get_expr_value_type(&params[0]);
                     let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
                     let count = params.iter().map(|e| self.visit_expr(e)).count();
@@ -932,7 +914,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     if let Some(t) = self.tlookup.try_get_expr_tc_type(func) {
                         self.try_cast_params_to_iface(t, params);
                     }
-                    let bf = &self.built_in_funcs[i as usize];
+                    let bf = &self.builtins.get_func_by_index(i as usize);
                     let func = current_func_mut!(self);
                     let (t_variadic, count) = if bf.variadic {
                         if ellipsis {
@@ -964,11 +946,23 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_star(&mut self, expr: &Expr) {
-        self.visit_expr(expr);
-        let t = self.tlookup.get_expr_value_type(expr);
-        //todo: could this be a pointer type?
-        let code = Opcode::DEREF;
-        current_func_mut!(self).emit_code_with_type(code, t);
+        match self.tlookup.get_expr_mode(expr) {
+            OperandMode::TypeExpr => {
+                let m = self
+                    .tlookup
+                    .meta_from_tc(self.tlookup.get_expr_tc_type(expr), self.objects)
+                    .ptr_to();
+                let func = current_func_mut!(self);
+                let index = func.add_const(None, GosValue::Metadata(m));
+                func.emit_load(index, None, ValueType::Metadata);
+            }
+            OperandMode::Variable => {
+                self.visit_expr(expr);
+                let t = self.tlookup.get_expr_value_type(expr);
+                current_func_mut!(self).emit_code_with_type(Opcode::DEREF, t);
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) {
@@ -1021,7 +1015,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         self.visit_expr(&sexpr.expr);
                         let t0 = self
                             .tlookup
-                            .gen_type_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
+                            .get_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
                         let name = &self.ast_objs.idents[sexpr.sel].name;
                         let i = t0.field_index(name, &self.objects.metas);
                         current_func_mut!(self).emit_code_with_imm(Opcode::REF_STRUCT_FIELD, i);
@@ -1099,9 +1093,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
-        let m = self
-            .tlookup
-            .gen_type_meta_by_node_id(arr.id(), self.objects);
+        let m = self.tlookup.get_meta_by_node_id(arr.id(), self.objects);
         let func = current_func_mut!(self);
         let i = func.add_const(None, GosValue::Metadata(m));
         func.emit_load(i, None, ValueType::Metadata);
@@ -1153,7 +1145,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
                     let m = self.tlookup.gen_def_type_meta(ts.name, self.objects);
-                    self.current_func_add_const_def(&ident, m.zero_val(&self.objects));
+                    self.current_func_add_const_def(&ident, GosValue::Metadata(m));
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
@@ -1182,7 +1174,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let (meta, _) = self.get_use_type_meta(&field.typ);
+            let meta = self
+                .tlookup
+                .get_meta_by_node_id(field.typ.id(), self.objects);
             meta.add_method(name.clone(), cls, &mut self.objects.metas);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
@@ -1312,56 +1306,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             }
         };
 
-        let mut helper = SwitchHelper::new();
-        let mut has_default = false;
-        for (i, stmt) in sstmt.body.list.iter().enumerate() {
-            helper.add_case_clause();
-            let cc = SwitchHelper::to_case_clause(stmt);
-            match &cc.list {
-                Some(l) => {
-                    for c in l.iter() {
-                        self.visit_expr(c);
-                        let func = current_func_mut!(self);
-                        helper.tags.add_case(i, func.next_code_index());
-                        func.emit_code_with_type(Opcode::SWITCH, tag_type);
-                    }
-                }
-                None => has_default = true,
-            }
-        }
-        // pop the tag
-        current_func_mut!(self).emit_pop(1);
-        if has_default {
-            let func = current_func_mut!(self);
-            helper.tags.add_default(func.next_code_index());
-            func.emit_code(Opcode::JUMP);
-        }
+        self.gen_switch_body(&*sstmt.body, tag_type);
 
-        for (i, stmt) in sstmt.body.list.iter().enumerate() {
-            let cc = SwitchHelper::to_case_clause(stmt);
-            let func = current_func_mut!(self);
-            let default = cc.list.is_none();
-            if default {
-                helper.tags.patch_default(func, func.next_code_index());
-            } else {
-                helper.tags.patch_case(func, i, func.next_code_index());
-            }
-            for s in cc.body.iter() {
-                self.visit_stmt(s);
-            }
-            if !SwitchHelper::has_fall_through(stmt) {
-                let func = current_func_mut!(self);
-                if default {
-                    helper.ends.add_default(func.next_code_index());
-                } else {
-                    helper.ends.add_case(i, func.next_code_index());
-                }
-                func.emit_code(Opcode::JUMP);
-            }
-        }
         let end = current_func!(self).next_code_index();
-        helper.patch_ends(current_func_mut!(self), end);
-
         self.break_cont
             .leave_block(current_func_mut!(self), None, end);
     }
@@ -1389,12 +1336,16 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let ident_key = ident.entity.clone().into_key();
             let func = current_func_mut!(self);
             let index = func.add_local(ident_key);
-            // todo: add_local_zero
-            let lhs = (LeftHandSide::Primitive(index), None);
-            let rhs = RightHandSide::TypeSwitch(v);
-            self.gen_assign_def_var(&vec![lhs], &None, &rhs);
+            func.add_local_zero(GosValue::new_nil());
+            self.visit_expr(v);
+            let func = current_func_mut!(self);
+            func.emit_code_with_imm(Opcode::TYPE_ASSIGN, index.into());
+        } else {
+            self.visit_expr(v);
+            current_func_mut!(self).emit_code(Opcode::TYPE);
         }
-        //todo
+
+        self.gen_switch_body(&*tstmt.body, ValueType::Metadata);
     }
 
     fn visit_stmt_comm(&mut self, _cclause: &CommClause) {

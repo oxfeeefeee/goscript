@@ -1,0 +1,43 @@
+package main
+
+type S1 struct {i int; j int}
+
+func typeName(v interface{}) string {
+	switch v.(type) {
+	case int:
+		return "int"
+	case string:
+		return "string" 
+    case *S1:
+        return "S1"
+	default:
+		return "unknown"
+	}
+}
+
+
+func typeName2(v interface{}) string {
+	switch i := v.(type) {
+	case int:
+        assert(i == 888)
+		return "int"
+	case string:
+		return "string" 
+    case *S1:
+		_ = i
+        return "S1"
+	default:
+		return "unknown"
+	}
+	return "int"
+}
+
+func main() {
+   var s *S1;
+   re := typeName(s)
+   assert(re == "S1")
+   re = typeName2(888)
+   assert(re == "int")
+   
+
+}

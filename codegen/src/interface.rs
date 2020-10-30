@@ -42,8 +42,8 @@ impl IfaceMapping {
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
     ) -> (GosMetadata, Rc<Vec<FunctionKey>>) {
-        let i = lookup.type_from_tc(i_s.0, objs);
-        let s = lookup.type_from_tc(i_s.1, objs);
+        let i = lookup.meta_from_tc(i_s.0, objs);
+        let s = lookup.meta_from_tc(i_s.1, objs);
         let ifields = match &objs.metas[i.as_non_ptr()] {
             MetadataType::Named(_, iface) => match &objs.metas[iface.as_non_ptr()] {
                 MetadataType::Interface(m) => m,

@@ -31,4 +31,5 @@ pub use constant::Value as ConstValue;
 pub use importer::{Config, ImportKey, Importer};
 pub use obj::EntityType;
 pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
+pub use operand::OperandMode;
 pub use typ::{BasicType, Type};
