@@ -17,9 +17,10 @@ func typeName(v interface{}) string {
 
 
 func typeName2(v interface{}) string {
+    kk := 2
 	switch i := v.(type) {
 	case int:
-        assert(i == 888)
+        assert(i + kk == 890)
 		return "int"
 	case string:
 		return "string" 

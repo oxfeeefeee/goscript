@@ -97,9 +97,9 @@ pub trait FuncGen {
 
     fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType);
 
-    fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType);
+    fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType, comma_ok: bool);
 
-    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType);
+    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType, comma_ok: bool);
 
     fn emit_cast_to_interface(&mut self, typ: ValueType, rhs: OpIndex, m_index: OpIndex);
 
@@ -294,12 +294,17 @@ impl FuncGen for FunctionVal {
         self.emit_inst(Opcode::LOAD_STRUCT_FIELD, Some(typ), None, None, Some(imm));
     }
 
-    fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType) {
-        self.emit_inst(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
+    fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType, comma_ok: bool) {
+        let mut inst =
+            Instruction::new(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
+        inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
+        self.code.push(inst);
     }
 
-    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType) {
-        self.emit_inst(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
+    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType, comma_ok: bool) {
+        let mut inst = Instruction::new(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
+        inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
+        self.code.push(inst);
     }
 
     fn emit_return(&mut self) {

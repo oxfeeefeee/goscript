@@ -357,7 +357,36 @@ impl<'a> CodeGen<'a> {
                 types
             }
             RightHandSide::Values(values) => {
-                if values.len() == lhs.len() {
+                let val0 = &values[0];
+                let val0_mode = self.tlookup.get_expr_mode(val0);
+                if values.len() == 1
+                    && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
+                {
+                    let comma_ok = lhs.len() == 2;
+                    match val0 {
+                        Expr::TypeAssert(tae) => {
+                            self.visit_expr(&tae.expr);
+                            let t = self.tlookup.get_expr_tc_type(tae.typ.as_ref().unwrap());
+                            let meta = self.tlookup.meta_from_tc(t, self.objects);
+                            let func = current_func_mut!(self);
+                            let index = func.add_const(None, GosValue::Metadata(meta));
+                            func.emit_code_with_flag_imm(
+                                Opcode::TYPE_ASSERT,
+                                comma_ok,
+                                index.into(),
+                            );
+                        }
+                        Expr::Index(ie) => {
+                            self.gen_map_index(&ie.expr, &ie.index, comma_ok);
+                        }
+                        _ => unreachable!(),
+                    }
+                    if comma_ok {
+                        self.tlookup.get_return_tc_types(val0)
+                    } else {
+                        vec![self.tlookup.get_expr_tc_type(val0)]
+                    }
+                } else if values.len() == lhs.len() {
                     // define or assign with values
                     let mut types = Vec::with_capacity(values.len());
                     for val in values.iter() {
@@ -367,13 +396,15 @@ impl<'a> CodeGen<'a> {
                     }
                     types
                 } else if values.len() == 1 {
+                    let expr = val0;
                     // define or assign with function call on the right
-                    if let Expr::Call(_) = values[0] {
-                        self.visit_expr(&values[0]);
-                        self.tlookup.get_return_tc_types(&values[0])
+                    if let Expr::Call(_) = expr {
+                        self.visit_expr(expr);
                     } else {
-                        unreachable!();
+                        dbg!(self.tlookup.get_expr_mode(&values[0]));
+                        unreachable!()
                     }
+                    self.tlookup.get_return_tc_types(expr)
                 } else {
                     unreachable!();
                 }
@@ -592,6 +623,21 @@ impl<'a> CodeGen<'a> {
 
         self.func_stack.pop();
         fkey
+    }
+
+    fn gen_map_index(&mut self, expr: &Expr, index: &Expr, comma_ok: bool) {
+        let t0 = self.tlookup.get_expr_value_type(expr);
+        let t1 = self.tlookup.get_expr_value_type(index);
+        self.visit_expr(expr);
+        if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
+            let (ival, _) = const_val.to_int().int_as_i64();
+            if let Ok(i) = OpIndex::try_from(ival) {
+                current_func_mut!(self).emit_load_index_imm(i, t0, comma_ok);
+                return;
+            }
+        }
+        self.visit_expr(index);
+        current_func_mut!(self).emit_load_index(t0, t1, comma_ok);
     }
 
     fn try_cast_to_iface(&mut self, lhs: Option<TCTypeKey>, rhs: TCTypeKey, rhs_index: OpIndex) {
@@ -857,18 +903,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) {
-        let t0 = self.tlookup.get_expr_value_type(expr);
-        let t1 = self.tlookup.get_expr_value_type(index);
-        self.visit_expr(expr);
-        if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
-            let (ival, _) = const_val.to_int().int_as_i64();
-            if let Ok(i) = OpIndex::try_from(ival) {
-                current_func_mut!(self).emit_load_index_imm(i, t0);
-                return;
-            }
-        }
-        self.visit_expr(index);
-        current_func_mut!(self).emit_load_index(t0, t1);
+        self.gen_map_index(expr, index, false);
     }
 
     fn visit_expr_slice(
@@ -1339,7 +1374,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             func.add_local_zero(GosValue::new_nil());
             self.visit_expr(v);
             let func = current_func_mut!(self);
-            func.emit_code_with_imm(Opcode::TYPE_ASSIGN, index.into());
+            func.emit_code_with_flag_imm(Opcode::TYPE, true, index.into());
         } else {
             self.visit_expr(v);
             current_func_mut!(self).emit_code(Opcode::TYPE);

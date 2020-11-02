@@ -332,3 +332,13 @@ pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
         _ => unreachable!(),
     }
 }
+
+#[inline]
+pub fn push_index_comma_ok(stack: &mut Stack, map: &GosValue, index: &GosValue) {
+    let (v, b) = match map.as_map().try_get(index) {
+        Some(v) => (v, true),
+        None => (GosValue::new_nil(), false),
+    };
+    stack.push(v);
+    stack.push_bool(b);
+}

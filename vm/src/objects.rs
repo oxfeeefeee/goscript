@@ -233,6 +233,12 @@ impl MapObj {
         cell.clone().into_inner()
     }
 
+    #[inline]
+    pub fn try_get(&self, key: &GosValue) -> Option<GosValue> {
+        let mref = self.map.borrow();
+        mref.get(key).map(|x| x.clone().into_inner())
+    }
+
     /// touch_key makes sure there is a value for the 'key', a default value is set if
     /// the value is empty
     #[inline]
@@ -892,6 +898,13 @@ impl FunctionVal {
 
     pub fn emit_code_with_type_imm(&mut self, code: Opcode, t: ValueType, imm: OpIndex) {
         self.emit_inst(code, Some(t), None, None, Some(imm));
+    }
+
+    pub fn emit_code_with_flag_imm(&mut self, code: Opcode, comma_ok: bool, imm: OpIndex) {
+        let mut inst = Instruction::new(code, None, None, None, Some(imm));
+        let flag = if comma_ok { 1 } else { 0 };
+        inst.set_t2_with_index(flag);
+        self.code.push(inst);
     }
 
     pub fn emit_code(&mut self, code: Opcode) {

@@ -17,6 +17,21 @@ func (s S1) Inc2() int {
     return s.j
 }
 
+func typeAssert() {
+    var i interface{} = "hello"
+
+    s, ok := i.(string)
+    assert(ok)
+    assert(s == "hello")
+   
+    s1 := i.(string)
+    assert(s1 == "hello")
+
+    var j interface{} = "h"
+    s, ok = j.(string)
+    assert(ok)
+    assert(s == "h")
+}
 
 type Add func(a int, b int) int
 
@@ -43,6 +58,9 @@ func main() {
     var afunc Add = func(i int, j int) int { return i + j + 1}
     d := afunc(s1.i, s1.j)
     assert(d == s1.i + s1.j + 1)
+
+
+    typeAssert()
 
 }
 // 3, 8, 9

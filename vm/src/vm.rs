@@ -211,11 +211,20 @@ impl Fiber {
                 Opcode::LOAD_INDEX => {
                     let ind = stack.pop_with_type(inst.t1());
                     let val = &stack.pop_with_type(inst.t0());
-                    stack.push(vm_util::load_index(val, &ind));
+                    if inst.t2_as_index() == 0 {
+                        stack.push(vm_util::load_index(val, &ind));
+                    } else {
+                        vm_util::push_index_comma_ok(stack, val, &ind);
+                    }
                 }
                 Opcode::LOAD_INDEX_IMM => {
                     let val = &stack.pop_with_type(inst.t0());
-                    stack.push(vm_util::load_index_int(val, inst.imm() as usize));
+                    let index = inst.imm() as usize;
+                    if inst.t2_as_index() == 0 {
+                        stack.push(vm_util::load_index_int(val, index));
+                    } else {
+                        vm_util::push_index_comma_ok(stack, val, &GosValue::Int(index as isize));
+                    }
                 }
                 Opcode::STORE_INDEX => {
                     let (rhs_index, index) = inst.imm824();
@@ -631,23 +640,34 @@ impl Fiber {
                     }
                 }
 
-                Opcode::TYPE_ASSERT => {}
-                Opcode::TYPE_TRY_ASSERT => {}
-                Opcode::TYPE | Opcode::TYPE_ASSIGN => {
-                    match stack.pop_with_type(ValueType::Interface) {
-                        GosValue::Interface(iface) => {
-                            let val = match iface.borrow().underlying() {
-                                Some((v, _)) => v.copy_semantic(None, &objs.metadata),
-                                None => GosValue::new_nil(),
-                            };
-                            stack.push(GosValue::Metadata(val.get_meta(&objs.metadata)));
-                            if inst_op == Opcode::TYPE_ASSIGN {
-                                let index = inst.imm();
-                                let s_index = Stack::offset(stack_base, index);
-                                stack.set(s_index, val);
-                            }
+                Opcode::TYPE_ASSERT => {
+                    let val = match stack.pop_interface().borrow().underlying() {
+                        Some((v, _)) => v.copy_semantic(None, &objs.metadata),
+                        None => GosValue::new_nil(),
+                    };
+                    let meta = GosValue::Metadata(val.get_meta(&objs.metadata));
+                    stack.push(val);
+                    let ok = &consts[inst.imm() as usize] == &meta;
+                    let do_try = inst.t2_as_index() > 0;
+                    if !do_try {
+                        if !ok {
+                            // todo go_panic
+                            unimplemented!()
                         }
-                        _ => unreachable!(),
+                    } else {
+                        stack.push_bool(ok);
+                    }
+                }
+                Opcode::TYPE => {
+                    let val = match stack.pop_interface().borrow().underlying() {
+                        Some((v, _)) => v.copy_semantic(None, &objs.metadata),
+                        None => GosValue::new_nil(),
+                    };
+                    stack.push(GosValue::Metadata(val.get_meta(&objs.metadata)));
+                    if inst.t2_as_index() > 0 {
+                        let index = inst.imm();
+                        let s_index = Stack::offset(stack_base, index);
+                        stack.set(s_index, val);
                     }
                 }
 

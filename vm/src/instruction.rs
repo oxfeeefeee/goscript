@@ -81,9 +81,7 @@ pub enum Opcode {
 
     // type
     TYPE_ASSERT,
-    TYPE_TRY_ASSERT,
     TYPE,
-    TYPE_ASSIGN,
 
     // built-in functinalities
     IMPORT,     // imports a package
@@ -174,9 +172,7 @@ impl Opcode {
             Opcode::RANGE => ("RANGE", 1),
 
             Opcode::TYPE_ASSERT => ("TYPE_ASSERT", 0),
-            Opcode::TYPE_TRY_ASSERT => ("TYPE_TRY_ASSERT", 0),
             Opcode::TYPE => ("TYPE", 1),
-            Opcode::TYPE_ASSIGN => ("TYPE_ASSIGN", 1),
 
             Opcode::IMPORT => ("IMPORT", 0),
             Opcode::SLICE => ("SLICE", -2),

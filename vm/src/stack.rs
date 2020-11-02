@@ -2,7 +2,9 @@
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType, COPYABLE_END};
 use super::metadata::Metadata;
 use super::value::*;
+use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::rc::Rc;
 
 const DEFAULT_SIZE: usize = 10240;
 
@@ -107,6 +109,17 @@ impl Stack {
             let mut ret = GosValue::new_nil();
             std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
             ret
+        }
+    }
+
+    #[inline]
+    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
+        self.cursor -= 1;
+        let mut ret = GosValue::new_nil();
+        std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
+        match ret {
+            GosValue::Interface(i) => i,
+            _ => unreachable!(),
         }
     }
 
