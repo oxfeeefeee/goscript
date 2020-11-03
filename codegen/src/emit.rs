@@ -1,20 +1,17 @@
 #![allow(dead_code)]
 
-use std::convert::TryFrom;
-
+use super::package::PkgVarPairs;
+use goscript_parser::ast::*;
+use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
-
-use goscript_parser::ast::*;
-use goscript_parser::objects::IdentKey;
-use goscript_parser::objects::Objects as AstObjects;
+use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug)]
 pub enum IndexSelType {
     Indexing,
     StructField,
-    PkgMember(PackageKey, IdentKey),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,14 +75,19 @@ pub enum RightHandSide<'a> {
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize;
 
-    fn emit_load(&mut self, index: EntIndex, pkg: Option<PackageKey>, typ: ValueType);
+    fn emit_load(
+        &mut self,
+        index: EntIndex,
+        patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
+        typ: ValueType,
+    );
 
     fn emit_store(
         &mut self,
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
-        pkg: Option<PackageKey>,
+        patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
     );
 
@@ -112,8 +114,6 @@ pub trait FuncGen {
     fn emit_call(&mut self, has_ellipsis: bool);
 
     fn emit_new(&mut self, typ: ValueType);
-
-    fn emit_range(&mut self);
 }
 
 impl FuncGen for FunctionVal {
@@ -138,7 +138,12 @@ impl FuncGen for FunctionVal {
             .sum()
     }
 
-    fn emit_load(&mut self, index: EntIndex, pkg: Option<PackageKey>, typ: ValueType) {
+    fn emit_load(
+        &mut self,
+        index: EntIndex,
+        patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
+        typ: ValueType,
+    ) {
         match index {
             EntIndex::Const(i) => match self.const_val(i).clone() {
                 //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
@@ -158,10 +163,11 @@ impl FuncGen for FunctionVal {
             EntIndex::UpValue(i) => {
                 self.emit_inst(Opcode::LOAD_UPVALUE, Some(typ), None, None, Some(i));
             }
-            EntIndex::PackageMember(i) => {
-                let pkg = pkg.unwrap_or(self.package);
-                self.emit_inst(Opcode::LOAD_PKG_FIELD, Some(typ), None, None, Some(i));
+            EntIndex::PackageMember(pkg, ident) => {
+                self.emit_inst(Opcode::LOAD_PKG_FIELD, Some(typ), None, None, Some(0));
                 self.emit_raw_inst(key_to_u64(pkg));
+                let (pairs, func) = patch_info.unwrap();
+                pairs.add_pair(pkg, ident, func, self.code.len() - 2, false);
             }
             EntIndex::BuiltInVal(op) => self.emit_code(op),
             EntIndex::BuiltInType(m) => {
@@ -177,7 +183,7 @@ impl FuncGen for FunctionVal {
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
         op: Option<Opcode>,
-        pkg: Option<PackageKey>,
+        patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
     ) {
         if let LeftHandSide::Primitive(index) = lhs {
@@ -186,17 +192,17 @@ impl FuncGen for FunctionVal {
             }
         }
 
-        let mut pkg_key = None;
+        let mut pkg_info = None;
         let (code, int32, t1, t2, int8) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
                 EntIndex::LocalVar(i) => (Opcode::STORE_LOCAL, *i, None, None, None),
                 EntIndex::UpValue(i) => (Opcode::STORE_UPVALUE, *i, None, None, None),
-                EntIndex::PackageMember(i) => {
-                    pkg_key = Some(pkg.unwrap_or(self.package));
+                EntIndex::PackageMember(pkg, ident) => {
+                    pkg_info = Some((*pkg, *ident));
                     (
                         Opcode::STORE_PKG_FIELD,
-                        *i,
+                        0,
                         Some(ValueType::Package),
                         None,
                         None,
@@ -231,16 +237,6 @@ impl FuncGen for FunctionVal {
                     None,
                     Some(info.index),
                 ),
-                IndexSelType::PkgMember(pkg, _) => {
-                    pkg_key = Some(pkg);
-                    (
-                        Opcode::STORE_PKG_FIELD,
-                        info.imm_index.unwrap(),
-                        None,
-                        None,
-                        None,
-                    )
-                }
             },
             LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, *i, None, None, None),
         };
@@ -252,8 +248,10 @@ impl FuncGen for FunctionVal {
         let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
         inst.set_imm824(imm0, int32);
         self.code.push(inst);
-        if let Some(key) = pkg_key {
-            self.emit_raw_inst(key_to_u64(key));
+        if let Some((pkg, ident)) = pkg_info {
+            self.emit_raw_inst(key_to_u64(pkg));
+            let (pairs, func) = patch_info.unwrap();
+            pairs.add_pair(pkg, ident, func, self.code.len() - 2, true);
         }
     }
 
@@ -330,9 +328,5 @@ impl FuncGen for FunctionVal {
 
     fn emit_new(&mut self, typ: ValueType) {
         self.emit_inst(Opcode::NEW, Some(typ), None, None, None);
-    }
-
-    fn emit_range(&mut self) {
-        self.emit_inst(Opcode::RANGE, None, None, None, None);
     }
 }

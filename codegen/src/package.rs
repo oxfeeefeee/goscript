@@ -19,8 +19,24 @@ impl PkgVarPairs {
         PkgVarPairs { data: vec![] }
     }
 
+    /// recode information so that we can patch_index, when codegen is done
+    pub fn add_pair(
+        &mut self,
+        pkg: PackageKey,
+        var: IdentKey,
+        func: FunctionKey,
+        i: usize,
+        is824: bool,
+    ) {
+        self.data.push((pkg, var, func, i, is824));
+    }
+
+    pub fn append(&mut self, other: &mut PkgVarPairs) {
+        self.data.append(&mut other.data);
+    }
+
     pub fn append_from_util(&mut self, util: &mut PkgUtil) {
-        self.data.append(&mut util.pairs.data);
+        self.append(&mut util.pairs)
     }
 
     /// patch_index sets correct var index of packages to the placeholder of
@@ -67,6 +83,10 @@ impl<'a> PkgUtil<'a> {
         }
     }
 
+    pub fn pairs_mut(&mut self) -> &mut PkgVarPairs {
+        &mut self.pairs
+    }
+
     pub fn gen_imports(&mut self, tcpkg: TCPackageKey, func: &mut FunctionVal) {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         for key in pkg.imports().iter() {
@@ -89,7 +109,7 @@ impl<'a> PkgUtil<'a> {
         i: usize,
         is824: bool,
     ) {
-        self.pairs.data.push((pkg, var, func, i, is824));
+        self.pairs.add_pair(pkg, var, func, i, is824);
     }
 
     // sort_var_decls returns a vec of sorted var decl statments

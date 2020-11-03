@@ -2,7 +2,7 @@
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::GosValue;
-use goscript_parser::objects::EntityKey;
+use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
@@ -754,7 +754,7 @@ pub enum EntIndex {
     Const(OpIndex),
     LocalVar(OpIndex),
     UpValue(OpIndex),
-    PackageMember(OpIndex),
+    PackageMember(PackageKey, IdentKey),
     BuiltInVal(Opcode), // built-in identifiers
     BuiltInType(GosMetadata),
     Blank,
@@ -766,7 +766,7 @@ impl From<EntIndex> for OpIndex {
             EntIndex::Const(i) => i,
             EntIndex::LocalVar(i) => i,
             EntIndex::UpValue(i) => i,
-            EntIndex::PackageMember(i) => i,
+            EntIndex::PackageMember(_, _) => unreachable!(),
             EntIndex::BuiltInVal(_) => unreachable!(),
             EntIndex::BuiltInType(_) => unreachable!(),
             EntIndex::Blank => unreachable!(),

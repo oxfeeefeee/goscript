@@ -41,16 +41,22 @@ impl<'a> EntryGen<'a> {
     }
 
     // generate the entry function for ByteCode
-    fn gen_entry_func(&mut self, pkg: PackageKey, index: OpIndex) -> FunctionKey {
+    fn gen_entry_func(
+        &mut self,
+        pkg: PackageKey,
+        index: OpIndex,
+        main_ident: IdentKey,
+        pairs: &mut PkgVarPairs,
+    ) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let fmeta = self.objects.metadata.default_sig;
         let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
-        let main_func_index = *self.objects.packages[pkg].get_member_index("main").unwrap();
-        let func = &mut self.objects.functions[*f.as_function()];
+        let fkey = *f.as_function();
+        let func = &mut self.objects.functions[fkey];
         func.emit_import(index, pkg);
         func.emit_load(
-            EntIndex::PackageMember(main_func_index),
-            Some(pkg),
+            EntIndex::PackageMember(pkg, main_ident),
+            Some((pairs, fkey)),
             ValueType::Function,
         );
         func.emit_pre_call();
@@ -63,6 +69,7 @@ impl<'a> EntryGen<'a> {
         mut self,
         checker_result: &HashMap<TCPackageKey, TypeInfo>,
         main_pkg: TCPackageKey,
+        main_ident: IdentKey,
     ) -> ByteCode {
         let mut main_pkg_idx = None;
         for (&tcpkg, _) in checker_result.iter() {
@@ -92,10 +99,10 @@ impl<'a> EntryGen<'a> {
             cgen.gen_with_files(&ti.ast_files, *tcpkg, i as OpIndex);
             pairs.append_from_util(cgen.pkg_util());
         }
-        pairs.patch_index(self.ast_objs, &mut self.objects);
-
         let index = main_pkg_idx.unwrap();
-        let entry = self.gen_entry_func(self.packages[index as usize], index);
+        let entry =
+            self.gen_entry_func(self.packages[index as usize], index, main_ident, &mut pairs);
+        pairs.patch_index(self.ast_objs, &mut self.objects);
         ByteCode {
             objects: self.objects,
             packages: self.packages,
@@ -125,7 +132,8 @@ pub fn parse_check_gen(
         Err(el.len())
     } else {
         let blank_ident = asto.idents.insert(Ident::blank(0));
+        let main_ident = asto.idents.insert(Ident::with_str(0, "main"));
         let gen = EntryGen::new(asto, tco, blank_ident);
-        Ok(gen.gen(results, main_pkg.unwrap()))
+        Ok(gen.gen(results, main_pkg.unwrap(), main_ident))
     }
 }

@@ -23,4 +23,16 @@ func main() {
     assert(math.Plus4(b + math.V2 + math.C2) == 24)
     math.V2 += 2
     assert(math.Plus4(b + math.V2 + math.C2) == 28)
+
+    _, j := fa()
+    assert(j == 7)
+}
+
+func fa () (int, int) {
+	assert(8 == fb())
+	return 6,7
+}
+
+func fb() int {
+	return 8
 }

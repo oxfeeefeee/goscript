@@ -122,14 +122,8 @@ impl<'a> CodeGen<'a> {
             let index = func.try_add_upvalue(&entity_key, uv);
             return index;
         }
-        // 3. try the package level
-        let pkg = &self.objects.packages[self.pkg_key];
-        if let Some(index) = pkg.get_member_index(&id.name) {
-            return EntIndex::PackageMember(*index);
-        }
-
-        dbg!(&self.ast_objs.idents[*ident]);
-        unreachable!();
+        // 3. must be package member
+        EntIndex::PackageMember(self.pkg_key, *ident)
     }
 
     fn add_local_or_resolve_ident(
@@ -251,15 +245,11 @@ impl<'a> CodeGen<'a> {
                         match self.tlookup.try_get_pkg_key(&sexpr.expr) {
                             Some(key) => {
                                 let pkg = self.pkg_util.get_vm_pkg(key);
-                                let t = self.tlookup.get_use_value_type(sexpr.sel);
+                                //let t = self.tlookup.get_use_value_type(sexpr.sel);
                                 (
                                     // the true index will be calculated later
-                                    LeftHandSide::IndexSelExpr(IndexSelInfo::new(
-                                        0,
-                                        Some(0),
-                                        t,
-                                        None,
-                                        IndexSelType::PkgMember(pkg, sexpr.sel),
+                                    LeftHandSide::Primitive(EntIndex::PackageMember(
+                                        pkg, sexpr.sel,
                                     )),
                                     Some(self.tlookup.get_expr_tc_type(expr)),
                                 )
@@ -454,7 +444,6 @@ impl<'a> CodeGen<'a> {
                         None,
                         typ,
                     );
-                    self.register_store_pkg_member(&info.typ);
                     // the lhs of IndexSelExpr takes two spots
                     current_indexing_index += 2;
                 }
@@ -509,7 +498,14 @@ impl<'a> CodeGen<'a> {
                 // why no magic number?
                 // local index is resolved in gen_assign
                 let func = current_func_mut!(self);
-                func.emit_store(left, -1, Some(op), None, typ);
+                let fkey = self.func_stack.last().unwrap();
+                func.emit_store(
+                    left,
+                    -1,
+                    Some(op),
+                    Some((self.pkg_util.pairs_mut(), *fkey)),
+                    typ,
+                );
                 func.emit_pop(1);
             }
             LeftHandSide::IndexSelExpr(info) => {
@@ -522,7 +518,6 @@ impl<'a> CodeGen<'a> {
                     None,
                     typ,
                 );
-                self.register_store_pkg_member(&info.typ);
                 let func = current_func_mut!(self);
                 let mut total_pop = 2;
                 if let Some(_) = info.t2 {
@@ -764,28 +759,6 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn gen_load_pkg_var(&mut self, expr: &Expr, ident: &IdentKey) -> bool {
-        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
-            let pkg = self.pkg_util.get_vm_pkg(key);
-            let t = self.tlookup.get_use_value_type(*ident);
-            current_func_mut!(self).emit_load(EntIndex::PackageMember(0), Some(pkg), t);
-            let func = self.func_stack.last().unwrap();
-            let i = current_func!(self).next_code_index() - 2;
-            self.pkg_util.add_pair(pkg, *ident, *func, i, false);
-            return true;
-        }
-        false
-    }
-
-    fn register_store_pkg_member(&mut self, typ: &IndexSelType) {
-        // register pkg member for patching
-        if let IndexSelType::PkgMember(pkg, ident) = typ {
-            let func = self.func_stack.last().unwrap();
-            let i = current_func!(self).next_code_index() - 2;
-            self.pkg_util.add_pair(*pkg, *ident, *func, i, true);
-        }
-    }
-
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.metadata.default_sig;
@@ -828,7 +801,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_ident(&mut self, ident: &IdentKey) {
         let index = self.resolve_ident(ident);
         let t = self.tlookup.get_use_value_type(*ident);
-        current_func_mut!(self).emit_load(index, None, t);
+        let fkey = self.func_stack.last().unwrap();
+        current_func_mut!(self).emit_load(index, Some((self.pkg_util.pairs_mut(), *fkey)), t);
     }
 
     fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
@@ -866,7 +840,15 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
-        if self.gen_load_pkg_var(expr, ident) {
+        if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
+            let pkg = self.pkg_util.get_vm_pkg(key);
+            let t = self.tlookup.get_use_value_type(*ident);
+            let fkey = self.func_stack.last().unwrap();
+            current_func_mut!(self).emit_load(
+                EntIndex::PackageMember(pkg, *ident),
+                Some((self.pkg_util.pairs_mut(), *fkey)),
+                t,
+            );
             return;
         }
 
@@ -1015,10 +997,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             let func = current_func_mut!(self);
                             func.emit_inst(Opcode::REF_UPVALUE, Some(t), None, None, Some(i));
                         }
-                        EntIndex::PackageMember(i) => {
+                        EntIndex::PackageMember(pkg, ident) => {
                             let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(i));
+                            func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(0));
                             func.emit_raw_inst(key_to_u64(self.pkg_key));
+                            let fkey = self.func_stack.last().unwrap();
+                            let i = current_func!(self).next_code_index() - 2;
+                            self.pkg_util.add_pair(pkg, ident, *fkey, i, false);
                         }
                         _ => unreachable!(),
                     }
@@ -1042,9 +1027,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         let func = current_func_mut!(self);
                         func.emit_inst(Opcode::REF_PKG_MEMBER, None, None, None, Some(0));
                         func.emit_raw_inst(key_to_u64(pkey));
-                        let func = self.func_stack.last().unwrap();
+                        let fkey = self.func_stack.last().unwrap();
                         let i = current_func!(self).next_code_index() - 2;
-                        self.pkg_util.add_pair(pkey, sexpr.sel, *func, i, false);
+                        self.pkg_util.add_pair(pkey, sexpr.sel, *fkey, i, false);
                     }
                     None => {
                         self.visit_expr(&sexpr.expr);
