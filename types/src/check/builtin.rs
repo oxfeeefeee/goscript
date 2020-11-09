@@ -71,7 +71,7 @@ impl<'a> Checker<'a> {
         let mut nargs = call.args.len();
         let unpack_result = match id {
             // arguments require special handling
-            Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace => {
+            Builtin::Make | Builtin::New | Builtin::Offsetof | Builtin::Trace | Builtin::Ffi => {
                 let ord = nargs.cmp(&binfo.arg_count);
                 let ord = if binfo.variadic && ord == Ordering::Greater {
                     Ordering::Equal
@@ -818,6 +818,59 @@ impl<'a> Checker<'a> {
                 }
                 // x contains info of the first argument
                 // trace is only available in test mode - no need to record signature
+            }
+            Builtin::Ffi => {
+                // native(I, string_id, params...)
+                // (no argument evaluated yet)
+                let arg0 = &call.args[0];
+                let arg0t = self.type_expr(arg0, fctx);
+                if arg0t == invalid_type {
+                    return false;
+                }
+
+                if self
+                    .otype(arg0t)
+                    .underlying_val(self.tc_objs)
+                    .try_as_interface()
+                    .is_none()
+                {
+                    let ed = self.new_dis(arg0);
+                    self.invalid_arg(
+                        ed.pos(),
+                        &format!("cannot create native type as {}; must be interface", ed),
+                    );
+                    return false;
+                }
+
+                self.expr(x, &call.args[1], fctx);
+                if x.invalid() {
+                    return false;
+                }
+                let stype = x.typ.unwrap();
+                if !typ::is_string(stype, self.tc_objs) {
+                    let xd = self.new_dis(x);
+                    self.invalid_arg(xd.pos(), &format!("{} is not a string", xd));
+                    return false;
+                }
+
+                let mut params = vec![arg0t, stype];
+                for i in 2..nargs {
+                    self.expr(x, &call.args[i], fctx);
+                    if x.invalid() {
+                        return false;
+                    }
+                    let msg = format!("argument to {}", self.builtin_info(id).name);
+                    self.assignment(x, None, &msg, fctx);
+                    if x.invalid() {
+                        return false;
+                    }
+                    params.push(x.typ.unwrap());
+                }
+
+                x.mode = OperandMode::Value;
+                x.typ = Some(arg0t);
+                // recorded as non-variadic
+                record(self, Some(arg0t), &params, false);
             }
         }
         true

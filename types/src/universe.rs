@@ -42,6 +42,8 @@ pub enum Builtin {
     // testing support
     Assert,
     Trace,
+    // goscript native extension
+    Ffi,
 }
 
 #[derive(Copy, Clone)]
@@ -353,6 +355,7 @@ impl Universe {
             (Builtin::Sizeof, "Sizeof", 1, false, ExprKind::Expression),
             (Builtin::Assert, "assert", 1, false, ExprKind::Statement),
             (Builtin::Trace, "trace", 0, true, ExprKind::Statement),
+            (Builtin::Ffi, "ffi", 2, true, ExprKind::Expression),
         ]
         .into_iter()
         .map(|(f, name, no, v, k)| {

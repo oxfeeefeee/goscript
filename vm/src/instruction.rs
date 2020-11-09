@@ -93,6 +93,7 @@ pub enum Opcode {
     CAP,        // for built-in function cap
     APPEND,     //for built-in function append
     ASSERT,     //for built-in function assert
+    FFI,        //for built-in function native
 }
 
 impl Opcode {
@@ -183,6 +184,7 @@ impl Opcode {
             Opcode::CAP => ("CAP", 0),
             Opcode::APPEND => ("APPEND", -128),
             Opcode::ASSERT => ("ASSERT", 0),
+            Opcode::FFI => ("FFI", 0),
         }
     }
 
@@ -224,6 +226,8 @@ pub enum ValueType {
 
     Str,
     Struct,
+
+    Ffi,
 }
 
 /// Instruction is 64 bit

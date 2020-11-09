@@ -39,6 +39,7 @@ impl Builtins {
             BuiltInFunc::new("cap", Opcode::CAP, 1, false),
             BuiltInFunc::new("append", Opcode::APPEND, 2, true),
             BuiltInFunc::new("assert", Opcode::ASSERT, 1, false),
+            BuiltInFunc::new("ffi", Opcode::FFI, 2, false),
         ];
         let mut vals = HashMap::new();
         vals.insert("true", Opcode::PUSH_TRUE);

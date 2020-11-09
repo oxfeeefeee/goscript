@@ -773,6 +773,9 @@ impl Fiber {
                         assert!(false, "Opcode::ASSERT: not true!");
                     }
                 }
+                Opcode::FFI => {
+                    // todo
+                }
                 _ => {
                     dbg!(inst_op);
                     unimplemented!();

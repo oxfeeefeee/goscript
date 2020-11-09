@@ -3,6 +3,8 @@ pub mod objects;
 
 pub mod metadata;
 
+pub mod ffi;
+
 pub mod value;
 
 mod stack;

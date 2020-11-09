@@ -1,4 +1,5 @@
 //#![allow(dead_code)]
+use super::ffi::Ffi;
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
@@ -92,6 +93,8 @@ pub enum GosValue {
     Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<RefCell<StructObj>>),
     Channel(Rc<RefCell<ChannelObj>>),
+
+    Ffi(Rc<RefCell<dyn Ffi>>),
 }
 
 impl GosValue {
@@ -270,6 +273,7 @@ impl GosValue {
             GosValue::Function(_) => ValueType::Function,
             GosValue::Package(_) => ValueType::Package,
             GosValue::Metadata(_) => ValueType::Metadata,
+            GosValue::Ffi(_) => ValueType::Ffi,
         }
     }
 
@@ -292,6 +296,7 @@ impl GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
+            GosValue::Ffi(_) => unimplemented!(),
         }
     }
 
@@ -314,6 +319,7 @@ impl GosValue {
             GosValue::Function(_) => unreachable!(),
             GosValue::Package(_) => unreachable!(),
             GosValue::Metadata(_) => unreachable!(),
+            GosValue::Ffi(_) => unimplemented!(),
         }
     }
 
@@ -446,6 +452,7 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             GosValue::Function(k) => self.objs.functions[*k].fmt(f),
             GosValue::Package(k) => self.objs.packages[*k].fmt(f),
             GosValue::Metadata(k) => k.fmt(f),
+            GosValue::Ffi(k) => k.fmt(f),
             //_ => unreachable!(),
         }
     }
