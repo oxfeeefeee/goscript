@@ -1,12 +1,13 @@
 use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Write;
+use std::rc::Rc;
 
 pub type Pos = usize;
 
 #[derive(Clone, Debug)]
 pub struct Position {
-    pub filename: String,
+    pub filename: Rc<String>,
     pub offset: usize, // offset in utf8 char
     pub line: usize,
     pub column: usize,
@@ -20,7 +21,7 @@ impl Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut s = self.filename.clone();
+        let mut s = String::clone(&*self.filename);
         if self.is_valid() {
             if s != "" {
                 s.push(':');
@@ -39,7 +40,7 @@ impl fmt::Display for Position {
 
 #[derive(Debug)]
 pub struct File {
-    name: String,
+    name: Rc<String>,
     base: usize,
     size: usize,
     lines: Vec<usize>,
@@ -48,7 +49,7 @@ pub struct File {
 impl File {
     pub fn new(name: String) -> File {
         File {
-            name: name,
+            name: Rc::new(name),
             base: 0,
             size: 0,
             lines: vec![0],
@@ -204,7 +205,7 @@ impl FileSet {
             f.position(p)
         } else {
             return Position {
-                filename: "non_file_name".to_string(),
+                filename: Rc::new("non_file_name".to_string()),
                 line: 0,
                 offset: 0,
                 column: 0,
@@ -273,7 +274,7 @@ mod test {
     #[test]
     fn test_position() {
         let p = Position {
-            filename: "test.gs".to_string(),
+            filename: Rc::new("test.gs".to_string()),
             offset: 0,
             line: 54321,
             column: 8,

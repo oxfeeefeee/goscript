@@ -943,7 +943,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             )
                         }
                     } else {
-                        (None, None)
+                        (None, Some(count as OpIndex))
                     };
                     func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
                 } else {

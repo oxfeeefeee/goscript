@@ -774,7 +774,7 @@ impl Fiber {
                     }
                 }
                 Opcode::FFI => {
-                    // todo
+                    dbg!(inst.imm());
                 }
                 _ => {
                     dbg!(inst_op);
