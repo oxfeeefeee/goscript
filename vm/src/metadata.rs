@@ -97,11 +97,13 @@ impl GosMetadata {
         variadic: Option<GosMetadata>,
         metas: &mut MetadataObjs,
     ) -> GosMetadata {
+        let ptypes = params.iter().map(|x| x.get_value_type(metas)).collect();
         let t = MetadataType::Signature(SigMetadata {
             recv: recv,
             params: params,
             results: results,
             variadic: variadic,
+            params_type: ptypes,
         });
         GosMetadata::new(t, metas)
     }
@@ -289,6 +291,7 @@ pub struct Fields {
 }
 
 impl Fields {
+    #[inline]
     pub fn new(fields: Vec<GosMetadata>, mapping: HashMap<String, OpIndex>) -> Fields {
         Fields {
             fields: fields,
@@ -296,13 +299,25 @@ impl Fields {
         }
     }
 
+    #[inline]
     pub fn iface_named_mapping(&self, named_obj: &Methods) -> Vec<FunctionKey> {
         let mut result = vec![null_key!(); self.fields.len()];
         for (n, i) in self.mapping.iter() {
             let f = &named_obj.members[named_obj.mapping[n] as usize];
-            result[*i as usize] = f.as_closure().func;
+            result[*i as usize] = f.as_closure().as_gos().func;
         }
         result
+    }
+
+    pub fn iface_ffi_info(&self) -> Vec<(String, MetadataKey)> {
+        let mut ret = vec![];
+        for f in self.fields.iter() {
+            ret.push((String::new(), f.as_non_ptr()));
+        }
+        for (name, index) in self.mapping.iter() {
+            ret[*index as usize].0 = name.clone();
+        }
+        ret
     }
 }
 
@@ -327,6 +342,7 @@ pub struct SigMetadata {
     pub params: Vec<GosMetadata>,
     pub results: Vec<GosMetadata>,
     pub variadic: Option<GosMetadata>,
+    pub params_type: Vec<ValueType>, // for calling FFI
 }
 
 impl Default for SigMetadata {
@@ -336,6 +352,7 @@ impl Default for SigMetadata {
             params: vec![],
             results: vec![],
             variadic: None,
+            params_type: vec![],
         }
     }
 }
@@ -374,6 +391,14 @@ impl MetadataType {
     pub fn as_signature(&self) -> &SigMetadata {
         match self {
             Self::Signature(s) => s,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_interface(&self) -> &Fields {
+        match self {
+            Self::Interface(fields) => fields,
             _ => unreachable!(),
         }
     }

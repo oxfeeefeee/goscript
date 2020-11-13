@@ -863,7 +863,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             } else {
                 let i = t.method_index(name, &self.objects.metas);
                 let method = t.get_method(i, &self.objects.metas);
-                let fkey = method.as_closure().func;
+                let fkey = method.as_closure().as_gos().func;
                 let boxed_recv = self.objects.metas[self.objects.functions[fkey].meta.as_non_ptr()]
                     .as_signature()
                     .boxed_recv();
@@ -918,21 +918,30 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_call(&mut self, func: &Expr, params: &Vec<Expr>, ellipsis: bool) {
+    fn visit_expr_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
         // check if this is a built in function first
-        if let Expr::Ident(ikey) = func {
+        if let Expr::Ident(ikey) = func_expr {
             let ident = self.ast_objs.idents[*ikey].clone();
             if ident.entity.into_key().is_none() {
                 return if let Some(i) = self.builtins.func_index(&ident.name) {
                     let t = self.tlookup.get_expr_value_type(&params[0]);
                     let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
-                    let count = params.iter().map(|e| self.visit_expr(e)).count();
+                    for e in params.iter() {
+                        self.visit_expr(e);
+                    }
                     // some of the built in funcs are not recorded
-                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func) {
+                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
                         self.try_cast_params_to_iface(t, params);
+                        if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
+                            // FFI needs the signature of the call
+                            let meta = self.tlookup.meta_from_tc(t, self.objects);
+                            let func = current_func_mut!(self);
+                            let i = func.add_const(None, GosValue::Metadata(meta));
+                            func.emit_load(i, None, ValueType::Metadata);
+                        }
                     }
                     let bf = &self.builtins.get_func_by_index(i as usize);
-                    let func = current_func_mut!(self);
+                    let count = params.len();
                     let (t_variadic, count) = if bf.variadic {
                         if ellipsis {
                             (None, Some(0)) // do not pack params if there is ellipsis
@@ -945,6 +954,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     } else {
                         (None, Some(count as OpIndex))
                     };
+                    let func = current_func_mut!(self);
                     func.emit_inst(bf.opcode, Some(t), t_variadic, None, count);
                 } else {
                     unreachable!()
@@ -953,10 +963,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         // normal goscript function
-        self.visit_expr(func);
+        self.visit_expr(func_expr);
         current_func_mut!(self).emit_pre_call();
         let _ = params.iter().map(|e| self.visit_expr(e)).count();
-        let t = self.tlookup.get_expr_tc_type(func);
+        let t = self.tlookup.get_expr_tc_type(func_expr);
         self.try_cast_params_to_iface(t, params);
         // do not pack params if there is ellipsis
         current_func_mut!(self).emit_call(ellipsis);

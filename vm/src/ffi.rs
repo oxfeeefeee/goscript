@@ -45,16 +45,24 @@ impl FfiFactory {
     }
 }
 
+impl std::fmt::Debug for FfiFactory {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "FfiFactory")
+    }
+}
+
 pub struct TestFfi {}
 
 impl TestFfi {
-    pub fn new(_: Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>> {
+    pub fn new(v: Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>> {
+        dbg!(v);
         Ok(Rc::new(RefCell::new(TestFfi {})))
     }
 }
 
 impl Ffi for TestFfi {
     fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue> {
-        vec![]
+        dbg!(func_name, &params);
+        vec![GosValue::Int(666)]
     }
 }

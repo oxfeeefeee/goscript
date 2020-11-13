@@ -1,5 +1,4 @@
 //#![allow(dead_code)]
-use super::ffi::Ffi;
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
@@ -87,14 +86,12 @@ pub enum GosValue {
 
     Str(Rc<StringObj>), // "String" is taken
     Boxed(Box<BoxedObj>),
-    Closure(Rc<ClosureObj>),
+    Closure(UniClosureObj),
     Slice(Rc<SliceObj>),
     Map(Rc<MapObj>),
     Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<RefCell<StructObj>>),
     Channel(Rc<RefCell<ChannelObj>>),
-
-    Ffi(Rc<RefCell<dyn Ffi>>),
 }
 
 impl GosValue {
@@ -160,13 +157,13 @@ impl GosValue {
     #[inline]
     pub fn new_closure(fkey: FunctionKey) -> GosValue {
         let val = ClosureObj::new(fkey, None, None);
-        GosValue::Closure(Rc::new(val))
+        GosValue::Closure(UniClosureObj::Gos(Rc::new(val)))
     }
 
     #[inline]
     pub fn new_iface(
         meta: GosMetadata,
-        underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
+        underlying: IfaceUnderlying,
         ifaces: &mut InterfaceObjs,
     ) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
@@ -240,7 +237,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &Rc<ClosureObj> {
+    pub fn as_closure(&self) -> &UniClosureObj {
         unwrap_gos_val!(Closure, self)
     }
 
@@ -273,7 +270,6 @@ impl GosValue {
             GosValue::Function(_) => ValueType::Function,
             GosValue::Package(_) => ValueType::Package,
             GosValue::Metadata(_) => ValueType::Metadata,
-            GosValue::Ffi(_) => ValueType::Ffi,
         }
     }
 
@@ -296,7 +292,6 @@ impl GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
-            GosValue::Ffi(_) => unimplemented!(),
         }
     }
 
@@ -319,7 +314,6 @@ impl GosValue {
             GosValue::Function(_) => unreachable!(),
             GosValue::Package(_) => unreachable!(),
             GosValue::Metadata(_) => unreachable!(),
-            GosValue::Ffi(_) => unimplemented!(),
         }
     }
 
@@ -358,7 +352,7 @@ impl PartialEq for GosValue {
             (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
             (GosValue::Str(sa), GosValue::Str(sb)) => *sa == *sb,
             (GosValue::Metadata(ma), GosValue::Metadata(mb)) => ma == mb,
-            (GosValue::Closure(sa), GosValue::Closure(sb)) => Rc::ptr_eq(sa, sb),
+            //(GosValue::Closure(sa), GosValue::Closure(sb)) => Rc::ptr_eq(sa, sb),
             _ => false,
         }
     }
@@ -452,7 +446,6 @@ impl<'a> fmt::Debug for GosValueDebug<'a> {
             GosValue::Function(k) => self.objs.functions[*k].fmt(f),
             GosValue::Package(k) => self.objs.packages[*k].fmt(f),
             GosValue::Metadata(k) => k.fmt(f),
-            GosValue::Ffi(k) => k.fmt(f),
             //_ => unreachable!(),
         }
     }

@@ -1,4 +1,5 @@
 #![macro_use]
+use super::ffi::{Ffi, FfiFactory};
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::GosValue;
@@ -66,6 +67,7 @@ pub struct VMObjects {
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
     pub metadata: Metadata,
+    pub ffi_factory: FfiFactory,
 }
 
 impl VMObjects {
@@ -84,6 +86,7 @@ impl VMObjects {
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             metadata: md,
+            ffi_factory: FfiFactory::new(),
         }
     }
 }
@@ -500,18 +503,37 @@ impl StructObj {}
 // InterfaceObj
 
 #[derive(Clone, Debug)]
+pub struct UnderlyingFfi {
+    pub ffi_obj: Rc<RefCell<dyn Ffi>>,
+    pub methods: Vec<(String, MetadataKey)>,
+}
+
+impl UnderlyingFfi {
+    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, MetadataKey)>) -> UnderlyingFfi {
+        UnderlyingFfi {
+            ffi_obj: obj,
+            methods: methods,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum IfaceUnderlying {
+    None,
+    Gos(GosValue, Rc<Vec<FunctionKey>>),
+    Ffi(UnderlyingFfi),
+}
+
+#[derive(Clone, Debug)]
 pub struct InterfaceObj {
     pub meta: GosMetadata,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
-    underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
+    underlying: IfaceUnderlying,
 }
 
 impl InterfaceObj {
-    pub fn new(
-        meta: GosMetadata,
-        underlying: Option<(GosValue, Rc<Vec<FunctionKey>>)>,
-    ) -> InterfaceObj {
+    pub fn new(meta: GosMetadata, underlying: IfaceUnderlying) -> InterfaceObj {
         InterfaceObj {
             meta: meta,
             underlying: underlying,
@@ -519,13 +541,13 @@ impl InterfaceObj {
     }
 
     #[inline]
-    pub fn underlying(&self) -> &Option<(GosValue, Rc<Vec<FunctionKey>>)> {
+    pub fn underlying(&self) -> &IfaceUnderlying {
         &self.underlying
     }
 
     #[inline]
-    pub fn set_underlying(&mut self, named: GosValue, mapping: Rc<Vec<FunctionKey>>) {
-        self.underlying = Some((named, mapping));
+    pub fn set_underlying(&mut self, v: IfaceUnderlying) {
+        self.underlying = v;
     }
 }
 
@@ -670,6 +692,41 @@ impl ClosureObj {
     #[inline]
     pub fn upvalues(&self) -> &Vec<UpValue> {
         self.upvalues.as_ref().unwrap()
+    }
+}
+
+// ----------------------------------------------------------------------------
+// FfiClosureObj
+
+#[derive(Clone, Debug)]
+pub struct FfiClosureObj {
+    pub ffi: Rc<RefCell<dyn Ffi>>,
+    pub func_name: String,
+    pub meta: MetadataKey,
+}
+
+// ----------------------------------------------------------------------------
+// UniClosureObj
+
+#[derive(Clone, Debug)]
+pub enum UniClosureObj {
+    Gos(Rc<ClosureObj>),
+    Ffi(Rc<FfiClosureObj>),
+}
+
+impl UniClosureObj {
+    pub fn as_gos(&self) -> &Rc<ClosureObj> {
+        match self {
+            UniClosureObj::Gos(v) => v,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_ffi(&self) -> &Rc<FfiClosureObj> {
+        match self {
+            UniClosureObj::Ffi(v) => v,
+            _ => unreachable!(),
+        }
     }
 }
 

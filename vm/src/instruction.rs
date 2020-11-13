@@ -227,7 +227,14 @@ pub enum ValueType {
     Str,
     Struct,
 
-    Ffi,
+    FfiClosure,
+}
+
+impl ValueType {
+    #[inline]
+    pub fn copyable(&self) -> bool {
+        self <= &COPYABLE_END
+    }
 }
 
 /// Instruction is 64 bit

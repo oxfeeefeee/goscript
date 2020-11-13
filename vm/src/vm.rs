@@ -35,9 +35,9 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn with_closure(c: GosValue, sbase: usize) -> CallFrame {
+    fn with_closure(c: Rc<ClosureObj>, sbase: usize) -> CallFrame {
         CallFrame {
-            closure: c.as_closure().clone(),
+            closure: c,
             pc: 0,
             stack_base: sbase,
             referred_by: None,
@@ -108,13 +108,14 @@ impl Fiber {
 
     fn run(&mut self, code: &mut ByteCode) {
         let cls = GosValue::new_closure(code.entry);
-        let frame = CallFrame::with_closure(cls, 0);
+        let frame = CallFrame::with_closure(cls.as_closure().as_gos().clone(), 0);
         self.frames.push(frame);
         self.main_loop(code);
     }
 
     fn main_loop(&mut self, code: &mut ByteCode) {
         let objs: &mut VMObjects = &mut code.objects;
+        let ffi_factory = &objs.ffi_factory;
         let pkgs = &code.packages;
         let ifaces = &code.ifaces;
         let mut frame = self.frames.last_mut().unwrap();
@@ -126,6 +127,10 @@ impl Fiber {
         let mut consts = &func.consts;
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
+
+        let mut ffi_call: Option<Rc<FfiClosureObj>> = None;
+
+        let mut panic_msg: Option<String> = None;
 
         let mut range_slot = 0;
         range_vars!(mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0);
@@ -275,22 +280,38 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
-                        func,
-                        Some(val.copy_semantic(None, &objs.metadata)),
-                        None,
+                    stack.push(GosValue::Closure(UniClosureObj::Gos(Rc::new(
+                        ClosureObj::new(func, Some(val.copy_semantic(None, &objs.metadata)), None),
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
                     let val = stack.pop_with_type(ValueType::Interface);
                     let borrowed = val.as_interface().borrow();
-                    let (val, funcs) = borrowed.underlying().as_ref().unwrap();
-                    let func = funcs[inst.imm() as usize];
-                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new(
-                        func,
-                        Some(val.copy_semantic(None, &objs.metadata)),
-                        None,
-                    ))));
+                    let cls = match borrowed.underlying() {
+                        IfaceUnderlying::Gos(val, funcs) => {
+                            let func = funcs[inst.imm() as usize];
+                            let cls = ClosureObj::new(
+                                func,
+                                Some(val.copy_semantic(None, &objs.metadata)),
+                                None,
+                            );
+                            GosValue::Closure(UniClosureObj::Gos(Rc::new(cls)))
+                        }
+                        IfaceUnderlying::Ffi(ffi) => {
+                            let (name, meta) = ffi.methods[inst.imm() as usize].clone();
+                            let cls = FfiClosureObj {
+                                ffi: ffi.ffi_obj.clone(),
+                                func_name: name,
+                                meta: meta,
+                            };
+                            GosValue::Closure(UniClosureObj::Ffi(Rc::new(cls)))
+                        }
+                        IfaceUnderlying::None => {
+                            panic_msg = Some("access nil interface".to_string());
+                            break;
+                        }
+                    };
+                    stack.push(cls);
                 }
                 Opcode::STORE_FIELD => {
                     let (rhs_index, _) = inst.imm824();
@@ -380,8 +401,11 @@ impl Fiber {
                     let rhs_s_index = Stack::offset(stack.len(), target);
                     let iface = ifaces[mapping as usize].clone();
                     let named = stack.get_with_type(rhs_s_index, inst.t0());
-                    let val =
-                        GosValue::new_iface(iface.0, Some((named, iface.1)), &mut objs.interfaces);
+                    let val = GosValue::new_iface(
+                        iface.0,
+                        IfaceUnderlying::Gos(named, iface.1),
+                        &mut objs.interfaces,
+                    );
                     stack.set(rhs_s_index, val);
                 }
                 Opcode::ADD => stack.add(inst.t0()),
@@ -450,40 +474,54 @@ impl Fiber {
                     stack.push(val);
                 }
                 Opcode::PRE_CALL => {
+                    //todo: remove pre_call
                     let val = stack.pop_with_type(ValueType::Closure);
-                    let sbase = stack.len();
-                    let next_frame = CallFrame::with_closure(val, sbase);
-                    let func_key = next_frame.func();
-                    let next_func = &objs.functions[func_key];
-                    stack.append(&mut next_func.ret_zeros.clone());
-                    // push receiver on stack as the first parameter
-                    if let Some(r) = next_frame.receiver() {
-                        // don't call copy_semantic because BIND_METHOD did it already
-                        stack.push(r.clone());
+                    match val.as_closure() {
+                        UniClosureObj::Gos(gos) => {
+                            let sbase = stack.len();
+                            let next_frame = CallFrame::with_closure(gos.clone(), sbase);
+                            let func_key = next_frame.func();
+                            let next_func = &objs.functions[func_key];
+                            stack.append(&mut next_func.ret_zeros.clone());
+                            // push receiver on stack as the first parameter
+                            if let Some(r) = next_frame.receiver() {
+                                // don't call copy_semantic because BIND_METHOD did it already
+                                stack.push(r.clone());
+                            }
+                            self.next_frame = Some(next_frame);
+                        }
+                        UniClosureObj::Ffi(call) => ffi_call = Some(call.clone()),
                     }
-                    self.next_frame = Some(next_frame);
                 }
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
-                    self.frames.push(self.next_frame.take().unwrap());
-                    frame = self.frames.last_mut().unwrap();
-                    func = &objs.functions[frame.func()];
-                    stack_base = frame.stack_base;
-                    consts = &func.consts;
-                    code = &func.code;
-                    //dbg!(&consts);
-                    dbg!(&code);
-                    //dbg!(&stack);
+                    if let Some(call) = &ffi_call {
+                        let ptypes = &objs.metas[call.meta].as_signature().params_type;
+                        let params = stack.pop_with_type_n(ptypes);
+                        let mut returns = call.ffi.borrow().call(&call.func_name, params);
+                        dbg!(&returns);
+                        stack.append(&mut returns);
+                    } else {
+                        self.frames.push(self.next_frame.take().unwrap());
+                        frame = self.frames.last_mut().unwrap();
+                        func = &objs.functions[frame.func()];
+                        stack_base = frame.stack_base;
+                        consts = &func.consts;
+                        code = &func.code;
+                        //dbg!(&consts);
+                        dbg!(&code);
+                        //dbg!(&stack);
 
-                    if let Some(vt) = func.variadic() {
-                        if inst_op != Opcode::CALL_ELLIPSIS {
-                            let index = stack_base + func.param_count() + func.ret_count() - 1;
-                            stack.pack_variadic(index, vt, &mut objs.slices);
+                        if let Some(vt) = func.variadic() {
+                            if inst_op != Opcode::CALL_ELLIPSIS {
+                                let index = stack_base + func.param_count() + func.ret_count() - 1;
+                                stack.pack_variadic(index, vt, &mut objs.slices);
+                            }
                         }
-                    }
 
-                    debug_assert!(func.local_count() == func.local_zeros.len());
-                    // allocate local variables
-                    stack.append(&mut func.local_zeros.clone());
+                        debug_assert!(func.local_count() == func.local_zeros.len());
+                        // allocate local variables
+                        stack.append(&mut func.local_zeros.clone());
+                    }
                 }
                 Opcode::RETURN | Opcode::RETURN_INIT_PKG => {
                     // close any active upvalue this frame contains
@@ -642,8 +680,8 @@ impl Fiber {
 
                 Opcode::TYPE_ASSERT => {
                     let val = match stack.pop_interface().borrow().underlying() {
-                        Some((v, _)) => v.copy_semantic(None, &objs.metadata),
-                        None => GosValue::new_nil(),
+                        IfaceUnderlying::Gos(v, _) => v.copy_semantic(None, &objs.metadata),
+                        _ => GosValue::new_nil(),
                     };
                     let meta = GosValue::Metadata(val.get_meta(&objs.metadata));
                     stack.push(val);
@@ -660,8 +698,8 @@ impl Fiber {
                 }
                 Opcode::TYPE => {
                     let val = match stack.pop_interface().borrow().underlying() {
-                        Some((v, _)) => v.copy_semantic(None, &objs.metadata),
-                        None => GosValue::new_nil(),
+                        IfaceUnderlying::Gos(v, _) => v.copy_semantic(None, &objs.metadata),
+                        _ => GosValue::new_nil(),
                     };
                     stack.push(GosValue::Metadata(val.get_meta(&objs.metadata)));
                     if inst.t2_as_index() > 0 {
@@ -705,7 +743,7 @@ impl Fiber {
                                 upframe.add_referred_by(desc.index, desc.typ, uv);
                                 frame = self.frames.last_mut().unwrap();
                             }
-                            GosValue::Closure(Rc::new(val))
+                            GosValue::Closure(UniClosureObj::Gos(Rc::new(val)))
                         }
                         _ => unimplemented!(),
                     };
@@ -774,7 +812,34 @@ impl Fiber {
                     }
                 }
                 Opcode::FFI => {
-                    dbg!(inst.imm());
+                    let meta = stack.pop_with_type(ValueType::Metadata);
+                    let total_params = inst.imm();
+                    let index = Stack::offset(stack.len(), -total_params);
+                    let itype = stack.get_with_type(index, ValueType::Metadata);
+                    let name = stack.get_with_type(index + 1, ValueType::Str);
+                    let name_str = name.as_str().as_str();
+                    let ptypes = &objs.metas[meta.as_meta().as_non_ptr()]
+                        .as_signature()
+                        .params_type[2..];
+                    let params = stack.pop_with_type_n(ptypes);
+                    let v = match ffi_factory.create_by_name(name_str, params) {
+                        Ok(v) => {
+                            let meta = itype.as_meta().get_underlying(&objs.metas).clone();
+                            let info = objs.metas[meta.as_non_ptr()]
+                                .as_interface()
+                                .iface_ffi_info();
+                            GosValue::new_iface(
+                                meta,
+                                IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),
+                                &mut objs.interfaces,
+                            )
+                        }
+                        Err(m) => {
+                            panic_msg = Some(m);
+                            break;
+                        }
+                    };
+                    stack.push(v);
                 }
                 _ => {
                     dbg!(inst_op);
@@ -782,6 +847,10 @@ impl Fiber {
                 }
             };
             //dbg!(inst_op, stack.len());
+        }
+        if let Some(msg) = panic_msg {
+            // todo: debug message
+            println!("panic: {}", msg);
         }
     }
 }

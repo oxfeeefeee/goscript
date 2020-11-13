@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::instruction::{Instruction, OpIndex, Opcode, ValueType, COPYABLE_END};
+use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::Metadata;
 use super::value::*;
 use std::cell::RefCell;
@@ -48,7 +48,7 @@ impl Stack {
     #[inline]
     pub fn push(&mut self, val: GosValue) {
         let t = val.get_type();
-        if t <= COPYABLE_END {
+        if t.copyable() {
             let (v, _) = GosValue64::from_v128(&val);
             *self.get_c_mut(self.cursor) = v;
         } else {
@@ -60,7 +60,7 @@ impl Stack {
 
     #[inline]
     pub fn push_from_index(&mut self, index: usize, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             *self.get_c_mut(self.cursor) = *self.get_c(index);
         } else {
             *self.get_rc_mut(self.cursor) = self.get_rc(index).clone();
@@ -103,13 +103,32 @@ impl Stack {
     #[inline]
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         self.cursor -= 1;
-        if t <= COPYABLE_END {
+        if t.copyable() {
             self.get_c(self.cursor).into_v128(t)
         } else {
             let mut ret = GosValue::new_nil();
             std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
             ret
         }
+    }
+
+    #[inline]
+    pub fn pop_with_type_n(&mut self, types: &[ValueType]) -> Vec<GosValue> {
+        let len = types.len();
+        let mut ret = Vec::with_capacity(len);
+        for (i, t) in types.iter().enumerate() {
+            let index = self.cursor - types.len() + i;
+            let val = if t.copyable() {
+                self.get_c(index).into_v128(*t)
+            } else {
+                let mut v = GosValue::new_nil();
+                std::mem::swap(self.get_rc_mut(index), &mut v);
+                v
+            };
+            ret.push(val);
+        }
+        self.cursor -= len;
+        ret
     }
 
     #[inline]
@@ -137,7 +156,7 @@ impl Stack {
 
     #[inline]
     pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             self.get_c(index).into_v128(t)
         } else {
             self.get_rc(index).clone()
@@ -147,7 +166,7 @@ impl Stack {
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) {
         let t = val.get_type();
-        if t <= COPYABLE_END {
+        if t.copyable() {
             let (v, _) = GosValue64::from_v128(&val);
             *self.get_c_mut(index) = v;
         } else {
@@ -157,7 +176,7 @@ impl Stack {
 
     #[inline]
     pub fn set_with_type(&mut self, index: usize, val: GosValue64, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             *self.get_c_mut(index) = val;
         } else {
             *self.get_rc_mut(index) = val.get_v128(t)
@@ -186,7 +205,7 @@ impl Stack {
     pub fn split_off_with_type(&mut self, index: usize, t: ValueType) -> Vec<GosValue> {
         let end = self.cursor;
         self.cursor = index;
-        if t <= COPYABLE_END {
+        if t.copyable() {
             self.c[index..end].iter().map(|x| x.into_v128(t)).collect()
         } else {
             self.rc[index..end].to_vec()
@@ -195,7 +214,7 @@ impl Stack {
 
     #[inline]
     pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, md: &Metadata) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
             let v = self.get_rc(ri).copy_semantic(Some(self.get_rc(li)), md);
@@ -205,7 +224,7 @@ impl Stack {
 
     #[inline]
     pub fn store_with_op(&mut self, li: usize, ri: usize, op: Opcode, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             let a = self.get_c(li);
             let b = self.get_c(ri);
             *self.get_c_mut(li) = GosValue64::binary_op(a, b, t, op);
@@ -220,7 +239,7 @@ impl Stack {
     pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, md: &Metadata) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
-            if t <= COPYABLE_END {
+            if t.copyable() {
                 self.get_c(rhs_s_index).into_v128(t)
             } else {
                 self.get_rc(rhs_s_index).copy_semantic(Some(target), md)
@@ -228,7 +247,7 @@ impl Stack {
         } else {
             let ri = Stack::offset(self.len(), -1);
             let op = Instruction::index2code(r_index);
-            if t <= COPYABLE_END {
+            if t.copyable() {
                 let (a, _) = GosValue64::from_v128(target);
                 let b = self.get_c(ri);
                 let v = GosValue64::binary_op(&a, b, t, op);
@@ -261,7 +280,7 @@ impl Stack {
 
     #[inline]
     pub fn add(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             binary_op!(self, binary_op_add, t)
         } else {
             let a = self.get_rc(self.len() - 2);
@@ -273,7 +292,7 @@ impl Stack {
 
     #[inline]
     pub fn switch_cmp(&mut self, t: ValueType) -> bool {
-        let b = if t <= COPYABLE_END {
+        let b = if t.copyable() {
             let len = self.len();
             let a = self.get_c(len - 2);
             let b = self.get_c(len - 1);
@@ -354,7 +373,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_eql(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_eql, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -364,7 +383,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_neq(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_neq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -374,7 +393,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_lss(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_lss, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -384,7 +403,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_gtr(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_gtr, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -394,7 +413,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_leq(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_leq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -404,7 +423,7 @@ impl Stack {
 
     #[inline]
     pub fn compare_geq(&mut self, t: ValueType) {
-        if t <= COPYABLE_END {
+        if t.copyable() {
             cmp_op!(self, compare_geq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
@@ -435,6 +454,11 @@ impl Stack {
     #[inline]
     pub fn offset(base: usize, offset: OpIndex) -> usize {
         (base as isize + offset as isize) as usize
+    }
+
+    #[inline]
+    pub fn copy_to_rc(&mut self, t: ValueType) {
+        *self.get_rc_mut(self.cursor - 1) = self.get_c(self.cursor - 1).into_v128(t)
     }
 }
 
