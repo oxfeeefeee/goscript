@@ -86,7 +86,7 @@ pub enum GosValue {
 
     Str(Rc<StringObj>), // "String" is taken
     Boxed(Box<BoxedObj>),
-    Closure(UniClosureObj),
+    Closure(Rc<ClosureObj>),
     Slice(Rc<SliceObj>),
     Map(Rc<MapObj>),
     Interface(Rc<RefCell<InterfaceObj>>),
@@ -156,8 +156,8 @@ impl GosValue {
 
     #[inline]
     pub fn new_closure(fkey: FunctionKey) -> GosValue {
-        let val = ClosureObj::new(fkey, None, None);
-        GosValue::Closure(UniClosureObj::Gos(Rc::new(val)))
+        let val = ClosureObj::new_real(fkey, None);
+        GosValue::Closure(Rc::new(val))
     }
 
     #[inline]
@@ -237,7 +237,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &UniClosureObj {
+    pub fn as_closure(&self) -> &Rc<ClosureObj> {
         unwrap_gos_val!(Closure, self)
     }
 

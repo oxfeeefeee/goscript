@@ -304,7 +304,7 @@ impl Fields {
         let mut result = vec![null_key!(); self.fields.len()];
         for (n, i) in self.mapping.iter() {
             let f = &named_obj.members[named_obj.mapping[n] as usize];
-            result[*i as usize] = f.as_closure().as_gos().func;
+            result[*i as usize] = f.as_closure().func();
         }
         result
     }

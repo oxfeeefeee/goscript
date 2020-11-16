@@ -69,7 +69,7 @@ impl CallFrame {
 
     #[inline]
     fn func(&self) -> FunctionKey {
-        self.closure.func
+        self.closure.func()
     }
 
     #[inline]
@@ -81,11 +81,6 @@ impl CallFrame {
     fn ret_count(&self, objs: &VMObjects) -> usize {
         let fkey = self.func();
         objs.functions[fkey].ret_count()
-    }
-
-    #[inline]
-    fn receiver(&self) -> &Option<GosValue> {
-        &self.closure.receiver
     }
 }
 
@@ -108,7 +103,7 @@ impl Fiber {
 
     fn run(&mut self, code: &mut ByteCode) {
         let cls = GosValue::new_closure(code.entry);
-        let frame = CallFrame::with_closure(cls.as_closure().as_gos().clone(), 0);
+        let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
         self.frames.push(frame);
         self.main_loop(code);
     }
@@ -127,8 +122,6 @@ impl Fiber {
         let mut consts = &func.consts;
         let mut code = &func.code;
         let mut stack_base = frame.stack_base;
-
-        let mut ffi_call: Option<Rc<FfiClosureObj>> = None;
 
         let mut panic_msg: Option<String> = None;
 
@@ -280,8 +273,9 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(UniClosureObj::Gos(Rc::new(
-                        ClosureObj::new(func, Some(val.copy_semantic(None, &objs.metadata)), None),
+                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new_method(
+                        func,
+                        val.copy_semantic(None, &objs.metadata),
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
@@ -290,12 +284,11 @@ impl Fiber {
                     let cls = match borrowed.underlying() {
                         IfaceUnderlying::Gos(val, funcs) => {
                             let func = funcs[inst.imm() as usize];
-                            let cls = ClosureObj::new(
+                            let cls = ClosureObj::new_method(
                                 func,
-                                Some(val.copy_semantic(None, &objs.metadata)),
-                                None,
+                                val.copy_semantic(None, &objs.metadata),
                             );
-                            GosValue::Closure(UniClosureObj::Gos(Rc::new(cls)))
+                            GosValue::Closure(Rc::new(cls))
                         }
                         IfaceUnderlying::Ffi(ffi) => {
                             let (name, meta) = ffi.methods[inst.imm() as usize].clone();
@@ -304,7 +297,7 @@ impl Fiber {
                                 func_name: name,
                                 meta: meta,
                             };
-                            GosValue::Closure(UniClosureObj::Ffi(Rc::new(cls)))
+                            GosValue::Closure(Rc::new(ClosureObj::Ffi(cls)))
                         }
                         IfaceUnderlying::None => {
                             panic_msg = Some("access nil interface".to_string());
@@ -476,51 +469,60 @@ impl Fiber {
                 Opcode::PRE_CALL => {
                     //todo: remove pre_call
                     let val = stack.pop_with_type(ValueType::Closure);
-                    match val.as_closure() {
-                        UniClosureObj::Gos(gos) => {
-                            let sbase = stack.len();
-                            let next_frame = CallFrame::with_closure(gos.clone(), sbase);
-                            let func_key = next_frame.func();
-                            let next_func = &objs.functions[func_key];
+                    let cls_rc = val.as_closure();
+                    let cls: &ClosureObj = &*cls_rc;
+                    let next_frame = CallFrame::with_closure(cls_rc.clone(), stack.len());
+                    match &*cls {
+                        ClosureObj::Real(f, _) => {
+                            let next_func = &objs.functions[*f];
+                            stack.append(&mut next_func.ret_zeros.clone());
+                        }
+                        ClosureObj::Method(f, recv) => {
+                            let next_func = &objs.functions[*f];
                             stack.append(&mut next_func.ret_zeros.clone());
                             // push receiver on stack as the first parameter
-                            if let Some(r) = next_frame.receiver() {
-                                // don't call copy_semantic because BIND_METHOD did it already
-                                stack.push(r.clone());
-                            }
-                            self.next_frame = Some(next_frame);
+                            // don't call copy_semantic because BIND_METHOD did it already
+                            stack.push(recv.clone());
                         }
-                        UniClosureObj::Ffi(call) => ffi_call = Some(call.clone()),
+                        ClosureObj::Ffi(_) => {}
                     }
+                    self.next_frame = Some(next_frame);
                 }
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
-                    if let Some(call) = &ffi_call {
-                        let ptypes = &objs.metas[call.meta].as_signature().params_type;
-                        let params = stack.pop_with_type_n(ptypes);
-                        let mut returns = call.ffi.borrow().call(&call.func_name, params);
-                        dbg!(&returns);
-                        stack.append(&mut returns);
-                    } else {
-                        self.frames.push(self.next_frame.take().unwrap());
-                        frame = self.frames.last_mut().unwrap();
-                        func = &objs.functions[frame.func()];
-                        stack_base = frame.stack_base;
-                        consts = &func.consts;
-                        code = &func.code;
-                        //dbg!(&consts);
-                        dbg!(&code);
-                        //dbg!(&stack);
-
-                        if let Some(vt) = func.variadic() {
-                            if inst_op != Opcode::CALL_ELLIPSIS {
-                                let index = stack_base + func.param_count() + func.ret_count() - 1;
-                                stack.pack_variadic(index, vt, &mut objs.slices);
-                            }
+                    self.frames.push(self.next_frame.take().unwrap());
+                    frame = self.frames.last_mut().unwrap();
+                    let cls: &ClosureObj = &*frame.closure();
+                    match cls {
+                        ClosureObj::Ffi(call) => {
+                            let ptypes = &objs.metas[call.meta].as_signature().params_type;
+                            let params = stack.pop_with_type_n(ptypes);
+                            let mut returns = call.ffi.borrow().call(&call.func_name, params);
+                            dbg!(&returns);
+                            stack.append(&mut returns);
+                            self.frames.pop();
+                            frame = self.frames.last_mut().unwrap();
                         }
+                        _ => {
+                            func = &objs.functions[frame.func()];
+                            stack_base = frame.stack_base;
+                            consts = &func.consts;
+                            code = &func.code;
+                            //dbg!(&consts);
+                            dbg!(&code);
+                            //dbg!(&stack);
 
-                        debug_assert!(func.local_count() == func.local_zeros.len());
-                        // allocate local variables
-                        stack.append(&mut func.local_zeros.clone());
+                            if let Some(vt) = func.variadic() {
+                                if inst_op != Opcode::CALL_ELLIPSIS {
+                                    let index =
+                                        stack_base + func.param_count() + func.ret_count() - 1;
+                                    stack.pack_variadic(index, vt, &mut objs.slices);
+                                }
+                            }
+
+                            debug_assert!(func.local_count() == func.local_zeros.len());
+                            // allocate local variables
+                            stack.append(&mut func.local_zeros.clone());
+                        }
                     }
                 }
                 Opcode::RETURN | Opcode::RETURN_INIT_PKG => {
@@ -735,7 +737,7 @@ impl Fiber {
                         GosValue::Function(fkey) => {
                             // NEW a closure
                             let func = &objs.functions[fkey];
-                            let val = ClosureObj::new(fkey, None, Some(func.up_ptrs.clone()));
+                            let val = ClosureObj::new_real(fkey, Some(func.up_ptrs.clone()));
                             for uv in val.upvalues().iter() {
                                 drop(frame);
                                 let desc = uv.desc();
@@ -743,7 +745,7 @@ impl Fiber {
                                 upframe.add_referred_by(desc.index, desc.typ, uv);
                                 frame = self.frames.last_mut().unwrap();
                             }
-                            GosValue::Closure(UniClosureObj::Gos(Rc::new(val)))
+                            GosValue::Closure(Rc::new(val))
                         }
                         _ => unimplemented!(),
                     };

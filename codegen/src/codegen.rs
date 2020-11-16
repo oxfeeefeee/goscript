@@ -863,7 +863,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             } else {
                 let i = t.method_index(name, &self.objects.metas);
                 let method = t.get_method(i, &self.objects.metas);
-                let fkey = method.as_closure().as_gos().func;
+                let fkey = method.as_closure().func();
                 let boxed_recv = self.objects.metas[self.objects.functions[fkey].meta.as_non_ptr()]
                     .as_signature()
                     .boxed_recv();

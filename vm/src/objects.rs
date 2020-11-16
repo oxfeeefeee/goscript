@@ -661,37 +661,54 @@ impl WeakUpValue {
 }
 
 /// ClosureObj is a variable containing a pinter to a function and
-/// a. a receiver, in which case, it is a bound-method
-/// b. upvalues, in which case, it is a "real" closure
+/// a. upvalues, in which case, it is a "real" closure
+/// b. a receiver, in which case, it is a bound-method
+/// c. a ffi bound-method
 ///
 #[derive(Clone, Debug)]
-pub struct ClosureObj {
-    pub func: FunctionKey,
-    pub receiver: Option<GosValue>,
-    upvalues: Option<Vec<UpValue>>,
+pub enum ClosureObj {
+    Real(FunctionKey, Option<Vec<UpValue>>),
+    Method(FunctionKey, GosValue),
+    Ffi(FfiClosureObj),
 }
 
 impl ClosureObj {
-    pub fn new(
-        key: FunctionKey,
-        receiver: Option<GosValue>,
-        upvalues: Option<Vec<ValueDesc>>,
-    ) -> ClosureObj {
-        ClosureObj {
-            func: key,
-            receiver: receiver,
-            upvalues: upvalues.map(|uvs| uvs.into_iter().map(|x| UpValue::new(x)).collect()),
+    #[inline]
+    pub fn new_real(key: FunctionKey, upvalues: Option<Vec<ValueDesc>>) -> ClosureObj {
+        ClosureObj::Real(
+            key,
+            upvalues.map(|uvs| uvs.into_iter().map(|x| UpValue::new(x)).collect()),
+        )
+    }
+
+    #[inline]
+    pub fn new_method(key: FunctionKey, recv: GosValue) -> ClosureObj {
+        ClosureObj::Method(key, recv)
+    }
+
+    #[inline]
+    pub fn is_real(&self) -> bool {
+        match self {
+            Self::Real(_, _) => true,
+            _ => false,
         }
     }
 
     #[inline]
-    pub fn has_upvalues(&self) -> bool {
-        self.upvalues.is_some()
+    pub fn upvalues(&self) -> &Vec<UpValue> {
+        match self {
+            Self::Real(_, uvs) => uvs.as_ref().unwrap(),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
-    pub fn upvalues(&self) -> &Vec<UpValue> {
-        self.upvalues.as_ref().unwrap()
+    pub fn func(&self) -> FunctionKey {
+        match self {
+            Self::Real(f, _) => *f,
+            Self::Method(f, _) => *f,
+            Self::Ffi(_) => unreachable!(),
+        }
     }
 }
 
@@ -703,31 +720,6 @@ pub struct FfiClosureObj {
     pub ffi: Rc<RefCell<dyn Ffi>>,
     pub func_name: String,
     pub meta: MetadataKey,
-}
-
-// ----------------------------------------------------------------------------
-// UniClosureObj
-
-#[derive(Clone, Debug)]
-pub enum UniClosureObj {
-    Gos(Rc<ClosureObj>),
-    Ffi(Rc<FfiClosureObj>),
-}
-
-impl UniClosureObj {
-    pub fn as_gos(&self) -> &Rc<ClosureObj> {
-        match self {
-            UniClosureObj::Gos(v) => v,
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn as_ffi(&self) -> &Rc<FfiClosureObj> {
-        match self {
-            UniClosureObj::Ffi(v) => v,
-            _ => unreachable!(),
-        }
-    }
 }
 
 // ----------------------------------------------------------------------------
