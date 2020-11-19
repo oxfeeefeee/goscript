@@ -18,8 +18,9 @@ fn load_parse_gen(path: &str, trace: bool) -> usize {
     let el = &mut fe::errors::ErrorList::new();
     let code = cg::entry::parse_check_gen(path, &config, fs, el);
     if let Ok(bc) = code {
+        let ffi = vm::ffi::FfiFactory::new();
         let mut vm = vm::vm::GosVM::new(bc);
-        vm.run();
+        vm.run(&ffi);
         0
     } else {
         if trace {

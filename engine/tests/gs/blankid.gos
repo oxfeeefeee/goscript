@@ -1,0 +1,14 @@
+package main
+
+func a() (int, int, int) {
+	return 1, 2, 3
+}
+
+func main() {
+	i, _, _ := a()
+	_, j, _ := a()
+	_, _, k := a()
+	assert(i == 1)
+	assert(j == 2)
+	assert(k == 3)
+}

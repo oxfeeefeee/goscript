@@ -1,0 +1,36 @@
+package main
+
+func funca(i int) int {
+    j := i + 1
+    return j
+}
+
+
+func funcb(i int, iii int) (a int, b int) {
+    fff := 4
+    fff = 5
+    fff = fff + 50 + i + funca(i) + iii
+    b = fff 
+    return
+}
+
+
+func funcc(x ...int) (int, int, int) {
+    i := []int{8}
+    i = append(i, x...)
+    m, n := funcb(i[0], i[1])
+    return m, n, i[2]
+}
+
+
+func main() {
+
+    var v1, v2, v3 = funcc(100, 200, 300)
+    var i1, i2, i3 = funcc([]int{1000, 2000, 3000}...)
+    assert(v1 == 0)
+    assert(v2 == 172)
+    assert(v3 == 200)
+    assert(i1 == 0)
+    assert(i2 == 1072)
+    assert(i3 == 2000)
+} 

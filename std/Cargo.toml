@@ -1,8 +1,0 @@
-[package]
-name = "goscript-std"
-version = "0.1.0"
-authors = ["oxfeeefeee <pb01005051@gmail.com>"]
-edition = "2018"
-
-[dependencies]
-slotmap = "0.4"

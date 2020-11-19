@@ -1,5 +1,5 @@
 #![macro_use]
-use super::ffi::{Ffi, FfiFactory};
+use super::ffi::Ffi;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::GosValue;
@@ -67,7 +67,6 @@ pub struct VMObjects {
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
     pub metadata: Metadata,
-    pub ffi_factory: FfiFactory,
 }
 
 impl VMObjects {
@@ -86,7 +85,6 @@ impl VMObjects {
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             metadata: md,
-            ffi_factory: FfiFactory::new(),
         }
     }
 }

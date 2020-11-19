@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::ffi::FfiFactory;
 use super::instruction::*;
 use super::metadata::*;
 use super::objects::{u64_to_key, ClosureObj, GosHashMap, SliceEnumIter, SliceRef, StringEnumIter};
@@ -101,16 +102,15 @@ impl Fiber {
         }
     }
 
-    fn run(&mut self, code: &mut ByteCode) {
+    fn run(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory) {
         let cls = GosValue::new_closure(code.entry);
         let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
         self.frames.push(frame);
-        self.main_loop(code);
+        self.main_loop(code, ffi_factory);
     }
 
-    fn main_loop(&mut self, code: &mut ByteCode) {
+    fn main_loop(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory) {
         let objs: &mut VMObjects = &mut code.objects;
-        let ffi_factory = &objs.ffi_factory;
         let pkgs = &code.packages;
         let ifaces = &code.ifaces;
         let mut frame = self.frames.last_mut().unwrap();
@@ -876,9 +876,9 @@ impl GosVM {
         vm
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, ffi: &FfiFactory) {
         let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
-        fb.run(&mut self.code);
+        fb.run(&mut self.code, ffi);
     }
 }
 

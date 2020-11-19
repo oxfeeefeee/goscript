@@ -4,6 +4,6 @@ members = [
     "./parser",
     "./types",
     "./vm",
-    "./std",
+    "./engine",
     "./codegen",
 ]
