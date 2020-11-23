@@ -6,6 +6,7 @@ use ordered_float;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt;
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -411,42 +412,26 @@ impl Hash for GosValue {
     }
 }
 
-/// A helper struct for printing debug info of GosValue, we cannot rely on GosValue::Debug
-/// because it requires 'objs' to access the inner data
-pub struct GosValueDebug<'a> {
-    val: &'a GosValue,
-    objs: &'a VMObjects,
-}
-
-impl<'a> GosValueDebug<'a> {
-    pub fn new(val: &'a GosValue, objs: &'a VMObjects) -> GosValueDebug<'a> {
-        GosValueDebug {
-            val: val,
-            objs: objs,
-        }
-    }
-}
-
-impl<'a> fmt::Debug for GosValueDebug<'a> {
+impl Display for GosValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.val {
-            GosValue::Nil(_)
-            | GosValue::Bool(_)
-            | GosValue::Int(_)
-            | GosValue::Float64(_)
-            | GosValue::Complex64(_, _) => self.val.fmt(f),
-            GosValue::Str(k) => k.fmt(f),
-            GosValue::Closure(k) => k.fmt(f),
-            GosValue::Slice(k) => k.fmt(f),
-            GosValue::Map(k) => k.fmt(f),
-            GosValue::Interface(k) => k.fmt(f),
-            GosValue::Struct(k) => k.fmt(f),
-            GosValue::Channel(k) => k.fmt(f),
-            GosValue::Boxed(k) => k.fmt(f),
-            GosValue::Function(k) => self.objs.functions[*k].fmt(f),
-            GosValue::Package(k) => self.objs.packages[*k].fmt(f),
-            GosValue::Metadata(k) => k.fmt(f),
-            //_ => unreachable!(),
+        match self {
+            GosValue::Nil(_) => f.write_str("nil"),
+            GosValue::Bool(true) => f.write_str("true"),
+            GosValue::Bool(false) => f.write_str("false"),
+            GosValue::Int(i) => f.write_fmt(format_args!("{}", i)),
+            GosValue::Float64(fl) => f.write_fmt(format_args!("{}", fl)),
+            GosValue::Complex64(r, i) => f.write_fmt(format_args!("({}, {})", r, i)),
+            GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
+            GosValue::Boxed(_) => unimplemented!(),
+            GosValue::Closure(_) => unimplemented!(),
+            GosValue::Slice(_) => unimplemented!(),
+            GosValue::Map(_) => unimplemented!(),
+            GosValue::Interface(_) => unimplemented!(),
+            GosValue::Struct(_) => unimplemented!(),
+            GosValue::Channel(_) => unimplemented!(),
+            GosValue::Function(_) => unimplemented!(),
+            GosValue::Package(_) => unimplemented!(),
+            GosValue::Metadata(_) => unimplemented!(),
         }
     }
 }
@@ -742,19 +727,6 @@ mod test {
     use super::super::value::*;
     use std::collections::HashMap;
     use std::mem;
-
-    #[test]
-    fn test_gosvalue_debug() {
-        let mut o = VMObjects::new();
-        let s = GosValue::new_str("test_string".to_string());
-        let slice = GosValue::new_slice(10, 10, Some(&GosValue::Int(0)), &mut o.slices);
-        dbg!(
-            GosValueDebug::new(&s, &o),
-            //GosValueDebug::new(&GosValue::Nil, &o),
-            GosValueDebug::new(&GosValue::Int(1), &o),
-            GosValueDebug::new(&slice, &o),
-        );
-    }
 
     #[test]
     fn test_types() {

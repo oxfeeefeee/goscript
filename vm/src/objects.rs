@@ -413,6 +413,14 @@ impl<'a> SliceObj {
         }
     }
 
+    #[inline]
+    pub fn get_vec(&self) -> Vec<GosValue> {
+        self.borrow_data()
+            .iter()
+            .map(|x| x.borrow().clone())
+            .collect()
+    }
+
     fn try_grow_vec(&mut self, len: usize) {
         let mut cap = self.cap();
         assert!(cap >= self.len());
@@ -546,6 +554,14 @@ impl InterfaceObj {
     #[inline]
     pub fn set_underlying(&mut self, v: IfaceUnderlying) {
         self.underlying = v;
+    }
+
+    #[inline]
+    pub fn underlying_value(&self) -> &GosValue {
+        match self.underlying() {
+            IfaceUnderlying::Gos(v, _) => v,
+            _ => unreachable!(),
+        }
     }
 }
 

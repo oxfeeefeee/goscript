@@ -1,0 +1,11 @@
+package fmt
+
+type ffiFmt interface {
+    println(a ...interface{})
+}
+
+
+func Println(a ...interface{})  {
+    var f = ffi(ffiFmt, "fmt")
+    f.println(a...)
+}

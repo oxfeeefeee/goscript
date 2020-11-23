@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub type FfiResult<T> = std::result::Result<T, String>;
+
 pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>>;
 
 pub trait Ffi {
@@ -22,11 +23,9 @@ pub struct FfiFactory {
 
 impl FfiFactory {
     pub fn new() -> FfiFactory {
-        let mut f = FfiFactory {
+        FfiFactory {
             registry: HashMap::new(),
-        };
-        f.register("test", Box::new(TestFfi::new));
-        f
+        }
     }
 
     pub fn register(&mut self, name: &'static str, ctor: Box<Ctor>) {
@@ -48,21 +47,5 @@ impl FfiFactory {
 impl std::fmt::Debug for FfiFactory {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "FfiFactory")
-    }
-}
-
-pub struct TestFfi {}
-
-impl TestFfi {
-    pub fn new(v: Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>> {
-        dbg!(v);
-        Ok(Rc::new(RefCell::new(TestFfi {})))
-    }
-}
-
-impl Ffi for TestFfi {
-    fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue> {
-        dbg!(func_name, &params);
-        vec![GosValue::Int(666)]
     }
 }
