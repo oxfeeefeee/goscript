@@ -302,24 +302,22 @@ impl<'a> TypeLookup<'a> {
             Type::Basic(detail) => match detail.typ() {
                 BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
                 BasicType::Int
-                | BasicType::Int8
-                | BasicType::Int16
-                | BasicType::Int32
-                | BasicType::Rune
-                | BasicType::Int64
-                | BasicType::Uint
-                | BasicType::Uint8
-                | BasicType::Byte
-                | BasicType::Uint16
-                | BasicType::Uint32
-                | BasicType::Uint64
                 | BasicType::Uintptr
                 | BasicType::UnsafePointer
-                | BasicType::UntypedInt
-                | BasicType::UntypedRune => ValueType::Int,
-                BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-                    ValueType::Float64
-                }
+                | BasicType::UntypedInt => ValueType::Int,
+                BasicType::Int8 => ValueType::Int8,
+                BasicType::Int16 => ValueType::Int16,
+                BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => ValueType::Int32,
+                BasicType::Int64 => ValueType::Int64,
+                BasicType::Uint => ValueType::Uint,
+                BasicType::Uint8 | BasicType::Byte => ValueType::Uint8,
+                BasicType::Uint16 => ValueType::Uint16,
+                BasicType::Uint32 => ValueType::Uint32,
+                BasicType::Uint64 => ValueType::Uint64,
+                BasicType::Float32 => ValueType::Float32,
+                BasicType::Float64 | BasicType::UntypedFloat => ValueType::Float64,
+                BasicType::Complex64 => ValueType::Complex64,
+                BasicType::Complex128 => ValueType::Complex128,
                 BasicType::Str | BasicType::UntypedString => ValueType::Str,
                 BasicType::UntypedNil => ValueType::Nil,
                 _ => {

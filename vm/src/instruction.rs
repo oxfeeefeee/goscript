@@ -208,6 +208,16 @@ pub const COPYABLE_END: ValueType = ValueType::Package;
 pub enum ValueType {
     Bool = 1,
     Int,
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    Uint,
+    Uint8,
+    Uint16,
+    Uint32,
+    Uint64,
+    Float32,
     Float64,
     Complex64,
     Function,
@@ -224,6 +234,7 @@ pub enum ValueType {
     Interface,
     Channel,
 
+    Complex128,
     Str,
     Struct,
 

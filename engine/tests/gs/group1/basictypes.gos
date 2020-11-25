@@ -1,0 +1,25 @@
+package main
+
+import "fmt"
+
+func main() {
+	var i1 uint8 = 80
+    j1 := i1 + 200
+    assert(j1 == 24)
+    fmt.Println(j1)
+
+    var i2 uint8 = 0b0011
+    var i3 uint8 = 0b0101
+    assert(i2 & i3 == 0b0001)
+    assert(i2 | i3 == 0b0111)
+    assert(^i3 == 0b11111010)
+
+    var i4 = 0b00110101
+    assert(i4 << 2 == 0b11010100)
+    assert(i4 >> 2 == 0b00001101)
+    //assert(i4 << 100 == 0)
+   
+
+    //todo
+
+}

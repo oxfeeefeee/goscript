@@ -141,6 +141,12 @@ fn test_typeswitch() {
 }
 
 #[test]
+fn test_basictypes() {
+    let err_cnt = run("./tests/gs/group1/basictypes.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 

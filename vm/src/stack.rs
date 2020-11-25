@@ -104,7 +104,7 @@ impl Stack {
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         self.cursor -= 1;
         if t.copyable() {
-            self.get_c(self.cursor).into_v128(t)
+            self.get_c(self.cursor).get_v128(t)
         } else {
             let mut ret = GosValue::new_nil();
             std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
@@ -119,7 +119,7 @@ impl Stack {
         for (i, t) in types.iter().enumerate() {
             let index = self.cursor - types.len() + i;
             let val = if t.copyable() {
-                self.get_c(index).into_v128(*t)
+                self.get_c(index).get_v128(*t)
             } else {
                 let mut v = GosValue::new_nil();
                 std::mem::swap(self.get_rc_mut(index), &mut v);
@@ -157,7 +157,7 @@ impl Stack {
     #[inline]
     pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
         if t.copyable() {
-            self.get_c(index).into_v128(t)
+            self.get_c(index).get_v128(t)
         } else {
             self.get_rc(index).clone()
         }
@@ -206,7 +206,7 @@ impl Stack {
         let end = self.cursor;
         self.cursor = index;
         if t.copyable() {
-            self.c[index..end].iter().map(|x| x.into_v128(t)).collect()
+            self.c[index..end].iter().map(|x| x.get_v128(t)).collect()
         } else {
             self.rc[index..end].to_vec()
         }
@@ -240,7 +240,7 @@ impl Stack {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
             if t.copyable() {
-                self.get_c(rhs_s_index).into_v128(t)
+                self.get_c(rhs_s_index).get_v128(t)
             } else {
                 self.get_rc(rhs_s_index).copy_semantic(Some(target), md)
             }
@@ -251,7 +251,7 @@ impl Stack {
                 let (a, _) = GosValue64::from_v128(target);
                 let b = self.get_c(ri);
                 let v = GosValue64::binary_op(&a, b, t, op);
-                v.into_v128(t)
+                v.get_v128(t)
             } else {
                 GosValue::add_str(target, self.get_rc(ri))
             }
@@ -458,7 +458,7 @@ impl Stack {
 
     #[inline]
     pub fn copy_to_rc(&mut self, t: ValueType) {
-        *self.get_rc_mut(self.cursor - 1) = self.get_c(self.cursor - 1).into_v128(t)
+        *self.get_rc_mut(self.cursor - 1) = self.get_c(self.cursor - 1).get_v128(t)
     }
 }
 
