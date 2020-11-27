@@ -83,6 +83,9 @@ pub enum Opcode {
     TYPE_ASSERT,
     TYPE,
 
+    // for shift ops: convert the second operator to uint32
+    TO_UINT32,
+
     // built-in functinalities
     IMPORT,     // imports a package
     SLICE,      //for slice expressions
@@ -174,6 +177,8 @@ impl Opcode {
 
             Opcode::TYPE_ASSERT => ("TYPE_ASSERT", 0),
             Opcode::TYPE => ("TYPE", 1),
+
+            Opcode::TO_UINT32 => ("TO_UINT32", 0),
 
             Opcode::IMPORT => ("IMPORT", 0),
             Opcode::SLICE => ("SLICE", -2),

@@ -710,7 +710,12 @@ impl Fiber {
                         stack.set(s_index, val);
                     }
                 }
-
+                Opcode::TO_UINT32 => {
+                    if let Err(e) = stack.top_to_uint(inst.t0()) {
+                        panic_msg = Some(e);
+                        break;
+                    }
+                }
                 Opcode::IMPORT => {
                     let pkey = pkgs[inst.imm() as usize];
                     stack.push(GosValue::Bool(!objs.packages[pkey].inited()));

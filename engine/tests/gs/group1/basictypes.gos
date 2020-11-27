@@ -17,8 +17,20 @@ func main() {
     var i4 = 0b00110101
     assert(i4 << 2 == 0b11010100)
     assert(i4 >> 2 == 0b00001101)
-    //assert(i4 << 100 == 0)
-   
+    assert(i4 << 100 == 0)
+
+    var ir1 uint8 = 2
+    var ir2 uint16 = 2
+    var ir3 uint16 = 2
+    assert(i4 << ir1 == 0b11010100)
+    assert(i4 >> ir1 == 0b00001101)
+    assert(i4 << ir2 == 0b11010100)
+    assert(i4 >> ir2 == 0b00001101)
+    assert(i4 << ir3 == 0b11010100)
+    assert(i4 >> ir3 == 0b00001101)
+
+    assert(i4 << -ir1 == 0)
+    assert(-ir1 == 254)
 
     //todo
 

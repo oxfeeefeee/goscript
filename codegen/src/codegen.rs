@@ -308,12 +308,18 @@ impl<'a> CodeGen<'a> {
         if let Some(code) = simple_op {
             if *token == Token::INC || *token == Token::DEC {
                 let typ = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
-                self.gen_op_assign(&lhs[0].0, code, None, typ);
+                self.gen_op_assign(&lhs[0].0, (code, None), None, typ);
             } else {
                 assert_eq!(lhs_exprs.len(), 1);
                 assert_eq!(rhs_exprs.len(), 1);
-                let typ = self.tlookup.get_expr_value_type(&rhs_exprs[0]);
-                self.gen_op_assign(&lhs[0].0, code, Some(&rhs_exprs[0]), typ);
+                let ltyp = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
+                let rtyp = match code {
+                    Opcode::SHL | Opcode::SHR => {
+                        Some(self.tlookup.get_expr_value_type(&rhs_exprs[0]))
+                    }
+                    _ => None,
+                };
+                self.gen_op_assign(&lhs[0].0, (code, rtyp), Some(&rhs_exprs[0]), ltyp);
             }
             None
         } else {
@@ -482,7 +488,7 @@ impl<'a> CodeGen<'a> {
     fn gen_op_assign(
         &mut self,
         left: &LeftHandSide,
-        op: Opcode,
+        op: (Opcode, Option<ValueType>),
         right: Option<&Expr>,
         typ: ValueType,
     ) {

@@ -10,6 +10,7 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::num::Wrapping;
 use std::rc::Rc;
+use std::result;
 
 type F32 = ordered_float::OrderedFloat<f32>;
 type F64 = ordered_float::OrderedFloat<f64>;
@@ -25,7 +26,7 @@ macro_rules! unwrap_gos_val {
 }
 
 macro_rules! union_op_wrap {
-    ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
+    ($a:ident, $b:ident, $name:tt, $op:tt) => {
         GosValue64{
             data: V64Union {
             $name: (Wrapping($a.data.$name) $op Wrapping($b.data.$name)).0,
@@ -34,7 +35,7 @@ macro_rules! union_op_wrap {
 }
 
 macro_rules! union_op {
-    ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
+    ($a:ident, $b:ident, $name:tt, $op:tt) => {
         GosValue64{
             data: V64Union {
             $name: $a.data.$name $op $b.data.$name,
@@ -42,8 +43,18 @@ macro_rules! union_op {
     };
 }
 
+macro_rules! union_shift {
+    ($a:ident, $b:ident, $name:tt, $op:tt) => {
+        GosValue64 {
+            data: V64Union {
+                $name: $a.data.$name.$op($b).unwrap_or(0),
+            },
+        }
+    };
+}
+
 macro_rules! union_cmp {
-    ($a:ident, $b:ident, $name:tt, $op:tt, $t:expr) => {
+    ($a:ident, $b:ident, $name:tt, $op:tt) => {
         $a.data.$name $op $b.data.$name
     };
 }
@@ -51,18 +62,18 @@ macro_rules! union_cmp {
 macro_rules! binary_op_int_float {
     ($t:ident, $a:ident, $b:ident, $op:tt) => {
         match $t {
-            ValueType::Int => union_op_wrap!($a, $b, int, $op, ValueType::Int),
-            ValueType::Int8 => union_op_wrap!($a, $b, int8, $op, ValueType::Int8),
-            ValueType::Int16 => union_op_wrap!($a, $b, int16, $op, ValueType::Int16),
-            ValueType::Int32 => union_op_wrap!($a, $b, int32, $op, ValueType::Int32),
-            ValueType::Int64 => union_op_wrap!($a, $b, int64, $op, ValueType::Int64),
-            ValueType::Uint => union_op_wrap!($a, $b, uint, $op, ValueType::Uint),
-            ValueType::Uint8 => union_op_wrap!($a, $b, uint8, $op, ValueType::Uint8),
-            ValueType::Uint16 => union_op_wrap!($a, $b, uint16, $op, ValueType::Uint16),
-            ValueType::Uint32 => union_op_wrap!($a, $b, uint32, $op, ValueType::Uint32),
-            ValueType::Uint64 => union_op_wrap!($a, $b, uint64, $op, ValueType::Uint64),
-            ValueType::Float32 => union_op!($a, $b, float32, $op, ValueType::Float32),
-            ValueType::Float64 => union_op!($a, $b, float64, $op, ValueType::Float64),
+            ValueType::Int => union_op_wrap!($a, $b, int, $op),
+            ValueType::Int8 => union_op_wrap!($a, $b, int8, $op),
+            ValueType::Int16 => union_op_wrap!($a, $b, int16, $op),
+            ValueType::Int32 => union_op_wrap!($a, $b, int32, $op),
+            ValueType::Int64 => union_op_wrap!($a, $b, int64, $op),
+            ValueType::Uint => union_op_wrap!($a, $b, uint, $op),
+            ValueType::Uint8 => union_op_wrap!($a, $b, uint8, $op),
+            ValueType::Uint16 => union_op_wrap!($a, $b, uint16, $op),
+            ValueType::Uint32 => union_op_wrap!($a, $b, uint32, $op),
+            ValueType::Uint64 => union_op_wrap!($a, $b, uint64, $op),
+            ValueType::Float32 => union_op!($a, $b, float32, $op),
+            ValueType::Float64 => union_op!($a, $b, float64, $op),
             _ => unreachable!(),
         }
     };
@@ -71,16 +82,16 @@ macro_rules! binary_op_int_float {
 macro_rules! binary_op_int_no_wrap {
     ($t:ident, $a:ident, $b:ident, $op:tt) => {
         match $t {
-            ValueType::Int => union_op!($a, $b, int, $op, ValueType::Int),
-            ValueType::Int8 => union_op!($a, $b, int8, $op, ValueType::Int8),
-            ValueType::Int16 => union_op!($a, $b, int16, $op, ValueType::Int16),
-            ValueType::Int32 => union_op!($a, $b, int32, $op, ValueType::Int32),
-            ValueType::Int64 => union_op!($a, $b, int64, $op, ValueType::Int64),
-            ValueType::Uint => union_op!($a, $b, uint, $op, ValueType::Uint),
-            ValueType::Uint8 => union_op!($a, $b, uint8, $op, ValueType::Uint8),
-            ValueType::Uint16 => union_op!($a, $b, uint16, $op, ValueType::Uint16),
-            ValueType::Uint32 => union_op!($a, $b, uint32, $op, ValueType::Uint32),
-            ValueType::Uint64 => union_op!($a, $b, uint64, $op, ValueType::Uint64),
+            ValueType::Int => union_op!($a, $b, int, $op),
+            ValueType::Int8 => union_op!($a, $b, int8, $op),
+            ValueType::Int16 => union_op!($a, $b, int16, $op),
+            ValueType::Int32 => union_op!($a, $b, int32, $op),
+            ValueType::Int64 => union_op!($a, $b, int64, $op),
+            ValueType::Uint => union_op!($a, $b, uint, $op),
+            ValueType::Uint8 => union_op!($a, $b, uint8, $op),
+            ValueType::Uint16 => union_op!($a, $b, uint16, $op),
+            ValueType::Uint32 => union_op!($a, $b, uint32, $op),
+            ValueType::Uint64 => union_op!($a, $b, uint64, $op),
             _ => unreachable!(),
         }
     };
@@ -89,19 +100,19 @@ macro_rules! binary_op_int_no_wrap {
 macro_rules! cmp_bool_int_float {
     ($t:ident, $a:ident, $b:ident, $op:tt) => {
         match $t {
-            ValueType::Bool => union_cmp!($a, $b, ubool, $op, ValueType::Bool),
-            ValueType::Int => union_cmp!($a, $b, int, $op, ValueType::Int),
-            ValueType::Int8 => union_cmp!($a, $b, int8, $op, ValueType::Int8),
-            ValueType::Int16 => union_cmp!($a, $b, int16, $op, ValueType::Int16),
-            ValueType::Int32 => union_cmp!($a, $b, int32, $op, ValueType::Int32),
-            ValueType::Int64 => union_cmp!($a, $b, int64, $op, ValueType::Int64),
-            ValueType::Uint => union_cmp!($a, $b, uint, $op, ValueType::Uint),
-            ValueType::Uint8 => union_cmp!($a, $b, uint8, $op, ValueType::Uint8),
-            ValueType::Uint16 => union_cmp!($a, $b, uint16, $op, ValueType::Uint16),
-            ValueType::Uint32 => union_cmp!($a, $b, uint32, $op, ValueType::Uint32),
-            ValueType::Uint64 => union_cmp!($a, $b, uint64, $op, ValueType::Uint64),
-            ValueType::Float32 => union_cmp!($a, $b, float32, $op, ValueType::Float32),
-            ValueType::Float64 => union_cmp!($a, $b, float64, $op, ValueType::Float64),
+            ValueType::Bool => union_cmp!($a, $b, ubool, $op),
+            ValueType::Int => union_cmp!($a, $b, int, $op),
+            ValueType::Int8 => union_cmp!($a, $b, int8, $op),
+            ValueType::Int16 => union_cmp!($a, $b, int16, $op),
+            ValueType::Int32 => union_cmp!($a, $b, int32, $op),
+            ValueType::Int64 => union_cmp!($a, $b, int64, $op),
+            ValueType::Uint => union_cmp!($a, $b, uint, $op),
+            ValueType::Uint8 => union_cmp!($a, $b, uint8, $op),
+            ValueType::Uint16 => union_cmp!($a, $b, uint16, $op),
+            ValueType::Uint32 => union_cmp!($a, $b, uint32, $op),
+            ValueType::Uint64 => union_cmp!($a, $b, uint64, $op),
+            ValueType::Float32 => union_cmp!($a, $b, float32, $op),
+            ValueType::Float64 => union_cmp!($a, $b, float64, $op),
             _ => unreachable!(),
         }
     };
@@ -110,22 +121,42 @@ macro_rules! cmp_bool_int_float {
 macro_rules! cmp_int_float {
     ($t:ident, $a:ident, $b:ident, $op:tt) => {
         match $t {
-            ValueType::Int => union_cmp!($a, $b, int, $op, ValueType::Int),
-            ValueType::Int8 => union_cmp!($a, $b, int8, $op, ValueType::Int8),
-            ValueType::Int16 => union_cmp!($a, $b, int16, $op, ValueType::Int16),
-            ValueType::Int32 => union_cmp!($a, $b, int32, $op, ValueType::Int32),
-            ValueType::Int64 => union_cmp!($a, $b, int64, $op, ValueType::Int64),
-            ValueType::Uint => union_cmp!($a, $b, uint, $op, ValueType::Uint),
-            ValueType::Uint8 => union_cmp!($a, $b, uint8, $op, ValueType::Uint8),
-            ValueType::Uint16 => union_cmp!($a, $b, uint16, $op, ValueType::Uint16),
-            ValueType::Uint32 => union_cmp!($a, $b, uint32, $op, ValueType::Uint32),
-            ValueType::Uint64 => union_cmp!($a, $b, uint64, $op, ValueType::Uint64),
-            ValueType::Float32 => union_cmp!($a, $b, float32, $op, ValueType::Float32),
-            ValueType::Float64 => union_cmp!($a, $b, float64, $op, ValueType::Float64),
+            ValueType::Int => union_cmp!($a, $b, int, $op),
+            ValueType::Int8 => union_cmp!($a, $b, int8, $op),
+            ValueType::Int16 => union_cmp!($a, $b, int16, $op),
+            ValueType::Int32 => union_cmp!($a, $b, int32, $op),
+            ValueType::Int64 => union_cmp!($a, $b, int64, $op),
+            ValueType::Uint => union_cmp!($a, $b, uint, $op),
+            ValueType::Uint8 => union_cmp!($a, $b, uint8, $op),
+            ValueType::Uint16 => union_cmp!($a, $b, uint16, $op),
+            ValueType::Uint32 => union_cmp!($a, $b, uint32, $op),
+            ValueType::Uint64 => union_cmp!($a, $b, uint64, $op),
+            ValueType::Float32 => union_cmp!($a, $b, float32, $op),
+            ValueType::Float64 => union_cmp!($a, $b, float64, $op),
             _ => unreachable!(),
         }
     };
 }
+
+macro_rules! shift_int {
+    ($t:ident, $a:ident, $b:ident, $op:tt) => {
+        *$a = match $t {
+            ValueType::Int => union_shift!($a, $b, int, $op),
+            ValueType::Int8 => union_shift!($a, $b, int8, $op),
+            ValueType::Int16 => union_shift!($a, $b, int16, $op),
+            ValueType::Int32 => union_shift!($a, $b, int32, $op),
+            ValueType::Int64 => union_shift!($a, $b, int64, $op),
+            ValueType::Uint => union_shift!($a, $b, uint, $op),
+            ValueType::Uint8 => union_shift!($a, $b, uint8, $op),
+            ValueType::Uint16 => union_shift!($a, $b, uint16, $op),
+            ValueType::Uint32 => union_shift!($a, $b, uint32, $op),
+            ValueType::Uint64 => union_shift!($a, $b, uint64, $op),
+            _ => unreachable!(),
+        };
+    };
+}
+
+pub type RuntimeResult = result::Result<(), String>;
 
 // ----------------------------------------------------------------------------
 // GosValue
@@ -702,6 +733,12 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn get_uint32(&self) -> u32 {
+        //debug_assert_eq!(self.debug_type, ValueType::Int);
+        unsafe { self.data.uint32 }
+    }
+
+    #[inline]
     pub fn get_float64(&self) -> F64 {
         //debug_assert_eq!(self.debug_type, ValueType::Float64);
         unsafe { self.data.float64 }
@@ -714,6 +751,72 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn to_uint32(&mut self, t: ValueType) -> RuntimeResult {
+        unsafe {
+            match t {
+                ValueType::Uint => {
+                    self.data.uint32 = self.data.uint as u32;
+                    Ok(())
+                }
+                ValueType::Uint8 => {
+                    self.data.uint32 = self.data.uint8 as u32;
+                    Ok(())
+                }
+                ValueType::Uint16 => {
+                    self.data.uint32 = self.data.uint16 as u32;
+                    Ok(())
+                }
+                ValueType::Uint32 => Ok(()),
+                ValueType::Uint64 => {
+                    self.data.uint32 = self.data.uint64 as u32;
+                    Ok(())
+                }
+                ValueType::Int => {
+                    if self.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        self.data.uint32 = self.data.int as u32;
+                        Ok(())
+                    }
+                }
+                ValueType::Int8 => {
+                    if self.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        self.data.uint32 = self.data.int8 as u32;
+                        Ok(())
+                    }
+                }
+                ValueType::Int16 => {
+                    if self.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        self.data.uint32 = self.data.int16 as u32;
+                        Ok(())
+                    }
+                }
+                ValueType::Int32 => {
+                    if self.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        self.data.uint32 = self.data.int32 as u32;
+                        Ok(())
+                    }
+                }
+                ValueType::Int64 => {
+                    if self.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        self.data.uint32 = self.data.int64 as u32;
+                        Ok(())
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[inline]
     pub fn unary_negate(&mut self, t: ValueType) {
         match t {
             ValueType::Int => self.data.int = -unsafe { self.data.int },
@@ -723,6 +826,11 @@ impl GosValue64 {
             ValueType::Int64 => self.data.int64 = -unsafe { self.data.int64 },
             ValueType::Float32 => self.data.float32 = -unsafe { self.data.float32 },
             ValueType::Float64 => self.data.float64 = -unsafe { self.data.float64 },
+            ValueType::Uint => self.data.uint = unsafe { (!0) ^ self.data.uint } + 1,
+            ValueType::Uint8 => self.data.uint8 = unsafe { (!0) ^ self.data.uint8 } + 1,
+            ValueType::Uint16 => self.data.uint16 = unsafe { (!0) ^ self.data.uint16 } + 1,
+            ValueType::Uint32 => self.data.uint32 = unsafe { (!0) ^ self.data.uint32 } + 1,
+            ValueType::Uint64 => self.data.uint64 = unsafe { (!0) ^ self.data.uint64 } + 1,
             _ => unreachable!(),
         }
     }
@@ -791,13 +899,13 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_shl(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, <<) }
+    pub fn binary_op_shl(&mut self, b: u32, t: ValueType) {
+        unsafe { shift_int!(t, self, b, checked_shl) }
     }
 
     #[inline]
-    pub fn binary_op_shr(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, >>) }
+    pub fn binary_op_shr(&mut self, b: u32, t: ValueType) {
+        unsafe { shift_int!(t, self, b, checked_shr) }
     }
 
     #[inline]
@@ -853,8 +961,6 @@ impl GosValue64 {
             Opcode::AND => GosValue64::binary_op_and(a, b, t),
             Opcode::OR => GosValue64::binary_op_or(a, b, t),
             Opcode::XOR => GosValue64::binary_op_xor(a, b, t),
-            Opcode::SHL => GosValue64::binary_op_shl(a, b, t),
-            Opcode::SHR => GosValue64::binary_op_shr(a, b, t),
             Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
             _ => unreachable!(),
         }

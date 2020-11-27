@@ -86,7 +86,7 @@ pub trait FuncGen {
         &mut self,
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
-        op: Option<Opcode>,
+        op: Option<(Opcode, Option<ValueType>)>,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
     );
@@ -182,7 +182,7 @@ impl FuncGen for FunctionVal {
         &mut self,
         lhs: &LeftHandSide,
         rhs_index: OpIndex,
-        op: Option<Opcode>,
+        op: Option<(Opcode, Option<ValueType>)>,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
     ) {
@@ -245,7 +245,18 @@ impl FuncGen for FunctionVal {
             inst.set_t2_with_index(i);
         }
         assert!(rhs_index == -1 || op.is_none());
-        let imm0 = op.map_or(rhs_index, |x| Instruction::code2index(x));
+        let imm0 = op.map_or(rhs_index, |(code, shift_t)| {
+            if let Some(t) = shift_t {
+                self.code.push(Instruction::new(
+                    Opcode::TO_UINT32,
+                    Some(t),
+                    None,
+                    None,
+                    None,
+                ));
+            }
+            Instruction::code2index(code)
+        });
         inst.set_imm824(imm0, int32);
         self.code.push(inst);
         if let Some((pkg, ident)) = pkg_info {

@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 const DEFAULT_SIZE: usize = 10240;
 
-macro_rules! binary_op {
+macro_rules! stack_binary_op {
     ($stack:ident, $op:tt, $t:ident) => {{
         let len = $stack.len();
         let a = $stack.get_c(len - 2);
@@ -18,7 +18,7 @@ macro_rules! binary_op {
     }};
 }
 
-macro_rules! cmp_op {
+macro_rules! stack_cmp_op {
     ($stack:ident, $op:tt, $t:ident) => {{
         let len = $stack.len();
         let a = $stack.get_c(len - 2);
@@ -155,6 +155,12 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pop_uint32(&mut self) -> u32 {
+        self.cursor -= 1;
+        self.get_c(self.cursor).get_uint32()
+    }
+
+    #[inline]
     pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
         if t.copyable() {
             self.get_c(index).get_v128(t)
@@ -269,6 +275,11 @@ impl Stack {
     }
 
     #[inline]
+    pub fn top_to_uint(&mut self, t: ValueType) -> RuntimeResult {
+        self.get_c_mut(self.cursor - 1).to_uint32(t)
+    }
+
+    #[inline]
     pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;
@@ -281,7 +292,7 @@ impl Stack {
     #[inline]
     pub fn add(&mut self, t: ValueType) {
         if t.copyable() {
-            binary_op!(self, binary_op_add, t)
+            stack_binary_op!(self, binary_op_add, t)
         } else {
             let a = self.get_rc(self.len() - 2);
             let b = self.get_rc(self.len() - 1);
@@ -308,52 +319,54 @@ impl Stack {
 
     #[inline]
     pub fn sub(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_sub, t)
+        stack_binary_op!(self, binary_op_sub, t)
     }
 
     #[inline]
     pub fn mul(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_mul, t)
+        stack_binary_op!(self, binary_op_mul, t)
     }
 
     #[inline]
     pub fn quo(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_quo, t)
+        stack_binary_op!(self, binary_op_quo, t)
     }
 
     #[inline]
     pub fn rem(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_rem, t)
+        stack_binary_op!(self, binary_op_rem, t)
     }
 
     #[inline]
     pub fn and(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_and, t)
+        stack_binary_op!(self, binary_op_and, t)
     }
 
     #[inline]
     pub fn or(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_or, t)
+        stack_binary_op!(self, binary_op_or, t)
     }
 
     #[inline]
     pub fn xor(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_xor, t)
+        stack_binary_op!(self, binary_op_xor, t)
     }
 
     #[inline]
     pub fn shl(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_shl, t)
+        let right = self.pop_uint32();
+        self.get_c_mut(self.len() - 1).binary_op_shl(right, t);
     }
 
     #[inline]
     pub fn shr(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_shr, t)
+        let right = self.pop_uint32();
+        self.get_c_mut(self.len() - 1).binary_op_shr(right, t);
     }
 
     #[inline]
     pub fn and_not(&mut self, t: ValueType) {
-        binary_op!(self, binary_op_and_not, t)
+        stack_binary_op!(self, binary_op_and_not, t)
     }
 
     #[inline]
@@ -374,7 +387,7 @@ impl Stack {
     #[inline]
     pub fn compare_eql(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_eql, t);
+            stack_cmp_op!(self, compare_eql, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(a.eq(&b));
@@ -384,7 +397,7 @@ impl Stack {
     #[inline]
     pub fn compare_neq(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_neq, t);
+            stack_cmp_op!(self, compare_neq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(!a.eq(&b));
@@ -394,7 +407,7 @@ impl Stack {
     #[inline]
     pub fn compare_lss(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_lss, t);
+            stack_cmp_op!(self, compare_lss, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(a.cmp(&b) == Ordering::Less);
@@ -404,7 +417,7 @@ impl Stack {
     #[inline]
     pub fn compare_gtr(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_gtr, t);
+            stack_cmp_op!(self, compare_gtr, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(a.cmp(&b) == Ordering::Greater);
@@ -414,7 +427,7 @@ impl Stack {
     #[inline]
     pub fn compare_leq(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_leq, t);
+            stack_cmp_op!(self, compare_leq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(a.cmp(&b) != Ordering::Greater);
@@ -424,7 +437,7 @@ impl Stack {
     #[inline]
     pub fn compare_geq(&mut self, t: ValueType) {
         if t.copyable() {
-            cmp_op!(self, compare_geq, t);
+            stack_cmp_op!(self, compare_geq, t);
         } else {
             let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
             self.push_bool(a.cmp(&b) != Ordering::Less);
