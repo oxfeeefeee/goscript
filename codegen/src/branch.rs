@@ -25,9 +25,9 @@ impl BreakContinue {
         BreakContinue { points_vec: vec![] }
     }
 
-    pub fn add_point(&mut self, func: &mut FunctionVal, token: Token) {
-        let index = func.code.len();
-        func.emit_code_with_imm(Opcode::JUMP, 0);
+    pub fn add_point(&mut self, func: &mut FunctionVal, token: Token, pos: usize) {
+        let index = func.code().len();
+        func.emit_code_with_imm(Opcode::JUMP, 0, Some(pos));
         self.points_vec
             .last_mut()
             .unwrap()
@@ -52,7 +52,7 @@ impl BreakContinue {
                     (index - begin) as OpIndex - 1
                 }
             };
-            func.code[*index as usize].set_imm(offset);
+            func.code_mut()[*index as usize].set_imm(offset);
         }
     }
 }
@@ -85,14 +85,14 @@ impl SwitchJumpPoints {
     pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
             let imm = (loc - i) as OpIndex - 1;
-            func.code[*i].set_imm(imm);
+            func.code_mut()[*i].set_imm(imm);
         }
     }
 
     pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
         if let Some(de) = self.default {
             let imm = (loc - de) as OpIndex - 1;
-            func.code[de].set_imm(imm);
+            func.code_mut()[de].set_imm(imm);
         }
     }
 }

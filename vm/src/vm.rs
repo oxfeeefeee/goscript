@@ -6,6 +6,7 @@ use super::objects::{u64_to_key, ClosureObj, GosHashMap, SliceEnumIter, SliceRef
 use super::stack::Stack;
 use super::value::*;
 use super::vm_util;
+use goscript_parser::FileSet;
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::convert::TryInto;
@@ -102,14 +103,14 @@ impl Fiber {
         }
     }
 
-    fn run(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory) {
+    fn run(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory, fs: Option<&FileSet>) {
         let cls = GosValue::new_closure(code.entry);
         let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
         self.frames.push(frame);
-        self.main_loop(code, ffi_factory);
+        self.main_loop(code, ffi_factory, fs);
     }
 
-    fn main_loop(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory) {
+    fn main_loop(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory, fs: Option<&FileSet>) {
         let objs: &mut VMObjects = &mut code.objects;
         let pkgs = &code.packages;
         let ifaces = &code.ifaces;
@@ -120,7 +121,7 @@ impl Fiber {
         // allocate local variables
         stack.append(&mut func.local_zeros.clone());
         let mut consts = &func.consts;
-        let mut code = &func.code;
+        let mut code = func.code();
         let mut stack_base = frame.stack_base;
 
         let mut panic_msg: Option<String> = None;
@@ -237,14 +238,17 @@ impl Fiber {
                     let index = inst.t2_as_index();
                     let s_index = Stack::offset(stack.len(), index);
                     let target = &stack.get_with_type(s_index, inst.t1());
-                    vm_util::store_index_int(
+                    if let Err(s) = vm_util::store_index_int(
                         stack,
                         target,
                         imm as usize,
                         rhs_index,
                         inst.t0(),
                         &objs.metadata,
-                    );
+                    ) {
+                        panic_msg = Some(s);
+                        break;
+                    }
                 }
                 Opcode::LOAD_FIELD => {
                     let ind = stack.pop_with_type(inst.t1());
@@ -506,7 +510,7 @@ impl Fiber {
                             func = &objs.functions[frame.func()];
                             stack_base = frame.stack_base;
                             consts = &func.consts;
-                            code = &func.code;
+                            code = func.code();
                             //dbg!(&consts);
                             dbg!(&code);
                             //dbg!(&stack);
@@ -590,7 +594,7 @@ impl Fiber {
                     // restore func, consts, code
                     func = &objs.functions[frame.func()];
                     consts = &func.consts;
-                    code = &func.code;
+                    code = func.code();
                 }
 
                 Opcode::JUMP => {
@@ -858,6 +862,16 @@ impl Fiber {
         if let Some(msg) = panic_msg {
             // todo: debug message
             println!("panic: {}", msg);
+            if let Some(files) = fs {
+                for frame in self.frames.iter().rev() {
+                    let func = &objs.functions[frame.func()];
+                    if let Some(p) = func.pos()[frame.pc] {
+                        println!("{}", files.position(p));
+                    } else {
+                        println!("<no debug info available>");
+                    }
+                }
+            }
         }
     }
 }
@@ -881,9 +895,9 @@ impl GosVM {
         vm
     }
 
-    pub fn run(&mut self, ffi: &FfiFactory) {
+    pub fn run(&mut self, ffi: &FfiFactory, fs: Option<&FileSet>) {
         let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
-        fb.run(&mut self.code, ffi);
+        fb.run(&mut self.code, ffi, fs);
     }
 }
 

@@ -39,12 +39,12 @@ impl Engine {
             trace_parser: self.config.trace_parser,
             trace_checker: self.config.trace_checker,
         };
-        let fs = &mut fe::FileSet::new();
+        let mut fs = fe::FileSet::new();
         let el = &mut fe::errors::ErrorList::new();
-        let code = cg::entry::parse_check_gen(path, &config, fs, el);
+        let code = cg::entry::parse_check_gen(path, &config, &mut fs, el);
         if let Ok(bc) = code {
             let mut vm = vm::vm::GosVM::new(bc);
-            vm.run(&self.ffi);
+            vm.run(&self.ffi, Some(&fs));
             0
         } else {
             if self.config.trace_vm {

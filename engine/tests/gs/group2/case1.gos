@@ -5,5 +5,8 @@ import (
 )
 
 func main() {
+
+	var m map[int]int
+	m[0] = 1
 	fmt.Println("Hello, playground")
 }

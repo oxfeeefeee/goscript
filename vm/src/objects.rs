@@ -842,7 +842,8 @@ impl From<EntIndex> for OpIndex {
 pub struct FunctionVal {
     pub package: PackageKey,
     pub meta: GosMetadata,
-    pub code: Vec<Instruction>,
+    code: Vec<Instruction>,
+    pos: Vec<Option<usize>>,
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<ValueDesc>,
 
@@ -872,6 +873,7 @@ impl FunctionVal {
                     package: package,
                     meta: meta,
                     code: Vec::new(),
+                    pos: Vec::new(),
                     consts: Vec::new(),
                     up_ptrs: Vec::new(),
                     ret_zeros: returns,
@@ -885,6 +887,26 @@ impl FunctionVal {
             }
             _ => unreachable!(),
         }
+    }
+
+    #[inline]
+    pub fn code(&self) -> &Vec<Instruction> {
+        &self.code
+    }
+
+    #[inline]
+    pub fn code_mut(&mut self) -> &mut Vec<Instruction> {
+        &mut self.code
+    }
+
+    #[inline]
+    pub fn pos(&self) -> &Vec<Option<usize>> {
+        &self.pos
+    }
+
+    #[inline]
+    pub fn pos_mut(&mut self) -> &mut Vec<Option<usize>> {
+        &mut self.pos
     }
 
     #[inline]
@@ -934,44 +956,64 @@ impl FunctionVal {
     }
 
     #[inline]
+    pub fn push_inst(&mut self, i: Instruction, pos: Option<usize>) {
+        self.code.push(i);
+        self.pos.push(pos);
+    }
+
+    #[inline]
     pub fn emit_inst(
         &mut self,
         op: Opcode,
-        type0: Option<ValueType>,
-        type1: Option<ValueType>,
-        type2: Option<ValueType>,
+        types: [Option<ValueType>; 3],
         imm: Option<i32>,
+        pos: Option<usize>,
     ) {
-        let i = Instruction::new(op, type0, type1, type2, imm);
+        let i = Instruction::new(op, types[0], types[1], types[2], imm);
         self.code.push(i);
+        self.pos.push(pos);
     }
 
-    pub fn emit_raw_inst(&mut self, u: u64) {
+    pub fn emit_raw_inst(&mut self, u: u64, pos: Option<usize>) {
         let i = Instruction::from_u64(u);
         self.code.push(i);
+        self.pos.push(pos);
     }
 
-    pub fn emit_code_with_type(&mut self, code: Opcode, t: ValueType) {
-        self.emit_inst(code, Some(t), None, None, None);
+    pub fn emit_code_with_type(&mut self, code: Opcode, t: ValueType, pos: Option<usize>) {
+        self.emit_inst(code, [Some(t), None, None], None, pos);
     }
 
-    pub fn emit_code_with_imm(&mut self, code: Opcode, imm: OpIndex) {
-        self.emit_inst(code, None, None, None, Some(imm));
+    pub fn emit_code_with_imm(&mut self, code: Opcode, imm: OpIndex, pos: Option<usize>) {
+        self.emit_inst(code, [None, None, None], Some(imm), pos);
     }
 
-    pub fn emit_code_with_type_imm(&mut self, code: Opcode, t: ValueType, imm: OpIndex) {
-        self.emit_inst(code, Some(t), None, None, Some(imm));
+    pub fn emit_code_with_type_imm(
+        &mut self,
+        code: Opcode,
+        t: ValueType,
+        imm: OpIndex,
+        pos: Option<usize>,
+    ) {
+        self.emit_inst(code, [Some(t), None, None], Some(imm), pos);
     }
 
-    pub fn emit_code_with_flag_imm(&mut self, code: Opcode, comma_ok: bool, imm: OpIndex) {
+    pub fn emit_code_with_flag_imm(
+        &mut self,
+        code: Opcode,
+        comma_ok: bool,
+        imm: OpIndex,
+        pos: Option<usize>,
+    ) {
         let mut inst = Instruction::new(code, None, None, None, Some(imm));
         let flag = if comma_ok { 1 } else { 0 };
         inst.set_t2_with_index(flag);
         self.code.push(inst);
+        self.pos.push(pos);
     }
 
-    pub fn emit_code(&mut self, code: Opcode) {
-        self.emit_inst(code, None, None, None, None);
+    pub fn emit_code(&mut self, code: Opcode, pos: Option<usize>) {
+        self.emit_inst(code, [None, None, None], None, pos);
     }
 
     /// returns the index of the const if it's found

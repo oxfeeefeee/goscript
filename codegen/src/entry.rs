@@ -53,15 +53,16 @@ impl<'a> EntryGen<'a> {
         let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];
-        func.emit_import(index, pkg);
+        func.emit_import(index, pkg, None);
         func.emit_load(
             EntIndex::PackageMember(pkg, main_ident),
             Some((pairs, fkey)),
             ValueType::Function,
+            None,
         );
-        func.emit_pre_call();
-        func.emit_call(false);
-        func.emit_return();
+        func.emit_pre_call(None);
+        func.emit_call(false, None);
+        func.emit_return(None);
         *f.as_function()
     }
 

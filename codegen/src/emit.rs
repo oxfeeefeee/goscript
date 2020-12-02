@@ -72,6 +72,7 @@ pub enum RightHandSide<'a> {
     Range(&'a Expr),
 }
 
+///////////// todo: remove trait, remomve code_mut&pos_mut
 pub trait FuncGen {
     fn add_params<'e>(&mut self, fl: &FieldList, o: &AstObjects) -> usize;
 
@@ -80,6 +81,7 @@ pub trait FuncGen {
         index: EntIndex,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
+        pos: Option<usize>,
     );
 
     fn emit_store(
@@ -89,31 +91,48 @@ pub trait FuncGen {
         op: Option<(Opcode, Option<ValueType>)>,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
+        pos: Option<usize>,
     );
 
-    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey);
+    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey, pos: Option<usize>);
 
-    fn emit_pop(&mut self, count: OpIndex);
+    fn emit_pop(&mut self, count: OpIndex, pos: Option<usize>);
 
-    fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType);
+    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType, pos: Option<usize>);
 
-    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType);
+    fn emit_load_index(
+        &mut self,
+        typ: ValueType,
+        sel_type: ValueType,
+        comma_ok: bool,
+        pos: Option<usize>,
+    );
 
-    fn emit_load_index(&mut self, typ: ValueType, sel_type: ValueType, comma_ok: bool);
+    fn emit_load_index_imm(
+        &mut self,
+        imm: OpIndex,
+        typ: ValueType,
+        comma_ok: bool,
+        pos: Option<usize>,
+    );
 
-    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType, comma_ok: bool);
+    fn emit_cast_to_interface(
+        &mut self,
+        typ: ValueType,
+        rhs: OpIndex,
+        m_index: OpIndex,
+        pos: Option<usize>,
+    );
 
-    fn emit_cast_to_interface(&mut self, typ: ValueType, rhs: OpIndex, m_index: OpIndex);
+    fn emit_return(&mut self, pos: Option<usize>);
 
-    fn emit_return(&mut self);
+    fn emit_return_init_pkg(&mut self, index: OpIndex, pos: Option<usize>);
 
-    fn emit_return_init_pkg(&mut self, index: OpIndex);
+    fn emit_pre_call(&mut self, pos: Option<usize>);
 
-    fn emit_pre_call(&mut self);
+    fn emit_call(&mut self, has_ellipsis: bool, pos: Option<usize>);
 
-    fn emit_call(&mut self, has_ellipsis: bool);
-
-    fn emit_new(&mut self, typ: ValueType);
+    fn emit_new(&mut self, typ: ValueType, pos: Option<usize>);
 }
 
 impl FuncGen for FunctionVal {
@@ -143,36 +162,42 @@ impl FuncGen for FunctionVal {
         index: EntIndex,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
+        pos: Option<usize>,
     ) {
         match index {
             EntIndex::Const(i) => match self.const_val(i).clone() {
                 //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
-                GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE),
-                GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE),
+                GosValue::Bool(b) if b => self.emit_code(Opcode::PUSH_TRUE, pos),
+                GosValue::Bool(b) if !b => self.emit_code(Opcode::PUSH_FALSE, pos),
                 GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
                     let imm: OpIndex = OpIndex::try_from(i).unwrap();
-                    self.emit_inst(Opcode::PUSH_IMM, Some(typ), None, None, Some(imm));
+                    self.emit_inst(Opcode::PUSH_IMM, [Some(typ), None, None], Some(imm), pos);
                 }
                 _ => {
-                    self.emit_inst(Opcode::PUSH_CONST, Some(typ), None, None, Some(i));
+                    self.emit_inst(Opcode::PUSH_CONST, [Some(typ), None, None], Some(i), pos);
                 }
             },
             EntIndex::LocalVar(i) => {
-                self.emit_inst(Opcode::LOAD_LOCAL, Some(typ), None, None, Some(i));
+                self.emit_inst(Opcode::LOAD_LOCAL, [Some(typ), None, None], Some(i), pos);
             }
             EntIndex::UpValue(i) => {
-                self.emit_inst(Opcode::LOAD_UPVALUE, Some(typ), None, None, Some(i));
+                self.emit_inst(Opcode::LOAD_UPVALUE, [Some(typ), None, None], Some(i), pos);
             }
             EntIndex::PackageMember(pkg, ident) => {
-                self.emit_inst(Opcode::LOAD_PKG_FIELD, Some(typ), None, None, Some(0));
-                self.emit_raw_inst(key_to_u64(pkg));
+                self.emit_inst(
+                    Opcode::LOAD_PKG_FIELD,
+                    [Some(typ), None, None],
+                    Some(0),
+                    pos,
+                );
+                self.emit_raw_inst(key_to_u64(pkg), pos);
                 let (pairs, func) = patch_info.unwrap();
-                pairs.add_pair(pkg, ident, func, self.code.len() - 2, false);
+                pairs.add_pair(pkg, ident, func, self.code().len() - 2, false);
             }
-            EntIndex::BuiltInVal(op) => self.emit_code(op),
+            EntIndex::BuiltInVal(op) => self.emit_code(op, pos),
             EntIndex::BuiltInType(m) => {
                 let i = self.add_const(None, GosValue::Metadata(m));
-                self.emit_load(i, None, ValueType::Metadata);
+                self.emit_load(i, None, ValueType::Metadata, pos);
             }
             EntIndex::Blank => unreachable!(),
         }
@@ -185,6 +210,7 @@ impl FuncGen for FunctionVal {
         op: Option<(Opcode, Option<ValueType>)>,
         patch_info: Option<(&mut PkgVarPairs, FunctionKey)>,
         typ: ValueType,
+        pos: Option<usize>,
     ) {
         if let LeftHandSide::Primitive(index) = lhs {
             if EntIndex::Blank == *index {
@@ -247,33 +273,36 @@ impl FuncGen for FunctionVal {
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |(code, shift_t)| {
             if let Some(t) = shift_t {
-                self.code.push(Instruction::new(
-                    Opcode::TO_UINT32,
-                    Some(t),
-                    None,
-                    None,
-                    None,
-                ));
+                self.push_inst(
+                    Instruction::new(Opcode::TO_UINT32, Some(t), None, None, None),
+                    pos,
+                );
             }
             Instruction::code2index(code)
         });
         inst.set_imm824(imm0, int32);
-        self.code.push(inst);
+        self.push_inst(inst, pos);
         if let Some((pkg, ident)) = pkg_info {
-            self.emit_raw_inst(key_to_u64(pkg));
+            self.emit_raw_inst(key_to_u64(pkg), pos);
             let (pairs, func) = patch_info.unwrap();
-            pairs.add_pair(pkg, ident, func, self.code.len() - 2, true);
+            pairs.add_pair(pkg, ident, func, self.code().len() - 2, true);
         }
     }
 
-    fn emit_cast_to_interface(&mut self, typ: ValueType, rhs: OpIndex, m_index: OpIndex) {
+    fn emit_cast_to_interface(
+        &mut self,
+        typ: ValueType,
+        rhs: OpIndex,
+        m_index: OpIndex,
+        pos: Option<usize>,
+    ) {
         let mut inst = Instruction::new(Opcode::CAST_TO_INTERFACE, Some(typ), None, None, None);
         inst.set_imm824(rhs, m_index);
-        self.code.push(inst);
+        self.push_inst(inst, pos);
     }
 
-    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey) {
-        self.emit_inst(Opcode::IMPORT, None, None, None, Some(index));
+    fn emit_import(&mut self, index: OpIndex, pkg: PackageKey, pos: Option<usize>) {
+        self.emit_inst(Opcode::IMPORT, [None, None, None], Some(index), pos);
         let mut cd = vec![
             Instruction::new(
                 Opcode::LOAD_PKG_FIELD,
@@ -287,57 +316,78 @@ impl FuncGen for FunctionVal {
             Instruction::new(Opcode::CALL, None, None, None, None),
         ];
         let offset = cd.len() as OpIndex;
-        self.emit_inst(Opcode::JUMP_IF_NOT, None, None, None, Some(offset));
-        self.code.append(&mut cd);
+        self.emit_inst(Opcode::JUMP_IF_NOT, [None, None, None], Some(offset), pos);
+        self.pos_mut().append(&mut vec![pos; cd.len()]);
+        self.code_mut().append(&mut cd);
     }
 
-    fn emit_pop(&mut self, count: OpIndex) {
-        self.emit_inst(Opcode::POP, None, None, None, Some(count));
+    fn emit_pop(&mut self, count: OpIndex, pos: Option<usize>) {
+        self.emit_inst(Opcode::POP, [None, None, None], Some(count), pos);
     }
 
-    fn emit_load_field(&mut self, typ: ValueType, sel_type: ValueType) {
-        self.emit_inst(Opcode::LOAD_FIELD, Some(typ), Some(sel_type), None, None);
+    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType, pos: Option<usize>) {
+        self.emit_inst(
+            Opcode::LOAD_STRUCT_FIELD,
+            [Some(typ), None, None],
+            Some(imm),
+            pos,
+        );
     }
 
-    fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType) {
-        self.emit_inst(Opcode::LOAD_STRUCT_FIELD, Some(typ), None, None, Some(imm));
-    }
-
-    fn emit_load_index(&mut self, typ: ValueType, index_type: ValueType, comma_ok: bool) {
+    fn emit_load_index(
+        &mut self,
+        typ: ValueType,
+        index_type: ValueType,
+        comma_ok: bool,
+        pos: Option<usize>,
+    ) {
         let mut inst =
             Instruction::new(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.code.push(inst);
+        self.code_mut().push(inst);
+        self.pos_mut().push(pos);
     }
 
-    fn emit_load_index_imm(&mut self, imm: OpIndex, typ: ValueType, comma_ok: bool) {
+    fn emit_load_index_imm(
+        &mut self,
+        imm: OpIndex,
+        typ: ValueType,
+        comma_ok: bool,
+        pos: Option<usize>,
+    ) {
         let mut inst = Instruction::new(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.code.push(inst);
+        self.code_mut().push(inst);
+        self.pos_mut().push(pos);
     }
 
-    fn emit_return(&mut self) {
-        self.emit_inst(Opcode::RETURN, None, None, None, None);
+    fn emit_return(&mut self, pos: Option<usize>) {
+        self.emit_inst(Opcode::RETURN, [None, None, None], None, pos);
     }
 
-    fn emit_return_init_pkg(&mut self, index: OpIndex) {
-        self.emit_inst(Opcode::RETURN_INIT_PKG, None, None, None, Some(index));
+    fn emit_return_init_pkg(&mut self, index: OpIndex, pos: Option<usize>) {
+        self.emit_inst(
+            Opcode::RETURN_INIT_PKG,
+            [None, None, None],
+            Some(index),
+            pos,
+        );
     }
 
-    fn emit_pre_call(&mut self) {
-        self.emit_inst(Opcode::PRE_CALL, None, None, None, None);
+    fn emit_pre_call(&mut self, pos: Option<usize>) {
+        self.emit_inst(Opcode::PRE_CALL, [None, None, None], None, pos);
     }
 
-    fn emit_call(&mut self, has_ellipsis: bool) {
+    fn emit_call(&mut self, has_ellipsis: bool, pos: Option<usize>) {
         let op = if has_ellipsis {
             Opcode::CALL_ELLIPSIS
         } else {
             Opcode::CALL
         };
-        self.emit_inst(op, None, None, None, None);
+        self.emit_inst(op, [None, None, None], None, pos);
     }
 
-    fn emit_new(&mut self, typ: ValueType) {
-        self.emit_inst(Opcode::NEW, Some(typ), None, None, None);
+    fn emit_new(&mut self, typ: ValueType, pos: Option<usize>) {
+        self.emit_inst(Opcode::NEW, [Some(typ), None, None], None, pos);
     }
 }

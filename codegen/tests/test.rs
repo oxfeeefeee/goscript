@@ -14,13 +14,13 @@ fn load_parse_gen(path: &str, trace: bool) -> usize {
         trace_parser: trace,
         trace_checker: trace,
     };
-    let fs = &mut fe::FileSet::new();
+    let mut fs = fe::FileSet::new();
     let el = &mut fe::errors::ErrorList::new();
-    let code = cg::entry::parse_check_gen(path, &config, fs, el);
+    let code = cg::entry::parse_check_gen(path, &config, &mut fs, el);
     if let Ok(bc) = code {
         let ffi = vm::ffi::FfiFactory::new();
         let mut vm = vm::vm::GosVM::new(bc);
-        vm.run(&ffi);
+        vm.run(&ffi, Some(&fs));
         0
     } else {
         if trace {
