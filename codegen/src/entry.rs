@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::codegen::CodeGen;
-use super::emit::FuncGen;
+use super::emit::Emitter;
 use super::interface::IfaceMapping;
 use super::package::PkgVarPairs;
 use goscript_parser::ast::Ident;
@@ -53,16 +53,17 @@ impl<'a> EntryGen<'a> {
         let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];
-        func.emit_import(index, pkg, None);
-        func.emit_load(
+        let mut emitter = Emitter::new(func);
+        emitter.emit_import(index, pkg, None);
+        emitter.emit_load(
             EntIndex::PackageMember(pkg, main_ident),
             Some((pairs, fkey)),
             ValueType::Function,
             None,
         );
-        func.emit_pre_call(None);
-        func.emit_call(false, None);
-        func.emit_return(None);
+        emitter.emit_pre_call(None);
+        emitter.emit_call(false, None);
+        emitter.emit_return(None);
         *f.as_function()
     }
 

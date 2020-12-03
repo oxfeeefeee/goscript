@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::emit::FuncGen;
+use super::emit::Emitter;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
@@ -93,7 +93,7 @@ impl<'a> PkgUtil<'a> {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         for key in pkg.imports().iter() {
             let index = self.pkg_indices[key];
-            func.emit_import(index, self.pkgs[index as usize], None);
+            Emitter::new(func).emit_import(index, self.pkgs[index as usize], None);
         }
     }
 

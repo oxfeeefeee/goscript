@@ -37,6 +37,12 @@ macro_rules! current_func {
     };
 }
 
+macro_rules! current_func_emitter {
+    ($owner:ident) => {
+        Emitter::new(current_func_mut!($owner))
+    };
+}
+
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
@@ -352,9 +358,9 @@ impl<'a> CodeGen<'a> {
                 let (val, t) = self.get_type_default(&typ.as_ref().unwrap());
                 let mut types = Vec::with_capacity(lhs.len());
                 for (_, _, pos) in lhs.iter() {
-                    let func = current_func_mut!(self);
-                    let i = func.add_const(None, val.clone());
-                    func.emit_load(i, None, self.tlookup.value_type_from_tc(t), Some(*pos));
+                    let mut emitter = current_func_emitter!(self);
+                    let i = emitter.add_const(None, val.clone());
+                    emitter.emit_load(i, None, self.tlookup.value_type_from_tc(t), Some(*pos));
                     types.push(t);
                 }
                 types
@@ -453,10 +459,10 @@ impl<'a> CodeGen<'a> {
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
-                    current_func_mut!(self).emit_store(l, val_index, None, None, typ, pos);
+                    current_func_emitter!(self).emit_store(l, val_index, None, None, typ, pos);
                 }
                 LeftHandSide::IndexSelExpr(info) => {
-                    current_func_mut!(self).emit_store(
+                    current_func_emitter!(self).emit_store(
                         &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_index)),
                         val_index,
                         None,
@@ -468,7 +474,7 @@ impl<'a> CodeGen<'a> {
                     current_indexing_index += 2;
                 }
                 LeftHandSide::Deref(_) => {
-                    current_func_mut!(self).emit_store(
+                    current_func_emitter!(self).emit_store(
                         &LeftHandSide::Deref(current_indexing_index),
                         val_index,
                         None,
@@ -497,7 +503,7 @@ impl<'a> CodeGen<'a> {
             }
         }
         let pos = Some(lhs[0].2);
-        current_func_mut!(self).emit_pop(total_pop, pos);
+        current_func_emitter!(self).emit_pop(total_pop, pos);
         range_marker
     }
 
@@ -514,16 +520,15 @@ impl<'a> CodeGen<'a> {
             self.visit_expr(e);
         } else {
             // it's inc/dec
-            let func = current_func_mut!(self);
-            func.emit_code_with_imm(Opcode::PUSH_IMM, 1, pos);
+            current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, 1, pos);
         }
         match left {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?
                 // local index is resolved in gen_assign
-                let func = current_func_mut!(self);
+                let mut emitter = current_func_emitter!(self);
                 let fkey = self.func_stack.last().unwrap();
-                func.emit_store(
+                emitter.emit_store(
                     left,
                     -1,
                     Some(op),
@@ -531,12 +536,12 @@ impl<'a> CodeGen<'a> {
                     typ,
                     pos,
                 );
-                func.emit_pop(1, pos);
+                emitter.emit_pop(1, pos);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
-                current_func_mut!(self).emit_store(
+                current_func_emitter!(self).emit_store(
                     &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - 1)),
                     -1,
                     Some(op),
@@ -544,19 +549,18 @@ impl<'a> CodeGen<'a> {
                     typ,
                     pos,
                 );
-                let func = current_func_mut!(self);
                 let mut total_pop = 2;
                 if let Some(_) = info.t2 {
                     total_pop += 1;
                 }
-                func.emit_pop(total_pop, pos);
+                current_func_emitter!(self).emit_pop(total_pop, pos);
             }
             LeftHandSide::Deref(_) => {
                 // why -2?  stack looks like this(bottom to top) :
                 //  [... target, value]
-                let func = current_func_mut!(self);
-                func.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), None, typ, pos);
-                func.emit_pop(2, pos);
+                let mut emitter = current_func_emitter!(self);
+                emitter.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), None, typ, pos);
+                emitter.emit_pop(2, pos);
             }
         }
     }
@@ -612,7 +616,7 @@ impl<'a> CodeGen<'a> {
         helper.patch_ends(current_func_mut!(self), end);
 
         // pop the tag
-        current_func_mut!(self).emit_pop(1, None);
+        current_func_emitter!(self).emit_pop(1, None);
     }
 
     fn gen_func_def(
@@ -625,23 +629,23 @@ impl<'a> CodeGen<'a> {
         let typ = &self.ast_objs.ftypes[fkey];
         let f = GosValue::new_function(self.pkg_key, fmeta, &mut self.objects, false);
         let fkey = *f.as_function();
-        let func = &mut self.objects.functions[fkey];
+        let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
         if let Some(fl) = &typ.results {
-            func.add_params(&fl, self.ast_objs);
+            emitter.add_params(&fl, self.ast_objs);
         }
         match recv {
             Some(recv) => {
                 let mut fields = recv;
                 fields.list.append(&mut typ.params.list.clone());
-                func.add_params(&fields, self.ast_objs)
+                emitter.add_params(&fields, self.ast_objs)
             }
-            None => func.add_params(&typ.params, self.ast_objs),
+            None => emitter.add_params(&typ.params, self.ast_objs),
         };
         self.func_stack.push(fkey);
         // process function body
         self.visit_stmt_block(body);
         // it will not be executed if it's redundant
-        self.objects.functions[fkey].emit_return(Some(body.r_brace));
+        Emitter::new(&mut self.objects.functions[fkey]).emit_return(Some(body.r_brace));
 
         self.func_stack.pop();
         fkey
@@ -655,12 +659,12 @@ impl<'a> CodeGen<'a> {
         if let Some(const_val) = self.tlookup.get_tc_const_value(index.id()) {
             let (ival, _) = const_val.to_int().int_as_i64();
             if let Ok(i) = OpIndex::try_from(ival) {
-                current_func_mut!(self).emit_load_index_imm(i, t0, comma_ok, pos);
+                current_func_emitter!(self).emit_load_index_imm(i, t0, comma_ok, pos);
                 return;
             }
         }
         self.visit_expr(index);
-        current_func_mut!(self).emit_load_index(t0, t1, comma_ok, pos);
+        current_func_emitter!(self).emit_load_index(t0, t1, comma_ok, pos);
     }
 
     fn try_cast_to_iface(
@@ -678,7 +682,7 @@ impl<'a> CodeGen<'a> {
                     let m_index =
                         self.iface_mapping
                             .get_index(&(t1, t2), &mut self.tlookup, self.objects);
-                    current_func_mut!(self).emit_cast_to_interface(
+                    current_func_emitter!(self).emit_cast_to_interface(
                         vt2,
                         rhs_index,
                         m_index,
@@ -826,8 +830,8 @@ impl<'a> CodeGen<'a> {
             self.gen_def_var(v);
         }
 
-        let func = &mut self.objects.functions[fkey];
-        func.emit_return_init_pkg(index, None);
+        let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
+        emitter.emit_return_init_pkg(index, None);
         self.func_stack.pop();
     }
 }
@@ -844,7 +848,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let t = self.tlookup.get_use_value_type(*ident);
         let fkey = self.func_stack.last().unwrap();
         let p = Some(self.ast_objs.idents[*ident].pos);
-        current_func_mut!(self).emit_load(index, Some((self.pkg_util.pairs_mut(), *fkey)), t, p);
+        current_func_emitter!(self).emit_load(
+            index,
+            Some((self.pkg_util.pairs_mut(), *fkey)),
+            t,
+            p,
+        );
     }
 
     fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
@@ -853,30 +862,30 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_basic_lit(&mut self, blit: &BasicLit, id: NodeId) {
         let val = self.tlookup.get_const_value(id);
-        let func = current_func_mut!(self);
+        let mut emitter = current_func_emitter!(self);
         let t = val.get_type();
-        let i = func.add_const(None, val);
-        func.emit_load(i, None, t, Some(blit.pos));
+        let i = emitter.add_const(None, val);
+        emitter.emit_load(i, None, t, Some(blit.pos));
     }
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
         let vm_ftype = self.tlookup.get_meta_by_node_id(id, self.objects);
         let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
-        let func = current_func_mut!(self);
-        let i = func.add_const(None, GosValue::Function(fkey));
+        let mut emitter = current_func_emitter!(self);
+        let i = emitter.add_const(None, GosValue::Function(fkey));
         let pos = Some(flit.body.l_brace);
-        func.emit_load(i, None, ValueType::Function, pos);
-        func.emit_new(ValueType::Function, pos);
+        emitter.emit_load(i, None, ValueType::Function, pos);
+        emitter.emit_new(ValueType::Function, pos);
     }
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
         let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
-        let func = current_func_mut!(self);
+        let mut emitter = current_func_emitter!(self);
         let t = val.get_type();
-        let i = func.add_const(None, val);
+        let i = emitter.add_const(None, val);
         let pos = Some(clit.l_brace);
-        func.emit_load(i, None, t, pos);
+        emitter.emit_load(i, None, t, pos);
     }
 
     fn visit_expr_paren(&mut self, expr: &Expr) {
@@ -889,7 +898,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let pkg = self.pkg_util.get_vm_pkg(key);
             let t = self.tlookup.get_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
-            current_func_mut!(self).emit_load(
+            current_func_emitter!(self).emit_load(
                 EntIndex::PackageMember(pkg, *ident),
                 Some((self.pkg_util.pairs_mut(), *fkey)),
                 t,
@@ -926,7 +935,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         } else {
             self.visit_expr(expr);
             let i = t.field_index(name, &self.objects.metas);
-            current_func_mut!(self).emit_load_struct_field(i, t0, pos);
+            current_func_emitter!(self).emit_load_struct_field(i, t0, pos);
         }
     }
 
@@ -983,9 +992,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
                             // FFI needs the signature of the call
                             let meta = self.tlookup.meta_from_tc(t, self.objects);
-                            let func = current_func_mut!(self);
-                            let i = func.add_const(None, GosValue::Metadata(meta));
-                            func.emit_load(i, None, ValueType::Metadata, pos);
+                            let mut emitter = current_func_emitter!(self);
+                            let i = emitter.add_const(None, GosValue::Metadata(meta));
+                            emitter.emit_load(i, None, ValueType::Metadata, pos);
                         }
                     }
                     let bf = &self.builtins.get_func_by_index(i as usize);
@@ -1012,12 +1021,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
         // normal goscript function
         self.visit_expr(func_expr);
-        current_func_mut!(self).emit_pre_call(pos);
+        current_func_emitter!(self).emit_pre_call(pos);
         let _ = params.iter().map(|e| self.visit_expr(e)).count();
         let t = self.tlookup.get_expr_tc_type(func_expr);
         self.try_cast_params_to_iface(t, params);
         // do not pack params if there is ellipsis
-        current_func_mut!(self).emit_call(ellipsis, pos);
+        current_func_emitter!(self).emit_call(ellipsis, pos);
     }
 
     fn visit_expr_star(&mut self, expr: &Expr) {
@@ -1028,9 +1037,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     .tlookup
                     .meta_from_tc(self.tlookup.get_expr_tc_type(expr), self.objects)
                     .ptr_to();
-                let func = current_func_mut!(self);
-                let index = func.add_const(None, GosValue::Metadata(m));
-                func.emit_load(index, None, ValueType::Metadata, pos);
+                let mut emitter = current_func_emitter!(self);
+                let index = emitter.add_const(None, GosValue::Metadata(m));
+                emitter.emit_load(index, None, ValueType::Metadata, pos);
             }
             OperandMode::Variable => {
                 self.visit_expr(expr);
@@ -1189,10 +1198,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
         let m = self.tlookup.get_meta_by_node_id(arr.id(), self.objects);
-        let func = current_func_mut!(self);
-        let i = func.add_const(None, GosValue::Metadata(m));
+        let mut emitter = current_func_emitter!(self);
+        let i = emitter.add_const(None, GosValue::Metadata(m));
         let pos = Some(arr.pos(&self.ast_objs));
-        func.emit_load(i, None, ValueType::Metadata, pos);
+        emitter.emit_load(i, None, ValueType::Metadata, pos);
     }
 
     fn visit_expr_struct_type(&mut self, _s: &StructType) {
@@ -1316,8 +1325,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
             let t = self.tlookup.get_expr_value_type(expr);
-            let f = current_func_mut!(self);
-            f.emit_store(
+            let mut emitter = current_func_emitter!(self);
+            emitter.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
                 -1,
                 None,
@@ -1325,9 +1334,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 t,
                 pos,
             );
-            f.emit_pop(1, pos);
+            emitter.emit_pop(1, pos);
         }
-        current_func_mut!(self).emit_return(pos);
+        current_func_emitter!(self).emit_return(pos);
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
