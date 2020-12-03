@@ -1,8 +1,0 @@
-package math
-
-const Pi2 = 6.28
-
-func Sin(x float64) float64 {
-    return x
-}
-
