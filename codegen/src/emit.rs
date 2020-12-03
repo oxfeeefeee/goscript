@@ -273,7 +273,7 @@ impl FuncGen for FunctionVal {
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |(code, shift_t)| {
             if let Some(t) = shift_t {
-                self.push_inst(
+                self.push_inst_pos(
                     Instruction::new(Opcode::TO_UINT32, Some(t), None, None, None),
                     pos,
                 );
@@ -281,7 +281,7 @@ impl FuncGen for FunctionVal {
             Instruction::code2index(code)
         });
         inst.set_imm824(imm0, int32);
-        self.push_inst(inst, pos);
+        self.push_inst_pos(inst, pos);
         if let Some((pkg, ident)) = pkg_info {
             self.emit_raw_inst(key_to_u64(pkg), pos);
             let (pairs, func) = patch_info.unwrap();
@@ -298,12 +298,12 @@ impl FuncGen for FunctionVal {
     ) {
         let mut inst = Instruction::new(Opcode::CAST_TO_INTERFACE, Some(typ), None, None, None);
         inst.set_imm824(rhs, m_index);
-        self.push_inst(inst, pos);
+        self.push_inst_pos(inst, pos);
     }
 
     fn emit_import(&mut self, index: OpIndex, pkg: PackageKey, pos: Option<usize>) {
         self.emit_inst(Opcode::IMPORT, [None, None, None], Some(index), pos);
-        let mut cd = vec![
+        let cd = vec![
             Instruction::new(
                 Opcode::LOAD_PKG_FIELD,
                 Some(ValueType::Int),
@@ -317,8 +317,9 @@ impl FuncGen for FunctionVal {
         ];
         let offset = cd.len() as OpIndex;
         self.emit_inst(Opcode::JUMP_IF_NOT, [None, None, None], Some(offset), pos);
-        self.pos_mut().append(&mut vec![pos; cd.len()]);
-        self.code_mut().append(&mut cd);
+        for i in cd.into_iter() {
+            self.push_inst_pos(i, pos);
+        }
     }
 
     fn emit_pop(&mut self, count: OpIndex, pos: Option<usize>) {
@@ -344,8 +345,7 @@ impl FuncGen for FunctionVal {
         let mut inst =
             Instruction::new(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.code_mut().push(inst);
-        self.pos_mut().push(pos);
+        self.push_inst_pos(inst, pos);
     }
 
     fn emit_load_index_imm(
@@ -357,8 +357,7 @@ impl FuncGen for FunctionVal {
     ) {
         let mut inst = Instruction::new(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.code_mut().push(inst);
-        self.pos_mut().push(pos);
+        self.push_inst_pos(inst, pos);
     }
 
     fn emit_return(&mut self, pos: Option<usize>) {

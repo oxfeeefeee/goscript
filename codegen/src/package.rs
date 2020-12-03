@@ -48,9 +48,11 @@ impl PkgVarPairs {
             let index = pkg_val.get_member_index(&id.name).unwrap();
             if *is_8_24 {
                 let (imm0, _) = vmo.functions[*func].code()[*i].imm824();
-                vmo.functions[*func].code_mut()[*i].set_imm824(imm0, *index);
+                vmo.functions[*func]
+                    .instruction_mut(*i)
+                    .set_imm824(imm0, *index);
             } else {
-                vmo.functions[*func].code_mut()[*i].set_imm(*index);
+                vmo.functions[*func].instruction_mut(*i).set_imm(*index);
             }
         }
     }

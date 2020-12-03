@@ -52,7 +52,7 @@ impl BreakContinue {
                     (index - begin) as OpIndex - 1
                 }
             };
-            func.code_mut()[*index as usize].set_imm(offset);
+            func.instruction_mut(*index).set_imm(offset);
         }
     }
 }
@@ -85,14 +85,14 @@ impl SwitchJumpPoints {
     pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
             let imm = (loc - i) as OpIndex - 1;
-            func.code_mut()[*i].set_imm(imm);
+            func.instruction_mut(*i).set_imm(imm);
         }
     }
 
     pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
         if let Some(de) = self.default {
             let imm = (loc - de) as OpIndex - 1;
-            func.code_mut()[de].set_imm(imm);
+            func.instruction_mut(de).set_imm(imm);
         }
     }
 }

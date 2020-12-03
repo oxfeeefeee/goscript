@@ -895,18 +895,13 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn code_mut(&mut self) -> &mut Vec<Instruction> {
-        &mut self.code
+    pub fn instruction_mut(&mut self, i: usize) -> &mut Instruction {
+        self.code.get_mut(i).unwrap()
     }
 
     #[inline]
     pub fn pos(&self) -> &Vec<Option<usize>> {
         &self.pos
-    }
-
-    #[inline]
-    pub fn pos_mut(&mut self) -> &mut Vec<Option<usize>> {
-        &mut self.pos
     }
 
     #[inline]
@@ -956,7 +951,7 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn push_inst(&mut self, i: Instruction, pos: Option<usize>) {
+    pub fn push_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
         self.code.push(i);
         self.pos.push(pos);
     }

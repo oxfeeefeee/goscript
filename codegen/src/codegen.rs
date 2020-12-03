@@ -1177,7 +1177,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             func.emit_code_with_imm(Opcode::JUMP, 1, pos);
             func.emit_code_with_type(c, t, pos);
             let diff = func.next_code_index() - i - 1;
-            func.code_mut()[i - 1].set_imm(diff as OpIndex);
+            func.instruction_mut(i - 1).set_imm(diff as OpIndex);
         } else {
             current_func_mut!(self).emit_code_with_type(code, t, pos);
         }
@@ -1374,7 +1374,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         // set the correct else jump target
         let func = current_func_mut!(self);
         let offset = func.offset(top_marker);
-        func.code_mut()[top_marker - 1].set_imm(offset);
+        func.instruction_mut(top_marker - 1).set_imm(offset);
 
         if let Some(els) = &ifstmt.els {
             self.visit_stmt(els);
@@ -1382,7 +1382,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let func = current_func_mut!(self);
             let marker = marker_if_arm_end.unwrap();
             let offset = func.offset(marker);
-            func.code_mut()[marker - 1].set_imm(offset);
+            func.instruction_mut(marker - 1).set_imm(offset);
         }
     }
 
@@ -1492,7 +1492,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(m) = out_marker {
             let func = current_func_mut!(self);
             let offset = func.offset(m);
-            func.code_mut()[m - 1].set_imm(offset);
+            func.instruction_mut(m - 1).set_imm(offset);
         }
 
         let end = current_func!(self).next_code_index();
@@ -1518,7 +1518,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let offset = -func.offset(marker) - 1;
         // tell Opcode::RANGE where to jump after it's done
         let end_offset = func.offset(marker);
-        func.code_mut()[marker].set_imm(end_offset);
+        func.instruction_mut(marker).set_imm(end_offset);
         func.emit_code_with_imm(Opcode::JUMP, offset, Some(rstmt.token_pos));
 
         let end = current_func!(self).next_code_index();
