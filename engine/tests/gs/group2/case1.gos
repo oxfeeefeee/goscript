@@ -4,9 +4,12 @@ import (
 	"fmt"
 )
 
-func main() {
+func a() error {
+	return nil
+}
 
-	var m map[int]int
-	m[0] = 1
-	fmt.Println("Hello, playground")
+func main() {
+	var v = a()
+	assert(v != nil)
+	fmt.Println("Hello, playground", v)
 }

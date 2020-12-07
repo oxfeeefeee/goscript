@@ -678,7 +678,7 @@ impl<'a> CodeGen<'a> {
             if self.tlookup.value_type_from_tc(t1) == ValueType::Interface {
                 let t2 = rhs;
                 let vt2 = self.tlookup.value_type_from_tc(t2);
-                if vt2 != ValueType::Interface {
+                if vt2 != ValueType::Interface && vt2 != ValueType::Nil {
                     let m_index =
                         self.iface_mapping
                             .get_index(&(t1, t2), &mut self.tlookup, self.objects);
@@ -776,7 +776,14 @@ impl<'a> CodeGen<'a> {
                 }
                 map
             }
-            _ => unimplemented!(),
+            Expr::Ident(ikey) => {
+                dbg!(&self.ast_objs.idents[*ikey]);
+                GosValue::new_nil()
+            }
+            _ => {
+                dbg!(typ);
+                unimplemented!()
+            }
         }
     }
 
@@ -1124,7 +1131,34 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         );
                     }
                 },
-                _ => unimplemented!(),
+                Expr::CompositeLit(clit) => {
+                    // add composite literal as a local var
+                    let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
+                    let typ = meta.get_value_type(&self.objects.metas);
+                    let zero_val = meta.zero_val(&self.objects);
+                    let func = current_func_mut!(self);
+                    let index = func.add_local(None);
+                    func.add_local_zero(zero_val);
+                    self.visit_expr_composit_lit(clit);
+                    current_func_emitter!(self).emit_store(
+                        &LeftHandSide::Primitive(index),
+                        -1,
+                        None,
+                        None,
+                        typ,
+                        pos,
+                    );
+                    current_func_mut!(self).emit_inst(
+                        Opcode::REF_LOCAL,
+                        [Some(t), None, None],
+                        Some(index.into()),
+                        pos,
+                    );
+                }
+                _ => {
+                    dbg!(&expr);
+                    unimplemented!()
+                }
             }
             return;
         }

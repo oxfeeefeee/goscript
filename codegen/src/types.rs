@@ -188,9 +188,12 @@ impl<'a> TypeLookup<'a> {
                 vm_objs.metadata.mfloat64
             }
             BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
-            _ => unreachable!(),
-            //Complex64,  todo
-            //Complex128, todo
+            BasicType::UntypedNil => GosMetadata::Untyped,
+            _ => {
+                dbg!(typ);
+                unreachable!()
+            } //Complex64,  todo
+              //Complex128, todo
         }
     }
 

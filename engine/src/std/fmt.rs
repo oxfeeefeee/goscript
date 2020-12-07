@@ -26,8 +26,12 @@ impl Fmt {
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {
-                let iface = x.as_interface().borrow();
-                iface.underlying_value().to_string()
+                if x.is_nil() {
+                    "<nil>".to_string()
+                } else {
+                    let iface = x.as_interface().borrow();
+                    iface.underlying_value().to_string()
+                }
             })
             .collect();
         println!("{}", strs.join(", "));

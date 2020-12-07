@@ -21,6 +21,12 @@ fn test_g2case1() {
 }
 
 #[test]
+fn test_g2case2() {
+    let err_cnt = run("./tests/gs/group2/case2.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_case1() {
     let err_cnt = run("./tests/gs/group1/case1.gos", true);
     assert!(err_cnt == 0);

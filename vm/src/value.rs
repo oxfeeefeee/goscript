@@ -353,6 +353,14 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn is_nil(&self) -> bool {
+        match &self {
+            GosValue::Nil(_) => true,
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn get_type(&self) -> ValueType {
         match self {
             GosValue::Nil(_) => ValueType::Nil,

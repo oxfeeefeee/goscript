@@ -90,7 +90,7 @@ pub struct Fiber {
     stack: Stack,
     frames: Vec<CallFrame>,
     caller: Option<Rc<RefCell<Fiber>>>,
-    next_frame: Option<CallFrame>,
+    next_frames: Vec<CallFrame>,
 }
 
 impl Fiber {
@@ -99,7 +99,7 @@ impl Fiber {
             stack: Stack::new(),
             frames: Vec::new(),
             caller: caller,
-            next_frame: None,
+            next_frames: Vec::new(),
         }
     }
 
@@ -490,10 +490,10 @@ impl Fiber {
                         }
                         ClosureObj::Ffi(_) => {}
                     }
-                    self.next_frame = Some(next_frame);
+                    self.next_frames.push(next_frame);
                 }
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
-                    self.frames.push(self.next_frame.take().unwrap());
+                    self.frames.push(self.next_frames.pop().unwrap());
                     frame = self.frames.last_mut().unwrap();
                     let cls: &ClosureObj = &*frame.closure();
                     match cls {
