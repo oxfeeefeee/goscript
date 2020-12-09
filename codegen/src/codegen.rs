@@ -423,9 +423,9 @@ impl<'a> CodeGen<'a> {
                 // the range statement
                 self.visit_expr(r);
                 let tkv = self.tlookup.get_range_tc_types(r);
-                let func = current_func_mut!(self);
                 let pos = Some(r.pos(&self.ast_objs));
-                func.emit_code_with_imm(Opcode::PUSH_IMM, -1, pos);
+                current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, pos);
+                let func = current_func_mut!(self);
                 range_marker = Some(func.next_code_index());
                 // the block_end address to be set
                 func.emit_inst(
@@ -520,7 +520,7 @@ impl<'a> CodeGen<'a> {
             self.visit_expr(e);
         } else {
             // it's inc/dec
-            current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, 1, pos);
+            current_func_emitter!(self).emit_push_imm(typ, 1, pos);
         }
         match left {
             LeftHandSide::Primitive(_) => {
@@ -714,18 +714,6 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn value_from_literal(&mut self, typ: Option<&Expr>, expr: &Expr) -> GosValue {
-        match typ {
-            Some(type_expr) => match type_expr {
-                Expr::Array(_) | Expr::Map(_) | Expr::Struct(_) => {
-                    self.value_from_comp_literal(type_expr, expr)
-                }
-                _ => self.tlookup.get_const_value(expr.id()),
-            },
-            None => self.tlookup.get_const_value(expr.id()),
-        }
-    }
-
     fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
         let t = self.tlookup.get_expr_tc_type(expr);
         let meta = self.tlookup.meta_from_tc(t, self.objects);
@@ -734,57 +722,58 @@ impl<'a> CodeGen<'a> {
         (zero_val, t)
     }
 
-    fn value_from_comp_literal(&mut self, typ: &Expr, expr: &Expr) -> GosValue {
+    fn visit_composite_expr(&mut self, expr: &Expr, meta: &GosMetadata) {
         match expr {
-            Expr::CompositeLit(lit) => self.get_comp_value(typ, lit),
-            _ => unreachable!(),
+            Expr::CompositeLit(clit) => self.gen_composite_literal(clit, meta),
+            _ => self.visit_expr(expr),
         }
     }
 
-    fn get_comp_value(&mut self, typ: &Expr, literal: &CompositeLit) -> GosValue {
-        match typ {
-            Expr::Array(arr) => {
-                if arr.as_ref().len.is_some() {
-                    // array is not supported yet
-                    unimplemented!()
+    fn gen_composite_literal(&mut self, clit: &CompositeLit, meta: &GosMetadata) {
+        let pos = Some(clit.l_brace);
+        let mtype = &self.objects.metas[meta.as_non_ptr()].clone();
+        match mtype {
+            MetadataType::Slice(elem_meta) => {
+                for expr in clit.elts.iter().rev() {
+                    self.visit_composite_expr(expr, elem_meta);
                 }
-                let vals = literal
-                    .elts
-                    .iter()
-                    .map(|elt| self.value_from_literal(Some(&arr.as_ref().elt), elt))
-                    .collect::<Vec<GosValue>>();
-                GosValue::with_slice_val(vals, &mut self.objects.slices)
             }
-            Expr::Map(map) => {
-                let key_vals = literal
-                    .elts
-                    .iter()
-                    .map(|etl| {
-                        if let Expr::KeyValue(kv) = etl {
-                            let k = self.value_from_literal(Some(&map.key), &kv.as_ref().key);
-                            let v = self.value_from_literal(Some(&map.val), &kv.as_ref().val);
-                            (k, v)
-                        } else {
-                            unreachable!()
+            MetadataType::Map(km, vm) => {
+                for expr in clit.elts.iter() {
+                    match expr {
+                        Expr::KeyValue(kv) => {
+                            self.visit_composite_expr(&kv.key, km);
+                            self.visit_composite_expr(&kv.val, vm);
                         }
-                    })
-                    .collect::<Vec<(GosValue, GosValue)>>();
-                let (val, _) = self.get_type_default(&map.val);
-                let map = GosValue::new_map(val, &mut self.objects.maps);
-                for kv in key_vals.iter() {
-                    map.as_map().insert(kv.0.clone(), kv.1.clone());
+                        _ => unreachable!(),
+                    }
                 }
-                map
             }
-            Expr::Ident(ikey) => {
-                dbg!(&self.ast_objs.idents[*ikey]);
-                GosValue::new_nil()
+            MetadataType::Struct(_, _) => {
+                for expr in clit.elts.iter() {
+                    match expr {
+                        Expr::KeyValue(kv) => {}
+                        _ => {}
+                    }
+                }
             }
             _ => {
-                dbg!(typ);
-                unimplemented!()
+                dbg!(&mtype);
+                unreachable!()
             }
         }
+        current_func_emitter!(self).emit_push_imm(
+            ValueType::Int32,
+            clit.elts.len() as OpIndex,
+            pos,
+        );
+
+        let mut emitter = current_func_emitter!(self);
+        let i = emitter.add_const(
+            None,
+            GosValue::Metadata(GosMetadata::NonPtr(meta.as_non_ptr())),
+        );
+        emitter.emit_literal(ValueType::Metadata, i.into(), pos);
     }
 
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
@@ -882,17 +871,15 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Function(fkey));
         let pos = Some(flit.body.l_brace);
-        emitter.emit_load(i, None, ValueType::Function, pos);
-        emitter.emit_new(ValueType::Function, pos);
+        emitter.emit_literal(ValueType::Function, i.into(), pos);
     }
 
     fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
-        let val = self.get_comp_value(clit.typ.as_ref().unwrap(), &clit);
-        let mut emitter = current_func_emitter!(self);
-        let t = val.get_type();
-        let i = emitter.add_const(None, val);
-        let pos = Some(clit.l_brace);
-        emitter.emit_load(i, None, t, pos);
+        let meta = self
+            .tlookup
+            .get_meta_by_node_id(clit.typ.as_ref().unwrap().id(), &mut self.objects);
+        let meta = GosMetadata::NonPtr(meta.as_metadata()).get_underlying(&self.objects.metas);
+        self.gen_composite_literal(clit, &meta);
     }
 
     fn visit_expr_paren(&mut self, expr: &Expr) {
@@ -961,11 +948,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let t = self.tlookup.get_expr_value_type(expr);
         let pos = Some(expr.pos(&self.ast_objs));
         match low {
-            None => current_func_mut!(self).emit_code(Opcode::PUSH_IMM, pos),
+            None => current_func_emitter!(self).emit_push_imm(ValueType::Int, 0, pos),
             Some(e) => self.visit_expr(e),
         }
         match high {
-            None => current_func_mut!(self).emit_code_with_imm(Opcode::PUSH_IMM, -1, pos),
+            None => current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, pos),
             Some(e) => self.visit_expr(e),
         }
         match max {
@@ -1215,6 +1202,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             _ => None,
         };
         self.visit_expr(right);
+        if code == Opcode::SHL || code == Opcode::SHR {
+            let rtype = self.tlookup.get_expr_value_type(right);
+            if rtype != ValueType::Uint32 {
+                current_func_mut!(self).emit_inst(
+                    Opcode::TO_UINT32,
+                    [Some(rtype), None, None],
+                    None,
+                    None,
+                );
+            }
+        }
+
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::JUMP, 1, pos);

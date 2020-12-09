@@ -54,6 +54,7 @@ pub enum Opcode {
     REF_SLICE_MEMBER,
     REF_STRUCT_FIELD,
     REF_PKG_MEMBER,
+    REF_LITERAL,
     DEREF, // *
     ARROW, // <-
     NOT,   // !
@@ -88,15 +89,16 @@ pub enum Opcode {
 
     // built-in functinalities
     IMPORT,     // imports a package
-    SLICE,      //for slice expressions
+    SLICE,      // for slice expressions
     SLICE_FULL, // for full slice expressions
+    LITERAL,    // for function literal or composite literal
     NEW,        // for built-in function new
     MAKE,       // for built-in function make
     LEN,        // for built-in function len
     CAP,        // for built-in function cap
-    APPEND,     //for built-in function append
-    ASSERT,     //for built-in function assert
-    FFI,        //for built-in function native
+    APPEND,     // for built-in function append
+    ASSERT,     // for built-in function assert
+    FFI,        // for built-in function native
 }
 
 impl Opcode {
@@ -152,6 +154,7 @@ impl Opcode {
             Opcode::REF_SLICE_MEMBER => ("REF_SLICE_MEMBER", 0),
             Opcode::REF_STRUCT_FIELD => ("REF_STRUCT_FIELD", 0),
             Opcode::REF_PKG_MEMBER => ("REF_PKG_MEMBER", 0),
+            Opcode::REF_LITERAL => ("REF_LITERAL", 0),
             Opcode::DEREF => ("DEREF", 0),
             Opcode::ARROW => ("ARROW", 0),
             Opcode::NOT => ("LNOT", 0),
@@ -183,6 +186,7 @@ impl Opcode {
             Opcode::IMPORT => ("IMPORT", 0),
             Opcode::SLICE => ("SLICE", -2),
             Opcode::SLICE_FULL => ("SLICE_FULL", -3),
+            Opcode::LITERAL => ("LITERAL", 0),
             Opcode::NEW => ("NEW", 0),
             Opcode::MAKE => ("MAKE", 0),
             Opcode::LEN => ("LEN", 0),

@@ -1,6 +1,8 @@
 #![macro_use]
 use super::instruction::{OpIndex, ValueType};
-use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
+use super::objects::{
+    FunctionKey, MapObjs, MetadataKey, MetadataObjs, SliceObjs, StructObj, VMObjects,
+};
 use super::value::GosValue;
 use std::collections::HashMap;
 
@@ -64,6 +66,7 @@ pub enum GosMetadata {
     Ptr5(MetadataKey),
     Ptr6(MetadataKey),
     Ptr7(MetadataKey),
+    Metadata(MetadataKey),
 }
 
 impl GosMetadata {
@@ -153,6 +156,9 @@ impl GosMetadata {
             GosMetadata::Ptr7(_) => {
                 unreachable!() /* todo: panic */
             }
+            GosMetadata::Metadata(_) => {
+                unreachable!() /* todo: panic */
+            }
         }
     }
 
@@ -172,13 +178,26 @@ impl GosMetadata {
             GosMetadata::Ptr5(k) => GosMetadata::Ptr4(*k),
             GosMetadata::Ptr6(k) => GosMetadata::Ptr5(*k),
             GosMetadata::Ptr7(k) => GosMetadata::Ptr6(*k),
+            GosMetadata::Metadata(_) => {
+                unreachable!() /* todo: panic */
+            }
         }
     }
 
+    // todo: change name
     #[inline]
     pub fn as_non_ptr(&self) -> MetadataKey {
         match self {
             GosMetadata::NonPtr(k) => *k,
+            GosMetadata::Metadata(k) => *k,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_metadata(&self) -> MetadataKey {
+        match self {
+            GosMetadata::Metadata(k) => *k,
             _ => unreachable!(),
         }
     }
@@ -212,15 +231,21 @@ impl GosMetadata {
                 MetadataType::Channel => ValueType::Channel,
                 MetadataType::Named(_, m) => m.get_value_type(metas),
             },
+            GosMetadata::Metadata(_) => ValueType::Metadata,
             _ => ValueType::Boxed,
         }
     }
 
     #[inline]
     pub fn zero_val(&self, objs: &VMObjects) -> GosValue {
+        self.zero_val_impl(&objs.metas, &objs.metadata)
+    }
+
+    #[inline]
+    fn zero_val_impl(&self, mobjs: &MetadataObjs, metadata: &Metadata) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
-            GosMetadata::NonPtr(k) => match &objs.metas[*k] {
+            GosMetadata::NonPtr(k) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
                 MetadataType::Int8 => GosValue::Int8(0),
@@ -239,15 +264,57 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::Struct(_, s) => s.copy_semantic(None, &objs.metadata),
+                MetadataType::Struct(_, s) => s.copy_semantic(None, metadata),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Slice(_) => GosValue::Nil(*self),
                 MetadataType::Map(_, _) => GosValue::Nil(*self),
                 MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => GosValue::Nil(*self),
-                MetadataType::Named(_, gm) => gm.zero_val(objs),
+                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs, metadata),
             },
             _ => GosValue::Nil(*self),
+        }
+    }
+
+    #[inline]
+    pub fn default_val(
+        &self,
+        mobjs: &MetadataObjs,
+        metadata: &Metadata,
+        slices: &mut SliceObjs,
+        maps: &mut MapObjs,
+    ) -> GosValue {
+        match &self {
+            GosMetadata::NonPtr(k) => match &mobjs[*k] {
+                MetadataType::Bool => GosValue::Bool(false),
+                MetadataType::Int => GosValue::Int(0),
+                MetadataType::Int8 => GosValue::Int8(0),
+                MetadataType::Int16 => GosValue::Int16(0),
+                MetadataType::Int32 => GosValue::Int32(0),
+                MetadataType::Int64 => GosValue::Int64(0),
+                MetadataType::Uint => GosValue::Uint(0),
+                MetadataType::Uint8 => GosValue::Uint8(0),
+                MetadataType::Uint16 => GosValue::Uint16(0),
+                MetadataType::Uint32 => GosValue::Uint32(0),
+                MetadataType::Uint64 => GosValue::Uint64(0),
+                MetadataType::Float32 => GosValue::Float32(0.0.into()),
+                MetadataType::Float64 => GosValue::Float64(0.0.into()),
+                MetadataType::Complex64 => GosValue::Complex64(0.0.into(), 0.0.into()),
+                MetadataType::Complex128 => {
+                    GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
+                }
+                MetadataType::Str(s) => s.clone(),
+                MetadataType::Struct(_, s) => s.copy_semantic(None, metadata),
+                MetadataType::Signature(_) => unimplemented!(),
+                MetadataType::Slice(_) => GosValue::new_slice(0, 0, None, slices),
+                MetadataType::Map(_, v) => {
+                    GosValue::new_map(v.zero_val_impl(mobjs, metadata), maps)
+                }
+                MetadataType::Interface(_) => unimplemented!(),
+                MetadataType::Channel => unimplemented!(),
+                MetadataType::Named(_, gm) => gm.default_val(mobjs, metadata, slices, maps),
+            },
+            _ => unreachable!(),
         }
     }
 
@@ -274,6 +341,7 @@ impl GosMetadata {
     #[inline]
     pub fn recv_meta_key(&self) -> MetadataKey {
         match self {
+            GosMetadata::Metadata(k) => *k,
             GosMetadata::NonPtr(k) => *k,
             GosMetadata::Ptr1(k) => *k,
             _ => unreachable!(),
@@ -330,7 +398,7 @@ impl GosMetadata {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fields {
     pub fields: Vec<GosMetadata>,
     pub mapping: HashMap<String, OpIndex>,
@@ -367,7 +435,7 @@ impl Fields {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Methods {
     pub members: Vec<GosValue>,
     pub mapping: HashMap<String, OpIndex>,
@@ -382,7 +450,7 @@ impl Methods {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SigMetadata {
     pub recv: Option<GosMetadata>,
     pub params: Vec<GosMetadata>,
@@ -416,7 +484,7 @@ impl SigMetadata {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MetadataType {
     Bool,
     Int,

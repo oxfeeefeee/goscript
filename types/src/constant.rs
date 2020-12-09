@@ -683,6 +683,28 @@ impl Value {
         }
     }
 
+    pub fn complex_as_complex64(&self) -> (F32, F32, bool) {
+        match self {
+            Value::Complex(r, i) => {
+                let (num_r, exact_r) = r.num_as_f32();
+                let (num_i, exact_i) = i.num_as_f32();
+                (num_r, num_i, exact_r && exact_i)
+            }
+            _ => panic!("not a complex"),
+        }
+    }
+
+    pub fn complex_as_complex128(&self) -> (F64, F64, bool) {
+        match self {
+            Value::Complex(r, i) => {
+                let (num_r, exact_r) = r.num_as_f64();
+                let (num_i, exact_i) = i.num_as_f64();
+                (num_r, num_i, exact_r && exact_i)
+            }
+            _ => panic!("not a complex"),
+        }
+    }
+
     fn ord(&self) -> usize {
         match self {
             Value::Unknown => 0,

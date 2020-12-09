@@ -20,7 +20,7 @@ pub struct IndexSelInfo {
     pub imm_index: Option<OpIndex>, // for IMM instructions
     pub t1: ValueType,
     pub t2: Option<ValueType>, // for non-IMM instructions
-    pub typ: IndexSelType,     // is an index expresion not a selection expresion
+    pub typ: IndexSelType,
 }
 
 impl IndexSelInfo {
@@ -120,8 +120,7 @@ impl<'a> Emitter<'a> {
                 GosValue::Bool(b) if !b => self.f.emit_code(Opcode::PUSH_FALSE, pos),
                 GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
                     let imm: OpIndex = OpIndex::try_from(i).unwrap();
-                    self.f
-                        .emit_inst(Opcode::PUSH_IMM, [Some(typ), None, None], Some(imm), pos);
+                    self.emit_push_imm(typ, imm, pos);
                 }
                 _ => {
                     self.f
@@ -344,8 +343,13 @@ impl<'a> Emitter<'a> {
         self.f.emit_inst(op, [None, None, None], None, pos);
     }
 
-    pub fn emit_new(&mut self, typ: ValueType, pos: Option<usize>) {
+    pub fn emit_literal(&mut self, typ: ValueType, index: OpIndex, pos: Option<usize>) {
         self.f
-            .emit_inst(Opcode::NEW, [Some(typ), None, None], None, pos);
+            .emit_inst(Opcode::LITERAL, [Some(typ), None, None], Some(index), pos);
+    }
+
+    pub fn emit_push_imm(&mut self, typ: ValueType, imm: OpIndex, pos: Option<usize>) {
+        self.f
+            .emit_inst(Opcode::PUSH_IMM, [Some(typ), None, None], Some(imm), pos);
     }
 }

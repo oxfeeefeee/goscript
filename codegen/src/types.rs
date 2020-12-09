@@ -84,12 +84,22 @@ impl<'a> TypeLookup<'a> {
     }
 
     pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
-        self.value_type_from_tc(self.get_expr_tc_type(e))
+        let tv = self.ti.types.get(&e.id()).unwrap();
+        if tv.mode == OperandMode::TypeExpr {
+            ValueType::Metadata
+        } else {
+            self.value_type_from_tc(self.get_expr_tc_type(e))
+        }
     }
 
     pub fn get_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosMetadata {
-        let typ = self.ti.types.get(&id).unwrap().typ;
-        self.meta_from_tc(typ, objects)
+        let tv = self.ti.types.get(&id).unwrap();
+        let md = self.meta_from_tc(tv.typ, objects);
+        if tv.mode == OperandMode::TypeExpr {
+            GosMetadata::Metadata(md.as_non_ptr())
+        } else {
+            md
+        }
     }
 
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
@@ -168,32 +178,28 @@ impl<'a> TypeLookup<'a> {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
             BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
-            BasicType::Int
-            | BasicType::Int8
-            | BasicType::Int16
-            | BasicType::Int32
-            | BasicType::Rune
-            | BasicType::Int64
-            | BasicType::Uint
-            | BasicType::Uint8
-            | BasicType::Byte
-            | BasicType::Uint16
-            | BasicType::Uint32
-            | BasicType::Uint64
-            | BasicType::Uintptr
-            | BasicType::UnsafePointer
-            | BasicType::UntypedInt
-            | BasicType::UntypedRune => vm_objs.metadata.mint,
-            BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
-                vm_objs.metadata.mfloat64
+            BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint,
+            BasicType::Int8 => vm_objs.metadata.mint8,
+            BasicType::Int16 => vm_objs.metadata.mint16,
+            BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => vm_objs.metadata.mint32,
+            BasicType::Int64 => vm_objs.metadata.mint64,
+            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
+                vm_objs.metadata.muint
             }
+            BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
+            BasicType::Uint16 => vm_objs.metadata.muint16,
+            BasicType::Uint32 => vm_objs.metadata.muint32,
+            BasicType::Uint64 => vm_objs.metadata.muint64,
+            BasicType::Float32 => vm_objs.metadata.mfloat32,
+            BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64,
+            BasicType::Complex64 => vm_objs.metadata.mcomplex64,
+            BasicType::Complex128 => vm_objs.metadata.mcomplex128,
             BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
             BasicType::UntypedNil => GosMetadata::Untyped,
             _ => {
                 dbg!(typ);
                 unreachable!()
-            } //Complex64,  todo
-              //Complex128, todo
+            }
         }
     }
 
@@ -202,33 +208,64 @@ impl<'a> TypeLookup<'a> {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
             BasicType::Bool | BasicType::UntypedBool => GosValue::Bool(val.bool_as_bool()),
-            BasicType::Int
-            | BasicType::Int8
-            | BasicType::Int16
-            | BasicType::Int32
-            | BasicType::Rune
-            | BasicType::Int64
-            | BasicType::Uint
-            | BasicType::Uint8
-            | BasicType::Byte
-            | BasicType::Uint16
-            | BasicType::Uint32
-            | BasicType::Uint64
-            | BasicType::Uintptr
-            | BasicType::UnsafePointer
-            | BasicType::UntypedInt
-            | BasicType::UntypedRune => {
+            BasicType::Int | BasicType::UntypedInt => {
                 let (i, _) = val.to_int().int_as_i64();
                 GosValue::Int(i as isize)
             }
-            BasicType::Float32 | BasicType::Float64 | BasicType::UntypedFloat => {
+            BasicType::Int8 => {
+                let (i, _) = val.to_int().int_as_i64();
+                GosValue::Int8(i as i8)
+            }
+            BasicType::Int16 => {
+                let (i, _) = val.to_int().int_as_i64();
+                GosValue::Int16(i as i16)
+            }
+            BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
+                let (i, _) = val.to_int().int_as_i64();
+                GosValue::Int32(i as i32)
+            }
+            BasicType::Int64 => {
+                let (i, _) = val.to_int().int_as_i64();
+                GosValue::Int64(i)
+            }
+            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::Uint(i as usize)
+            }
+            BasicType::Uint8 => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::Uint8(i as u8)
+            }
+            BasicType::Uint16 => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::Uint16(i as u16)
+            }
+            BasicType::Uint32 => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::Uint32(i as u32)
+            }
+            BasicType::Uint64 => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::Uint64(i)
+            }
+            BasicType::Float32 => {
+                let (f, _) = val.num_as_f32();
+                GosValue::Float32(f.into())
+            }
+            BasicType::Float64 | BasicType::UntypedFloat => {
                 let (f, _) = val.num_as_f64();
                 GosValue::Float64(f.into())
             }
+            BasicType::Complex64 => {
+                let (cr, ci, _) = val.complex_as_complex64();
+                GosValue::Complex64(cr, ci)
+            }
+            BasicType::Complex128 => {
+                let (cr, ci, _) = val.complex_as_complex128();
+                GosValue::Complex128(Box::new((cr, ci)))
+            }
             BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
             _ => unreachable!(),
-            //Complex64,  todo
-            //Complex128, todo
         }
     }
 
@@ -304,15 +341,12 @@ impl<'a> TypeLookup<'a> {
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
                 BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
-                BasicType::Int
-                | BasicType::Uintptr
-                | BasicType::UnsafePointer
-                | BasicType::UntypedInt => ValueType::Int,
+                BasicType::Int | BasicType::UntypedInt => ValueType::Int,
                 BasicType::Int8 => ValueType::Int8,
                 BasicType::Int16 => ValueType::Int16,
                 BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => ValueType::Int32,
                 BasicType::Int64 => ValueType::Int64,
-                BasicType::Uint => ValueType::Uint,
+                BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => ValueType::Uint,
                 BasicType::Uint8 | BasicType::Byte => ValueType::Uint8,
                 BasicType::Uint16 => ValueType::Uint16,
                 BasicType::Uint32 => ValueType::Uint32,

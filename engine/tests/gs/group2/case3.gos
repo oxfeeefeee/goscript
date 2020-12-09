@@ -1,0 +1,19 @@
+package main
+
+import (
+	"fmt"
+)
+
+
+
+func main() {
+	/*var v = new(int)
+    var vv = 2
+    *v = 8
+    var vvv = *v*/
+    var s = []int{1,2,3}
+    var s1 = s[0]
+    var s3 = s[2]
+    
+	fmt.Println("Hello, playground", s, s1, s3)
+}

@@ -574,9 +574,9 @@ impl Display for GosValue {
             GosValue::Complex64(r, i) => f.write_fmt(format_args!("({}, {})", r, i)),
             GosValue::Complex128(b) => f.write_fmt(format_args!("({}, {})", b.0, b.1)),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
-            GosValue::Boxed(_) => unimplemented!(),
+            GosValue::Boxed(_) => f.write_str("todo(boxed)"),
             GosValue::Closure(_) => unimplemented!(),
-            GosValue::Slice(_) => unimplemented!(),
+            GosValue::Slice(_) => f.write_str("todo(slice)"),
             GosValue::Map(_) => unimplemented!(),
             GosValue::Interface(_) => unimplemented!(),
             GosValue::Struct(_) => unimplemented!(),
@@ -684,6 +684,24 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn from_int32_as(i: i32, t: ValueType) -> GosValue64 {
+        let u = match t {
+            ValueType::Int => V64Union { int: i as isize },
+            ValueType::Int8 => V64Union { int8: i as i8 },
+            ValueType::Int16 => V64Union { int16: i as i16 },
+            ValueType::Int32 => V64Union { int32: i as i32 },
+            ValueType::Int64 => V64Union { int64: i as i64 },
+            ValueType::Uint => V64Union { uint: i as usize },
+            ValueType::Uint8 => V64Union { uint8: i as u8 },
+            ValueType::Uint16 => V64Union { uint16: i as u16 },
+            ValueType::Uint32 => V64Union { uint32: i as u32 },
+            ValueType::Uint64 => V64Union { uint64: i as u64 },
+            _ => unreachable!(),
+        };
+        GosValue64 { data: u }
+    }
+
+    #[inline]
     pub fn from_float64(f: F64) -> GosValue64 {
         GosValue64 {
             data: V64Union { float64: f },
@@ -741,8 +759,17 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn get_int32(&self) -> i32 {
+        unsafe { self.data.int32 }
+    }
+
+    #[inline]
+    pub fn get_uint(&self) -> usize {
+        unsafe { self.data.uint }
+    }
+
+    #[inline]
     pub fn get_uint32(&self) -> u32 {
-        //debug_assert_eq!(self.debug_type, ValueType::Int);
         unsafe { self.data.uint32 }
     }
 

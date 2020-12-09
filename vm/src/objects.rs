@@ -644,6 +644,12 @@ impl UpValue {
         }
     }
 
+    pub fn new_closed(v: GosValue) -> UpValue {
+        UpValue {
+            inner: Rc::new(RefCell::new(UpValueState::Closed(v))),
+        }
+    }
+
     pub fn downgrade(&self) -> WeakUpValue {
         WeakUpValue {
             inner: Rc::downgrade(&self.inner),

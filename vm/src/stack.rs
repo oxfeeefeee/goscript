@@ -91,6 +91,13 @@ impl Stack {
     }
 
     #[inline]
+    pub fn push_int32_as(&mut self, i: i32, t: ValueType) {
+        *self.get_c_mut(self.cursor) = GosValue64::from_int32_as(i, t);
+        self.cursor += 1;
+        assert!(self.cursor <= self.max); //todo: expand
+    }
+
+    #[inline]
     pub fn pop_discard(&mut self) {
         self.cursor -= 1;
     }
@@ -152,6 +159,18 @@ impl Stack {
     pub fn pop_int(&mut self) -> isize {
         self.cursor -= 1;
         self.get_c(self.cursor).get_int()
+    }
+
+    #[inline]
+    pub fn pop_int32(&mut self) -> i32 {
+        self.cursor -= 1;
+        self.get_c(self.cursor).get_int32()
+    }
+
+    #[inline]
+    pub fn pop_uint(&mut self) -> usize {
+        self.cursor -= 1;
+        self.get_c(self.cursor).get_uint()
     }
 
     #[inline]

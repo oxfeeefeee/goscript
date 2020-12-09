@@ -176,7 +176,7 @@ impl Fiber {
                 Opcode::PUSH_NIL => stack.push_nil(),
                 Opcode::PUSH_FALSE => stack.push_bool(false),
                 Opcode::PUSH_TRUE => stack.push_bool(true),
-                Opcode::PUSH_IMM => stack.push_int(inst.imm() as isize),
+                Opcode::PUSH_IMM => stack.push_int32_as(inst.imm(), inst.t0()),
                 Opcode::POP => {
                     stack.pop_discard_n(inst.imm() as usize);
                 }
@@ -465,6 +465,10 @@ impl Fiber {
                     let pkg = read_imm_pkg!(code, frame, objs);
                     stack.push(GosValue::new_boxed(BoxedObj::PkgMember(pkg, inst.imm())));
                 }
+                Opcode::REF_LITERAL => {
+                    let v = stack.pop_with_type(inst.t0());
+                    stack.push(GosValue::new_boxed(BoxedObj::UpVal(UpValue::new_closed(v))))
+                }
                 Opcode::DEREF => {
                     let boxed = stack.pop_with_type(inst.t0());
                     let val = deref_value!(boxed, self, stack, frame, objs);
@@ -740,13 +744,14 @@ impl Fiber {
                     };
                     stack.push(result);
                 }
-
-                Opcode::NEW => {
-                    let new_val = match stack.pop_with_type(inst.t0()) {
+                Opcode::LITERAL => {
+                    let index = inst.imm();
+                    let param = &consts[index as usize];
+                    let new_val = match param {
                         GosValue::Function(fkey) => {
                             // NEW a closure
-                            let func = &objs.functions[fkey];
-                            let val = ClosureObj::new_real(fkey, Some(func.up_ptrs.clone()));
+                            let func = &objs.functions[*fkey];
+                            let val = ClosureObj::new_real(*fkey, Some(func.up_ptrs.clone()));
                             for uv in val.upvalues().iter() {
                                 drop(frame);
                                 let desc = uv.desc();
@@ -755,6 +760,53 @@ impl Fiber {
                                 frame = self.frames.last_mut().unwrap();
                             }
                             GosValue::Closure(Rc::new(val))
+                        }
+                        GosValue::Metadata(md) => {
+                            let md = md.get_underlying(&objs.metas);
+                            let count = stack.pop_int32();
+                            match &objs.metas[md.as_non_ptr()] {
+                                MetadataType::Slice(sm) => {
+                                    let mut val = vec![];
+                                    let elem_type = sm.get_value_type(&objs.metas);
+                                    for _ in 0..count {
+                                        let elem = stack.pop_with_type(elem_type);
+                                        val.push(elem);
+                                    }
+                                    GosValue::with_slice_val(val, &mut objs.slices)
+                                }
+                                MetadataType::Map(km, vm) => {
+                                    let gosv = GosValue::new_map(vm.zero_val(objs), &mut objs.maps);
+                                    let map = gosv.as_map();
+                                    let tk = km.get_value_type(&objs.metas);
+                                    let tv = vm.get_value_type(&objs.metas);
+                                    for _ in 0..count {
+                                        let v = stack.pop_with_type(tv);
+                                        let k = stack.pop_with_type(tk);
+                                        map.insert(k, v);
+                                    }
+                                    gosv
+                                }
+                                MetadataType::Struct(_, _) => unimplemented!(),
+                                _ => unreachable!(),
+                            }
+                        }
+                        _ => unimplemented!(),
+                    };
+                    dbg!(&new_val);
+                    stack.push(new_val);
+                }
+
+                Opcode::NEW => {
+                    let param = stack.pop_with_type(inst.t0());
+                    let new_val = match param {
+                        GosValue::Metadata(md) => {
+                            let v = md.default_val(
+                                &objs.metas,
+                                &objs.metadata,
+                                &mut objs.slices,
+                                &mut objs.maps,
+                            );
+                            GosValue::new_boxed(BoxedObj::UpVal(UpValue::new_closed(v)))
                         }
                         _ => unimplemented!(),
                     };
@@ -819,7 +871,8 @@ impl Fiber {
                 }
                 Opcode::ASSERT => {
                     if !stack.pop_bool() {
-                        assert!(false, "Opcode::ASSERT: not true!");
+                        panic_msg = Some("Opcode::ASSERT: not true!".to_string());
+                        break;
                     }
                 }
                 Opcode::FFI => {
@@ -871,6 +924,10 @@ impl Fiber {
                         println!("<no debug info available>");
                     }
                 }
+            }
+            // a hack to make the test case fail
+            if msg.starts_with("Opcode::ASSERT") {
+                panic!("ASSERT");
             }
         }
     }
