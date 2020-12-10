@@ -42,7 +42,11 @@ impl<'a> TypeLookup<'a> {
     }
 
     pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
-        self.ti.types.get(&e.id()).unwrap().typ
+        self.get_node_tc_type(e.id())
+    }
+
+    pub fn get_node_tc_type(&self, id: NodeId) -> TCTypeKey {
+        self.ti.types.get(&id).unwrap().typ
     }
 
     pub fn get_expr_mode(&self, e: &Expr) -> &OperandMode {
@@ -168,6 +172,12 @@ impl<'a> TypeLookup<'a> {
             None
         };
         (params, variadic)
+    }
+
+    pub fn get_sig_returns_tc_types(&mut self, func: TCTypeKey) -> Vec<TCTypeKey> {
+        let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
+        let sig = typ.try_as_signature().unwrap();
+        self.return_tc_types(sig.results())
     }
 
     // returns vm_type(metadata) for the tc_type
@@ -325,7 +335,16 @@ impl<'a> TypeLookup<'a> {
             }
             Type::Named(detail) => {
                 let underlying = self.meta_from_tc(detail.underlying(), vm_objs);
-                GosMetadata::new_named(underlying, &mut vm_objs.metas)
+                let md = GosMetadata::new_named(underlying, &mut vm_objs.metas);
+                for key in detail.methods().iter() {
+                    let mobj = &self.tc_objs.lobjs[*key];
+                    md.add_method(
+                        mobj.name().clone(),
+                        mobj.entity_type().func_has_ptr_recv(),
+                        &mut vm_objs.metas,
+                    )
+                }
+                md
             }
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
@@ -357,8 +376,7 @@ impl<'a> TypeLookup<'a> {
                 _ => {
                     dbg!(detail.typ());
                     unreachable!()
-                } //Complex64,  todo
-                  //Complex128, todo
+                }
             },
             Type::Slice(_) => ValueType::Slice,
             Type::Map(_) => ValueType::Map,

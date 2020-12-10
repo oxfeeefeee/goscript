@@ -5,11 +5,12 @@ use goscript_types::TypeKey as TCTypeKey;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::objects::{FunctionKey, VMObjects};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct IfaceMapping {
-    pub ifaces: Vec<(GosMetadata, Rc<Vec<FunctionKey>>)>,
+    ifaces: Vec<(GosMetadata, Vec<Rc<RefCell<MethodDesc>>>)>,
     iface_indices: HashMap<(TCTypeKey, TCTypeKey), OpIndex>,
 }
 
@@ -19,6 +20,18 @@ impl IfaceMapping {
             ifaces: vec![],
             iface_indices: HashMap::new(),
         }
+    }
+
+    pub fn into_result(self) -> Vec<(GosMetadata, Rc<Vec<FunctionKey>>)> {
+        self.ifaces
+            .into_iter()
+            .map(|(meta, method)| {
+                (
+                    meta,
+                    Rc::new(method.iter().map(|x| x.borrow().func.unwrap()).collect()),
+                )
+            })
+            .collect()
     }
 
     pub fn get_index(
@@ -41,7 +54,7 @@ impl IfaceMapping {
         i_s: &(TCTypeKey, TCTypeKey),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
-    ) -> (GosMetadata, Rc<Vec<FunctionKey>>) {
+    ) -> (GosMetadata, Vec<Rc<RefCell<MethodDesc>>>) {
         let i = lookup.meta_from_tc(i_s.0, objs);
         let s = lookup.meta_from_tc(i_s.1, objs);
         let ifields = match &objs.metas[i.as_non_ptr()] {
@@ -64,7 +77,7 @@ impl IfaceMapping {
         };
         (
             i,
-            Rc::new(methods.map_or(vec![], |x| ifields.iface_named_mapping(x))),
+            methods.map_or(vec![], |x| ifields.iface_named_mapping(x)),
         )
     }
 }

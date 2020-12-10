@@ -578,7 +578,7 @@ impl Display for GosValue {
             GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => f.write_str("todo(slice)"),
             GosValue::Map(_) => unimplemented!(),
-            GosValue::Interface(_) => unimplemented!(),
+            GosValue::Interface(_) => f.write_str("todo(interface)"),
             GosValue::Struct(_) => unimplemented!(),
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),

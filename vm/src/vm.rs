@@ -505,7 +505,6 @@ impl Fiber {
                             let ptypes = &objs.metas[call.meta].as_signature().params_type;
                             let params = stack.pop_with_type_n(ptypes);
                             let mut returns = call.ffi.borrow().call(&call.func_name, params);
-                            dbg!(&returns);
                             stack.append(&mut returns);
                             self.frames.pop();
                             frame = self.frames.last_mut().unwrap();

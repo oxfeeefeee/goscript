@@ -53,6 +53,7 @@ pub struct CodeGen<'a> {
     break_cont: BreakContinue,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
+    func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
     builtins: Builtins,
     blank_ident: IdentKey,
 }
@@ -79,6 +80,7 @@ impl<'a> CodeGen<'a> {
             break_cont: BreakContinue::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
+            func_t_stack: Vec::new(),
             builtins: builtins,
             blank_ident: bk,
         }
@@ -621,12 +623,13 @@ impl<'a> CodeGen<'a> {
 
     fn gen_func_def(
         &mut self,
-        fmeta: GosMetadata,
+        tc_type: TCTypeKey, // GosMetadata,
         fkey: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
     ) -> FunctionKey {
         let typ = &self.ast_objs.ftypes[fkey];
+        let fmeta = self.tlookup.meta_from_tc(tc_type, &mut self.objects);
         let f = GosValue::new_function(self.pkg_key, fmeta, &mut self.objects, false);
         let fkey = *f.as_function();
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
@@ -642,12 +645,14 @@ impl<'a> CodeGen<'a> {
             None => emitter.add_params(&typ.params, self.ast_objs),
         };
         self.func_stack.push(fkey);
+        self.func_t_stack.push(tc_type);
         // process function body
         self.visit_stmt_block(body);
         // it will not be executed if it's redundant
         Emitter::new(&mut self.objects.functions[fkey]).emit_return(Some(body.r_brace));
 
         self.func_stack.pop();
+        self.func_t_stack.pop();
         fkey
     }
 
@@ -875,8 +880,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
-        let vm_ftype = self.tlookup.get_meta_by_node_id(id, self.objects);
-        let fkey = self.gen_func_def(vm_ftype, flit.typ, None, &flit.body);
+        let tc_type = self.tlookup.get_node_tc_type(id);
+        let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Function(fkey));
         let pos = Some(flit.body.l_brace);
@@ -921,18 +926,15 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             } else {
                 let i = t.method_index(name, &self.objects.metas);
                 let method = t.get_method(i, &self.objects.metas);
-                let fkey = method.as_closure().func();
-                let boxed_recv = self.objects.metas[self.objects.functions[fkey].meta.as_non_ptr()]
-                    .as_signature()
-                    .boxed_recv();
-                if boxed_recv {
+                if method.borrow().boxed_recv {
                     // desugar
                     self.visit_expr_unary(expr, &Token::AND);
                 } else {
                     self.visit_expr(expr);
                 }
                 let func = current_func_mut!(self);
-                let mi = func.add_const(None, GosValue::Function(fkey));
+                // todo: fix this!!!
+                let mi = func.add_const(None, GosValue::Function(method.borrow().func.unwrap()));
                 func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into(), pos);
             }
         } else {
@@ -1313,9 +1315,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if decl.body.is_none() {
             unimplemented!()
         }
-        let vm_ftype = self.tlookup.gen_def_type_meta(decl.name, self.objects);
+        let tc_type = self.tlookup.get_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
-        let fkey = self.gen_func_def(vm_ftype, decl.typ, decl.recv.clone(), stmt);
+        let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
         let cls = GosValue::new_closure(fkey);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
@@ -1324,7 +1326,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let meta = self
                 .tlookup
                 .get_meta_by_node_id(field.typ.id(), self.objects);
-            meta.add_method(name.clone(), cls, &mut self.objects.metas);
+            meta.set_method_code(name, fkey, &mut self.objects.metas);
         } else {
             let ident = &self.ast_objs.idents[decl.name];
             let pkg = &mut self.objects.packages[self.pkg_key];
@@ -1364,9 +1366,14 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
         let pos = Some(rstmt.ret);
+        let types = self
+            .tlookup
+            .get_sig_returns_tc_types(*self.func_t_stack.last().unwrap());
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
-            let t = self.tlookup.get_expr_value_type(expr);
+            let tc_type = self.tlookup.get_expr_tc_type(expr);
+            self.try_cast_to_iface(Some(types[i]), tc_type, -1, expr.pos(&self.ast_objs));
+            let t = self.tlookup.value_type_from_tc(tc_type);
             let mut emitter = current_func_emitter!(self);
             emitter.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),

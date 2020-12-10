@@ -108,7 +108,7 @@ impl<'a> EntryGen<'a> {
         ByteCode {
             objects: self.objects,
             packages: self.packages,
-            ifaces: self.iface_mapping.ifaces,
+            ifaces: self.iface_mapping.into_result(),
             entry: entry,
         }
     }

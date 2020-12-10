@@ -4,7 +4,9 @@ use super::objects::{
     FunctionKey, MapObjs, MetadataKey, MetadataObjs, SliceObjs, StructObj, VMObjects,
 };
 use super::value::GosValue;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct Metadata {
@@ -136,10 +138,7 @@ impl GosMetadata {
     }
 
     pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::new(
-            MetadataType::Named(Methods::new(vec![], HashMap::new()), underlying),
-            metas,
-        )
+        GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
     #[inline]
@@ -375,14 +374,26 @@ impl GosMetadata {
         }
     }
 
-    #[inline]
-    pub fn add_method(&self, name: String, f: GosValue, metas: &mut MetadataObjs) {
+    pub fn add_method(&self, name: String, boxed_recv: bool, metas: &mut MetadataObjs) {
         let k = self.recv_meta_key();
-        dbg!(k, &metas[k]);
         match &mut metas[k] {
             MetadataType::Named(m, _) => {
-                m.members.push(f);
+                m.members.push(Rc::new(RefCell::new(MethodDesc {
+                    boxed_recv: boxed_recv,
+                    func: None,
+                })));
                 m.mapping.insert(name, m.members.len() as OpIndex - 1);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn set_method_code(&self, name: &String, func: FunctionKey, metas: &mut MetadataObjs) {
+        let k = self.recv_meta_key();
+        match &mut metas[k] {
+            MetadataType::Named(m, _) => {
+                let index = m.mapping[name] as usize;
+                m.members[index].borrow_mut().func = Some(func);
             }
             _ => unreachable!(),
         }
@@ -401,7 +412,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn get_method(&self, index: OpIndex, metas: &MetadataObjs) -> GosValue {
+    pub fn get_method(&self, index: OpIndex, metas: &MetadataObjs) -> Rc<RefCell<MethodDesc>> {
         let (m, _) = self.get_named_metadate(metas);
         m.members[index as usize].clone()
     }
@@ -441,11 +452,15 @@ impl Fields {
     }
 
     #[inline]
-    pub fn iface_named_mapping(&self, named_obj: &Methods) -> Vec<FunctionKey> {
-        let mut result = vec![null_key!(); self.fields.len()];
+    pub fn iface_named_mapping(&self, named_obj: &Methods) -> Vec<Rc<RefCell<MethodDesc>>> {
+        let default = Rc::new(RefCell::new(MethodDesc {
+            boxed_recv: false,
+            func: None,
+        }));
+        let mut result = vec![default; self.fields.len()];
         for (n, i) in self.mapping.iter() {
             let f = &named_obj.members[named_obj.mapping[n] as usize];
-            result[*i as usize] = f.as_closure().func();
+            result[*i as usize] = f.clone();
         }
         result
     }
@@ -463,16 +478,22 @@ impl Fields {
 }
 
 #[derive(Debug, Clone)]
+pub struct MethodDesc {
+    pub boxed_recv: bool,
+    pub func: Option<FunctionKey>,
+}
+
+#[derive(Debug, Clone)]
 pub struct Methods {
-    pub members: Vec<GosValue>,
+    pub members: Vec<Rc<RefCell<MethodDesc>>>,
     pub mapping: HashMap<String, OpIndex>,
 }
 
 impl Methods {
-    pub fn new(members: Vec<GosValue>, mapping: HashMap<String, OpIndex>) -> Methods {
+    pub fn new() -> Methods {
         Methods {
-            members: members,
-            mapping: mapping,
+            members: vec![],
+            mapping: HashMap::new(),
         }
     }
 }
