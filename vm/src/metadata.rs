@@ -183,7 +183,6 @@ impl GosMetadata {
     // todo: change name
     #[inline]
     pub fn as_non_ptr(&self) -> MetadataKey {
-        dbg!(self);
         match self {
             GosMetadata::NonPtr(k, _) => *k,
             _ => unreachable!(),

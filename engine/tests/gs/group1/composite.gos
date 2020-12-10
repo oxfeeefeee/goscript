@@ -1,0 +1,29 @@
+package main
+
+import (
+	"fmt"
+)
+
+
+type Point3D struct { x, y, z int }
+type Point3Df struct { x, y, z float32 }
+
+func main() {
+    
+    var p = Point3D{8,9,10}
+    assert(p.x == 8)
+
+    var p2 = Point3D{y:88}
+    assert(p2.y == 88)
+
+    var s = []Point3D{{1,2,3},{y:4}}
+    fmt.Println(s[0].x, s[0].y, s[0].z, s[1].x, s[1].y, s[1].z)
+
+    assert(s[0].z == 3)
+    assert(s[1].y == 4)
+
+    var pf = Point3Df{1.1,20000000000000000000,3}
+    assert(pf.x == 1.1)
+    fmt.Println(pf.x, pf.y, pf.z)
+    
+}

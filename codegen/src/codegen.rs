@@ -731,7 +731,8 @@ impl<'a> CodeGen<'a> {
 
     fn gen_composite_literal(&mut self, clit: &CompositeLit, meta: &GosMetadata) {
         let pos = Some(clit.l_brace);
-        let mtype = &self.objects.metas[meta.as_non_ptr()].clone();
+        let mtype =
+            &self.objects.metas[meta.get_underlying(&self.objects.metas).as_non_ptr()].clone();
         match mtype {
             MetadataType::Slice(elem_meta) => {
                 for expr in clit.elts.iter().rev() {
@@ -742,19 +743,27 @@ impl<'a> CodeGen<'a> {
                 for expr in clit.elts.iter() {
                     match expr {
                         Expr::KeyValue(kv) => {
-                            self.visit_composite_expr(&kv.key, km);
                             self.visit_composite_expr(&kv.val, vm);
+                            self.visit_composite_expr(&kv.key, km);
                         }
                         _ => unreachable!(),
                     }
                 }
             }
-            MetadataType::Struct(_, _) => {
-                for expr in clit.elts.iter() {
-                    match expr {
-                        Expr::KeyValue(kv) => {}
-                        _ => {}
-                    }
+            MetadataType::Struct(f, _) => {
+                for (i, expr) in clit.elts.iter().enumerate() {
+                    let index = match expr {
+                        Expr::KeyValue(kv) => {
+                            self.visit_composite_expr(&kv.val, &f.fields[i]);
+                            let ident = kv.key.try_as_ident().unwrap();
+                            f.mapping[&self.ast_objs.idents[*ident].name]
+                        }
+                        _ => {
+                            self.visit_composite_expr(expr, &f.fields[i]);
+                            i as OpIndex
+                        }
+                    };
+                    current_func_emitter!(self).emit_push_imm(ValueType::Uint, index, pos);
                 }
             }
             _ => {

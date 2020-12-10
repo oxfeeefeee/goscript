@@ -780,19 +780,28 @@ impl Fiber {
                                     let tk = km.get_value_type(&objs.metas);
                                     let tv = vm.get_value_type(&objs.metas);
                                     for _ in 0..count {
-                                        let v = stack.pop_with_type(tv);
                                         let k = stack.pop_with_type(tk);
+                                        let v = stack.pop_with_type(tv);
                                         map.insert(k, v);
                                     }
                                     gosv
                                 }
-                                MetadataType::Struct(_, _) => unimplemented!(),
+                                MetadataType::Struct(f, zero) => {
+                                    let struct_val = zero.copy_semantic(None, &objs.metadata);
+                                    let mut sref = struct_val.as_struct().borrow_mut();
+                                    for _ in 0..count {
+                                        let index = stack.pop_uint();
+                                        let tv = f.fields[index].get_value_type(&objs.metas);
+                                        sref.fields[index] = stack.pop_with_type(tv);
+                                    }
+                                    drop(sref);
+                                    struct_val
+                                }
                                 _ => unreachable!(),
                             }
                         }
                         _ => unimplemented!(),
                     };
-                    dbg!(&new_val);
                     stack.push(new_val);
                 }
 

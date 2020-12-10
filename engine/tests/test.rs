@@ -159,6 +159,12 @@ fn test_basictypes() {
 }
 
 #[test]
+fn test_composite() {
+    let err_cnt = run("./tests/gs/group1/composite.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 
