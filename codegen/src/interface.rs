@@ -53,8 +53,8 @@ impl IfaceMapping {
             _ => unreachable!(),
         };
         let named = match s {
-            GosMetadata::NonPtr(k) => k,
-            GosMetadata::Ptr1(k) => k,
+            GosMetadata::NonPtr(k, _) => k,
+            GosMetadata::Ptr1(k, _) => k,
             _ => unreachable!(),
         };
         let methods = match &objs.metas[named] {

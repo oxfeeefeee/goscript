@@ -771,7 +771,7 @@ impl<'a> CodeGen<'a> {
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(
             None,
-            GosValue::Metadata(GosMetadata::NonPtr(meta.as_non_ptr())),
+            GosValue::Metadata(GosMetadata::NonPtr(meta.as_non_ptr(), false)),
         );
         emitter.emit_literal(ValueType::Metadata, i.into(), pos);
     }
@@ -878,7 +878,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let meta = self
             .tlookup
             .get_meta_by_node_id(clit.typ.as_ref().unwrap().id(), &mut self.objects);
-        let meta = GosMetadata::NonPtr(meta.as_metadata()).get_underlying(&self.objects.metas);
+        let meta = meta.get_underlying(&self.objects.metas);
         self.gen_composite_literal(clit, &meta);
     }
 

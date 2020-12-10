@@ -274,7 +274,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t)))
+        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t), false))
     }
 
     #[inline]

@@ -30,49 +30,51 @@ pub struct Metadata {
 impl Metadata {
     pub fn new(objs: &mut MetadataObjs) -> Metadata {
         Metadata {
-            mbool: GosMetadata::NonPtr(objs.insert(MetadataType::Bool)),
-            mint: GosMetadata::NonPtr(objs.insert(MetadataType::Int)),
-            mint8: GosMetadata::NonPtr(objs.insert(MetadataType::Int8)),
-            mint16: GosMetadata::NonPtr(objs.insert(MetadataType::Int16)),
-            mint32: GosMetadata::NonPtr(objs.insert(MetadataType::Int32)),
-            mint64: GosMetadata::NonPtr(objs.insert(MetadataType::Int64)),
-            muint: GosMetadata::NonPtr(objs.insert(MetadataType::Uint)),
-            muint8: GosMetadata::NonPtr(objs.insert(MetadataType::Uint8)),
-            muint16: GosMetadata::NonPtr(objs.insert(MetadataType::Uint16)),
-            muint32: GosMetadata::NonPtr(objs.insert(MetadataType::Uint32)),
-            muint64: GosMetadata::NonPtr(objs.insert(MetadataType::Uint64)),
-            mfloat32: GosMetadata::NonPtr(objs.insert(MetadataType::Float32)),
-            mfloat64: GosMetadata::NonPtr(objs.insert(MetadataType::Float64)),
-            mcomplex64: GosMetadata::NonPtr(objs.insert(MetadataType::Complex64)),
-            mcomplex128: GosMetadata::NonPtr(objs.insert(MetadataType::Complex128)),
+            mbool: GosMetadata::NonPtr(objs.insert(MetadataType::Bool), false),
+            mint: GosMetadata::NonPtr(objs.insert(MetadataType::Int), false),
+            mint8: GosMetadata::NonPtr(objs.insert(MetadataType::Int8), false),
+            mint16: GosMetadata::NonPtr(objs.insert(MetadataType::Int16), false),
+            mint32: GosMetadata::NonPtr(objs.insert(MetadataType::Int32), false),
+            mint64: GosMetadata::NonPtr(objs.insert(MetadataType::Int64), false),
+            muint: GosMetadata::NonPtr(objs.insert(MetadataType::Uint), false),
+            muint8: GosMetadata::NonPtr(objs.insert(MetadataType::Uint8), false),
+            muint16: GosMetadata::NonPtr(objs.insert(MetadataType::Uint16), false),
+            muint32: GosMetadata::NonPtr(objs.insert(MetadataType::Uint32), false),
+            muint64: GosMetadata::NonPtr(objs.insert(MetadataType::Uint64), false),
+            mfloat32: GosMetadata::NonPtr(objs.insert(MetadataType::Float32), false),
+            mfloat64: GosMetadata::NonPtr(objs.insert(MetadataType::Float64), false),
+            mcomplex64: GosMetadata::NonPtr(objs.insert(MetadataType::Complex64), false),
+            mcomplex128: GosMetadata::NonPtr(objs.insert(MetadataType::Complex128), false),
             mstr: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Str(GosValue::new_str("".to_string()))),
+                false,
             ),
             default_sig: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Signature(SigMetadata::default())),
+                false,
             ),
         }
     }
 }
 
+// bool indicates if it's meta of a type
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GosMetadata {
     Untyped,
-    NonPtr(MetadataKey),
-    Ptr1(MetadataKey),
-    Ptr2(MetadataKey),
-    Ptr3(MetadataKey),
-    Ptr4(MetadataKey),
-    Ptr5(MetadataKey),
-    Ptr6(MetadataKey),
-    Ptr7(MetadataKey),
-    Metadata(MetadataKey),
+    NonPtr(MetadataKey, bool),
+    Ptr1(MetadataKey, bool),
+    Ptr2(MetadataKey, bool),
+    Ptr3(MetadataKey, bool),
+    Ptr4(MetadataKey, bool),
+    Ptr5(MetadataKey, bool),
+    Ptr6(MetadataKey, bool),
+    Ptr7(MetadataKey, bool),
 }
 
 impl GosMetadata {
     #[inline]
     pub fn new(v: MetadataType, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::NonPtr(metas.insert(v))
+        GosMetadata::NonPtr(metas.insert(v), false)
     }
 
     #[inline]
@@ -104,7 +106,7 @@ impl GosMetadata {
         };
         let gos_struct = GosValue::new_struct(struct_val, &mut objs.structs);
         let key = objs.metas.insert(MetadataType::Struct(f, gos_struct));
-        let gosm = GosMetadata::NonPtr(key);
+        let gosm = GosMetadata::NonPtr(key, false);
         match &mut objs.metas[key] {
             MetadataType::Struct(_, v) => match v {
                 GosValue::Struct(s) => s.borrow_mut().meta = gosm,
@@ -146,17 +148,14 @@ impl GosMetadata {
             GosMetadata::Untyped => {
                 unreachable!() /* todo: panic */
             }
-            GosMetadata::NonPtr(k) => GosMetadata::Ptr1(*k),
-            GosMetadata::Ptr1(k) => GosMetadata::Ptr2(*k),
-            GosMetadata::Ptr2(k) => GosMetadata::Ptr3(*k),
-            GosMetadata::Ptr3(k) => GosMetadata::Ptr4(*k),
-            GosMetadata::Ptr4(k) => GosMetadata::Ptr5(*k),
-            GosMetadata::Ptr5(k) => GosMetadata::Ptr6(*k),
-            GosMetadata::Ptr6(k) => GosMetadata::Ptr7(*k),
-            GosMetadata::Ptr7(_) => {
-                unreachable!() /* todo: panic */
-            }
-            GosMetadata::Metadata(_) => {
+            GosMetadata::NonPtr(k, t) => GosMetadata::Ptr1(*k, *t),
+            GosMetadata::Ptr1(k, t) => GosMetadata::Ptr2(*k, *t),
+            GosMetadata::Ptr2(k, t) => GosMetadata::Ptr3(*k, *t),
+            GosMetadata::Ptr3(k, t) => GosMetadata::Ptr4(*k, *t),
+            GosMetadata::Ptr4(k, t) => GosMetadata::Ptr5(*k, *t),
+            GosMetadata::Ptr5(k, t) => GosMetadata::Ptr6(*k, *t),
+            GosMetadata::Ptr6(k, t) => GosMetadata::Ptr7(*k, *t),
+            GosMetadata::Ptr7(_, _) => {
                 unreachable!() /* todo: panic */
             }
         }
@@ -168,71 +167,98 @@ impl GosMetadata {
             GosMetadata::Untyped => {
                 unreachable!() /* todo: panic */
             }
-            GosMetadata::NonPtr(_) => {
+            GosMetadata::NonPtr(_, _) => {
                 unreachable!() /* todo: panic */
             }
-            GosMetadata::Ptr1(k) => GosMetadata::NonPtr(*k),
-            GosMetadata::Ptr2(k) => GosMetadata::Ptr1(*k),
-            GosMetadata::Ptr3(k) => GosMetadata::Ptr2(*k),
-            GosMetadata::Ptr4(k) => GosMetadata::Ptr3(*k),
-            GosMetadata::Ptr5(k) => GosMetadata::Ptr4(*k),
-            GosMetadata::Ptr6(k) => GosMetadata::Ptr5(*k),
-            GosMetadata::Ptr7(k) => GosMetadata::Ptr6(*k),
-            GosMetadata::Metadata(_) => {
-                unreachable!() /* todo: panic */
-            }
+            GosMetadata::Ptr1(k, t) => GosMetadata::NonPtr(*k, *t),
+            GosMetadata::Ptr2(k, t) => GosMetadata::Ptr1(*k, *t),
+            GosMetadata::Ptr3(k, t) => GosMetadata::Ptr2(*k, *t),
+            GosMetadata::Ptr4(k, t) => GosMetadata::Ptr3(*k, *t),
+            GosMetadata::Ptr5(k, t) => GosMetadata::Ptr4(*k, *t),
+            GosMetadata::Ptr6(k, t) => GosMetadata::Ptr5(*k, *t),
+            GosMetadata::Ptr7(k, t) => GosMetadata::Ptr6(*k, *t),
         }
     }
 
     // todo: change name
     #[inline]
     pub fn as_non_ptr(&self) -> MetadataKey {
+        dbg!(self);
         match self {
-            GosMetadata::NonPtr(k) => *k,
-            GosMetadata::Metadata(k) => *k,
+            GosMetadata::NonPtr(k, _) => *k,
             _ => unreachable!(),
         }
     }
 
     #[inline]
-    pub fn as_metadata(&self) -> MetadataKey {
+    pub fn unwrap_key_and_is_type(&self) -> (MetadataKey, bool) {
         match self {
-            GosMetadata::Metadata(k) => *k,
-            _ => unreachable!(),
+            GosMetadata::Untyped => {
+                unreachable!() /* todo: panic */
+            }
+            GosMetadata::NonPtr(k, t)
+            | GosMetadata::Ptr1(k, t)
+            | GosMetadata::Ptr2(k, t)
+            | GosMetadata::Ptr3(k, t)
+            | GosMetadata::Ptr4(k, t)
+            | GosMetadata::Ptr5(k, t)
+            | GosMetadata::Ptr6(k, t)
+            | GosMetadata::Ptr7(k, t) => (*k, *t),
+        }
+    }
+
+    #[inline]
+    pub fn set_is_type(&mut self, is_type: bool) {
+        *self = match self {
+            GosMetadata::Untyped => {
+                unreachable!() /* todo: panic */
+            }
+            GosMetadata::NonPtr(k, _) => GosMetadata::NonPtr(*k, is_type),
+            GosMetadata::Ptr1(k, _) => GosMetadata::Ptr1(*k, is_type),
+            GosMetadata::Ptr2(k, _) => GosMetadata::Ptr2(*k, is_type),
+            GosMetadata::Ptr3(k, _) => GosMetadata::Ptr3(*k, is_type),
+            GosMetadata::Ptr4(k, _) => GosMetadata::Ptr4(*k, is_type),
+            GosMetadata::Ptr5(k, _) => GosMetadata::Ptr5(*k, is_type),
+            GosMetadata::Ptr6(k, _) => GosMetadata::Ptr6(*k, is_type),
+            GosMetadata::Ptr7(k, _) => GosMetadata::Ptr7(*k, is_type),
         }
     }
 
     #[inline]
     pub fn get_value_type(&self, metas: &MetadataObjs) -> ValueType {
-        match self {
-            GosMetadata::Untyped => unreachable!(),
-            GosMetadata::NonPtr(k) => match &metas[*k] {
-                MetadataType::Bool => ValueType::Bool,
-                MetadataType::Int => ValueType::Int,
-                MetadataType::Int8 => ValueType::Int8,
-                MetadataType::Int16 => ValueType::Int16,
-                MetadataType::Int32 => ValueType::Int32,
-                MetadataType::Int64 => ValueType::Int64,
-                MetadataType::Uint => ValueType::Uint,
-                MetadataType::Uint8 => ValueType::Uint8,
-                MetadataType::Uint16 => ValueType::Uint16,
-                MetadataType::Uint32 => ValueType::Uint32,
-                MetadataType::Uint64 => ValueType::Uint64,
-                MetadataType::Float32 => ValueType::Float32,
-                MetadataType::Float64 => ValueType::Float64,
-                MetadataType::Complex64 => ValueType::Complex64,
-                MetadataType::Complex128 => ValueType::Complex128,
-                MetadataType::Str(_) => ValueType::Str,
-                MetadataType::Struct(_, _) => ValueType::Struct,
-                MetadataType::Signature(_) => ValueType::Closure,
-                MetadataType::Slice(_) => ValueType::Slice,
-                MetadataType::Map(_, _) => ValueType::Map,
-                MetadataType::Interface(_) => ValueType::Interface,
-                MetadataType::Channel => ValueType::Channel,
-                MetadataType::Named(_, m) => m.get_value_type(metas),
-            },
-            GosMetadata::Metadata(_) => ValueType::Metadata,
-            _ => ValueType::Boxed,
+        let (key, is_type) = self.unwrap_key_and_is_type();
+        if is_type {
+            ValueType::Metadata
+        } else {
+            match self {
+                GosMetadata::Untyped => unreachable!(),
+                GosMetadata::NonPtr(_, _) => match &metas[key] {
+                    MetadataType::Bool => ValueType::Bool,
+                    MetadataType::Int => ValueType::Int,
+                    MetadataType::Int8 => ValueType::Int8,
+                    MetadataType::Int16 => ValueType::Int16,
+                    MetadataType::Int32 => ValueType::Int32,
+                    MetadataType::Int64 => ValueType::Int64,
+                    MetadataType::Uint => ValueType::Uint,
+                    MetadataType::Uint8 => ValueType::Uint8,
+                    MetadataType::Uint16 => ValueType::Uint16,
+                    MetadataType::Uint32 => ValueType::Uint32,
+                    MetadataType::Uint64 => ValueType::Uint64,
+                    MetadataType::Float32 => ValueType::Float32,
+                    MetadataType::Float64 => ValueType::Float64,
+                    MetadataType::Complex64 => ValueType::Complex64,
+                    MetadataType::Complex128 => ValueType::Complex128,
+                    MetadataType::Str(_) => ValueType::Str,
+                    MetadataType::Struct(_, _) => ValueType::Struct,
+                    MetadataType::Signature(_) => ValueType::Closure,
+                    MetadataType::Slice(_) => ValueType::Slice,
+                    MetadataType::Map(_, _) => ValueType::Map,
+                    MetadataType::Interface(_) => ValueType::Interface,
+                    MetadataType::Channel => ValueType::Channel,
+                    MetadataType::Named(_, m) => m.get_value_type(metas),
+                },
+                _ => ValueType::Boxed,
+            }
         }
     }
 
@@ -245,7 +271,7 @@ impl GosMetadata {
     fn zero_val_impl(&self, mobjs: &MetadataObjs, metadata: &Metadata) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
-            GosMetadata::NonPtr(k) => match &mobjs[*k] {
+            GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
                 MetadataType::Int8 => GosValue::Int8(0),
@@ -285,7 +311,7 @@ impl GosMetadata {
         maps: &mut MapObjs,
     ) -> GosValue {
         match &self {
-            GosMetadata::NonPtr(k) => match &mobjs[*k] {
+            GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
                 MetadataType::Int8 => GosValue::Int8(0),
@@ -321,7 +347,10 @@ impl GosMetadata {
     #[inline]
     pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let key = self.recv_meta_key();
-        match &metas[GosMetadata::NonPtr(key).get_underlying(metas).as_non_ptr()] {
+        match &metas[GosMetadata::NonPtr(key, false)
+            .get_underlying(metas)
+            .as_non_ptr()]
+        {
             MetadataType::Struct(m, _) => m.mapping[name] as OpIndex,
             _ => unreachable!(),
         }
@@ -330,7 +359,7 @@ impl GosMetadata {
     #[inline]
     pub fn get_underlying(&self, metas: &MetadataObjs) -> GosMetadata {
         match self {
-            GosMetadata::NonPtr(k) => match &metas[*k] {
+            GosMetadata::NonPtr(k, _) => match &metas[*k] {
                 MetadataType::Named(_, u) => *u,
                 _ => *self,
             },
@@ -341,9 +370,8 @@ impl GosMetadata {
     #[inline]
     pub fn recv_meta_key(&self) -> MetadataKey {
         match self {
-            GosMetadata::Metadata(k) => *k,
-            GosMetadata::NonPtr(k) => *k,
-            GosMetadata::Ptr1(k) => *k,
+            GosMetadata::NonPtr(k, _) => *k,
+            GosMetadata::Ptr1(k, _) => *k,
             _ => unreachable!(),
         }
     }
@@ -475,7 +503,7 @@ impl SigMetadata {
     pub fn boxed_recv(&self) -> bool {
         if let Some(r) = &self.recv {
             match r {
-                GosMetadata::NonPtr(_) => false,
+                GosMetadata::NonPtr(_, _) => false,
                 _ => true,
             }
         } else {
