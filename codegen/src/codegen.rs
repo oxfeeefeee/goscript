@@ -146,7 +146,7 @@ impl<'a> CodeGen<'a> {
         }
         if is_def {
             let meta = self.tlookup.gen_def_type_meta(*ikey, self.objects);
-            let zero_val = meta.zero_val(&self.objects);
+            let zero_val = meta.zero_val(&self.objects.metas);
             let func = current_func_mut!(self);
             let ident_key = ident.entity.clone().into_key();
             let index = func.add_local(ident_key);
@@ -723,7 +723,7 @@ impl<'a> CodeGen<'a> {
         let t = self.tlookup.get_expr_tc_type(expr);
         let meta = self.tlookup.meta_from_tc(t, self.objects);
         let meta = meta.get_underlying(&self.objects.metas);
-        let zero_val = meta.zero_val(&self.objects);
+        let zero_val = meta.zero_val(&self.objects.metas);
         (zero_val, t)
     }
 
@@ -808,7 +808,7 @@ impl<'a> CodeGen<'a> {
             for n in v.names.iter() {
                 let ident = &self.ast_objs.idents[*n];
                 let meta = self.tlookup.gen_def_type_meta(*n, self.objects);
-                let val = meta.zero_val(&mut self.objects);
+                let val = meta.zero_val(&mut self.objects.metas);
                 self.objects.packages[pkey].add_member(ident.name.clone(), val);
             }
         }
@@ -1133,7 +1133,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     // add composite literal as a local var
                     let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
                     let typ = meta.get_value_type(&self.objects.metas);
-                    let zero_val = meta.zero_val(&self.objects);
+                    let zero_val = meta.zero_val(&self.objects.metas);
                     let func = current_func_mut!(self);
                     let index = func.add_local(None);
                     func.add_local_zero(zero_val);

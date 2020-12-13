@@ -100,7 +100,7 @@ impl GosMetadata {
 
     #[inline]
     pub fn new_struct(f: Fields, objs: &mut VMObjects) -> GosMetadata {
-        let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| x.zero_val(objs)).collect();
+        let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| x.zero_val(&objs.metas)).collect();
         let struct_val = StructObj {
             dark: false,
             meta: GosMetadata::Untyped, // placeholder, w'll be set below
@@ -261,12 +261,12 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn zero_val(&self, objs: &VMObjects) -> GosValue {
-        self.zero_val_impl(&objs.metas, &objs.metadata)
+    pub fn zero_val(&self, metas: &MetadataObjs) -> GosValue {
+        self.zero_val_impl(metas)
     }
 
     #[inline]
-    fn zero_val_impl(&self, mobjs: &MetadataObjs, metadata: &Metadata) -> GosValue {
+    fn zero_val_impl(&self, mobjs: &MetadataObjs) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
             GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
@@ -288,13 +288,13 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::Struct(_, s) => s.copy_semantic(None, metadata),
+                MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Slice(_) => GosValue::Nil(*self),
                 MetadataType::Map(_, _) => GosValue::Nil(*self),
                 MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => GosValue::Nil(*self),
-                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs, metadata),
+                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs),
             },
             _ => GosValue::Nil(*self),
         }
@@ -304,7 +304,6 @@ impl GosMetadata {
     pub fn default_val(
         &self,
         mobjs: &MetadataObjs,
-        metadata: &Metadata,
         slices: &mut SliceObjs,
         maps: &mut MapObjs,
     ) -> GosValue {
@@ -328,15 +327,13 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::Struct(_, s) => s.copy_semantic(None, metadata),
+                MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => unimplemented!(),
                 MetadataType::Slice(_) => GosValue::new_slice(0, 0, None, slices),
-                MetadataType::Map(_, v) => {
-                    GosValue::new_map(v.zero_val_impl(mobjs, metadata), maps)
-                }
+                MetadataType::Map(_, v) => GosValue::new_map(v.zero_val_impl(mobjs), maps),
                 MetadataType::Interface(_) => unimplemented!(),
                 MetadataType::Channel => unimplemented!(),
-                MetadataType::Named(_, gm) => gm.default_val(mobjs, metadata, slices, maps),
+                MetadataType::Named(_, gm) => gm.default_val(mobjs, slices, maps),
             },
             _ => unreachable!(),
         }

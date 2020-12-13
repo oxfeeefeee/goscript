@@ -872,7 +872,8 @@ impl FunctionVal {
     ) -> FunctionVal {
         match &objs.metas[meta.as_non_ptr()] {
             MetadataType::Signature(s) => {
-                let returns: Vec<GosValue> = s.results.iter().map(|x| x.zero_val(objs)).collect();
+                let returns: Vec<GosValue> =
+                    s.results.iter().map(|x| x.zero_val(&objs.metas)).collect();
                 let params = s.params.len() + s.recv.map_or(0, |_| 1);
                 let vtype = s.variadic.map(|x| x.get_value_type(&objs.metas));
                 FunctionVal {

@@ -2,6 +2,7 @@
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
+use super::stack::Stack;
 use ordered_float;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -394,7 +395,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_meta(&self, md: &Metadata) -> GosMetadata {
+    pub fn get_meta(&self, md: &Metadata, pkgs: &PackageObjs, stack: &Stack) -> GosMetadata {
         match self {
             GosValue::Nil(m) => *m,
             GosValue::Bool(_) => md.mbool,
@@ -413,7 +414,32 @@ impl GosValue {
             GosValue::Complex64(_, _) => md.mcomplex64,
             GosValue::Complex128(_) => md.mcomplex128,
             GosValue::Str(_) => md.mstr,
-            GosValue::Boxed(_) => unimplemented!(),
+            GosValue::Boxed(b) => {
+                let bobj: &BoxedObj = &*b;
+                let inner = match bobj {
+                    BoxedObj::Nil => GosMetadata::Untyped,
+                    BoxedObj::UpVal(uv) => {
+                        let state: &UpValueState = &uv.inner.borrow();
+                        match state {
+                            UpValueState::Open(d) => stack
+                                .get_with_type(d.index as usize, d.typ)
+                                .get_meta(md, pkgs, stack),
+                            UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
+                        }
+                    }
+                    BoxedObj::Struct(sobj) => sobj.borrow().meta,
+                    BoxedObj::StructField(sobj, index) => {
+                        sobj.borrow().fields[*index as usize].get_meta(md, pkgs, stack)
+                    }
+                    BoxedObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
+                        .borrow()
+                        .get_meta(md, pkgs, stack),
+                    BoxedObj::PkgMember(pkey, index) => {
+                        pkgs[*pkey].member(*index).get_meta(md, pkgs, stack)
+                    }
+                };
+                inner.ptr_to()
+            }
             GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => unimplemented!(),
             GosValue::Map(_) => unimplemented!(),
@@ -427,45 +453,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn set_nil(&mut self, md: &Metadata) {
+    pub fn copy_semantic(&self) -> GosValue {
         match self {
-            GosValue::Nil(_) => unreachable!(),
-            GosValue::Bool(_) => unreachable!(),
-            GosValue::Int(_) => unreachable!(),
-            GosValue::Int8(_) => unreachable!(),
-            GosValue::Int16(_) => unreachable!(),
-            GosValue::Int32(_) => unreachable!(),
-            GosValue::Int64(_) => unreachable!(),
-            GosValue::Uint(_) => unreachable!(),
-            GosValue::Uint8(_) => unreachable!(),
-            GosValue::Uint16(_) => unreachable!(),
-            GosValue::Uint32(_) => unreachable!(),
-            GosValue::Uint64(_) => unreachable!(),
-            GosValue::Float32(_) => unreachable!(),
-            GosValue::Float64(_) => unreachable!(),
-            GosValue::Complex64(_, _) => unreachable!(),
-            GosValue::Complex128(_) => unreachable!(),
-            GosValue::Str(_) => unreachable!(),
-            GosValue::Boxed(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Closure(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Slice(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Map(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Interface(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Struct(_) => unreachable!(),
-            GosValue::Channel(_) => *self = GosValue::Nil(self.get_meta(md)),
-            GosValue::Function(_) => unreachable!(),
-            GosValue::Package(_) => unreachable!(),
-            GosValue::Metadata(_) => unreachable!(),
-        }
-    }
-
-    #[inline]
-    pub fn copy_semantic(&self, lhs: Option<&GosValue>, md: &Metadata) -> GosValue {
-        match self {
-            GosValue::Nil(m) => match m {
-                GosMetadata::Untyped => GosValue::Nil(lhs.unwrap().get_meta(md)),
-                _ => self.clone(),
-            },
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),

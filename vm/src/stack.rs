@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
-use super::metadata::Metadata;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -238,11 +237,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, md: &Metadata) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType) {
         if t.copyable() {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
-            let v = self.get_rc(ri).copy_semantic(Some(self.get_rc(li)), md);
+            let v = self
+                .get_rc(ri)
+                .copy_semantic(/*Some((self.get_rc(li), pkgs, self)), md*/);
             *self.get_rc_mut(li) = v;
         }
     }
@@ -261,13 +262,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, md: &Metadata) {
+    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
             if t.copyable() {
                 self.get_c(rhs_s_index).get_v128(t)
             } else {
-                self.get_rc(rhs_s_index).copy_semantic(Some(target), md)
+                self.get_rc(rhs_s_index).copy_semantic()
             }
         } else {
             let ri = Stack::offset(self.len(), -1);
