@@ -194,6 +194,8 @@ pub enum GosValue {
     Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<RefCell<StructObj>>),
     Channel(Rc<RefCell<ChannelObj>>),
+
+    Named(Rc<RefCell<(GosValue, GosMetadata)>>),
 }
 
 impl GosValue {
@@ -354,6 +356,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_named(&self) -> &Rc<RefCell<(GosValue, GosMetadata)>> {
+        unwrap_gos_val!(Named, self)
+    }
+
+    #[inline]
     pub fn is_nil(&self) -> bool {
         match &self {
             GosValue::Nil(_) => true,
@@ -391,6 +398,7 @@ impl GosValue {
             GosValue::Function(_) => ValueType::Function,
             GosValue::Package(_) => ValueType::Package,
             GosValue::Metadata(_) => ValueType::Metadata,
+            GosValue::Named(_) => ValueType::Named,
         }
     }
 
@@ -427,7 +435,7 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
                         }
                     }
-                    BoxedObj::Struct(sobj) => sobj.borrow().meta,
+                    BoxedObj::Named(sobj) => sobj.borrow().1,
                     BoxedObj::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(md, pkgs, stack)
                     }
@@ -449,6 +457,7 @@ impl GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
+            GosValue::Named(v) => v.borrow().1,
         }
     }
 
@@ -458,6 +467,10 @@ impl GosValue {
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
+            GosValue::Named(v) => {
+                let b = v.borrow();
+                GosValue::Named(Rc::new(RefCell::new((b.0.copy_semantic(), b.1))))
+            }
             _ => self.clone(),
         }
     }
@@ -573,6 +586,7 @@ impl Display for GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
+            GosValue::Named(v) => f.write_fmt(format_args!("named(todo): {}", v.borrow().0)),
         }
     }
 }
@@ -615,37 +629,107 @@ pub struct GosValue64 {
 impl GosValue64 {
     #[inline]
     pub fn from_v128(v: &GosValue) -> (GosValue64, ValueType) {
-        let (data, typ) = match v {
-            GosValue::Bool(b) => (V64Union { ubool: *b }, ValueType::Bool),
-            GosValue::Int(i) => (V64Union { int: *i }, ValueType::Int),
-            GosValue::Int8(i) => (V64Union { int8: *i }, ValueType::Int8),
-            GosValue::Int16(i) => (V64Union { int16: *i }, ValueType::Int16),
-            GosValue::Int32(i) => (V64Union { int32: *i }, ValueType::Int32),
-            GosValue::Int64(i) => (V64Union { int64: *i }, ValueType::Int64),
-            GosValue::Uint(i) => (V64Union { uint: *i }, ValueType::Uint),
-            GosValue::Uint8(i) => (V64Union { uint8: *i }, ValueType::Uint8),
-            GosValue::Uint16(i) => (V64Union { uint16: *i }, ValueType::Uint16),
-            GosValue::Uint32(i) => (V64Union { uint32: *i }, ValueType::Uint32),
-            GosValue::Uint64(i) => (V64Union { uint64: *i }, ValueType::Uint64),
-            GosValue::Float32(f) => (V64Union { float32: *f }, ValueType::Float32),
-            GosValue::Float64(f) => (V64Union { float64: *f }, ValueType::Float64),
+        match v {
+            GosValue::Bool(b) => (
+                GosValue64 {
+                    data: V64Union { ubool: *b },
+                },
+                ValueType::Bool,
+            ),
+            GosValue::Int(i) => (
+                GosValue64 {
+                    data: V64Union { int: *i },
+                },
+                ValueType::Int,
+            ),
+            GosValue::Int8(i) => (
+                GosValue64 {
+                    data: V64Union { int8: *i },
+                },
+                ValueType::Int8,
+            ),
+            GosValue::Int16(i) => (
+                GosValue64 {
+                    data: V64Union { int16: *i },
+                },
+                ValueType::Int16,
+            ),
+            GosValue::Int32(i) => (
+                GosValue64 {
+                    data: V64Union { int32: *i },
+                },
+                ValueType::Int32,
+            ),
+            GosValue::Int64(i) => (
+                GosValue64 {
+                    data: V64Union { int64: *i },
+                },
+                ValueType::Int64,
+            ),
+            GosValue::Uint(i) => (
+                GosValue64 {
+                    data: V64Union { uint: *i },
+                },
+                ValueType::Uint,
+            ),
+            GosValue::Uint8(i) => (
+                GosValue64 {
+                    data: V64Union { uint8: *i },
+                },
+                ValueType::Uint8,
+            ),
+            GosValue::Uint16(i) => (
+                GosValue64 {
+                    data: V64Union { uint16: *i },
+                },
+                ValueType::Uint16,
+            ),
+            GosValue::Uint32(i) => (
+                GosValue64 {
+                    data: V64Union { uint32: *i },
+                },
+                ValueType::Uint32,
+            ),
+            GosValue::Uint64(i) => (
+                GosValue64 {
+                    data: V64Union { uint64: *i },
+                },
+                ValueType::Uint64,
+            ),
+            GosValue::Float32(f) => (
+                GosValue64 {
+                    data: V64Union { float32: *f },
+                },
+                ValueType::Float32,
+            ),
+            GosValue::Float64(f) => (
+                GosValue64 {
+                    data: V64Union { float64: *f },
+                },
+                ValueType::Float64,
+            ),
             GosValue::Complex64(f1, f2) => (
-                V64Union {
-                    complex64: (*f1, *f2),
+                GosValue64 {
+                    data: V64Union {
+                        complex64: (*f1, *f2),
+                    },
                 },
                 ValueType::Complex64,
             ),
-            GosValue::Function(k) => (V64Union { function: *k }, ValueType::Function),
-            GosValue::Package(k) => (V64Union { package: *k }, ValueType::Package),
+            GosValue::Function(k) => (
+                GosValue64 {
+                    data: V64Union { function: *k },
+                },
+                ValueType::Function,
+            ),
+            GosValue::Package(k) => (
+                GosValue64 {
+                    data: V64Union { package: *k },
+                },
+                ValueType::Package,
+            ),
             _ => unreachable!(),
-        };
-        (
-            GosValue64 {
-                data: data,
-                //debug_type: typ,
-            },
-            typ,
-        )
+        }
     }
 
     #[inline]

@@ -11,18 +11,24 @@ use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 
+pub type TypeCache = HashMap<TCTypeKey, GosMetadata>;
+
 pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
-    types_cache: HashMap<TCTypeKey, GosMetadata>,
+    types_cache: &'a mut TypeCache,
 }
 
 impl<'a> TypeLookup<'a> {
-    pub fn new(tc_objs: &'a TCObjects, ti: &'a TypeInfo) -> TypeLookup<'a> {
+    pub fn new(
+        tc_objs: &'a TCObjects,
+        ti: &'a TypeInfo,
+        cache: &'a mut TypeCache,
+    ) -> TypeLookup<'a> {
         TypeLookup {
             tc_objs: tc_objs,
             ti: ti,
-            types_cache: HashMap::new(),
+            types_cache: cache,
         }
     }
 
@@ -353,6 +359,13 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn underlying_value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
+        match &self.tc_objs.types[typ] {
+            Type::Named(n) => self.value_type_from_tc(n.underlying()),
+            _ => self.value_type_from_tc(typ),
+        }
+    }
+
     pub fn value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
@@ -384,7 +397,7 @@ impl<'a> TypeLookup<'a> {
             Type::Interface(_) => ValueType::Interface,
             Type::Signature(_) => ValueType::Closure,
             Type::Pointer(_) => ValueType::Boxed,
-            Type::Named(detail) => self.value_type_from_tc(detail.underlying()),
+            Type::Named(_) => ValueType::Named,
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
                 unimplemented!()

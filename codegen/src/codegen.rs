@@ -9,7 +9,7 @@ use super::builtins::Builtins;
 use super::emit::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
-use super::types::TypeLookup;
+use super::types::{TypeCache, TypeLookup};
 
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
@@ -64,6 +64,7 @@ impl<'a> CodeGen<'a> {
         asto: &'a AstObjects,
         tco: &'a TCObjects,
         ti: &'a TypeInfo,
+        type_cache: &'a mut TypeCache,
         mapping: &'a mut IfaceMapping,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
@@ -74,7 +75,7 @@ impl<'a> CodeGen<'a> {
         CodeGen {
             objects: vmo,
             ast_objs: asto,
-            tlookup: TypeLookup::new(tco, ti),
+            tlookup: TypeLookup::new(tco, ti, type_cache),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
             break_cont: BreakContinue::new(),
@@ -680,9 +681,9 @@ impl<'a> CodeGen<'a> {
         pos: usize,
     ) {
         if let Some(t1) = lhs {
-            if self.tlookup.value_type_from_tc(t1) == ValueType::Interface {
+            if self.tlookup.underlying_value_type_from_tc(t1) == ValueType::Interface {
                 let t2 = rhs;
-                let vt2 = self.tlookup.value_type_from_tc(t2);
+                let vt2 = self.tlookup.underlying_value_type_from_tc(t2);
                 if vt2 != ValueType::Interface && vt2 != ValueType::Nil {
                     let m_index =
                         self.iface_mapping
@@ -708,7 +709,7 @@ impl<'a> CodeGen<'a> {
             self.try_cast_to_iface(Some(*v), rhs, rhs_index, pos);
         }
         if let Some(t) = variadic {
-            if self.tlookup.value_type_from_tc(t) == ValueType::Interface {
+            if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
                 for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
                     let rhs_index = i as OpIndex - params.len() as OpIndex;
                     let rhs = self.tlookup.get_expr_tc_type(p);
@@ -722,7 +723,6 @@ impl<'a> CodeGen<'a> {
     fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
         let t = self.tlookup.get_expr_tc_type(expr);
         let meta = self.tlookup.meta_from_tc(t, self.objects);
-        let meta = meta.get_underlying(&self.objects.metas);
         let zero_val = meta.zero_val(&self.objects.metas);
         (zero_val, t)
     }
@@ -892,7 +892,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let meta = self
             .tlookup
             .get_meta_by_node_id(clit.typ.as_ref().unwrap().id(), &mut self.objects);
-        let meta = meta.get_underlying(&self.objects.metas);
         self.gen_composite_literal(clit, &meta);
     }
 
@@ -916,16 +915,25 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         let (t0, t1) = self.tlookup.get_selection_value_types(id);
-        let t = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
+        let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
         let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
-            if self.tlookup.get_expr_value_type(expr) == ValueType::Interface {
-                let i = t.iface_method_index(name, &self.objects.metas);
+            if meta
+                .get_underlying(&self.objects.metas)
+                .get_value_type(&self.objects.metas)
+                == ValueType::Interface
+            {
+                let i = meta.iface_method_index(name, &self.objects.metas);
                 self.visit_expr(expr);
-                current_func_mut!(self).emit_code_with_imm(Opcode::BIND_INTERFACE_METHOD, i, pos);
+                current_func_mut!(self).emit_code_with_type_imm(
+                    Opcode::BIND_INTERFACE_METHOD,
+                    meta.get_value_type(&self.objects.metas),
+                    i,
+                    pos,
+                );
             } else {
-                let i = t.method_index(name, &self.objects.metas);
-                let method = t.get_method(i, &self.objects.metas);
+                let i = meta.method_index(name, &self.objects.metas);
+                let method = meta.get_method(i, &self.objects.metas);
                 if method.borrow().boxed_recv {
                     // desugar
                     self.visit_expr_unary(expr, &Token::AND);
@@ -939,7 +947,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
         } else {
             self.visit_expr(expr);
-            let i = t.field_index(name, &self.objects.metas);
+            let i = meta.field_index(name, &self.objects.metas);
             current_func_emitter!(self).emit_load_struct_field(i, t0, pos);
         }
     }
@@ -1122,8 +1130,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             .get_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
                         let name = &self.ast_objs.idents[sexpr.sel].name;
                         let i = t0.field_index(name, &self.objects.metas);
-                        current_func_mut!(self).emit_code_with_imm(
+                        current_func_mut!(self).emit_code_with_type_imm(
                             Opcode::REF_STRUCT_FIELD,
+                            t0.get_value_type(&self.objects.metas),
                             i,
                             pos,
                         );
@@ -1166,7 +1175,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Token::ADD => Opcode::UNARY_ADD,
             Token::SUB => Opcode::UNARY_SUB,
             Token::XOR => Opcode::UNARY_XOR,
-            _ => unreachable!(),
+            Token::NOT => Opcode::NOT,
+            _ => {
+                dbg!(op);
+                unreachable!()
+            }
         };
         current_func_mut!(self).emit_code_with_type(code, t, pos);
     }

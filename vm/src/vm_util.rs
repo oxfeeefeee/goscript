@@ -65,7 +65,7 @@ macro_rules! deref_value {
                 match *b {
                     BoxedObj::Nil => unimplemented!(), //panic?
                     BoxedObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
-                    BoxedObj::Struct(s) => GosValue::Struct(s),
+                    BoxedObj::Named(s) => GosValue::Named(s),
                     BoxedObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
                     BoxedObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),
                     BoxedObj::PkgMember(pkg, index) => $objs.packages[pkg].member(index).clone(),

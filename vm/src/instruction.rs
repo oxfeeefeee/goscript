@@ -247,6 +247,8 @@ pub enum ValueType {
     Str,
     Struct,
 
+    Named,
+
     FfiClosure,
 }
 

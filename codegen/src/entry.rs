@@ -3,6 +3,7 @@ use super::codegen::CodeGen;
 use super::emit::Emitter;
 use super::interface::IfaceMapping;
 use super::package::PkgVarPairs;
+use super::types::TypeCache;
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
@@ -85,6 +86,7 @@ impl<'a> EntryGen<'a> {
                 main_pkg_idx = Some(index);
             }
         }
+        let mut type_cache: TypeCache = HashMap::new();
         let mut pairs = PkgVarPairs::new();
         for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
             let mut cgen = CodeGen::new(
@@ -92,6 +94,7 @@ impl<'a> EntryGen<'a> {
                 self.ast_objs,
                 self.tc_objs,
                 &ti,
+                &mut type_cache,
                 &mut self.iface_mapping,
                 &self.pkg_indices,
                 &self.packages,

@@ -5,9 +5,36 @@ import (
 	"fmt"
 )
 
+
+
+
 func main() {
 	err := errors.New("emit macho dwarf: elf header corrupted")
 	if err != nil {
 		fmt.Println(err.Error(), 1, 2, 3)
 	}
+
+	_, ok := err.(*errorString)
+	assert(!ok)
+
+	err2 := New("haha")
+	_, ok2 := err2.(*errorString)
+	assert(ok2)
+
+	fmt.Println(ok, ok2)
+}
+
+
+
+func New(text string) error {
+	return &errorString{text}
+}
+
+// errorString is a trivial implementation of error.
+type errorString struct {
+	s string
+}
+
+func (e *errorString) Error() string {
+	return e.s
 }

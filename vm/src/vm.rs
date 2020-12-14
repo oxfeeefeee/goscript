@@ -240,13 +240,7 @@ impl Fiber {
                 Opcode::LOAD_FIELD => {
                     let ind = stack.pop_with_type(inst.t1());
                     let val = stack.pop_with_type(inst.t0());
-                    stack.push(match val {
-                        GosValue::Boxed(_) => {
-                            let unboxed = deref_value!(val, self, stack, frame, objs);
-                            vm_util::load_field(&unboxed, &ind, objs)
-                        }
-                        _ => vm_util::load_field(&val, &ind, objs),
-                    });
+                    stack.push(vm_util::load_field(&val, &ind, objs));
                 }
                 Opcode::LOAD_STRUCT_FIELD => {
                     let ind = inst.imm();
@@ -254,11 +248,17 @@ impl Fiber {
                     if let GosValue::Boxed(_) = &target {
                         target = deref_value!(target, self, stack, frame, objs);
                     }
-                    let val = if let GosValue::Struct(sval) = &target {
-                        sval.borrow().fields[ind as usize].clone()
-                    } else {
-                        unreachable!()
+                    let val = match &target {
+                        GosValue::Named(n) => {
+                            n.borrow().0.as_struct().borrow().fields[ind as usize].clone()
+                        }
+                        GosValue::Struct(sval) => sval.borrow().fields[ind as usize].clone(),
+                        _ => {
+                            dbg!(&target);
+                            unreachable!()
+                        }
                     };
+
                     stack.push(val);
                 }
                 Opcode::BIND_METHOD => {
@@ -270,7 +270,12 @@ impl Fiber {
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
-                    let val = stack.pop_with_type(ValueType::Interface);
+                    let val = stack.pop_with_type(inst.t0());
+                    let val = match &val {
+                        GosValue::Named(n) => n.borrow().0.clone(),
+                        GosValue::Interface(_) => val,
+                        _ => unreachable!(),
+                    };
                     let borrowed = val.as_interface().borrow();
                     let cls = match borrowed.underlying() {
                         IfaceUnderlying::Gos(val, funcs) => {
@@ -316,11 +321,20 @@ impl Fiber {
                     if let GosValue::Boxed(_) = &target {
                         target = deref_value!(target, self, stack, frame, objs);
                     }
-                    if let GosValue::Struct(s) = &target {
-                        let field = &mut s.borrow_mut().fields[imm as usize];
-                        stack.store_val(field, rhs_index, inst.t0());
-                    } else {
-                        unreachable!();
+                    match &target {
+                        GosValue::Named(n) => {
+                            let borrow = n.borrow();
+                            let field = &mut borrow.0.as_struct().borrow_mut().fields[imm as usize];
+                            stack.store_val(field, rhs_index, inst.t0());
+                        }
+                        GosValue::Struct(s) => {
+                            let field = &mut s.borrow_mut().fields[imm as usize];
+                            stack.store_val(field, rhs_index, inst.t0());
+                        }
+                        _ => {
+                            dbg!(&target);
+                            unreachable!()
+                        }
                     }
                 }
                 Opcode::LOAD_PKG_FIELD => {
@@ -344,10 +358,15 @@ impl Fiber {
                                 BoxedObj::UpVal(uv) => {
                                     store_up_value!(uv, self, stack, frame, rhs_index, inst.t0());
                                 }
-                                BoxedObj::Struct(s) => {
+                                BoxedObj::Named(n) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                    let val = stack.get_with_type(rhs_s_index, ValueType::Struct);
-                                    s.replace(RefCell::clone(&*val.as_struct()).into_inner());
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    let val = match val {
+                                        GosValue::Named(nv) => nv.borrow().0.clone(),
+                                        _ => val,
+                                    };
+                                    let md = n.borrow().1;
+                                    n.replace((val, md));
                                 }
                                 BoxedObj::SliceMember(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
@@ -374,11 +393,22 @@ impl Fiber {
                     let rhs_s_index = Stack::offset(stack.len(), target);
                     let iface = ifaces[mapping as usize].clone();
                     let named = stack.get_with_type(rhs_s_index, inst.t0());
-                    let val = GosValue::new_iface(
-                        iface.0,
-                        IfaceUnderlying::Gos(named, iface.1),
-                        &mut objs.interfaces,
-                    );
+                    let val = match &objs.metas[iface.0.as_non_ptr()] {
+                        MetadataType::Named(_, md) => GosValue::Named(Rc::new(RefCell::new((
+                            GosValue::new_iface(
+                                *md,
+                                IfaceUnderlying::Gos(named, iface.1),
+                                &mut objs.interfaces,
+                            ),
+                            iface.0,
+                        )))),
+                        MetadataType::Interface(_) => GosValue::new_iface(
+                            iface.0,
+                            IfaceUnderlying::Gos(named, iface.1),
+                            &mut objs.interfaces,
+                        ),
+                        _ => unreachable!(),
+                    };
                     stack.set(rhs_s_index, val);
                 }
                 Opcode::ADD => stack.add(inst.t0()),
@@ -411,7 +441,7 @@ impl Fiber {
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
                     let s_index = Stack::offset(stack_base, inst.imm());
-                    let boxed = if t == ValueType::Struct {
+                    let boxed = if t == ValueType::Named {
                         BoxedObj::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
                         BoxedObj::new_var_up_val(ValueDesc {
@@ -431,7 +461,12 @@ impl Fiber {
                     )));
                 }
                 Opcode::REF_STRUCT_FIELD => {
-                    let struct_ = stack.pop_with_type(ValueType::Struct);
+                    let struct_ = stack.pop_with_type(inst.t0());
+                    let struct_ = match &struct_ {
+                        GosValue::Named(n) => n.borrow().0.clone(),
+                        GosValue::Struct(_) => struct_,
+                        _ => unreachable!(),
+                    };
                     stack.push(GosValue::new_boxed(BoxedObj::new_struct_field(
                         &struct_,
                         inst.imm(),
@@ -671,10 +706,6 @@ impl Fiber {
                     let meta =
                         GosValue::Metadata(val.get_meta(&objs.metadata, &objs.packages, stack));
                     stack.push(val);
-                    dbg!(&consts[inst.imm() as usize], &meta);
-                    let (a, b) = (&consts[inst.imm() as usize], &meta);
-                    dbg!(&objs.metas[a.as_meta().unwrap_key_and_is_type().0]);
-                    dbg!(&objs.metas[b.as_meta().unwrap_key_and_is_type().0]);
                     let ok = &consts[inst.imm() as usize] == &meta;
                     let do_try = inst.t2_as_index() > 0;
                     if !do_try {
@@ -746,9 +777,9 @@ impl Fiber {
                             GosValue::Closure(Rc::new(val))
                         }
                         GosValue::Metadata(md) => {
-                            let md = md.get_underlying(&objs.metas);
+                            let umd = md.get_underlying(&objs.metas);
                             let count = stack.pop_int32();
-                            match &objs.metas[md.as_non_ptr()] {
+                            let val = match &objs.metas[umd.as_non_ptr()] {
                                 MetadataType::Slice(sm) => {
                                     let mut val = vec![];
                                     let elem_type = sm.get_value_type(&objs.metas);
@@ -783,6 +814,11 @@ impl Fiber {
                                     struct_val
                                 }
                                 _ => unreachable!(),
+                            };
+                            if umd == *md {
+                                val
+                            } else {
+                                GosValue::Named(Rc::new(RefCell::new((val, *md))))
                             }
                         }
                         _ => unimplemented!(),

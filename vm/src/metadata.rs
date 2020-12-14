@@ -138,6 +138,7 @@ impl GosMetadata {
     }
 
     pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
+        debug_assert!(underlying.get_value_type(metas) != ValueType::Named);
         GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
@@ -253,7 +254,7 @@ impl GosMetadata {
                     MetadataType::Map(_, _) => ValueType::Map,
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel => ValueType::Channel,
-                    MetadataType::Named(_, m) => m.get_value_type(metas),
+                    MetadataType::Named(_, _) => ValueType::Named,
                 },
                 _ => ValueType::Boxed,
             }
@@ -294,7 +295,10 @@ impl GosMetadata {
                 MetadataType::Map(_, _) => GosValue::Nil(*self),
                 MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => GosValue::Nil(*self),
-                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs),
+                MetadataType::Named(_, gm) => {
+                    let val = gm.zero_val_impl(mobjs);
+                    GosValue::Named(Rc::new(RefCell::new((val, *gm))))
+                }
             },
             _ => GosValue::Nil(*self),
         }
@@ -333,7 +337,10 @@ impl GosMetadata {
                 MetadataType::Map(_, v) => GosValue::new_map(v.zero_val_impl(mobjs), maps),
                 MetadataType::Interface(_) => unimplemented!(),
                 MetadataType::Channel => unimplemented!(),
-                MetadataType::Named(_, gm) => gm.default_val(mobjs, slices, maps),
+                MetadataType::Named(_, gm) => {
+                    let val = gm.default_val(mobjs, slices, maps);
+                    GosValue::Named(Rc::new(RefCell::new((val, *gm))))
+                }
             },
             _ => unreachable!(),
         }
@@ -418,6 +425,7 @@ impl GosMetadata {
     #[inline]
     pub fn method_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let (m, _) = self.get_named_metadate(metas);
+        dbg!(&m, name);
         m.mapping[name] as OpIndex
     }
 

@@ -580,7 +580,7 @@ pub struct ChannelObj {}
 pub enum BoxedObj {
     Nil,
     UpVal(UpValue),
-    Struct(Rc<RefCell<StructObj>>),
+    Named(Rc<RefCell<(GosValue, GosMetadata)>>),
     SliceMember(Rc<SliceObj>, OpIndex),
     StructField(Rc<RefCell<StructObj>>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -592,11 +592,11 @@ impl BoxedObj {
         BoxedObj::UpVal(UpValue::new(d))
     }
 
-    // supports only Struct for now
+    // supports only Named for now
     #[inline]
     pub fn new_var_pointer(val: GosValue) -> BoxedObj {
         match val {
-            GosValue::Struct(s) => BoxedObj::Struct(s),
+            GosValue::Named(s) => BoxedObj::Named(s),
             _ => unreachable!(),
         }
     }
