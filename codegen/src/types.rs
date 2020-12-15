@@ -396,7 +396,7 @@ impl<'a> TypeLookup<'a> {
             Type::Struct(_) => ValueType::Struct,
             Type::Interface(_) => ValueType::Interface,
             Type::Signature(_) => ValueType::Closure,
-            Type::Pointer(_) => ValueType::Boxed,
+            Type::Pointer(_) => ValueType::Pointer,
             Type::Named(_) => ValueType::Named,
             _ => {
                 dbg!(&self.tc_objs.types[typ]);

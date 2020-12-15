@@ -245,7 +245,7 @@ impl Fiber {
                 Opcode::LOAD_STRUCT_FIELD => {
                     let ind = inst.imm();
                     let mut target = stack.pop_with_type(inst.t0());
-                    if let GosValue::Boxed(_) = &target {
+                    if let GosValue::Pointer(_) = &target {
                         target = deref_value!(target, self, stack, frame, objs);
                     }
                     let val = match &target {
@@ -306,7 +306,7 @@ impl Fiber {
                     let key = stack.get_with_type(s_index + 1, inst.t2());
                     let target = stack.get_with_type(s_index, inst.t1());
                     match target {
-                        GosValue::Boxed(_) => {
+                        GosValue::Pointer(_) => {
                             let unboxed = deref_value!(target, self, stack, frame, objs);
                             vm_util::store_field(stack, &unboxed, &key, rhs_index, inst.t0(), objs);
                         }
@@ -318,7 +318,7 @@ impl Fiber {
                     let index = inst.t2_as_index();
                     let s_index = Stack::offset(stack.len(), index);
                     let mut target = stack.get_with_type(s_index, inst.t1());
-                    if let GosValue::Boxed(_) = &target {
+                    if let GosValue::Pointer(_) = &target {
                         target = deref_value!(target, self, stack, frame, objs);
                     }
                     match &target {
@@ -351,14 +351,14 @@ impl Fiber {
                 Opcode::STORE_DEREF => {
                     let (rhs_index, index) = inst.imm824();
                     let s_index = Stack::offset(stack.len(), index);
-                    match stack.get_with_type(s_index, ValueType::Boxed) {
-                        GosValue::Boxed(b) => {
+                    match stack.get_with_type(s_index, ValueType::Pointer) {
+                        GosValue::Pointer(b) => {
                             match *b {
-                                BoxedObj::Nil => unimplemented!(), //panic?
-                                BoxedObj::UpVal(uv) => {
+                                PointerObj::Nil => unimplemented!(), //panic?
+                                PointerObj::UpVal(uv) => {
                                     store_up_value!(uv, self, stack, frame, rhs_index, inst.t0());
                                 }
-                                BoxedObj::Named(n) => {
+                                PointerObj::Named(n) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     let val = match val {
@@ -368,17 +368,17 @@ impl Fiber {
                                     let md = n.borrow().1;
                                     n.replace((val, md));
                                 }
-                                BoxedObj::SliceMember(s, index) => {
+                                PointerObj::SliceMember(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.set(index as usize, val);
                                 }
-                                BoxedObj::StructField(s, index) => {
+                                PointerObj::StructField(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     s.borrow_mut().fields[index as usize] = val;
                                 }
-                                BoxedObj::PkgMember(p, index) => {
+                                PointerObj::PkgMember(p, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     *objs.packages[p].member_mut(index) = val;
@@ -436,26 +436,26 @@ impl Fiber {
                 Opcode::REF_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.closure().upvalues()[index as usize].clone();
-                    stack.push(GosValue::new_boxed(BoxedObj::UpVal(upvalue.clone())));
+                    stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
                 }
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
                     let s_index = Stack::offset(stack_base, inst.imm());
                     let boxed = if t == ValueType::Named {
-                        BoxedObj::new_var_pointer(stack.get_with_type(s_index, t))
+                        PointerObj::new_var_pointer(stack.get_with_type(s_index, t))
                     } else {
-                        BoxedObj::new_var_up_val(ValueDesc {
+                        PointerObj::new_var_up_val(ValueDesc {
                             func: frame.func(),
                             index: s_index as OpIndex,
                             typ: t,
                         })
                     };
-                    stack.push(GosValue::new_boxed(boxed));
+                    stack.push(GosValue::new_pointer(boxed));
                 }
                 Opcode::REF_SLICE_MEMBER => {
                     let index = stack.pop_int();
                     let slice = stack.pop_with_type(inst.t0());
-                    stack.push(GosValue::new_boxed(BoxedObj::new_slice_member(
+                    stack.push(GosValue::new_pointer(PointerObj::new_slice_member(
                         &slice,
                         index.try_into().unwrap(),
                     )));
@@ -467,18 +467,23 @@ impl Fiber {
                         GosValue::Struct(_) => struct_,
                         _ => unreachable!(),
                     };
-                    stack.push(GosValue::new_boxed(BoxedObj::new_struct_field(
+                    stack.push(GosValue::new_pointer(PointerObj::new_struct_field(
                         &struct_,
                         inst.imm(),
                     )));
                 }
                 Opcode::REF_PKG_MEMBER => {
                     let pkg = read_imm_pkg!(code, frame, objs);
-                    stack.push(GosValue::new_boxed(BoxedObj::PkgMember(pkg, inst.imm())));
+                    stack.push(GosValue::new_pointer(PointerObj::PkgMember(
+                        pkg,
+                        inst.imm(),
+                    )));
                 }
                 Opcode::REF_LITERAL => {
                     let v = stack.pop_with_type(inst.t0());
-                    stack.push(GosValue::new_boxed(BoxedObj::UpVal(UpValue::new_closed(v))))
+                    stack.push(GosValue::new_pointer(PointerObj::UpVal(
+                        UpValue::new_closed(v),
+                    )))
                 }
                 Opcode::DEREF => {
                     let boxed = stack.pop_with_type(inst.t0());
@@ -831,7 +836,7 @@ impl Fiber {
                     let new_val = match param {
                         GosValue::Metadata(md) => {
                             let v = md.default_val(&objs.metas, &mut objs.slices, &mut objs.maps);
-                            GosValue::new_boxed(BoxedObj::UpVal(UpValue::new_closed(v)))
+                            GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                         }
                         _ => unimplemented!(),
                     };

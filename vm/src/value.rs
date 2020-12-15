@@ -187,7 +187,7 @@ pub enum GosValue {
     Metadata(GosMetadata),
 
     Str(Rc<StringObj>), // "String" is taken
-    Boxed(Box<BoxedObj>),
+    Pointer(Box<PointerObj>),
     Closure(Rc<ClosureObj>),
     Slice(Rc<SliceObj>),
     Map(Rc<MapObj>),
@@ -210,8 +210,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_boxed(v: BoxedObj) -> GosValue {
-        GosValue::Boxed(Box::new(v))
+    pub fn new_pointer(v: PointerObj) -> GosValue {
+        GosValue::Pointer(Box::new(v))
     }
 
     #[inline]
@@ -351,8 +351,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_boxed(&self) -> &BoxedObj {
-        unwrap_gos_val!(Boxed, self)
+    pub fn as_pointer(&self) -> &PointerObj {
+        unwrap_gos_val!(Pointer, self)
     }
 
     #[inline]
@@ -388,7 +388,7 @@ impl GosValue {
             GosValue::Complex64(_, _) => ValueType::Complex64,
             GosValue::Complex128(_) => ValueType::Complex128,
             GosValue::Str(_) => ValueType::Str,
-            GosValue::Boxed(_) => ValueType::Boxed,
+            GosValue::Pointer(_) => ValueType::Pointer,
             GosValue::Closure(_) => ValueType::Closure,
             GosValue::Slice(_) => ValueType::Slice,
             GosValue::Map(_) => ValueType::Map,
@@ -422,11 +422,11 @@ impl GosValue {
             GosValue::Complex64(_, _) => md.mcomplex64,
             GosValue::Complex128(_) => md.mcomplex128,
             GosValue::Str(_) => md.mstr,
-            GosValue::Boxed(b) => {
-                let bobj: &BoxedObj = &*b;
+            GosValue::Pointer(b) => {
+                let bobj: &PointerObj = &*b;
                 let inner = match bobj {
-                    BoxedObj::Nil => GosMetadata::Untyped,
-                    BoxedObj::UpVal(uv) => {
+                    PointerObj::Nil => GosMetadata::Untyped,
+                    PointerObj::UpVal(uv) => {
                         let state: &UpValueState = &uv.inner.borrow();
                         match state {
                             UpValueState::Open(d) => stack
@@ -435,14 +435,14 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
                         }
                     }
-                    BoxedObj::Named(sobj) => sobj.borrow().1,
-                    BoxedObj::StructField(sobj, index) => {
+                    PointerObj::Named(sobj) => sobj.borrow().1,
+                    PointerObj::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(md, pkgs, stack)
                     }
-                    BoxedObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
+                    PointerObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
                         .borrow()
                         .get_meta(md, pkgs, stack),
-                    BoxedObj::PkgMember(pkey, index) => {
+                    PointerObj::PkgMember(pkey, index) => {
                         pkgs[*pkey].member(*index).get_meta(md, pkgs, stack)
                     }
                 };
@@ -489,14 +489,24 @@ impl PartialEq for GosValue {
     #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
-            // todo: not the "correct" implementation yet,
             (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
             (GosValue::Int(x), GosValue::Int(y)) => x == y,
+            (GosValue::Int8(x), GosValue::Int8(y)) => x == y,
+            (GosValue::Int16(x), GosValue::Int16(y)) => x == y,
+            (GosValue::Int32(x), GosValue::Int32(y)) => x == y,
+            (GosValue::Int64(x), GosValue::Int64(y)) => x == y,
+            (GosValue::Uint(x), GosValue::Uint(y)) => x == y,
+            (GosValue::Uint8(x), GosValue::Uint8(y)) => x == y,
+            (GosValue::Uint16(x), GosValue::Uint16(y)) => x == y,
+            (GosValue::Uint32(x), GosValue::Uint32(y)) => x == y,
+            (GosValue::Uint64(x), GosValue::Uint64(y)) => x == y,
+            (GosValue::Float32(x), GosValue::Float32(y)) => x == y,
             (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
             (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
+            (GosValue::Complex128(x), GosValue::Complex128(y)) => x.0 == y.0 && x.1 == y.1,
             (GosValue::Str(sa), GosValue::Str(sb)) => *sa == *sb,
             (GosValue::Metadata(ma), GosValue::Metadata(mb)) => ma == mb,
-            //(GosValue::Closure(sa), GosValue::Closure(sb)) => Rc::ptr_eq(sa, sb),
+            //(GosValue::Nil(_), GosValue::Nil(_)) => true,
             _ => false,
         }
     }
@@ -576,7 +586,7 @@ impl Display for GosValue {
             GosValue::Complex64(r, i) => f.write_fmt(format_args!("({}, {})", r, i)),
             GosValue::Complex128(b) => f.write_fmt(format_args!("({}, {})", b.0, b.1)),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
-            GosValue::Boxed(_) => f.write_str("todo(boxed)"),
+            GosValue::Pointer(_) => f.write_str("todo(boxed)"),
             GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => f.write_str("todo(slice)"),
             GosValue::Map(_) => unimplemented!(),

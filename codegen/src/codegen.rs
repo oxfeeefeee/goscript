@@ -934,7 +934,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             } else {
                 let i = meta.method_index(name, &self.objects.metas);
                 let method = meta.get_method(i, &self.objects.metas);
-                if method.borrow().boxed_recv {
+                if method.borrow().pointer_recv {
                     // desugar
                     self.visit_expr_unary(expr, &Token::AND);
                 } else {

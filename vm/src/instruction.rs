@@ -233,10 +233,10 @@ pub enum ValueType {
     Package,
     Metadata,
 
-    // Nil is a virtual type representing zero value for boxed, interfaces,
+    // Nil is a virtual type representing zero value for pointer, interfaces,
     // maps, slices, channels and function types
     Nil,
-    Boxed,
+    Pointer,
     Closure,
     Slice,
     Map,

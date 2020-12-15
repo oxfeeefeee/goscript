@@ -103,7 +103,7 @@ impl GosMetadata {
         let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| x.zero_val(&objs.metas)).collect();
         let struct_val = StructObj {
             dark: false,
-            meta: GosMetadata::Untyped, // placeholder, w'll be set below
+            meta: GosMetadata::Untyped, // placeholder, will be set below
             fields: field_zeros,
         };
         let gos_struct = GosValue::new_struct(struct_val, &mut objs.structs);
@@ -256,7 +256,7 @@ impl GosMetadata {
                     MetadataType::Channel => ValueType::Channel,
                     MetadataType::Named(_, _) => ValueType::Named,
                 },
-                _ => ValueType::Boxed,
+                _ => ValueType::Pointer,
             }
         }
     }
@@ -378,12 +378,12 @@ impl GosMetadata {
         }
     }
 
-    pub fn add_method(&self, name: String, boxed_recv: bool, metas: &mut MetadataObjs) {
+    pub fn add_method(&self, name: String, pointer_recv: bool, metas: &mut MetadataObjs) {
         let k = self.recv_meta_key();
         match &mut metas[k] {
             MetadataType::Named(m, _) => {
                 m.members.push(Rc::new(RefCell::new(MethodDesc {
-                    boxed_recv: boxed_recv,
+                    pointer_recv: pointer_recv,
                     func: None,
                 })));
                 m.mapping.insert(name, m.members.len() as OpIndex - 1);
@@ -459,7 +459,7 @@ impl Fields {
     #[inline]
     pub fn iface_named_mapping(&self, named_obj: &Methods) -> Vec<Rc<RefCell<MethodDesc>>> {
         let default = Rc::new(RefCell::new(MethodDesc {
-            boxed_recv: false,
+            pointer_recv: false,
             func: None,
         }));
         let mut result = vec![default; self.fields.len()];
@@ -484,7 +484,7 @@ impl Fields {
 
 #[derive(Debug, Clone)]
 pub struct MethodDesc {
-    pub boxed_recv: bool,
+    pub pointer_recv: bool,
     pub func: Option<FunctionKey>,
 }
 
@@ -525,7 +525,7 @@ impl Default for SigMetadata {
 }
 
 impl SigMetadata {
-    pub fn boxed_recv(&self) -> bool {
+    pub fn pointer_recv(&self) -> bool {
         if let Some(r) = &self.recv {
             match r {
                 GosMetadata::NonPtr(_, _) => false,

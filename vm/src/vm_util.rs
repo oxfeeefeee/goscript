@@ -59,16 +59,16 @@ macro_rules! store_up_value {
 }
 
 macro_rules! deref_value {
-    ($boxed:expr, $self_:ident, $stack:ident, $frame:ident, $objs:expr) => {{
-        match $boxed {
-            GosValue::Boxed(b) => {
+    ($pointers:expr, $self_:ident, $stack:ident, $frame:ident, $objs:expr) => {{
+        match $pointers {
+            GosValue::Pointer(b) => {
                 match *b {
-                    BoxedObj::Nil => unimplemented!(), //panic?
-                    BoxedObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
-                    BoxedObj::Named(s) => GosValue::Named(s),
-                    BoxedObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
-                    BoxedObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),
-                    BoxedObj::PkgMember(pkg, index) => $objs.packages[pkg].member(index).clone(),
+                    PointerObj::Nil => unimplemented!(), //panic?
+                    PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
+                    PointerObj::Named(s) => GosValue::Named(s),
+                    PointerObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
+                    PointerObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),
+                    PointerObj::PkgMember(pkg, index) => $objs.packages[pkg].member(index).clone(),
                 }
             }
             _ => unreachable!(),

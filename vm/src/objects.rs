@@ -33,7 +33,7 @@ pub type SliceObjs = Vec<Weak<SliceObj>>;
 pub type MapObjs = Vec<Weak<MapObj>>;
 pub type StructObjs = Vec<Weak<RefCell<StructObj>>>;
 pub type ChannelObjs = Vec<Weak<RefCell<ChannelObj>>>;
-pub type BoxedObjs = Vec<Weak<GosValue>>;
+pub type PointerObjs = Vec<Weak<GosValue>>;
 pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataType>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
 pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
@@ -62,7 +62,7 @@ pub struct VMObjects {
     pub maps: MapObjs,
     pub structs: StructObjs,
     pub channels: ChannelObjs,
-    pub boxed: BoxedObjs,
+    pub pointers: PointerObjs,
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
@@ -80,7 +80,7 @@ impl VMObjects {
             maps: vec![],
             structs: vec![],
             channels: vec![],
-            boxed: vec![],
+            pointers: vec![],
             metas: metas,
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
@@ -572,12 +572,12 @@ impl InterfaceObj {
 pub struct ChannelObj {}
 
 // ----------------------------------------------------------------------------
-// BoxedObj
-/// There are two kinds of boxed vars, which is determined by the behavior of
+// PointerObj
+/// There are two kinds of pointer vars, which is determined by the behavior of
 /// copy_semantic. Struct, Slice and Map have true pointers
 /// Others don't have true pointers, so a upvalue-like open/close mechanism is needed
 #[derive(Debug, Clone)]
-pub enum BoxedObj {
+pub enum PointerObj {
     Nil,
     UpVal(UpValue),
     Named(Rc<RefCell<(GosValue, GosMetadata)>>),
@@ -586,31 +586,31 @@ pub enum BoxedObj {
     PkgMember(PackageKey, OpIndex),
 }
 
-impl BoxedObj {
+impl PointerObj {
     #[inline]
-    pub fn new_var_up_val(d: ValueDesc) -> BoxedObj {
-        BoxedObj::UpVal(UpValue::new(d))
+    pub fn new_var_up_val(d: ValueDesc) -> PointerObj {
+        PointerObj::UpVal(UpValue::new(d))
     }
 
     // supports only Named for now
     #[inline]
-    pub fn new_var_pointer(val: GosValue) -> BoxedObj {
+    pub fn new_var_pointer(val: GosValue) -> PointerObj {
         match val {
-            GosValue::Named(s) => BoxedObj::Named(s),
+            GosValue::Named(s) => PointerObj::Named(s),
             _ => unreachable!(),
         }
     }
 
     #[inline]
-    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> BoxedObj {
+    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> PointerObj {
         let s = slice.as_slice();
-        BoxedObj::SliceMember(s.clone(), index)
+        PointerObj::SliceMember(s.clone(), index)
     }
 
     #[inline]
-    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> BoxedObj {
+    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> PointerObj {
         let s = stru.as_struct();
-        BoxedObj::StructField(s.clone(), index)
+        PointerObj::StructField(s.clone(), index)
     }
 }
 
@@ -628,7 +628,7 @@ pub struct ValueDesc {
 pub enum UpValueState {
     /// Parent CallFrame is still alive, pointing to a local variable
     Open(ValueDesc), // (what func is the var defined, the index of the var)
-    // Parent CallFrame is released, pointing to a Boxed value in the global pool
+    // Parent CallFrame is released, pointing to a pointer value in the global pool
     Closed(GosValue),
 }
 
