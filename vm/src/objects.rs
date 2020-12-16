@@ -503,7 +503,19 @@ pub struct StructObj {
     pub fields: Vec<GosValue>,
 }
 
-impl StructObj {}
+impl Eq for StructObj {}
+
+impl PartialEq for StructObj {
+    #[inline]
+    fn eq(&self, other: &StructObj) -> bool {
+        for (i, f) in self.fields.iter().enumerate() {
+            if f != &other.fields[i] {
+                return false;
+            }
+        }
+        return true;
+    }
+}
 
 // ----------------------------------------------------------------------------
 // InterfaceObj
@@ -528,6 +540,20 @@ pub enum IfaceUnderlying {
     None,
     Gos(GosValue, Rc<Vec<FunctionKey>>),
     Ffi(UnderlyingFfi),
+}
+
+impl Eq for IfaceUnderlying {}
+
+impl PartialEq for IfaceUnderlying {
+    #[inline]
+    fn eq(&self, other: &IfaceUnderlying) -> bool {
+        match (self, other) {
+            (Self::None, Self::None) => true,
+            (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
+            (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -557,11 +583,25 @@ impl InterfaceObj {
     }
 
     #[inline]
-    pub fn underlying_value(&self) -> &GosValue {
+    pub fn underlying_value(&self) -> Option<&GosValue> {
         match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => v,
-            _ => unreachable!(),
+            IfaceUnderlying::Gos(v, _) => Some(v),
+            _ => None,
         }
+    }
+
+    #[inline]
+    pub fn is_nil(&self) -> bool {
+        self.underlying() == &IfaceUnderlying::None
+    }
+}
+
+impl Eq for InterfaceObj {}
+
+impl PartialEq for InterfaceObj {
+    #[inline]
+    fn eq(&self, other: &InterfaceObj) -> bool {
+        self.underlying() == other.underlying()
     }
 }
 
@@ -578,7 +618,7 @@ pub struct ChannelObj {}
 /// Others don't have true pointers, so a upvalue-like open/close mechanism is needed
 #[derive(Debug, Clone)]
 pub enum PointerObj {
-    Nil,
+    //Nil,
     UpVal(UpValue),
     Named(Rc<RefCell<(GosValue, GosMetadata)>>),
     SliceMember(Rc<SliceObj>, OpIndex),
@@ -614,17 +654,42 @@ impl PointerObj {
     }
 }
 
+impl Eq for PointerObj {}
+
+impl PartialEq for PointerObj {
+    #[inline]
+    fn eq(&self, other: &PointerObj) -> bool {
+        match (self, other) {
+            (Self::UpVal(x), Self::UpVal(y)) => x == y,
+            (Self::Named(x), Self::Named(y)) => Rc::ptr_eq(x, y),
+            (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
+            (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
+            (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
+            _ => false,
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // ClosureObj
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
     pub typ: ValueType,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl Eq for ValueDesc {}
+
+impl PartialEq for ValueDesc {
+    #[inline]
+    fn eq(&self, other: &ValueDesc) -> bool {
+        self.index == other.index
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UpValueState {
     /// Parent CallFrame is still alive, pointing to a local variable
     Open(ValueDesc), // (what func is the var defined, the index of the var)

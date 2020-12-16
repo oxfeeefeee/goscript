@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 pub struct IfaceMapping {
     ifaces: Vec<(GosMetadata, Vec<Rc<RefCell<MethodDesc>>>)>,
-    iface_indices: HashMap<(TCTypeKey, TCTypeKey), OpIndex>,
+    iface_indices: HashMap<(TCTypeKey, Option<TCTypeKey>), OpIndex>,
 }
 
 impl IfaceMapping {
@@ -36,7 +36,7 @@ impl IfaceMapping {
 
     pub fn get_index(
         &mut self,
-        i_s: &(TCTypeKey, TCTypeKey),
+        i_s: &(TCTypeKey, Option<TCTypeKey>),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
     ) -> OpIndex {
@@ -51,12 +51,15 @@ impl IfaceMapping {
     }
 
     fn get_iface_info(
-        i_s: &(TCTypeKey, TCTypeKey),
+        i_s: &(TCTypeKey, Option<TCTypeKey>),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
     ) -> (GosMetadata, Vec<Rc<RefCell<MethodDesc>>>) {
         let i = lookup.meta_from_tc(i_s.0, objs);
-        let s = lookup.meta_from_tc(i_s.1, objs);
+        if i_s.1.is_none() {
+            return (i, vec![]);
+        }
+        let s = lookup.meta_from_tc(i_s.1.unwrap(), objs);
         let ifields = match &objs.metas[i.as_non_ptr()] {
             MetadataType::Named(_, iface) => match &objs.metas[iface.as_non_ptr()] {
                 MetadataType::Interface(m) => m,

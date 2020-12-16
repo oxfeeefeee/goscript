@@ -1,5 +1,10 @@
 package main
 
+import (
+	"fmt"
+)
+
+
 type S1 struct {i int; j int}
 
 func typeName(v interface{}) string {
@@ -38,6 +43,7 @@ func main() {
    re := typeName(s)
    assert(re == "S1")
    re = typeName2(888)
+   fmt.Println("typeswitch", re)
    assert(re == "int")
    
 

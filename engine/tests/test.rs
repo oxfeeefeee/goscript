@@ -33,6 +33,12 @@ fn test_g2case3() {
 }
 
 #[test]
+fn test_g2nil() {
+    let err_cnt = run("./tests/gs/group2/nil.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_case1() {
     let err_cnt = run("./tests/gs/group1/case1.gos", true);
     assert!(err_cnt == 0);

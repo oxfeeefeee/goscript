@@ -5,15 +5,18 @@ import (
 	"fmt"
 )
 
-
-
-
 func main() {
+	
 	err := errors.New("emit macho dwarf: elf header corrupted")
 	if err != nil {
-		fmt.Println(err.Error(), 1, 2, 3)
+		fmt.Println(err.Error(), 1, 2, 3, "tata")
 	}
+	
 
+	var errNil error
+	assert(errNil == nil)
+
+	
 	_, ok := err.(*errorString)
 	assert(!ok)
 
@@ -22,6 +25,7 @@ func main() {
 	assert(ok2)
 
 	fmt.Println(ok, ok2)
+	
 }
 
 

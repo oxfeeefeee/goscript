@@ -1,0 +1,20 @@
+package main
+
+import (
+	"fmt"
+)
+
+type III interface{}
+
+
+func main() {
+	//var m []string
+
+    var ia interface{}
+    ia = 8
+
+    //var ib III
+    
+
+	fmt.Println(/*"Hello, playground", */ia, 9)
+}

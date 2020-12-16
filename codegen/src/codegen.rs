@@ -457,7 +457,7 @@ impl<'a> CodeGen<'a> {
         let mut current_indexing_index = -total_val;
         for (i, (l, _, p)) in lhs.iter().enumerate() {
             let val_index = i as OpIndex - total_rhs_val;
-            self.try_cast_to_iface(lhs[i].1, types[i], val_index, *p);
+            self.try_cast_to_iface(lhs[i].1, Some(types[i]), val_index, *p);
             let typ = self.tlookup.value_type_from_tc(types[i]);
             let pos = Some(*p);
             match l {
@@ -676,22 +676,27 @@ impl<'a> CodeGen<'a> {
     fn try_cast_to_iface(
         &mut self,
         lhs: Option<TCTypeKey>,
-        rhs: TCTypeKey,
+        rhs: Option<TCTypeKey>,
         rhs_index: OpIndex,
         pos: usize,
     ) {
         if let Some(t1) = lhs {
             if self.tlookup.underlying_value_type_from_tc(t1) == ValueType::Interface {
-                let t2 = rhs;
-                let vt2 = self.tlookup.underlying_value_type_from_tc(t2);
-                if vt2 != ValueType::Interface && vt2 != ValueType::Nil {
-                    let m_index =
+                let (cast, typ) = match rhs {
+                    Some(t2) => {
+                        let vt2 = self.tlookup.underlying_value_type_from_tc(t2);
+                        (vt2 != ValueType::Interface && vt2 != ValueType::Nil, vt2)
+                    }
+                    None => (true, ValueType::Slice), // it must be a variadic parameter
+                };
+                if cast {
+                    let index =
                         self.iface_mapping
-                            .get_index(&(t1, t2), &mut self.tlookup, self.objects);
+                            .get_index(&(t1, rhs), &mut self.tlookup, self.objects);
                     current_func_emitter!(self).emit_cast_to_interface(
-                        vt2,
+                        typ,
                         rhs_index,
-                        m_index,
+                        index,
                         Some(pos),
                     );
                 }
@@ -699,22 +704,28 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>) {
+    fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
         let (sig_params, variadic) = self.tlookup.get_sig_params_tc_types(func);
         let non_variadic_params = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
         for (i, v) in sig_params[..non_variadic_params].iter().enumerate() {
             let rhs_index = i as OpIndex - params.len() as OpIndex;
-            let rhs = self.tlookup.get_expr_tc_type(&params[i]);
+            let rhs = if i == params.len() - 1 && ellipsis {
+                None
+            } else {
+                Some(self.tlookup.get_expr_tc_type(&params[i]))
+            };
             let pos = params[i].pos(&self.ast_objs);
             self.try_cast_to_iface(Some(*v), rhs, rhs_index, pos);
         }
-        if let Some(t) = variadic {
-            if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
-                for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
-                    let rhs_index = i as OpIndex - params.len() as OpIndex;
-                    let rhs = self.tlookup.get_expr_tc_type(p);
-                    let pos = p.pos(&self.ast_objs);
-                    self.try_cast_to_iface(Some(t), rhs, rhs_index, pos);
+        if !ellipsis {
+            if let Some(t) = variadic {
+                if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
+                    for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
+                        let rhs_index = i as OpIndex - params.len() as OpIndex;
+                        let rhs = self.tlookup.get_expr_tc_type(p);
+                        let pos = p.pos(&self.ast_objs);
+                        self.try_cast_to_iface(Some(t), Some(rhs), rhs_index, pos);
+                    }
                 }
             }
         }
@@ -1001,7 +1012,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                     // some of the built in funcs are not recorded
                     if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
-                        self.try_cast_params_to_iface(t, params);
+                        self.try_cast_params_to_iface(t, params, ellipsis);
                         if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
                             // FFI needs the signature of the call
                             let meta = self.tlookup.meta_from_tc(t, self.objects);
@@ -1037,7 +1048,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         current_func_emitter!(self).emit_pre_call(pos);
         let _ = params.iter().map(|e| self.visit_expr(e)).count();
         let t = self.tlookup.get_expr_tc_type(func_expr);
-        self.try_cast_params_to_iface(t, params);
+        self.try_cast_params_to_iface(t, params, ellipsis);
         // do not pack params if there is ellipsis
         current_func_emitter!(self).emit_call(ellipsis, pos);
     }
@@ -1385,7 +1396,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
             let tc_type = self.tlookup.get_expr_tc_type(expr);
-            self.try_cast_to_iface(Some(types[i]), tc_type, -1, expr.pos(&self.ast_objs));
+            self.try_cast_to_iface(Some(types[i]), Some(tc_type), -1, expr.pos(&self.ast_objs));
             let t = self.tlookup.value_type_from_tc(tc_type);
             let mut emitter = current_func_emitter!(self);
             emitter.emit_store(

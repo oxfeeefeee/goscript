@@ -10,6 +10,6 @@ func a() error {
 
 func main() {
 	var v = a()
-	assert(v != nil)
+	assert(v == nil)
 	fmt.Println("Hello, playground", v)
 }

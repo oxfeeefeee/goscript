@@ -354,7 +354,6 @@ impl Fiber {
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
                             match *b {
-                                PointerObj::Nil => unimplemented!(), //panic?
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(uv, self, stack, frame, rhs_index, inst.t0());
                                 }
@@ -392,19 +391,19 @@ impl Fiber {
                     let (target, mapping) = inst.imm824();
                     let rhs_s_index = Stack::offset(stack.len(), target);
                     let iface = ifaces[mapping as usize].clone();
-                    let named = stack.get_with_type(rhs_s_index, inst.t0());
+                    let under = stack.get_with_type(rhs_s_index, inst.t0());
                     let val = match &objs.metas[iface.0.as_non_ptr()] {
                         MetadataType::Named(_, md) => GosValue::Named(Rc::new(RefCell::new((
                             GosValue::new_iface(
                                 *md,
-                                IfaceUnderlying::Gos(named, iface.1),
+                                IfaceUnderlying::Gos(under, iface.1),
                                 &mut objs.interfaces,
                             ),
                             iface.0,
                         )))),
                         MetadataType::Interface(_) => GosValue::new_iface(
                             iface.0,
-                            IfaceUnderlying::Gos(named, iface.1),
+                            IfaceUnderlying::Gos(under, iface.1),
                             &mut objs.interfaces,
                         ),
                         _ => unreachable!(),
@@ -948,7 +947,7 @@ impl Fiber {
             if let Some(files) = fs {
                 for frame in self.frames.iter().rev() {
                     let func = &objs.functions[frame.func()];
-                    if let Some(p) = func.pos()[frame.pc] {
+                    if let Some(p) = func.pos()[frame.pc - 1] {
                         println!("{}", files.position(p));
                     } else {
                         println!("<no debug info available>");

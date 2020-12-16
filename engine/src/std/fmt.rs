@@ -20,9 +20,7 @@ impl Fmt {
     }
 
     fn println(&self, params: Vec<GosValue>) {
-        let iface = params[0].as_interface().borrow();
-        let v = iface.underlying_value();
-        let vec = v.as_slice().get_vec();
+        let vec = params[0].as_slice().get_vec();
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {
@@ -30,7 +28,7 @@ impl Fmt {
                     "<nil>".to_string()
                 } else {
                     let iface = x.as_interface().borrow();
-                    iface.underlying_value().to_string()
+                    iface.underlying_value().unwrap().to_string()
                 }
             })
             .collect();

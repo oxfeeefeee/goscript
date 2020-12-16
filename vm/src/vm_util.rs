@@ -63,7 +63,6 @@ macro_rules! deref_value {
         match $pointers {
             GosValue::Pointer(b) => {
                 match *b {
-                    PointerObj::Nil => unimplemented!(), //panic?
                     PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
                     PointerObj::Named(s) => GosValue::Named(s),
                     PointerObj::SliceMember(s, index) => s.get(index as usize).unwrap(),

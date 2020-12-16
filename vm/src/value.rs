@@ -369,6 +369,16 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn equals_nil(&self) -> bool {
+        match &self {
+            GosValue::Nil(_) => true,
+            GosValue::Named(n) => n.borrow().0.is_nil(),
+            GosValue::Interface(iface) => iface.borrow().is_nil(),
+            _ => false,
+        }
+    }
+
+    #[inline]
     pub fn get_type(&self) -> ValueType {
         match self {
             GosValue::Nil(_) => ValueType::Nil,
@@ -402,7 +412,6 @@ impl GosValue {
         }
     }
 
-    #[inline]
     pub fn get_meta(&self, md: &Metadata, pkgs: &PackageObjs, stack: &Stack) -> GosMetadata {
         match self {
             GosValue::Nil(m) => *m,
@@ -425,7 +434,7 @@ impl GosValue {
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b;
                 let inner = match bobj {
-                    PointerObj::Nil => GosMetadata::Untyped,
+                    //PointerObj::Nil => GosMetadata::Untyped,
                     PointerObj::UpVal(uv) => {
                         let state: &UpValueState = &uv.inner.borrow();
                         match state {
@@ -486,27 +495,43 @@ impl GosValue {
 impl Eq for GosValue {}
 
 impl PartialEq for GosValue {
-    #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
-            (GosValue::Bool(x), GosValue::Bool(y)) => x == y,
-            (GosValue::Int(x), GosValue::Int(y)) => x == y,
-            (GosValue::Int8(x), GosValue::Int8(y)) => x == y,
-            (GosValue::Int16(x), GosValue::Int16(y)) => x == y,
-            (GosValue::Int32(x), GosValue::Int32(y)) => x == y,
-            (GosValue::Int64(x), GosValue::Int64(y)) => x == y,
-            (GosValue::Uint(x), GosValue::Uint(y)) => x == y,
-            (GosValue::Uint8(x), GosValue::Uint8(y)) => x == y,
-            (GosValue::Uint16(x), GosValue::Uint16(y)) => x == y,
-            (GosValue::Uint32(x), GosValue::Uint32(y)) => x == y,
-            (GosValue::Uint64(x), GosValue::Uint64(y)) => x == y,
-            (GosValue::Float32(x), GosValue::Float32(y)) => x == y,
-            (GosValue::Float64(x), GosValue::Float64(y)) => x == y,
-            (GosValue::Complex64(xr, xi), GosValue::Complex64(yr, yi)) => xr == yr && xi == yi,
-            (GosValue::Complex128(x), GosValue::Complex128(y)) => x.0 == y.0 && x.1 == y.1,
-            (GosValue::Str(sa), GosValue::Str(sb)) => *sa == *sb,
-            (GosValue::Metadata(ma), GosValue::Metadata(mb)) => ma == mb,
-            //(GosValue::Nil(_), GosValue::Nil(_)) => true,
+            (Self::Nil(_), Self::Nil(_)) => true,
+            (Self::Bool(x), Self::Bool(y)) => x == y,
+            (Self::Int(x), Self::Int(y)) => x == y,
+            (Self::Int8(x), Self::Int8(y)) => x == y,
+            (Self::Int16(x), Self::Int16(y)) => x == y,
+            (Self::Int32(x), Self::Int32(y)) => x == y,
+            (Self::Int64(x), Self::Int64(y)) => x == y,
+            (Self::Uint(x), Self::Uint(y)) => x == y,
+            (Self::Uint8(x), Self::Uint8(y)) => x == y,
+            (Self::Uint16(x), Self::Uint16(y)) => x == y,
+            (Self::Uint32(x), Self::Uint32(y)) => x == y,
+            (Self::Uint64(x), Self::Uint64(y)) => x == y,
+            (Self::Float32(x), Self::Float32(y)) => x == y,
+            (Self::Float64(x), Self::Float64(y)) => x == y,
+            (Self::Complex64(xr, xi), Self::Complex64(yr, yi)) => xr == yr && xi == yi,
+            (Self::Complex128(x), Self::Complex128(y)) => x.0 == y.0 && x.1 == y.1,
+            (Self::Function(x), Self::Function(y)) => x == y,
+            (Self::Package(x), Self::Package(y)) => x == y,
+            (Self::Metadata(x), Self::Metadata(y)) => x == y,
+            (Self::Str(x), Self::Str(y)) => *x == *y,
+            (Self::Pointer(x), Self::Pointer(y)) => x == y,
+            (Self::Closure(x), Self::Closure(y)) => Rc::ptr_eq(x, y),
+            (Self::Slice(x), Self::Slice(y)) => Rc::ptr_eq(x, y),
+            (Self::Map(x), Self::Map(y)) => Rc::ptr_eq(x, y),
+            (Self::Interface(x), Self::Interface(y)) => InterfaceObj::eq(&x.borrow(), &y.borrow()),
+            (Self::Struct(x), Self::Struct(y)) => StructObj::eq(&x.borrow(), &y.borrow()),
+            (Self::Channel(x), Self::Channel(y)) => Rc::ptr_eq(x, y),
+            (Self::Named(x), Self::Named(y)) => x.borrow().0 == y.borrow().0,
+            (Self::Nil(_), nil) | (nil, Self::Nil(_)) => nil.equals_nil(),
+            (Self::Interface(iface), val) | (val, Self::Interface(iface)) => {
+                match iface.borrow().underlying_value() {
+                    Some(v) => v == val,
+                    None => false,
+                }
+            }
             _ => false,
         }
     }
@@ -520,7 +545,6 @@ impl PartialOrd for GosValue {
 }
 
 impl Ord for GosValue {
-    #[inline]
     fn cmp(&self, b: &Self) -> Ordering {
         match (self, b) {
             // todo: not the "correct" implementation yet,
@@ -591,7 +615,7 @@ impl Display for GosValue {
             GosValue::Slice(_) => f.write_str("todo(slice)"),
             GosValue::Map(_) => unimplemented!(),
             GosValue::Interface(_) => f.write_str("todo(interface)"),
-            GosValue::Struct(_) => unimplemented!(),
+            GosValue::Struct(_) => f.write_str("todo(struct)"),
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
