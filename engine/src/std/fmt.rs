@@ -27,8 +27,7 @@ impl Fmt {
                 if x.is_nil() {
                     "<nil>".to_string()
                 } else {
-                    let iface = x.as_interface().borrow();
-                    iface.underlying_value().unwrap().to_string()
+                    x.iface_underlying().unwrap().to_string()
                 }
             })
             .collect();

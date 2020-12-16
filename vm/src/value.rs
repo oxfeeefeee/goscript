@@ -369,6 +369,22 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn iface_underlying(&self) -> Option<GosValue> {
+        match &self {
+            GosValue::Named(n) => {
+                let b = n.borrow();
+                let b2 = b.0.as_interface().borrow();
+                b2.underlying_value().map(|x| x.clone())
+            }
+            GosValue::Interface(v) => {
+                let b2 = v.borrow();
+                b2.underlying_value().map(|x| x.clone())
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn equals_nil(&self) -> bool {
         match &self {
             GosValue::Nil(_) => true,

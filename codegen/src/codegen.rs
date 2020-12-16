@@ -457,8 +457,7 @@ impl<'a> CodeGen<'a> {
         let mut current_indexing_index = -total_val;
         for (i, (l, _, p)) in lhs.iter().enumerate() {
             let val_index = i as OpIndex - total_rhs_val;
-            self.try_cast_to_iface(lhs[i].1, Some(types[i]), val_index, *p);
-            let typ = self.tlookup.value_type_from_tc(types[i]);
+            let typ = self.try_cast_to_iface(lhs[i].1, Some(types[i]), val_index, *p);
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
@@ -679,7 +678,8 @@ impl<'a> CodeGen<'a> {
         rhs: Option<TCTypeKey>,
         rhs_index: OpIndex,
         pos: usize,
-    ) {
+    ) -> ValueType {
+        let mut ret_type = None;
         if let Some(t1) = lhs {
             if self.tlookup.underlying_value_type_from_tc(t1) == ValueType::Interface {
                 let (cast, typ) = match rhs {
@@ -699,9 +699,11 @@ impl<'a> CodeGen<'a> {
                         index,
                         Some(pos),
                     );
+                    ret_type = Some(ValueType::Interface);
                 }
             }
         }
+        ret_type.unwrap_or(self.tlookup.value_type_from_tc(rhs.unwrap()))
     }
 
     fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
@@ -1396,8 +1398,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         for (i, expr) in rstmt.results.iter().enumerate() {
             self.visit_expr(expr);
             let tc_type = self.tlookup.get_expr_tc_type(expr);
-            self.try_cast_to_iface(Some(types[i]), Some(tc_type), -1, expr.pos(&self.ast_objs));
-            let t = self.tlookup.value_type_from_tc(tc_type);
+            let t =
+                self.try_cast_to_iface(Some(types[i]), Some(tc_type), -1, expr.pos(&self.ast_objs));
             let mut emitter = current_func_emitter!(self);
             emitter.emit_store(
                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),

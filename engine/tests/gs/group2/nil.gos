@@ -13,8 +13,9 @@ func main() {
     var ia interface{}
     ia = 8
 
-    //var ib III
+    var ib III
+    ib = 9
     
 
-	fmt.Println(/*"Hello, playground", */ia, 9)
+	fmt.Println("Hello, playground", ia, ib, 10)
 }
