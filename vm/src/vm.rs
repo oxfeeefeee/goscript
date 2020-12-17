@@ -249,9 +249,7 @@ impl Fiber {
                         target = deref_value!(target, self, stack, frame, objs);
                     }
                     let val = match &target {
-                        GosValue::Named(n) => {
-                            n.borrow().0.as_struct().borrow().fields[ind as usize].clone()
-                        }
+                        GosValue::Named(n) => n.0.as_struct().borrow().fields[ind as usize].clone(),
                         GosValue::Struct(sval) => sval.borrow().fields[ind as usize].clone(),
                         _ => {
                             dbg!(&target);
@@ -272,7 +270,7 @@ impl Fiber {
                 Opcode::BIND_INTERFACE_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let val = match &val {
-                        GosValue::Named(n) => n.borrow().0.clone(),
+                        GosValue::Named(n) => n.0.clone(),
                         GosValue::Interface(_) => val,
                         _ => unreachable!(),
                     };
@@ -323,8 +321,7 @@ impl Fiber {
                     }
                     match &target {
                         GosValue::Named(n) => {
-                            let borrow = n.borrow();
-                            let field = &mut borrow.0.as_struct().borrow_mut().fields[imm as usize];
+                            let field = &mut n.0.as_struct().borrow_mut().fields[imm as usize];
                             stack.store_val(field, rhs_index, inst.t0());
                         }
                         GosValue::Struct(s) => {
@@ -357,15 +354,11 @@ impl Fiber {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(uv, self, stack, frame, rhs_index, inst.t0());
                                 }
-                                PointerObj::Named(n) => {
+                                PointerObj::LocalRefType(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    let val = match val {
-                                        GosValue::Named(nv) => nv.borrow().0.clone(),
-                                        _ => val,
-                                    };
-                                    let md = n.borrow().1;
-                                    n.replace((val, md));
+                                    let mref: &mut StructObj = &mut r.borrow_mut();
+                                    *mref = val.try_get_struct().unwrap().borrow().clone();
                                 }
                                 PointerObj::SliceMember(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
@@ -393,14 +386,14 @@ impl Fiber {
                     let iface = ifaces[mapping as usize].clone();
                     let under = stack.get_with_type(rhs_s_index, inst.t0());
                     let val = match &objs.metas[iface.0.as_non_ptr()] {
-                        MetadataType::Named(_, md) => GosValue::Named(Rc::new(RefCell::new((
+                        MetadataType::Named(_, md) => GosValue::Named(Box::new((
                             GosValue::new_iface(
                                 *md,
                                 IfaceUnderlying::Gos(under, iface.1),
                                 &mut objs.interfaces,
                             ),
                             iface.0,
-                        )))),
+                        ))),
                         MetadataType::Interface(_) => GosValue::new_iface(
                             iface.0,
                             IfaceUnderlying::Gos(under, iface.1),
@@ -440,15 +433,14 @@ impl Fiber {
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
                     let s_index = Stack::offset(stack_base, inst.imm());
-                    let boxed = if t == ValueType::Named {
-                        PointerObj::new_var_pointer(stack.get_with_type(s_index, t))
-                    } else {
-                        PointerObj::new_var_up_val(ValueDesc {
+                    let boxed = PointerObj::new_local(
+                        stack.get_with_type(s_index, t),
+                        ValueDesc {
                             func: frame.func(),
                             index: s_index as OpIndex,
                             typ: t,
-                        })
-                    };
+                        },
+                    );
                     stack.push(GosValue::new_pointer(boxed));
                 }
                 Opcode::REF_SLICE_MEMBER => {
@@ -462,7 +454,7 @@ impl Fiber {
                 Opcode::REF_STRUCT_FIELD => {
                     let struct_ = stack.pop_with_type(inst.t0());
                     let struct_ = match &struct_ {
-                        GosValue::Named(n) => n.borrow().0.clone(),
+                        GosValue::Named(n) => n.0.clone(),
                         GosValue::Struct(_) => struct_,
                         _ => unreachable!(),
                     };
@@ -822,7 +814,7 @@ impl Fiber {
                             if umd == *md {
                                 val
                             } else {
-                                GosValue::Named(Rc::new(RefCell::new((val, *md))))
+                                GosValue::Named(Box::new((val, *md)))
                             }
                         }
                         _ => unimplemented!(),

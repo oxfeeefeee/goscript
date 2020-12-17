@@ -195,7 +195,7 @@ pub enum GosValue {
     Struct(Rc<RefCell<StructObj>>),
     Channel(Rc<RefCell<ChannelObj>>),
 
-    Named(Rc<RefCell<(GosValue, GosMetadata)>>),
+    Named(Box<(GosValue, GosMetadata)>),
 }
 
 impl GosValue {
@@ -356,7 +356,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Rc<RefCell<(GosValue, GosMetadata)>> {
+    pub fn as_named(&self) -> &Box<(GosValue, GosMetadata)> {
         unwrap_gos_val!(Named, self)
     }
 
@@ -368,17 +368,24 @@ impl GosValue {
         }
     }
 
+    pub fn try_get_struct(&self) -> Option<&Rc<RefCell<StructObj>>> {
+        match &self {
+            GosValue::Struct(_) => Some(self.as_struct()),
+            GosValue::Named(n) => Some(n.0.as_struct()),
+            _ => None,
+        }
+    }
+
     #[inline]
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
             GosValue::Named(n) => {
-                let b = n.borrow();
-                let b2 = b.0.as_interface().borrow();
-                b2.underlying_value().map(|x| x.clone())
+                let b = n.0.as_interface().borrow();
+                b.underlying_value().map(|x| x.clone())
             }
             GosValue::Interface(v) => {
-                let b2 = v.borrow();
-                b2.underlying_value().map(|x| x.clone())
+                let b = v.borrow();
+                b.underlying_value().map(|x| x.clone())
             }
             _ => unreachable!(),
         }
@@ -388,7 +395,7 @@ impl GosValue {
     pub fn equals_nil(&self) -> bool {
         match &self {
             GosValue::Nil(_) => true,
-            GosValue::Named(n) => n.borrow().0.is_nil(),
+            GosValue::Named(n) => n.0.is_nil(),
             GosValue::Interface(iface) => iface.borrow().is_nil(),
             _ => false,
         }
@@ -460,7 +467,10 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
                         }
                     }
-                    PointerObj::Named(sobj) => sobj.borrow().1,
+                    PointerObj::LocalRefType(s, named_md) => match named_md {
+                        GosMetadata::Untyped => s.borrow().meta,
+                        _ => *named_md,
+                    },
                     PointerObj::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(md, pkgs, stack)
                     }
@@ -482,7 +492,7 @@ impl GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
-            GosValue::Named(v) => v.borrow().1,
+            GosValue::Named(v) => v.1,
         }
     }
 
@@ -492,10 +502,7 @@ impl GosValue {
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
-            GosValue::Named(v) => {
-                let b = v.borrow();
-                GosValue::Named(Rc::new(RefCell::new((b.0.copy_semantic(), b.1))))
-            }
+            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(), v.1))),
             _ => self.clone(),
         }
     }
@@ -540,7 +547,7 @@ impl PartialEq for GosValue {
             (Self::Interface(x), Self::Interface(y)) => InterfaceObj::eq(&x.borrow(), &y.borrow()),
             (Self::Struct(x), Self::Struct(y)) => StructObj::eq(&x.borrow(), &y.borrow()),
             (Self::Channel(x), Self::Channel(y)) => Rc::ptr_eq(x, y),
-            (Self::Named(x), Self::Named(y)) => x.borrow().0 == y.borrow().0,
+            (Self::Named(x), Self::Named(y)) => x.0 == y.0,
             (Self::Nil(_), nil) | (nil, Self::Nil(_)) => nil.equals_nil(),
             (Self::Interface(iface), val) | (val, Self::Interface(iface)) => {
                 match iface.borrow().underlying_value() {
@@ -636,7 +643,7 @@ impl Display for GosValue {
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
-            GosValue::Named(v) => f.write_fmt(format_args!("named(todo): {}", v.borrow().0)),
+            GosValue::Named(v) => f.write_fmt(format_args!("named(todo): {}", v.0)),
         }
     }
 }

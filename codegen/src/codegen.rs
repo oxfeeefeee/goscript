@@ -414,7 +414,6 @@ impl<'a> CodeGen<'a> {
                     if let Expr::Call(_) = expr {
                         self.visit_expr(expr);
                     } else {
-                        dbg!(self.tlookup.get_expr_mode(&values[0]));
                         unreachable!()
                     }
                     self.tlookup.get_return_tc_types(expr)

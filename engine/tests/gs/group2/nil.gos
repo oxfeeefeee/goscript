@@ -7,6 +7,10 @@ import (
 type III interface{}
 
 
+type A struct {
+i int
+}
+
 func main() {
 	//var m []string
 
@@ -15,7 +19,31 @@ func main() {
 
     var ib III
     ib = 9
-    
 
-	fmt.Println("Hello, playground", ia, ib, 10)
+    ib = ia
+
+    var a A
+    var b struct {
+    i int
+    }
+    b.i = 99
+
+    a = b
+    b.i = 55
+    
+	fmt.Println("Hello, playground", ia, ia == nil, ib, ib == nil, 10, a.i, b.i)
+
+    c := &a
+    d := &b
+    c.i = 111
+    d.i = 222
+    fmt.Println(a.i, b.i)
+    *c = b
+    fmt.Println(a.i, b.i)
+
+    var e *int
+    fmt.Println(e)
+    i := 666
+    e = &i
+    fmt.Println(e, *e)
 }

@@ -297,7 +297,7 @@ impl GosMetadata {
                 MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.zero_val_impl(mobjs);
-                    GosValue::Named(Rc::new(RefCell::new((val, *gm))))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
             _ => GosValue::Nil(*self),
@@ -339,7 +339,7 @@ impl GosMetadata {
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, slices, maps);
-                    GosValue::Named(Rc::new(RefCell::new((val, *gm))))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
             _ => unreachable!(),
@@ -425,7 +425,6 @@ impl GosMetadata {
     #[inline]
     pub fn method_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let (m, _) = self.get_named_metadate(metas);
-        dbg!(&m, name);
         m.mapping[name] as OpIndex
     }
 

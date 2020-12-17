@@ -144,7 +144,7 @@ impl Stack {
         std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
         match ret {
             GosValue::Interface(i) => i,
-            GosValue::Named(n) => match &n.borrow().0 {
+            GosValue::Named(n) => match &n.0 {
                 GosValue::Interface(i) => i.clone(),
                 _ => unreachable!(),
             },

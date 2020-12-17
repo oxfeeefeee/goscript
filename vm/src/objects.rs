@@ -180,8 +180,6 @@ impl PartialOrd for StringObj {
 impl Ord for StringObj {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        dbg!(self.as_str());
-        dbg!(other.as_str());
         self.as_str().cmp(other.as_str())
     }
 }
@@ -613,14 +611,18 @@ pub struct ChannelObj {}
 
 // ----------------------------------------------------------------------------
 // PointerObj
-/// There are two kinds of pointer vars, which is determined by the behavior of
-/// copy_semantic. Struct, Slice and Map have true pointers
-/// Others don't have true pointers, so a upvalue-like open/close mechanism is needed
+/// Logically there are 4 types of pointers, they point to:
+/// - local
+/// - slice member
+/// - struct field
+/// - package member
+/// and for pointers to locals, the default way of handling it is to use "UpValue"
+/// (PointerObj::UpVal). LocalRefType is a optimization for this type, when
+/// the pointee has a "real" pointer
 #[derive(Debug, Clone)]
 pub enum PointerObj {
-    //Nil,
     UpVal(UpValue),
-    Named(Rc<RefCell<(GosValue, GosMetadata)>>),
+    LocalRefType(Rc<RefCell<StructObj>>, GosMetadata),
     SliceMember(Rc<SliceObj>, OpIndex),
     StructField(Rc<RefCell<StructObj>>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -628,16 +630,14 @@ pub enum PointerObj {
 
 impl PointerObj {
     #[inline]
-    pub fn new_var_up_val(d: ValueDesc) -> PointerObj {
-        PointerObj::UpVal(UpValue::new(d))
-    }
-
-    // supports only Named for now
-    #[inline]
-    pub fn new_var_pointer(val: GosValue) -> PointerObj {
+    pub fn new_local(val: GosValue, d: ValueDesc) -> PointerObj {
         match val {
-            GosValue::Named(s) => PointerObj::Named(s),
-            _ => unreachable!(),
+            GosValue::Named(s) => match &s.0 {
+                GosValue::Struct(stru) => PointerObj::LocalRefType(stru.clone(), s.1),
+                _ => PointerObj::UpVal(UpValue::new(d)),
+            },
+            GosValue::Struct(s) => PointerObj::LocalRefType(s.clone(), GosMetadata::Untyped),
+            _ => PointerObj::UpVal(UpValue::new(d)),
         }
     }
 
@@ -652,6 +652,17 @@ impl PointerObj {
         let s = stru.as_struct();
         PointerObj::StructField(s.clone(), index)
     }
+
+    #[inline]
+    pub fn set_local_ref_type(&self, val: GosValue) {
+        match self {
+            Self::LocalRefType(v, _) => {
+                let mref: &mut StructObj = &mut v.borrow_mut();
+                *mref = val.try_get_struct().unwrap().borrow().clone();
+            }
+            _ => unreachable!(),
+        }
+    }
 }
 
 impl Eq for PointerObj {}
@@ -661,7 +672,7 @@ impl PartialEq for PointerObj {
     fn eq(&self, other: &PointerObj) -> bool {
         match (self, other) {
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
-            (Self::Named(x), Self::Named(y)) => Rc::ptr_eq(x, y),
+            (Self::LocalRefType(x, _), Self::LocalRefType(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
