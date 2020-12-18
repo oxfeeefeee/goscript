@@ -435,6 +435,10 @@ impl GosValue {
         }
     }
 
+    pub fn identical(&self, other: &GosValue) -> bool {
+        self.get_type() == other.get_type() && self == other
+    }
+
     pub fn get_meta(&self, md: &Metadata, pkgs: &PackageObjs, stack: &Stack) -> GosMetadata {
         match self {
             GosValue::Nil(m) => *m,

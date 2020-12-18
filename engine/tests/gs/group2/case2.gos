@@ -12,7 +12,7 @@ func main() {
 		fmt.Println(err.Error(), 1, 2, 3, "tata")
 	}
 	
-
+	
 	var errNil error
 	assert(errNil == nil)
 
@@ -24,7 +24,7 @@ func main() {
 
 	var mapNil map[int]string
 	assert(mapNil == nil)
-	//mapNil[1] = "aa"
+	mapNil[1] = "aa"
 
 	m := make(map[int]string)
 	assert(m != nil)

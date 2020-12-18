@@ -1097,7 +1097,7 @@ impl FunctionVal {
     /// returns the index of the const if it's found
     pub fn get_const_index(&self, val: &GosValue) -> Option<EntIndex> {
         self.consts.iter().enumerate().find_map(|(i, x)| {
-            if val == x {
+            if val.identical(x) {
                 Some(EntIndex::Const(i as OpIndex))
             } else {
                 None

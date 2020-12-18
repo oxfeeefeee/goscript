@@ -1,0 +1,12 @@
+package main
+
+
+func main() {
+
+    var errNil error
+	var mapNil map[int]string
+	mapNil[1] = "aa"
+
+    assert(errNil == nil)
+    assert(mapNil == nil)
+}

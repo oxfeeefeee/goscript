@@ -299,7 +299,10 @@ pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIn
         GosValue::Nil(_) => {
             Err("assignment to entry in nil map or slice".to_string())
         }
-        _ => unreachable!(),
+        _ => {
+            dbg!(target);
+            unreachable!()
+        }
     }
 }
 
