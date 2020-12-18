@@ -7,58 +7,80 @@ pub trait ExprVisitor {
 
     fn visit_expr(&mut self, expr: &Expr) -> Self::Result;
 
-    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result;
+    fn visit_expr_ident(&mut self, this: &Expr, ident: &IdentKey) -> Self::Result;
 
-    fn visit_expr_ellipsis(&mut self, els: &Option<Expr>) -> Self::Result;
+    fn visit_expr_ellipsis(&mut self, this: &Expr, els: &Option<Expr>) -> Self::Result;
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit, id: NodeId) -> Self::Result;
+    fn visit_expr_basic_lit(&mut self, this: &Expr, blit: &BasicLit) -> Self::Result;
 
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) -> Self::Result;
+    fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) -> Self::Result;
 
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result;
+    fn visit_expr_composit_lit(&mut self, this: &Expr, clit: &CompositeLit) -> Self::Result;
 
-    fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result;
+    fn visit_expr_paren(&mut self, this: &Expr, expr: &Expr) -> Self::Result;
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) -> Self::Result; //add: lvalue
+    fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) -> Self::Result; //add: lvalue
 
-    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result;
+    fn visit_expr_index(&mut self, this: &Expr, expr: &Expr, index: &Expr) -> Self::Result;
 
     fn visit_expr_slice(
         &mut self,
+        this: &Expr,
         expr: &Expr,
         low: &Option<Expr>,
         high: &Option<Expr>,
         max: &Option<Expr>,
     ) -> Self::Result;
 
-    fn visit_expr_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>) -> Self::Result;
+    fn visit_expr_type_assert(
+        &mut self,
+        this: &Expr,
+        expr: &Expr,
+        typ: &Option<Expr>,
+    ) -> Self::Result;
 
-    fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool) -> Self::Result;
+    fn visit_expr_call(
+        &mut self,
+        this: &Expr,
+        func: &Expr,
+        args: &Vec<Expr>,
+        ellipsis: bool,
+    ) -> Self::Result;
 
-    fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result;
+    fn visit_expr_star(&mut self, this: &Expr, expr: &Expr) -> Self::Result;
 
-    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result;
+    fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) -> Self::Result;
 
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result;
+    fn visit_expr_binary(
+        &mut self,
+        this: &Expr,
+        left: &Expr,
+        op: &Token,
+        right: &Expr,
+    ) -> Self::Result;
 
-    fn visit_expr_key_value(&mut self, key: &Expr, val: &Expr) -> Self::Result;
+    fn visit_expr_key_value(&mut self, this: &Expr, key: &Expr, val: &Expr) -> Self::Result;
 
     /// codegen needs the unwraped expr
-    fn visit_expr_array_type(&mut self, len: &Option<Expr>, elm: &Expr, arr: &Expr)
-        -> Self::Result;
+    fn visit_expr_array_type(
+        &mut self,
+        this: &Expr,
+        len: &Option<Expr>,
+        elm: &Expr,
+    ) -> Self::Result;
 
-    fn visit_expr_struct_type(&mut self, s: &StructType) -> Self::Result;
+    fn visit_expr_struct_type(&mut self, this: &Expr, s: &StructType) -> Self::Result;
 
-    fn visit_expr_func_type(&mut self, s: &FuncTypeKey) -> Self::Result;
+    fn visit_expr_func_type(&mut self, this: &Expr, s: &FuncTypeKey) -> Self::Result;
 
-    fn visit_expr_interface_type(&mut self, s: &InterfaceType) -> Self::Result;
+    fn visit_expr_interface_type(&mut self, this: &Expr, s: &InterfaceType) -> Self::Result;
 
     /// codegen needs the unwraped expr
-    fn visit_map_type(&mut self, key: &Expr, val: &Expr, map: &Expr) -> Self::Result;
+    fn visit_map_type(&mut self, this: &Expr, key: &Expr, val: &Expr, map: &Expr) -> Self::Result;
 
-    fn visit_chan_type(&mut self, chan: &Expr, dir: &ChanDir) -> Self::Result;
+    fn visit_chan_type(&mut self, this: &Expr, chan: &Expr, dir: &ChanDir) -> Self::Result;
 
-    fn visit_bad_expr(&mut self, e: &BadExpr) -> Self::Result;
+    fn visit_bad_expr(&mut self, this: &Expr, e: &BadExpr) -> Self::Result;
 }
 
 pub trait StmtVisitor {
@@ -115,57 +137,62 @@ pub trait StmtVisitor {
 
 pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
     match expr {
-        Expr::Bad(e) => v.visit_bad_expr(e.as_ref()),
-        Expr::Ident(e) => v.visit_expr_ident(e),
-        Expr::Ellipsis(e) => v.visit_expr_ellipsis(&e.as_ref().elt),
-        Expr::BasicLit(e) => v.visit_expr_basic_lit(e.as_ref(), expr.id()),
-        Expr::FuncLit(e) => v.visit_expr_func_lit(e.as_ref(), expr.id()),
-        Expr::CompositeLit(e) => v.visit_expr_composit_lit(e.as_ref()),
-        Expr::Paren(e) => v.visit_expr_paren(&e.as_ref().expr),
+        Expr::Bad(e) => v.visit_bad_expr(expr, e.as_ref()),
+        Expr::Ident(e) => v.visit_expr_ident(expr, e),
+        Expr::Ellipsis(e) => v.visit_expr_ellipsis(expr, &e.as_ref().elt),
+        Expr::BasicLit(e) => v.visit_expr_basic_lit(expr, e.as_ref()),
+        Expr::FuncLit(e) => v.visit_expr_func_lit(expr, e.as_ref()),
+        Expr::CompositeLit(e) => v.visit_expr_composit_lit(expr, e.as_ref()),
+        Expr::Paren(e) => v.visit_expr_paren(expr, &e.as_ref().expr),
         Expr::Selector(e) => {
             let selexp = e.as_ref();
-            v.visit_expr_selector(&selexp.expr, &selexp.sel, expr.id())
+            v.visit_expr_selector(expr, &selexp.expr, &selexp.sel)
         }
         Expr::Index(e) => {
             let indexp = e.as_ref();
-            v.visit_expr_index(&indexp.expr, &indexp.index)
+            v.visit_expr_index(expr, &indexp.expr, &indexp.index)
         }
         Expr::Slice(e) => {
             let slexp = e.as_ref();
-            v.visit_expr_slice(&slexp.expr, &slexp.low, &slexp.high, &slexp.max)
+            v.visit_expr_slice(expr, &slexp.expr, &slexp.low, &slexp.high, &slexp.max)
         }
         Expr::TypeAssert(e) => {
             let taexp = e.as_ref();
-            v.visit_expr_type_assert(&taexp.expr, &taexp.typ)
+            v.visit_expr_type_assert(expr, &taexp.expr, &taexp.typ)
         }
         Expr::Call(e) => {
             let callexp = e.as_ref();
-            v.visit_expr_call(&callexp.func, &callexp.args, callexp.ellipsis.is_some())
+            v.visit_expr_call(
+                expr,
+                &callexp.func,
+                &callexp.args,
+                callexp.ellipsis.is_some(),
+            )
         }
-        Expr::Star(e) => v.visit_expr_star(&e.as_ref().expr),
+        Expr::Star(e) => v.visit_expr_star(expr, &e.as_ref().expr),
         Expr::Unary(e) => {
             let uexp = e.as_ref();
-            v.visit_expr_unary(&uexp.expr, &uexp.op)
+            v.visit_expr_unary(expr, &uexp.expr, &uexp.op)
         }
         Expr::Binary(e) => {
             let bexp = e.as_ref();
-            v.visit_expr_binary(&bexp.expr_a, &bexp.op, &bexp.expr_b)
+            v.visit_expr_binary(expr, &bexp.expr_a, &bexp.op, &bexp.expr_b)
         }
         Expr::KeyValue(e) => {
             let kvexp = e.as_ref();
-            v.visit_expr_key_value(&kvexp.key, &kvexp.val)
+            v.visit_expr_key_value(expr, &kvexp.key, &kvexp.val)
         }
-        Expr::Array(e) => v.visit_expr_array_type(&e.as_ref().len, &e.as_ref().elt, expr),
-        Expr::Struct(e) => v.visit_expr_struct_type(e.as_ref()),
-        Expr::Func(e) => v.visit_expr_func_type(e),
-        Expr::Interface(e) => v.visit_expr_interface_type(e.as_ref()),
+        Expr::Array(e) => v.visit_expr_array_type(expr, &e.as_ref().len, &e.as_ref().elt),
+        Expr::Struct(e) => v.visit_expr_struct_type(expr, e.as_ref()),
+        Expr::Func(e) => v.visit_expr_func_type(expr, e),
+        Expr::Interface(e) => v.visit_expr_interface_type(expr, e.as_ref()),
         Expr::Map(e) => {
             let mexp = e.as_ref();
-            v.visit_map_type(&mexp.key, &mexp.val, expr)
+            v.visit_map_type(expr, &mexp.key, &mexp.val, expr)
         }
         Expr::Chan(e) => {
             let cexp = e.as_ref();
-            v.visit_chan_type(&cexp.val, &cexp.dir)
+            v.visit_chan_type(expr, &cexp.val, &cexp.dir)
         }
     }
 }

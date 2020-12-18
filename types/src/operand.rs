@@ -334,11 +334,11 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         walk_expr(self, expr)
     }
 
-    fn visit_expr_ident(&mut self, ident: &IdentKey) -> Self::Result {
-        self.f.write_str(&self.ast_objs.idents[*ident].name)
+    fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) -> Self::Result {
+        self.fmt_ident(ident)
     }
 
-    fn visit_expr_ellipsis(&mut self, els: &Option<Expr>) -> Self::Result {
+    fn visit_expr_ellipsis(&mut self, _: &Expr, els: &Option<Expr>) -> Self::Result {
         self.f.write_str("...")?;
         if let Some(e) = els {
             self.visit_expr(e)?;
@@ -346,17 +346,17 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         Ok(())
     }
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit, _: NodeId) -> Self::Result {
+    fn visit_expr_basic_lit(&mut self, _: &Expr, blit: &BasicLit) -> Self::Result {
         blit.token.fmt(self.f)
     }
 
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit, _: NodeId) -> Self::Result {
+    fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) -> Self::Result {
         self.f.write_char('(')?;
-        self.visit_expr_func_type(&flit.typ)?;
+        self.visit_expr_func_type(this, &flit.typ)?;
         self.f.write_str(" literal)")
     }
 
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) -> Self::Result {
+    fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) -> Self::Result {
         self.f.write_char('(')?;
         match &clit.typ {
             Some(t) => {
@@ -369,19 +369,19 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_str(" literal)")
     }
 
-    fn visit_expr_paren(&mut self, expr: &Expr) -> Self::Result {
+    fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) -> Self::Result {
         self.f.write_char('(')?;
         self.visit_expr(expr)?;
         self.f.write_char(')')
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, _: NodeId) -> Self::Result {
+    fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) -> Self::Result {
         self.visit_expr(expr)?;
         self.f.write_char('.')?;
-        self.visit_expr_ident(ident)
+        self.visit_expr_ident(this, ident)
     }
 
-    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) -> Self::Result {
+    fn visit_expr_index(&mut self, _: &Expr, expr: &Expr, index: &Expr) -> Self::Result {
         self.visit_expr(expr)?;
         self.f.write_char('[')?;
         self.visit_expr(index)?;
@@ -390,6 +390,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
 
     fn visit_expr_slice(
         &mut self,
+        _: &Expr,
         expr: &Expr,
         low: &Option<Expr>,
         high: &Option<Expr>,
@@ -411,7 +412,12 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_char(']')
     }
 
-    fn visit_expr_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>) -> Self::Result {
+    fn visit_expr_type_assert(
+        &mut self,
+        _: &Expr,
+        expr: &Expr,
+        typ: &Option<Expr>,
+    ) -> Self::Result {
         self.visit_expr(expr)?;
         self.f.write_str(".(")?;
         match &typ {
@@ -425,7 +431,13 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_char(')')
     }
 
-    fn visit_expr_call(&mut self, func: &Expr, args: &Vec<Expr>, ellipsis: bool) -> Self::Result {
+    fn visit_expr_call(
+        &mut self,
+        _: &Expr,
+        func: &Expr,
+        args: &Vec<Expr>,
+        ellipsis: bool,
+    ) -> Self::Result {
         self.visit_expr(func)?;
         self.f.write_char('(')?;
         for (i, arg) in args.iter().enumerate() {
@@ -440,27 +452,33 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.f.write_char(')')
     }
 
-    fn visit_expr_star(&mut self, expr: &Expr) -> Self::Result {
+    fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) -> Self::Result {
         self.f.write_char('*')?;
         self.visit_expr(expr)
     }
 
-    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) -> Self::Result {
+    fn visit_expr_unary(&mut self, _: &Expr, expr: &Expr, op: &Token) -> Self::Result {
         op.fmt(self.f)?;
         self.visit_expr(expr)
     }
 
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) -> Self::Result {
+    fn visit_expr_binary(
+        &mut self,
+        _: &Expr,
+        left: &Expr,
+        op: &Token,
+        right: &Expr,
+    ) -> Self::Result {
         self.visit_expr(left)?;
         self.f.write_fmt(format_args!(" {} ", op))?;
         self.visit_expr(right)
     }
 
-    fn visit_expr_key_value(&mut self, _: &Expr, _: &Expr) -> Self::Result {
+    fn visit_expr_key_value(&mut self, _: &Expr, _: &Expr, _: &Expr) -> Self::Result {
         self.f.write_str("(bad expr)")
     }
 
-    fn visit_expr_array_type(&mut self, len: &Option<Expr>, elm: &Expr, _: &Expr) -> Self::Result {
+    fn visit_expr_array_type(&mut self, _: &Expr, len: &Option<Expr>, elm: &Expr) -> Self::Result {
         self.f.write_char('[')?;
         if let Some(l) = len {
             self.visit_expr(l)?;
@@ -469,31 +487,31 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.visit_expr(elm)
     }
 
-    fn visit_expr_struct_type(&mut self, s: &StructType) -> Self::Result {
+    fn visit_expr_struct_type(&mut self, _: &Expr, s: &StructType) -> Self::Result {
         self.f.write_str("struct{")?;
         self.fmt_fields(&s.fields, "; ", false)?;
         self.f.write_char('}')
     }
 
-    fn visit_expr_func_type(&mut self, s: &FuncTypeKey) -> Self::Result {
+    fn visit_expr_func_type(&mut self, _: &Expr, s: &FuncTypeKey) -> Self::Result {
         self.f.write_str("func")?;
         self.fmt_sig(&self.ast_objs.ftypes[*s])
     }
 
-    fn visit_expr_interface_type(&mut self, s: &InterfaceType) -> Self::Result {
+    fn visit_expr_interface_type(&mut self, _: &Expr, s: &InterfaceType) -> Self::Result {
         self.f.write_str("interface{")?;
         self.fmt_fields(&s.methods, "; ", true)?;
         self.f.write_char('}')
     }
 
-    fn visit_map_type(&mut self, key: &Expr, val: &Expr, _: &Expr) -> Self::Result {
+    fn visit_map_type(&mut self, _: &Expr, key: &Expr, val: &Expr, _: &Expr) -> Self::Result {
         self.f.write_str("map[")?;
         self.visit_expr(key)?;
         self.f.write_char(']')?;
         self.visit_expr(val)
     }
 
-    fn visit_chan_type(&mut self, chan: &Expr, dir: &ChanDir) -> Self::Result {
+    fn visit_chan_type(&mut self, _: &Expr, chan: &Expr, dir: &ChanDir) -> Self::Result {
         let s = match dir {
             ChanDir::Send => "chan<- ",
             ChanDir::Recv => "<-chan ",
@@ -503,7 +521,7 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.visit_expr(chan)
     }
 
-    fn visit_bad_expr(&mut self, _: &BadExpr) -> Self::Result {
+    fn visit_bad_expr(&mut self, _: &Expr, _: &BadExpr) -> Self::Result {
         self.f.write_str("(bad expr)")
     }
 }
@@ -538,7 +556,7 @@ impl<'a, 'b> ExprFormater<'a, 'b> {
             for (i, name) in field.names.iter().enumerate() {
                 if i > 0 {
                     self.f.write_str(", ")?;
-                    self.visit_expr_ident(name)?;
+                    self.fmt_ident(name)?;
                 }
             }
             // types of interface methods consist of signatures only
@@ -558,5 +576,9 @@ impl<'a, 'b> ExprFormater<'a, 'b> {
             }
         }
         Ok(())
+    }
+
+    fn fmt_ident(&mut self, ident: &IdentKey) -> fmt::Result {
+        self.f.write_str(&self.ast_objs.idents[*ident].name)
     }
 }

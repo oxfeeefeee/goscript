@@ -802,6 +802,14 @@ impl<'a> CodeGen<'a> {
         emitter.emit_literal(ValueType::Metadata, i.into(), pos);
     }
 
+    fn gen_type_meta(&mut self, typ: &Expr) {
+        let m = self.tlookup.get_meta_by_node_id(typ.id(), self.objects);
+        let mut emitter = current_func_emitter!(self);
+        let i = emitter.add_const(None, GosValue::Metadata(m));
+        let pos = Some(typ.pos(&self.ast_objs));
+        emitter.emit_load(i, None, ValueType::Metadata, pos);
+    }
+
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
         let entity = ident.entity.clone().into_key().unwrap();
@@ -865,7 +873,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         walk_expr(self, expr)
     }
 
-    fn visit_expr_ident(&mut self, ident: &IdentKey) {
+    fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) {
         let index = self.resolve_ident(ident);
         let t = self.tlookup.get_use_value_type(*ident);
         let fkey = self.func_stack.last().unwrap();
@@ -878,12 +886,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         );
     }
 
-    fn visit_expr_ellipsis(&mut self, _els: &Option<Expr>) {
+    fn visit_expr_ellipsis(&mut self, _: &Expr, _els: &Option<Expr>) {
         unreachable!();
     }
 
-    fn visit_expr_basic_lit(&mut self, blit: &BasicLit, id: NodeId) {
-        let val = self.tlookup.get_const_value(id);
+    fn visit_expr_basic_lit(&mut self, this: &Expr, blit: &BasicLit) {
+        let val = self.tlookup.get_const_value(this.id());
         let mut emitter = current_func_emitter!(self);
         let t = val.get_type();
         let i = emitter.add_const(None, val);
@@ -891,8 +899,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     /// Add function as a const and then generate a closure of it
-    fn visit_expr_func_lit(&mut self, flit: &FuncLit, id: NodeId) {
-        let tc_type = self.tlookup.get_node_tc_type(id);
+    fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) {
+        let tc_type = self.tlookup.get_node_tc_type(this.id());
         let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Function(fkey));
@@ -900,18 +908,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         emitter.emit_literal(ValueType::Function, i.into(), pos);
     }
 
-    fn visit_expr_composit_lit(&mut self, clit: &CompositeLit) {
+    fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
         let meta = self
             .tlookup
             .get_meta_by_node_id(clit.typ.as_ref().unwrap().id(), &mut self.objects);
         self.gen_composite_literal(clit, &meta);
     }
 
-    fn visit_expr_paren(&mut self, expr: &Expr) {
+    fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) {
         self.visit_expr(expr)
     }
 
-    fn visit_expr_selector(&mut self, expr: &Expr, ident: &IdentKey, id: NodeId) {
+    fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
         let pos = Some(expr.pos(&self.ast_objs));
         if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
             let pkg = self.pkg_util.get_vm_pkg(key);
@@ -926,7 +934,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             return;
         }
 
-        let (t0, t1) = self.tlookup.get_selection_value_types(id);
+        let (t0, t1) = self.tlookup.get_selection_value_types(this.id());
         let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
         let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
@@ -948,7 +956,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let method = meta.get_method(i, &self.objects.metas);
                 if method.borrow().pointer_recv {
                     // desugar
-                    self.visit_expr_unary(expr, &Token::AND);
+                    self.visit_expr_unary(this, expr, &Token::AND);
                 } else {
                     self.visit_expr(expr);
                 }
@@ -964,12 +972,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_index(&mut self, expr: &Expr, index: &Expr) {
+    fn visit_expr_index(&mut self, _: &Expr, expr: &Expr, index: &Expr) {
         self.gen_map_index(expr, index, false);
     }
 
     fn visit_expr_slice(
         &mut self,
+        _: &Expr,
         expr: &Expr,
         low: &Option<Expr>,
         high: &Option<Expr>,
@@ -995,11 +1004,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_type_assert(&mut self, _expr: &Expr, _typ: &Option<Expr>) {
+    fn visit_expr_type_assert(&mut self, _: &Expr, _expr: &Expr, _typ: &Option<Expr>) {
         unimplemented!();
     }
 
-    fn visit_expr_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
+    fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
         // check if this is a built in function first
         let pos = Some(func_expr.pos(&self.ast_objs));
         if let Expr::Ident(ikey) = func_expr {
@@ -1054,7 +1063,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         current_func_emitter!(self).emit_call(ellipsis, pos);
     }
 
-    fn visit_expr_star(&mut self, expr: &Expr) {
+    fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) {
         let pos = Some(expr.pos(&self.ast_objs));
         match self.tlookup.get_expr_mode(expr) {
             OperandMode::TypeExpr => {
@@ -1075,7 +1084,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_unary(&mut self, expr: &Expr, op: &Token) {
+    fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) {
         let t = self.tlookup.get_expr_value_type(expr);
         let pos = Some(expr.pos(&self.ast_objs));
         if op == &Token::AND {
@@ -1158,7 +1167,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let func = current_func_mut!(self);
                     let index = func.add_local(None);
                     func.add_local_zero(zero_val);
-                    self.visit_expr_composit_lit(clit);
+                    self.visit_expr_composit_lit(this, clit);
                     current_func_emitter!(self).emit_store(
                         &LeftHandSide::Primitive(index),
                         -1,
@@ -1196,7 +1205,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         current_func_mut!(self).emit_code_with_type(code, t, pos);
     }
 
-    fn visit_expr_binary(&mut self, left: &Expr, op: &Token, right: &Expr) {
+    fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
         self.visit_expr(left);
         let t = self.tlookup.get_expr_value_type(left);
         let code = match op {
@@ -1261,39 +1270,35 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_key_value(&mut self, _key: &Expr, _val: &Expr) {
+    fn visit_expr_key_value(&mut self, _: &Expr, _key: &Expr, _val: &Expr) {
         unimplemented!();
     }
 
-    fn visit_expr_array_type(&mut self, _: &Option<Expr>, _: &Expr, arr: &Expr) {
-        let m = self.tlookup.get_meta_by_node_id(arr.id(), self.objects);
-        let mut emitter = current_func_emitter!(self);
-        let i = emitter.add_const(None, GosValue::Metadata(m));
-        let pos = Some(arr.pos(&self.ast_objs));
-        emitter.emit_load(i, None, ValueType::Metadata, pos);
+    fn visit_expr_array_type(&mut self, this: &Expr, _: &Option<Expr>, _: &Expr) {
+        self.gen_type_meta(this)
     }
 
-    fn visit_expr_struct_type(&mut self, _s: &StructType) {
+    fn visit_expr_struct_type(&mut self, this: &Expr, _s: &StructType) {
+        self.gen_type_meta(this)
+    }
+
+    fn visit_expr_func_type(&mut self, this: &Expr, _s: &FuncTypeKey) {
+        self.gen_type_meta(this)
+    }
+
+    fn visit_expr_interface_type(&mut self, this: &Expr, _s: &InterfaceType) {
+        self.gen_type_meta(this)
+    }
+
+    fn visit_map_type(&mut self, this: &Expr, _: &Expr, _: &Expr, _map: &Expr) {
+        self.gen_type_meta(this)
+    }
+
+    fn visit_chan_type(&mut self, _: &Expr, _chan: &Expr, _dir: &ChanDir) {
         unimplemented!();
     }
 
-    fn visit_expr_func_type(&mut self, _s: &FuncTypeKey) {
-        unimplemented!();
-    }
-
-    fn visit_expr_interface_type(&mut self, _s: &InterfaceType) {
-        unimplemented!();
-    }
-
-    fn visit_map_type(&mut self, _: &Expr, _: &Expr, _map: &Expr) {
-        unimplemented!();
-    }
-
-    fn visit_chan_type(&mut self, _chan: &Expr, _dir: &ChanDir) {
-        unimplemented!();
-    }
-
-    fn visit_bad_expr(&mut self, _e: &BadExpr) {
+    fn visit_bad_expr(&mut self, _: &Expr, _e: &BadExpr) {
         unreachable!();
     }
 }

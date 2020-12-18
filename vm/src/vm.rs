@@ -855,7 +855,10 @@ impl Fiber {
                                 &mut objs.slices,
                             )
                         }
-                        MetadataType::Map(_k, _v) => unimplemented!(),
+                        MetadataType::Map(_, v) => {
+                            let default = v.zero_val(&objs.metas);
+                            GosValue::new_map(default, &mut objs.maps)
+                        }
                         MetadataType::Channel => unimplemented!(),
                         _ => unreachable!(),
                     };

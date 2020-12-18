@@ -16,6 +16,20 @@ func main() {
 	var errNil error
 	assert(errNil == nil)
 
+	var sliceNil []int
+	assert(sliceNil == nil)
+
+	slice := make([]int, 1)
+	assert(slice != nil)
+
+	var mapNil map[int]string
+	assert(mapNil == nil)
+	//mapNil[1] = "aa"
+
+	m := make(map[int]string)
+	assert(m != nil)
+	m[1] = "aa"
+
 	
 	_, ok := err.(*errorString)
 	assert(!ok)
@@ -24,7 +38,7 @@ func main() {
 	_, ok2 := err2.(*errorString)
 	assert(ok2)
 
-	fmt.Println(ok, ok2)
+	fmt.Println(ok, ok2, m[1])
 	
 }
 
