@@ -104,7 +104,7 @@ impl Fiber {
     }
 
     fn run(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory, fs: Option<&FileSet>) {
-        let cls = GosValue::new_closure(code.entry);
+        let cls = GosValue::new_closure(code.entry, &code.objects.functions);
         let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
         self.frames.push(frame);
         self.main_loop(code, ffi_factory, fs);
@@ -191,12 +191,14 @@ impl Fiber {
                 }
                 Opcode::LOAD_UPVALUE => {
                     let index = inst.imm();
-                    let upvalue = frame.closure().upvalues()[index as usize].clone();
+                    let upvalue =
+                        frame.closure().upvalues().as_ref().unwrap()[index as usize].clone();
                     stack.push(load_up_value!(upvalue, self, stack, frame));
                 }
                 Opcode::STORE_UPVALUE => {
                     let (rhs_index, index) = inst.imm824();
-                    let upvalue = frame.closure().upvalues()[index as usize].clone();
+                    let upvalue =
+                        frame.closure().upvalues().as_ref().unwrap()[index as usize].clone();
                     store_up_value!(upvalue, self, stack, frame, rhs_index, inst.t0());
                 }
                 Opcode::LOAD_INDEX => {
@@ -262,9 +264,10 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new_method(
+                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new_gos(
                         func,
-                        val.copy_semantic(),
+                        &objs.functions,
+                        Some(val.copy_semantic()),
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
@@ -278,7 +281,11 @@ impl Fiber {
                     let cls = match borrowed.underlying() {
                         IfaceUnderlying::Gos(val, funcs) => {
                             let func = funcs[inst.imm() as usize];
-                            let cls = ClosureObj::new_method(func, val.copy_semantic());
+                            let cls = ClosureObj::new_gos(
+                                func,
+                                &objs.functions,
+                                Some(val.copy_semantic()),
+                            );
                             GosValue::Closure(Rc::new(cls))
                         }
                         IfaceUnderlying::Ffi(ffi) => {
@@ -427,7 +434,8 @@ impl Fiber {
                 Opcode::ARROW => unimplemented!(),
                 Opcode::REF_UPVALUE => {
                     let index = inst.imm();
-                    let upvalue = frame.closure().upvalues()[index as usize].clone();
+                    let upvalue =
+                        frame.closure().upvalues().as_ref().unwrap()[index as usize].clone();
                     stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
                 }
                 Opcode::REF_LOCAL => {
@@ -488,16 +496,14 @@ impl Fiber {
                     let cls: &ClosureObj = &*cls_rc;
                     let next_frame = CallFrame::with_closure(cls_rc.clone(), stack.len());
                     match &*cls {
-                        ClosureObj::Real(f, _) => {
-                            let next_func = &objs.functions[*f];
+                        ClosureObj::Gos(cls) => {
+                            let next_func = &objs.functions[cls.func];
                             stack.append(&mut next_func.ret_zeros.clone());
-                        }
-                        ClosureObj::Method(f, recv) => {
-                            let next_func = &objs.functions[*f];
-                            stack.append(&mut next_func.ret_zeros.clone());
-                            // push receiver on stack as the first parameter
-                            // don't call copy_semantic because BIND_METHOD did it already
-                            stack.push(recv.clone());
+                            if let Some(r) = &cls.recv {
+                                // push receiver on stack as the first parameter
+                                // don't call copy_semantic because BIND_METHOD did it already
+                                stack.push(r.clone());
+                            }
                         }
                         ClosureObj::Ffi(_) => {}
                     }
@@ -761,14 +767,15 @@ impl Fiber {
                     let new_val = match param {
                         GosValue::Function(fkey) => {
                             // NEW a closure
-                            let func = &objs.functions[*fkey];
-                            let val = ClosureObj::new_real(*fkey, Some(func.up_ptrs.clone()));
-                            for uv in val.upvalues().iter() {
-                                drop(frame);
-                                let desc = uv.desc();
-                                let upframe = upframe!(self.frames.iter_mut().rev(), desc.func);
-                                upframe.add_referred_by(desc.index, desc.typ, uv);
-                                frame = self.frames.last_mut().unwrap();
+                            let val = ClosureObj::new_gos(*fkey, &objs.functions, None);
+                            if let Some(uvs) = val.upvalues() {
+                                for uv in uvs.iter() {
+                                    drop(frame);
+                                    let desc = uv.desc();
+                                    let upframe = upframe!(self.frames.iter_mut().rev(), desc.func);
+                                    upframe.add_referred_by(desc.index, desc.typ, uv);
+                                    frame = self.frames.last_mut().unwrap();
+                                }
                             }
                             GosValue::Closure(Rc::new(val))
                         }

@@ -1,12 +1,56 @@
 package main
 
+import "fmt"
+
+type TestKey struct {
+    i int
+    s string
+}
+
+func ptr() *int {
+	i := 100
+	return &i
+}
 
 func main() {
 
     var errNil error
 	var mapNil map[int]string
-	mapNil[1] = "aa"
+	//mapNil[1] = "aa"
+
+    m := make(map[int]string)
+    m[1] = "bb"
 
     assert(errNil == nil)
     assert(mapNil == nil)
+    assert(m != nil)
+
+    ms := make(map[string]int)
+    ms["aa"] = 1
+    assert(ms["aa"] == 1)
+
+    mss := make(map[TestKey]int)
+    mss[TestKey{1,"a"}] = 2
+    assert(mss[TestKey{1,"a"}] == 2)
+    assert(mss[TestKey{1,"b"}] == 0)
+
+    mi := make(map[interface{}]int)
+    mi[1] = 1
+    mi["a"] = 2
+    assert(mi[1] == 1)
+    assert(mi["a"] == 2)
+    mi["a"] = mi[1]
+    assert(mi["a"] == 1)
+
+    //var i int
+    mp := make(map[*int]int)
+    mp[ptr()] = 8
+    //assert(mp[ptr()] == 8)
+
+    p := ptr()
+    fmt.Println(*p)
+
+    //assert(*ptr() == 100)
+
+
 }

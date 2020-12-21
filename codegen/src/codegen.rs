@@ -840,7 +840,10 @@ impl<'a> CodeGen<'a> {
         let f = GosValue::new_function(pkey, fmeta, &mut self.objects, true);
         let fkey = *f.as_function();
         // the 0th member is the constructor
-        self.objects.packages[pkey].add_member(String::new(), GosValue::new_closure(fkey));
+        self.objects.packages[pkey].add_member(
+            String::new(),
+            GosValue::new_closure(fkey, &self.objects.functions),
+        );
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
 
@@ -1085,18 +1088,48 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) {
-        let t = self.tlookup.get_expr_value_type(expr);
         let pos = Some(expr.pos(&self.ast_objs));
         if op == &Token::AND {
             match expr {
-                Expr::Ident(ident) => {
-                    let index = self.resolve_ident(ident);
+                Expr::Ident(ikey) => {
+                    let index = self.resolve_ident(ikey);
                     match index {
                         EntIndex::LocalVar(i) => {
-                            let func = current_func_mut!(self);
-                            func.emit_inst(Opcode::REF_LOCAL, [Some(t), None, None], Some(i), pos);
+                            let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
+                            let t = meta.get_value_type(&self.objects.metas);
+                            if meta
+                                .get_underlying(&self.objects.metas)
+                                .get_value_type(&self.objects.metas)
+                                == ValueType::Struct
+                            {
+                                let func = current_func_mut!(self);
+                                func.emit_inst(
+                                    Opcode::REF_LOCAL,
+                                    [Some(t), None, None],
+                                    Some(i),
+                                    pos,
+                                );
+                            } else {
+                                let ident = &self.ast_objs.idents[*ikey];
+                                let entity_key = ident.entity_key().unwrap();
+                                let func = current_func_mut!(self);
+                                let ind = *func.entity_index(&entity_key).unwrap();
+                                let desc = ValueDesc {
+                                    func: *self.func_stack.last().unwrap(),
+                                    index: ind.into(),
+                                    typ: t,
+                                };
+                                let index = func.add_upvalue(&entity_key, desc);
+                                func.emit_inst(
+                                    Opcode::REF_UPVALUE,
+                                    [Some(t), None, None],
+                                    Some(index.into()),
+                                    pos,
+                                );
+                            }
                         }
                         EntIndex::UpValue(i) => {
+                            let t = self.tlookup.get_expr_value_type(expr);
                             let func = current_func_mut!(self);
                             func.emit_inst(
                                 Opcode::REF_UPVALUE,
@@ -1178,7 +1211,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     );
                     current_func_mut!(self).emit_inst(
                         Opcode::REF_LOCAL,
-                        [Some(t), None, None],
+                        [Some(typ), None, None],
                         Some(index.into()),
                         pos,
                     );
@@ -1202,6 +1235,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 unreachable!()
             }
         };
+        let t = self.tlookup.get_expr_value_type(expr);
         current_func_mut!(self).emit_code_with_type(code, t, pos);
     }
 
@@ -1348,7 +1382,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let tc_type = self.tlookup.get_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
-        let cls = GosValue::new_closure(fkey);
+        let cls = GosValue::new_closure(fkey, &self.objects.functions);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];

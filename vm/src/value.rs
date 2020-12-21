@@ -259,8 +259,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(fkey: FunctionKey) -> GosValue {
-        let val = ClosureObj::new_real(fkey, None);
+    pub fn new_closure(fkey: FunctionKey, fobjs: &FunctionObjs) -> GosValue {
+        let val = ClosureObj::new_gos(fkey, fobjs, None);
         GosValue::Closure(Rc::new(val))
     }
 
@@ -571,47 +571,67 @@ impl PartialOrd for GosValue {
     }
 }
 
-impl Ord for GosValue {
-    fn cmp(&self, b: &Self) -> Ordering {
-        match (self, b) {
-            // todo: not the "correct" implementation yet,
-            (GosValue::Bool(x), GosValue::Bool(y)) => x.cmp(y),
-            (GosValue::Int(x), GosValue::Int(y)) => x.cmp(y),
-            (GosValue::Float64(x), GosValue::Float64(y)) => {
-                match x.partial_cmp(y) {
-                    Some(order) => order,
-                    None => Ordering::Less, // todo: not "correct" implementation
-                }
-            }
-            //(GosValue::Complex64(_, _), GosValue::Complex64(_, _)) => unreachable!(),
-            (GosValue::Str(sa), GosValue::Str(sb)) => sa.cmp(&*sb),
-            //(GosValue::Slice(_), GosValue::Slice(_)) => unreachable!(),
-            _ => {
-                dbg!(self, b);
-                unimplemented!()
-            }
-        }
-    }
-}
-
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self {
             GosValue::Bool(b) => b.hash(state),
             GosValue::Int(i) => i.hash(state),
+            GosValue::Int8(i) => i.hash(state),
+            GosValue::Int16(i) => i.hash(state),
+            GosValue::Int32(i) => i.hash(state),
+            GosValue::Int64(i) => i.hash(state),
+            GosValue::Uint(i) => i.hash(state),
+            GosValue::Uint8(i) => i.hash(state),
+            GosValue::Uint16(i) => i.hash(state),
+            GosValue::Uint32(i) => i.hash(state),
+            GosValue::Uint64(i) => i.hash(state),
+            GosValue::Float32(f) => f.to_bits().hash(state),
             GosValue::Float64(f) => f.to_bits().hash(state),
             GosValue::Str(s) => s.as_str().hash(state),
-            /*
-            GosValue::Slice(s) => {s.as_ref().borrow().hash(state);}
-            GosValue::Map(_) => {unreachable!()}
+            GosValue::Complex64(i, r) => {
+                i.hash(state);
+                r.hash(state);
+            }
+            GosValue::Complex128(c) => {
+                c.0.hash(state);
+                c.1.hash(state);
+            }
             GosValue::Struct(s) => {
-                for item in s.as_ref().borrow().iter() {
-                    item.hash(state);
-                }}
-            GosValue::Interface(i) => {i.as_ref().hash(state);}
-            GosValue::Closure(_) => {unreachable!()}
-            GosValue::Channel(s) => {s.as_ref().borrow().hash(state);}*/
+                s.borrow().hash(state);
+            }
+            GosValue::Interface(i) => {
+                i.borrow().hash(state);
+            }
+            GosValue::Pointer(p) => {
+                PointerObj::hash(p, state);
+            }
+            GosValue::Named(n) => n.0.hash(state),
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Ord for GosValue {
+    fn cmp(&self, b: &Self) -> Ordering {
+        match (self, b) {
+            (Self::Bool(x), Self::Bool(y)) => x.cmp(y),
+            (Self::Int(x), Self::Int(y)) => x.cmp(y),
+            (Self::Int8(x), Self::Int8(y)) => x.cmp(y),
+            (Self::Int16(x), Self::Int16(y)) => x.cmp(y),
+            (Self::Int32(x), Self::Int32(y)) => x.cmp(y),
+            (Self::Int64(x), Self::Int64(y)) => x.cmp(y),
+            (Self::Uint(x), Self::Uint(y)) => x.cmp(y),
+            (Self::Uint8(x), Self::Uint8(y)) => x.cmp(y),
+            (Self::Uint16(x), Self::Uint16(y)) => x.cmp(y),
+            (Self::Uint32(x), Self::Uint32(y)) => x.cmp(y),
+            (Self::Uint64(x), Self::Uint64(y)) => x.cmp(y),
+            (Self::Float32(x), Self::Float32(y)) => x.cmp(y),
+            (Self::Float64(x), Self::Float64(y)) => x.cmp(y),
+            (Self::Str(x), Self::Str(y)) => x.cmp(y),
+            _ => {
+                dbg!(self, b);
+                unreachable!()
+            }
         }
     }
 }

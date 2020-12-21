@@ -10,7 +10,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::rc::{Rc, Weak};
 
@@ -515,6 +515,15 @@ impl PartialEq for StructObj {
     }
 }
 
+impl Hash for StructObj {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for f in self.fields.iter() {
+            f.hash(state)
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // InterfaceObj
 
@@ -603,6 +612,17 @@ impl PartialEq for InterfaceObj {
     }
 }
 
+impl Hash for InterfaceObj {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self.underlying() {
+            IfaceUnderlying::Gos(v, _) => v.hash(state),
+            IfaceUnderlying::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
+            IfaceUnderlying::None => 0.hash(state),
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // ChannelObj
 
@@ -681,6 +701,27 @@ impl PartialEq for PointerObj {
     }
 }
 
+impl Hash for PointerObj {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            Self::UpVal(x) => x.hash(state),
+            Self::LocalRefType(s, _) => Rc::as_ptr(s).hash(state),
+            Self::SliceMember(s, index) => {
+                Rc::as_ptr(s).hash(state);
+                index.hash(state);
+            }
+            Self::StructField(s, index) => {
+                Rc::as_ptr(s).hash(state);
+                index.hash(state);
+            }
+            Self::PkgMember(p, index) => {
+                p.hash(state);
+                index.hash(state);
+            }
+        }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // ClosureObj
 
@@ -745,6 +786,20 @@ impl UpValue {
     }
 }
 
+impl Hash for UpValue {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let b: &UpValueState = &self.inner.borrow();
+        match b {
+            UpValueState::Open(desc) => desc.index.hash(state),
+            UpValueState::Closed(_) => {
+                dbg!(&self.inner);
+                Rc::as_ptr(&self.inner).hash(state)
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WeakUpValue {
     pub inner: Weak<RefCell<UpValueState>>,
@@ -756,44 +811,54 @@ impl WeakUpValue {
     }
 }
 
-/// ClosureObj is a variable containing a pinter to a function and
-/// a. upvalues, in which case, it is a "real" closure
-/// b. a receiver, in which case, it is a bound-method
-/// c. a ffi bound-method
-///
+#[derive(Clone, Debug)]
+pub struct FfiClosureObj {
+    pub ffi: Rc<RefCell<dyn Ffi>>,
+    pub func_name: String,
+    pub meta: MetadataKey,
+}
+
+#[derive(Clone, Debug)]
+pub struct GosClosureObj {
+    pub func: FunctionKey,
+    // uvs are used in two cases
+    // - a real "upvalue" of a real closure
+    // - a local var that has pointer(s) point to it
+    pub uvs: Option<Vec<UpValue>>,
+    pub recv: Option<GosValue>,
+}
+
 #[derive(Clone, Debug)]
 pub enum ClosureObj {
-    Real(FunctionKey, Option<Vec<UpValue>>),
-    Method(FunctionKey, GosValue),
+    Gos(GosClosureObj),
     Ffi(FfiClosureObj),
 }
 
 impl ClosureObj {
     #[inline]
-    pub fn new_real(key: FunctionKey, upvalues: Option<Vec<ValueDesc>>) -> ClosureObj {
-        ClosureObj::Real(
-            key,
-            upvalues.map(|uvs| uvs.into_iter().map(|x| UpValue::new(x)).collect()),
-        )
+    pub fn new_gos(key: FunctionKey, fobjs: &FunctionObjs, recv: Option<GosValue>) -> ClosureObj {
+        let func = &fobjs[key];
+        let uvs = if func.up_ptrs.len() > 0 {
+            Some(
+                func.up_ptrs
+                    .iter()
+                    .map(|x| UpValue::new(x.clone()))
+                    .collect(),
+            )
+        } else {
+            None
+        };
+        ClosureObj::Gos(GosClosureObj {
+            func: key,
+            uvs: uvs,
+            recv: recv,
+        })
     }
 
     #[inline]
-    pub fn new_method(key: FunctionKey, recv: GosValue) -> ClosureObj {
-        ClosureObj::Method(key, recv)
-    }
-
-    #[inline]
-    pub fn is_real(&self) -> bool {
+    pub fn upvalues(&self) -> &Option<Vec<UpValue>> {
         match self {
-            Self::Real(_, _) => true,
-            _ => false,
-        }
-    }
-
-    #[inline]
-    pub fn upvalues(&self) -> &Vec<UpValue> {
-        match self {
-            Self::Real(_, uvs) => uvs.as_ref().unwrap(),
+            Self::Gos(cls) => &cls.uvs,
             _ => unreachable!(),
         }
     }
@@ -801,21 +866,10 @@ impl ClosureObj {
     #[inline]
     pub fn func(&self) -> FunctionKey {
         match self {
-            Self::Real(f, _) => *f,
-            Self::Method(f, _) => *f,
+            Self::Gos(cls) => cls.func,
             Self::Ffi(_) => unreachable!(),
         }
     }
-}
-
-// ----------------------------------------------------------------------------
-// FfiClosureObj
-
-#[derive(Clone, Debug)]
-pub struct FfiClosureObj {
-    pub ffi: Rc<RefCell<dyn Ffi>>,
-    pub func_name: String,
-    pub meta: MetadataKey,
 }
 
 // ----------------------------------------------------------------------------
@@ -1137,16 +1191,17 @@ impl FunctionVal {
     }
 
     pub fn try_add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
-        self.entities
-            .get(entity)
-            .map(|x| *x)
-            .or_else(|| {
-                self.up_ptrs.push(uv);
-                let i = (self.up_ptrs.len() - 1).try_into().ok();
-                let et = EntIndex::UpValue(i.unwrap());
-                self.entities.insert(*entity, et);
-                i.map(|x| EntIndex::UpValue(x))
-            })
-            .unwrap()
+        match self.entities.get(entity) {
+            Some(i) => *i,
+            None => self.add_upvalue(entity, uv),
+        }
+    }
+
+    pub fn add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
+        self.up_ptrs.push(uv);
+        let i = (self.up_ptrs.len() - 1).try_into().unwrap();
+        let et = EntIndex::UpValue(i);
+        self.entities.insert(*entity, et);
+        et
     }
 }

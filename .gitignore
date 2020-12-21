@@ -17,3 +17,4 @@ backend/.vscode/
 backup/
 
 .VSCodeCounter/
+.vscode/settings.json
