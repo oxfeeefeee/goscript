@@ -1098,10 +1098,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         EntIndex::LocalVar(i) => {
                             let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
                             let t = meta.get_value_type(&self.objects.metas);
-                            if meta
+                            let ut = meta
                                 .get_underlying(&self.objects.metas)
-                                .get_value_type(&self.objects.metas)
-                                == ValueType::Struct
+                                .get_value_type(&self.objects.metas);
+                            if ut == ValueType::Struct
+                                || ut == ValueType::Slice
+                                || ut == ValueType::Map
                             {
                                 let func = current_func_mut!(self);
                                 func.emit_inst(

@@ -43,6 +43,14 @@ func main() {
     *psl = 3
     assert(sl1[0] == 3) 
 
+    sl1p := &sl1
+    (*sl1p)[0] = 8
+    assert(sl1[0] == 8)
+
+    var m1 = map[int]int{1:2, 3: 888}
+    m1p := &m1
+    (*m1p)[3] = 88
+    assert(m1[3] == 88)
 
     {
         var d = &pkgVarA
