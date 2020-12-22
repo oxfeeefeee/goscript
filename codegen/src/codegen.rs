@@ -363,6 +363,7 @@ impl<'a> CodeGen<'a> {
                 for (_, _, pos) in lhs.iter() {
                     let mut emitter = current_func_emitter!(self);
                     let i = emitter.add_const(None, val.clone());
+                    dbg!(&val, i);
                     emitter.emit_load(i, None, self.tlookup.value_type_from_tc(t), Some(*pos));
                     types.push(t);
                 }
@@ -1193,26 +1194,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                 },
                 Expr::CompositeLit(clit) => {
-                    // add composite literal as a local var
-                    let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
-                    let typ = meta.get_value_type(&self.objects.metas);
-                    let zero_val = meta.zero_val(&self.objects.metas);
-                    let func = current_func_mut!(self);
-                    let index = func.add_local(None);
-                    func.add_local_zero(zero_val);
                     self.visit_expr_composit_lit(this, clit);
-                    current_func_emitter!(self).emit_store(
-                        &LeftHandSide::Primitive(index),
-                        -1,
-                        None,
-                        None,
-                        typ,
-                        pos,
-                    );
+                    let typ = self.tlookup.get_expr_value_type(expr);
                     current_func_mut!(self).emit_inst(
                         Opcode::REF_LOCAL,
                         [Some(typ), None, None],
-                        Some(index.into()),
+                        Some(-1),
                         pos,
                     );
                 }

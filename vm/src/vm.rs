@@ -361,11 +361,22 @@ impl Fiber {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(uv, self, stack, frame, rhs_index, inst.t0());
                                 }
-                                PointerObj::LocalRefType(r, _) => {
+                                PointerObj::Struct(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     let mref: &mut StructObj = &mut r.borrow_mut();
                                     *mref = val.try_get_struct().unwrap().borrow().clone();
+                                }
+                                PointerObj::Slice(r, _) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    unimplemented!()
+                                }
+                                PointerObj::Map(r, _) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    let mref: &mut GosHashMap = &mut r.map.borrow_mut();
+                                    *mref = val.try_get_map().unwrap().map.borrow().clone();
                                 }
                                 PointerObj::SliceMember(s, index) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
@@ -440,15 +451,13 @@ impl Fiber {
                 }
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
-                    let s_index = Stack::offset(stack_base, inst.imm());
-                    let boxed = PointerObj::new_local(
-                        stack.get_with_type(s_index, t),
-                        ValueDesc {
-                            func: frame.func(),
-                            index: s_index as OpIndex,
-                            typ: t,
-                        },
-                    );
+                    let val = if inst.imm() >= 0 {
+                        let s_index = Stack::offset(stack_base, inst.imm());
+                        stack.get_with_type(s_index, t)
+                    } else {
+                        stack.pop_with_type(t)
+                    };
+                    let boxed = PointerObj::new_local(val);
                     stack.push(GosValue::new_pointer(boxed));
                 }
                 Opcode::REF_SLICE_MEMBER => {

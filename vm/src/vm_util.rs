@@ -64,9 +64,17 @@ macro_rules! deref_value {
             GosValue::Pointer(b) => {
                 match *b {
                     PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
-                    PointerObj::LocalRefType(s, md) => match md {
+                    PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s),
                         _ => GosValue::Named(Box::new((GosValue::Struct(s), md))),
+                    }
+                    PointerObj::Slice(s, md) => match md {
+                        GosMetadata::Untyped => GosValue::Slice(s),
+                        _ => GosValue::Named(Box::new((GosValue::Slice(s), md))),
+                    }
+                    PointerObj::Map(s, md) => match md {
+                        GosMetadata::Untyped => GosValue::Map(s),
+                        _ => GosValue::Named(Box::new((GosValue::Map(s), md))),
                     }
                     PointerObj::SliceMember(s, index) => s.get(index as usize).unwrap(),
                     PointerObj::StructField(s, index) => s.borrow().fields[index as usize].clone(),

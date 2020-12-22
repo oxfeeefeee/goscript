@@ -193,7 +193,7 @@ pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
 pub struct MapObj {
     pub dark: bool,
     default_val: RefCell<GosValue>,
-    map: Rc<RefCell<GosHashMap>>,
+    pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
@@ -637,12 +637,14 @@ pub struct ChannelObj {}
 /// - struct field
 /// - package member
 /// and for pointers to locals, the default way of handling it is to use "UpValue"
-/// (PointerObj::UpVal). LocalRefType is a optimization for this type, when
+/// (PointerObj::UpVal). Struct/Map/Slice are optimizations for this type, when
 /// the pointee has a "real" pointer
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    LocalRefType(Rc<RefCell<StructObj>>, GosMetadata),
+    Struct(Rc<RefCell<StructObj>>, GosMetadata),
+    Slice(Rc<SliceObj>, GosMetadata),
+    Map(Rc<MapObj>, GosMetadata),
     SliceMember(Rc<SliceObj>, OpIndex),
     StructField(Rc<RefCell<StructObj>>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -650,14 +652,24 @@ pub enum PointerObj {
 
 impl PointerObj {
     #[inline]
-    pub fn new_local(val: GosValue, d: ValueDesc) -> PointerObj {
+    pub fn new_local(val: GosValue) -> PointerObj {
         match val {
             GosValue::Named(s) => match &s.0 {
-                GosValue::Struct(stru) => PointerObj::LocalRefType(stru.clone(), s.1),
-                _ => PointerObj::UpVal(UpValue::new(d)),
+                GosValue::Struct(stru) => PointerObj::Struct(stru.clone(), s.1),
+                GosValue::Slice(slice) => PointerObj::Slice(slice.clone(), s.1),
+                GosValue::Map(map) => PointerObj::Map(map.clone(), s.1),
+                _ => {
+                    dbg!(s);
+                    unreachable!()
+                }
             },
-            GosValue::Struct(s) => PointerObj::LocalRefType(s.clone(), GosMetadata::Untyped),
-            _ => PointerObj::UpVal(UpValue::new(d)),
+            GosValue::Struct(s) => PointerObj::Struct(s.clone(), GosMetadata::Untyped),
+            GosValue::Slice(s) => PointerObj::Slice(s.clone(), GosMetadata::Untyped),
+            GosValue::Map(m) => PointerObj::Map(m.clone(), GosMetadata::Untyped),
+            _ => {
+                dbg!(val);
+                unreachable!()
+            }
         }
     }
 
@@ -676,7 +688,7 @@ impl PointerObj {
     #[inline]
     pub fn set_local_ref_type(&self, val: GosValue) {
         match self {
-            Self::LocalRefType(v, _) => {
+            Self::Struct(v, _) => {
                 let mref: &mut StructObj = &mut v.borrow_mut();
                 *mref = val.try_get_struct().unwrap().borrow().clone();
             }
@@ -692,7 +704,9 @@ impl PartialEq for PointerObj {
     fn eq(&self, other: &PointerObj) -> bool {
         match (self, other) {
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
-            (Self::LocalRefType(x, _), Self::LocalRefType(y, _)) => x == y,
+            (Self::Struct(x, _), Self::Struct(y, _)) => x == y,
+            (Self::Slice(x, _), Self::Slice(y, _)) => x == y,
+            (Self::Map(x, _), Self::Map(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
@@ -705,7 +719,9 @@ impl Hash for PointerObj {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Self::UpVal(x) => x.hash(state),
-            Self::LocalRefType(s, _) => Rc::as_ptr(s).hash(state),
+            Self::Struct(s, _) => Rc::as_ptr(s).hash(state),
+            Self::Slice(s, _) => Rc::as_ptr(s).hash(state),
+            Self::Map(s, _) => Rc::as_ptr(s).hash(state),
             Self::SliceMember(s, index) => {
                 Rc::as_ptr(s).hash(state);
                 index.hash(state);

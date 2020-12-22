@@ -376,6 +376,14 @@ impl GosValue {
         }
     }
 
+    pub fn try_get_map(&self) -> Option<&Rc<MapObj>> {
+        match &self {
+            GosValue::Map(_) => Some(self.as_map()),
+            GosValue::Named(n) => Some(n.0.as_map()),
+            _ => None,
+        }
+    }
+
     #[inline]
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
@@ -471,8 +479,16 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
                         }
                     }
-                    PointerObj::LocalRefType(s, named_md) => match named_md {
+                    PointerObj::Struct(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.borrow().meta,
+                        _ => *named_md,
+                    },
+                    PointerObj::Slice(_, named_md) => match named_md {
+                        GosMetadata::Untyped => unimplemented!(),
+                        _ => *named_md,
+                    },
+                    PointerObj::Map(_, named_md) => match named_md {
+                        GosMetadata::Untyped => unimplemented!(),
                         _ => *named_md,
                     },
                     PointerObj::StructField(sobj, index) => {
