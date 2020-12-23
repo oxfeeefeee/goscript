@@ -370,7 +370,7 @@ impl Fiber {
                                 PointerObj::Slice(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    unimplemented!()
+                                    r.set_from(val.as_slice());
                                 }
                                 PointerObj::Map(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
@@ -379,19 +379,19 @@ impl Fiber {
                                     *mref = val.try_get_map().unwrap().map.borrow().clone();
                                 }
                                 PointerObj::SliceMember(s, index) => {
-                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    s.set(index as usize, val);
+                                    let vborrow = s.vec.borrow();
+                                    let target: &mut GosValue =
+                                        &mut vborrow[s.begin() + index as usize].borrow_mut();
+                                    stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::StructField(s, index) => {
-                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    s.borrow_mut().fields[index as usize] = val;
+                                    let target: &mut GosValue =
+                                        &mut s.borrow_mut().fields[index as usize];
+                                    stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::PkgMember(p, index) => {
-                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    *objs.packages[p].member_mut(index) = val;
+                                    let target: &mut GosValue = objs.packages[p].member_mut(index);
+                                    stack.store_val(target, rhs_index, inst.t0());
                                 }
                             };
                         }
@@ -519,19 +519,29 @@ impl Fiber {
                     self.next_frames.push(next_frame);
                 }
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
-                    self.frames.push(self.next_frames.pop().unwrap());
-                    frame = self.frames.last_mut().unwrap();
-                    let cls: &ClosureObj = &*frame.closure();
+                    let nframe = self.next_frames.pop().unwrap();
+                    let cls: &ClosureObj = &*nframe.closure();
                     match cls {
                         ClosureObj::Ffi(call) => {
                             let ptypes = &objs.metas[call.meta].as_signature().params_type;
                             let params = stack.pop_with_type_n(ptypes);
                             let mut returns = call.ffi.borrow().call(&call.func_name, params);
                             stack.append(&mut returns);
-                            self.frames.pop();
-                            frame = self.frames.last_mut().unwrap();
                         }
-                        _ => {
+                        ClosureObj::Gos(goscls) => {
+                            self.frames.push(nframe);
+                            frame = self.frames.last_mut().unwrap();
+                            /*
+                            if let Some(uvs) = &goscls.uvs {
+                                for uv in uvs.iter() {
+                                    drop(frame);
+                                    let desc = uv.desc();
+                                    let upframe = upframe!(self.frames.iter_mut().rev(), desc.func);
+                                    upframe.add_referred_by(desc.index, desc.typ, uv);
+                                    frame = self.frames.last_mut().unwrap();
+                                }
+                            }*/
+
                             func = &objs.functions[frame.func()];
                             stack_base = frame.stack_base;
                             consts = &func.consts;

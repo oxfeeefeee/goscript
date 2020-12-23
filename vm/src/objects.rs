@@ -5,6 +5,7 @@ use super::metadata::*;
 use super::value::GosValue;
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
+use std::cell::Cell;
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -296,10 +297,10 @@ pub type GosVec = Vec<RefCell<GosValue>>;
 #[derive(Debug)]
 pub struct SliceObj {
     pub dark: bool,
-    begin: usize,
-    end: usize,
-    soft_cap: usize, // <= self.vec.capacity()
-    vec: Rc<RefCell<GosVec>>,
+    begin: Cell<usize>,
+    end: Cell<usize>,
+    soft_cap: Cell<usize>, // <= self.vec.capacity()
+    pub vec: Rc<RefCell<GosVec>>,
 }
 
 impl<'a> SliceObj {
@@ -307,9 +308,9 @@ impl<'a> SliceObj {
         assert!(cap >= len);
         let mut val = SliceObj {
             dark: false,
-            begin: 0,
-            end: 0,
-            soft_cap: cap,
+            begin: Cell::from(0),
+            end: Cell::from(0),
+            soft_cap: Cell::from(cap),
             vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
         };
         for _ in 0..len {
@@ -321,35 +322,57 @@ impl<'a> SliceObj {
     pub fn with_data(val: Vec<GosValue>) -> SliceObj {
         SliceObj {
             dark: false,
-            begin: 0,
-            end: val.len(),
-            soft_cap: val.len(),
+            begin: Cell::from(0),
+            end: Cell::from(val.len()),
+            soft_cap: Cell::from(val.len()),
             vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
             )),
         }
     }
 
+    pub fn set_from(&self, other: &SliceObj) {
+        self.begin.set(other.begin());
+        self.end.set(other.end());
+        self.soft_cap.set(other.soft_cap());
+        *self.borrow_data_mut() = other.borrow_data().clone()
+    }
+
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
     pub fn deep_clone(&self) -> SliceObj {
-        let vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
+        let vec = Vec::from_iter(self.vec.borrow()[self.begin()..self.end()].iter().cloned());
         SliceObj {
             dark: false,
-            begin: 0,
-            end: self.cap(),
-            soft_cap: self.cap(),
+            begin: Cell::from(0),
+            end: Cell::from(self.cap()),
+            soft_cap: Cell::from(self.cap()),
             vec: Rc::new(RefCell::new(vec)),
         }
     }
 
     #[inline]
+    pub fn begin(&self) -> usize {
+        self.begin.get()
+    }
+
+    #[inline]
+    pub fn end(&self) -> usize {
+        self.end.get()
+    }
+
+    #[inline]
+    pub fn soft_cap(&self) -> usize {
+        self.soft_cap.get()
+    }
+
+    #[inline]
     pub fn len(&self) -> usize {
-        self.end - self.begin
+        self.end() - self.begin()
     }
 
     #[inline]
     pub fn cap(&self) -> usize {
-        self.soft_cap - self.begin
+        self.soft_cap() - self.begin()
     }
 
     #[inline]
@@ -371,7 +394,7 @@ impl<'a> SliceObj {
     pub fn push(&mut self, val: GosValue) {
         self.try_grow_vec(self.len() + 1);
         self.vec.borrow_mut().push(RefCell::new(val));
-        self.end += 1;
+        *self.end.get_mut() += 1;
     }
 
     #[inline]
@@ -379,20 +402,20 @@ impl<'a> SliceObj {
         let new_len = self.len() + vals.len();
         self.try_grow_vec(new_len);
         self.vec.borrow_mut().append(vals);
-        self.end = self.begin + new_len;
+        *self.end.get_mut() = self.begin() + new_len;
     }
 
     #[inline]
     pub fn get(&self, i: usize) -> Option<GosValue> {
         self.vec
             .borrow()
-            .get(self.begin + i)
+            .get(self.begin() + i)
             .map(|x| x.clone().into_inner())
     }
 
     #[inline]
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow()[self.begin + i].replace(val);
+        self.vec.borrow()[self.begin() + i].replace(val);
     }
 
     #[inline]
@@ -404,9 +427,9 @@ impl<'a> SliceObj {
         let mi = ((self_cap + max) % self_cap) as usize;
         SliceObj {
             dark: false,
-            begin: self.begin + bi,
-            end: self.begin + ei,
-            soft_cap: self.begin + mi,
+            begin: Cell::from(self.begin() + bi),
+            end: Cell::from(self.begin() + ei),
+            soft_cap: Cell::from(self.begin() + mi),
             vec: Rc::clone(&self.vec),
         }
     }
@@ -433,12 +456,12 @@ impl<'a> SliceObj {
             }
         }
         let data_len = self.len();
-        let mut vec = Vec::from_iter(self.vec.borrow()[self.begin..self.end].iter().cloned());
+        let mut vec = Vec::from_iter(self.vec.borrow()[self.begin()..self.end()].iter().cloned());
         vec.reserve_exact(cap - vec.len());
         self.vec = Rc::new(RefCell::new(vec));
-        self.begin = 0;
-        self.end = data_len;
-        self.soft_cap = cap;
+        self.begin.set(0);
+        self.end.set(data_len);
+        self.soft_cap.set(cap);
     }
 }
 
@@ -446,9 +469,9 @@ impl Clone for SliceObj {
     fn clone(&self) -> Self {
         SliceObj {
             dark: false,
-            begin: self.begin,
-            end: self.end,
-            soft_cap: self.soft_cap,
+            begin: self.begin.clone(),
+            end: self.end.clone(),
+            soft_cap: self.soft_cap.clone(),
             vec: Rc::clone(&self.vec),
         }
     }
@@ -468,8 +491,8 @@ impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceObj) -> SliceRef {
         SliceRef {
             vec_ref: s.vec.borrow(),
-            begin: s.begin,
-            end: s.end,
+            begin: s.begin(),
+            end: s.end(),
         }
     }
 
@@ -835,6 +858,12 @@ pub struct FfiClosureObj {
 }
 
 #[derive(Clone, Debug)]
+pub struct Referers {
+    typ: ValueType,
+    weaks: Vec<WeakUpValue>,
+}
+
+#[derive(Clone, Debug)]
 pub struct GosClosureObj {
     pub func: FunctionKey,
     // uvs are used in two cases
@@ -842,6 +871,33 @@ pub struct GosClosureObj {
     // - a local var that has pointer(s) point to it
     pub uvs: Option<Vec<UpValue>>,
     pub recv: Option<GosValue>,
+    // closures that have upvalues pointing to this one
+    pub referred_by: Option<HashMap<OpIndex, Referers>>,
+}
+
+impl GosClosureObj {
+    fn add_referred_by(&mut self, index: OpIndex, typ: ValueType, uv: &UpValue) {
+        if self.referred_by.is_none() {
+            self.referred_by = Some(HashMap::new());
+        }
+        let map = self.referred_by.as_mut().unwrap();
+        let weak = uv.downgrade();
+        match map.get_mut(&index) {
+            Some(v) => {
+                debug_assert!(v.typ == typ);
+                v.weaks.push(weak);
+            }
+            None => {
+                map.insert(
+                    index,
+                    Referers {
+                        typ: typ,
+                        weaks: vec![weak],
+                    },
+                );
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -868,6 +924,7 @@ impl ClosureObj {
             func: key,
             uvs: uvs,
             recv: recv,
+            referred_by: None,
         })
     }
 
@@ -875,6 +932,14 @@ impl ClosureObj {
     pub fn upvalues(&self) -> &Option<Vec<UpValue>> {
         match self {
             Self::Gos(cls) => &cls.uvs,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn gos_closure(&self) -> &GosClosureObj {
+        match self {
+            Self::Gos(cls) => cls,
             _ => unreachable!(),
         }
     }
@@ -1004,6 +1069,7 @@ pub struct FunctionVal {
 
     param_count: usize,
     entities: HashMap<EntityKey, EntIndex>,
+    uv_entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
     variadic_type: Option<ValueType>,
     is_ctor: bool,
@@ -1033,6 +1099,7 @@ impl FunctionVal {
                     local_zeros: Vec::new(),
                     param_count: params,
                     entities: HashMap::new(),
+                    uv_entities: HashMap::new(),
                     local_alloc: 0,
                     variadic_type: vtype,
                     is_ctor: ctor,
@@ -1207,17 +1274,17 @@ impl FunctionVal {
     }
 
     pub fn try_add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
-        match self.entities.get(entity) {
+        match self.uv_entities.get(entity) {
             Some(i) => *i,
             None => self.add_upvalue(entity, uv),
         }
     }
 
-    pub fn add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
+    fn add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
         self.up_ptrs.push(uv);
         let i = (self.up_ptrs.len() - 1).try_into().unwrap();
         let et = EntIndex::UpValue(i);
-        self.entities.insert(*entity, et);
+        self.uv_entities.insert(*entity, et);
         et
     }
 }

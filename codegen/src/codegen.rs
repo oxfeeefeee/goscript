@@ -1122,7 +1122,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                     index: ind.into(),
                                     typ: t,
                                 };
-                                let index = func.add_upvalue(&entity_key, desc);
+                                let index = func.try_add_upvalue(&entity_key, desc);
                                 func.emit_inst(
                                     Opcode::REF_UPVALUE,
                                     [Some(t), None, None],
