@@ -7,10 +7,11 @@ type TestKey struct {
     s string
 }
 
-func ptr() *int {
+func ptr() (*int, *int) {
 	i := 100
-	return &i
+	return &i, &i
 }
+
 
 func main() {
 
@@ -42,15 +43,14 @@ func main() {
     mi["a"] = mi[1]
     assert(mi["a"] == 1)
 
-    //var i int
+
     mp := make(map[*int]int)
-    mp[ptr()] = 8
-    //assert(mp[ptr()] == 8)
+    k, q := ptr()
+    r,_ := ptr()
+    mp[k] = 8
+    assert(mp[q] == 8)
+    assert(mp[r] == 0)
+    assert(*k == *r)
 
-    p := ptr()
-    fmt.Println(*p)
-
-    //assert(*ptr() == 100)
-
-
+    fmt.Println(k, q, r, *k, *q, *r)
 }

@@ -118,8 +118,10 @@ impl<'a> CodeGen<'a> {
                 if let Some(ind) = index {
                     let desc = ValueDesc {
                         func: *ifunc,
+                        frame: 0,
                         index: ind.into(),
                         typ: self.tlookup.get_use_value_type(*ident),
+                        is_up_value: true,
                     };
                     Some(desc)
                 } else {
@@ -1119,8 +1121,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                 let ind = *func.entity_index(&entity_key).unwrap();
                                 let desc = ValueDesc {
                                     func: *self.func_stack.last().unwrap(),
+                                    frame: 0,
                                     index: ind.into(),
                                     typ: t,
+                                    is_up_value: false,
                                 };
                                 let index = func.try_add_upvalue(&entity_key, desc);
                                 func.emit_inst(

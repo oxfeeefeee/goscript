@@ -4,12 +4,6 @@ use super::instruction::*;
 use super::value::{VMObjects, GosValue, RuntimeResult};
 use super::stack::Stack;
 
-macro_rules! upframe {
-    ($iter:expr, $f:expr) => {
-        $iter.find(|x| x.func() == $f).unwrap();
-    };
-}
-
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];
@@ -31,11 +25,13 @@ macro_rules! store_local {
 }
 
 macro_rules! load_up_value {
-    ($upvalue:expr, $self_:ident, $stack:ident, $frame:ident) => {{
+    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr) => {{
         let uv: &UpValueState = &$upvalue.inner.borrow();
         match &uv {
             UpValueState::Open(desc) => {
-                $stack.get_with_type(desc.index as usize, desc.typ)
+                let upframe = &$frames[desc.frame as usize];
+                let index = Stack::offset(upframe.stack_base, desc.index);
+                $stack.get_with_type(index, desc.typ)
             }
             UpValueState::Closed(val) => {
                 val.clone()
@@ -45,11 +41,13 @@ macro_rules! load_up_value {
 }
 
 macro_rules! store_up_value {
-    ($upvalue:expr, $self_:ident, $stack:ident, $frame:ident, $rhs_index:ident, $typ:expr) => {{
+    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr, $rhs_index:ident, $typ:expr) => {{
         let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
         match uv {
             UpValueState::Open(desc) => {
-                store_local!($stack, desc.index as usize, $rhs_index, $typ);
+                let upframe =&mut $frames[desc.frame as usize];
+                let index = Stack::offset(upframe.stack_base, desc.index);
+                store_local!($stack, index, $rhs_index, $typ);
             }
             UpValueState::Closed(v) => {
                 $stack.store_val(v, $rhs_index, $typ);
@@ -59,11 +57,11 @@ macro_rules! store_up_value {
 }
 
 macro_rules! deref_value {
-    ($pointers:expr, $self_:ident, $stack:ident, $frame:ident, $objs:expr) => {{
+    ($pointers:expr, $self_:ident, $stack:ident, $frames:expr, $objs:expr) => {{
         match $pointers {
             GosValue::Pointer(b) => {
                 match *b {
-                    PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frame),
+                    PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
                     PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s),
                         _ => GosValue::Named(Box::new((GosValue::Struct(s), md))),

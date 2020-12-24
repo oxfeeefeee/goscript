@@ -767,8 +767,10 @@ impl Hash for PointerObj {
 #[derive(Clone, Debug)]
 pub struct ValueDesc {
     pub func: FunctionKey,
+    pub frame: OpIndex,
     pub index: OpIndex,
     pub typ: ValueType,
+    pub is_up_value: bool,
 }
 
 impl Eq for ValueDesc {}
@@ -777,6 +779,18 @@ impl PartialEq for ValueDesc {
     #[inline]
     fn eq(&self, other: &ValueDesc) -> bool {
         self.index == other.index
+    }
+}
+
+impl ValueDesc {
+    pub fn clone_with_frame(&self, frame: OpIndex) -> ValueDesc {
+        ValueDesc {
+            func: self.func,
+            frame: frame,
+            index: self.index,
+            typ: self.typ,
+            is_up_value: self.is_up_value,
+        }
     }
 }
 
@@ -831,10 +845,7 @@ impl Hash for UpValue {
         let b: &UpValueState = &self.inner.borrow();
         match b {
             UpValueState::Open(desc) => desc.index.hash(state),
-            UpValueState::Closed(_) => {
-                dbg!(&self.inner);
-                Rc::as_ptr(&self.inner).hash(state)
-            }
+            UpValueState::Closed(_) => Rc::as_ptr(&self.inner).hash(state),
         }
     }
 }
@@ -864,91 +875,43 @@ pub struct Referers {
 }
 
 #[derive(Clone, Debug)]
-pub struct GosClosureObj {
-    pub func: FunctionKey,
-    // uvs are used in two cases
-    // - a real "upvalue" of a real closure
-    // - a local var that has pointer(s) point to it
-    pub uvs: Option<Vec<UpValue>>,
+pub struct ClosureObj {
+    pub func: Option<FunctionKey>,
+    pub uvs: Option<HashMap<usize, UpValue>>,
     pub recv: Option<GosValue>,
-    // closures that have upvalues pointing to this one
-    pub referred_by: Option<HashMap<OpIndex, Referers>>,
-}
 
-impl GosClosureObj {
-    fn add_referred_by(&mut self, index: OpIndex, typ: ValueType, uv: &UpValue) {
-        if self.referred_by.is_none() {
-            self.referred_by = Some(HashMap::new());
-        }
-        let map = self.referred_by.as_mut().unwrap();
-        let weak = uv.downgrade();
-        match map.get_mut(&index) {
-            Some(v) => {
-                debug_assert!(v.typ == typ);
-                v.weaks.push(weak);
-            }
-            None => {
-                map.insert(
-                    index,
-                    Referers {
-                        typ: typ,
-                        weaks: vec![weak],
-                    },
-                );
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum ClosureObj {
-    Gos(GosClosureObj),
-    Ffi(FfiClosureObj),
+    pub ffi: Option<Box<FfiClosureObj>>,
 }
 
 impl ClosureObj {
-    #[inline]
     pub fn new_gos(key: FunctionKey, fobjs: &FunctionObjs, recv: Option<GosValue>) -> ClosureObj {
         let func = &fobjs[key];
-        let uvs = if func.up_ptrs.len() > 0 {
+        let uvs: Option<HashMap<usize, UpValue>> = if func.up_ptrs.len() > 0 {
             Some(
                 func.up_ptrs
                     .iter()
-                    .map(|x| UpValue::new(x.clone()))
+                    .enumerate()
+                    .filter(|(_, x)| x.is_up_value)
+                    .map(|(i, x)| (i, UpValue::new(x.clone())))
                     .collect(),
             )
         } else {
             None
         };
-        ClosureObj::Gos(GosClosureObj {
-            func: key,
+        ClosureObj {
+            func: Some(key),
             uvs: uvs,
             recv: recv,
-            referred_by: None,
-        })
-    }
-
-    #[inline]
-    pub fn upvalues(&self) -> &Option<Vec<UpValue>> {
-        match self {
-            Self::Gos(cls) => &cls.uvs,
-            _ => unreachable!(),
+            ffi: None,
         }
     }
 
-    #[inline]
-    pub fn gos_closure(&self) -> &GosClosureObj {
-        match self {
-            Self::Gos(cls) => cls,
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
-    pub fn func(&self) -> FunctionKey {
-        match self {
-            Self::Gos(cls) => cls.func,
-            Self::Ffi(_) => unreachable!(),
+    pub fn new_ffi(ffi: FfiClosureObj) -> ClosureObj {
+        ClosureObj {
+            func: None,
+            uvs: None,
+            recv: None,
+            ffi: Some(Box::new(ffi)),
         }
     }
 }
