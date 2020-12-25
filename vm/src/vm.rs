@@ -568,11 +568,11 @@ impl Fiber {
                             dbg!(&code);
                             //dbg!(&stack);
 
-                            if let Some(vt) = func.variadic() {
+                            if let Some((meta, vt)) = func.variadic() {
                                 if inst_op != Opcode::CALL_ELLIPSIS {
                                     let index =
                                         stack_base + func.param_count() + func.ret_count() - 1;
-                                    stack.pack_variadic(index, vt, &mut objs.slices);
+                                    stack.pack_variadic(index, meta, vt, &mut objs.slices);
                                 }
                             }
 
@@ -582,7 +582,9 @@ impl Fiber {
                         }
                         None => {
                             let call = cls.ffi.as_ref().unwrap();
-                            let ptypes = &objs.metas[call.meta].as_signature().params_type;
+                            let ptypes = &objs.metas[call.meta.as_non_ptr()]
+                                .as_signature()
+                                .params_type;
                             let params = stack.pop_with_type_n(ptypes);
                             let mut returns = call.ffi.borrow().call(&call.func_name, params);
                             stack.append(&mut returns);
@@ -749,8 +751,7 @@ impl Fiber {
                         IfaceUnderlying::Gos(v, _) => v.copy_semantic(),
                         _ => GosValue::new_nil(),
                     };
-                    let meta =
-                        GosValue::Metadata(val.get_meta(&objs.metadata, &objs.packages, stack));
+                    let meta = GosValue::Metadata(val.get_meta(objs, stack));
                     stack.push(val);
                     let ok = &consts[inst.imm() as usize] == &meta;
                     let do_try = inst.t2_as_index() > 0;
@@ -768,11 +769,7 @@ impl Fiber {
                         IfaceUnderlying::Gos(v, _) => v.copy_semantic(),
                         _ => GosValue::new_nil(),
                     };
-                    stack.push(GosValue::Metadata(val.get_meta(
-                        &objs.metadata,
-                        &objs.packages,
-                        stack,
-                    )));
+                    stack.push(GosValue::Metadata(val.get_meta(objs, stack)));
                     if inst.t2_as_index() > 0 {
                         let index = inst.imm();
                         let s_index = Stack::offset(stack_base, index);
@@ -847,11 +844,14 @@ impl Fiber {
                                         let elem = stack.pop_with_type(elem_type);
                                         val.push(elem);
                                     }
-                                    GosValue::with_slice_val(val, &mut objs.slices)
+                                    GosValue::with_slice_val(val, *md, &mut objs.slices)
                                 }
                                 MetadataType::Map(km, vm) => {
-                                    let gosv =
-                                        GosValue::new_map(vm.zero_val(&objs.metas), &mut objs.maps);
+                                    let gosv = GosValue::new_map(
+                                        *md,
+                                        vm.zero_val(&objs.metas),
+                                        &mut objs.maps,
+                                    );
                                     let map = gosv.as_map();
                                     let tk = km.get_value_type(&objs.metas);
                                     let tv = vm.get_value_type(&objs.metas);
@@ -900,8 +900,9 @@ impl Fiber {
                 Opcode::MAKE => {
                     let index = inst.imm();
                     let i = Stack::offset(stack.len(), index - 1);
-                    let meta = stack.get_with_type(i, ValueType::Metadata);
-                    let metadata = &objs.metas[meta.as_meta().as_non_ptr()];
+                    let meta_val = stack.get_with_type(i, ValueType::Metadata);
+                    let meta = meta_val.as_meta();
+                    let metadata = &objs.metas[meta.as_non_ptr()];
                     let val = match metadata {
                         MetadataType::Slice(vmeta) => {
                             let (cap, len) = match index {
@@ -915,13 +916,14 @@ impl Fiber {
                             GosValue::new_slice(
                                 len,
                                 cap,
+                                *meta,
                                 Some(&vmeta.zero_val(&objs.metas)),
                                 &mut objs.slices,
                             )
                         }
                         MetadataType::Map(_, v) => {
                             let default = v.zero_val(&objs.metas);
-                            GosValue::new_map(default, &mut objs.maps)
+                            GosValue::new_map(*meta, default, &mut objs.maps)
                         }
                         MetadataType::Channel => unimplemented!(),
                         _ => unreachable!(),
@@ -949,10 +951,10 @@ impl Fiber {
                 },
                 Opcode::APPEND => {
                     let index = Stack::offset(stack.len(), inst.imm());
-                    stack.pack_variadic(index, inst.t1(), &mut objs.slices);
-                    let b = stack.pop_with_type(ValueType::Slice);
-                    let a = stack.get_with_type(stack.len() - 1, ValueType::Slice);
+                    let a = stack.get_with_type(index - 2, ValueType::Slice);
                     let vala = a.as_slice();
+                    stack.pack_variadic(index, vala.meta, inst.t1(), &mut objs.slices);
+                    let b = stack.pop_with_type(ValueType::Slice);
                     let valb = b.as_slice();
                     vala.borrow_data_mut()
                         .append(&mut valb.borrow_data().clone());

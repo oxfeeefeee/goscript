@@ -193,14 +193,16 @@ pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
 #[derive(Debug)]
 pub struct MapObj {
     pub dark: bool,
+    pub meta: GosMetadata,
     default_val: RefCell<GosValue>,
     pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
-    pub fn new(default_val: GosValue) -> MapObj {
+    pub fn new(meta: GosMetadata, default_val: GosValue) -> MapObj {
         MapObj {
             dark: false,
+            meta: meta,
             default_val: RefCell::new(default_val),
             map: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -210,6 +212,7 @@ impl MapObj {
     pub fn deep_clone(&self) -> MapObj {
         MapObj {
             dark: false,
+            meta: self.meta,
             default_val: self.default_val.clone(),
             map: Rc::new(RefCell::new(self.map.borrow().clone())),
         }
@@ -275,6 +278,7 @@ impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
             dark: false,
+            meta: self.meta,
             default_val: self.default_val.clone(),
             map: Rc::clone(&self.map),
         }
@@ -297,6 +301,7 @@ pub type GosVec = Vec<RefCell<GosValue>>;
 #[derive(Debug)]
 pub struct SliceObj {
     pub dark: bool,
+    pub meta: GosMetadata,
     begin: Cell<usize>,
     end: Cell<usize>,
     soft_cap: Cell<usize>, // <= self.vec.capacity()
@@ -304,10 +309,16 @@ pub struct SliceObj {
 }
 
 impl<'a> SliceObj {
-    pub fn new(len: usize, cap: usize, default_val: Option<&GosValue>) -> SliceObj {
+    pub fn new(
+        len: usize,
+        cap: usize,
+        meta: GosMetadata,
+        default_val: Option<&GosValue>,
+    ) -> SliceObj {
         assert!(cap >= len);
         let mut val = SliceObj {
             dark: false,
+            meta: meta,
             begin: Cell::from(0),
             end: Cell::from(0),
             soft_cap: Cell::from(cap),
@@ -319,9 +330,10 @@ impl<'a> SliceObj {
         val
     }
 
-    pub fn with_data(val: Vec<GosValue>) -> SliceObj {
+    pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> SliceObj {
         SliceObj {
             dark: false,
+            meta: meta,
             begin: Cell::from(0),
             end: Cell::from(val.len()),
             soft_cap: Cell::from(val.len()),
@@ -343,6 +355,7 @@ impl<'a> SliceObj {
         let vec = Vec::from_iter(self.vec.borrow()[self.begin()..self.end()].iter().cloned());
         SliceObj {
             dark: false,
+            meta: self.meta,
             begin: Cell::from(0),
             end: Cell::from(self.cap()),
             soft_cap: Cell::from(self.cap()),
@@ -427,6 +440,7 @@ impl<'a> SliceObj {
         let mi = ((self_cap + max) % self_cap) as usize;
         SliceObj {
             dark: false,
+            meta: self.meta,
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
             soft_cap: Cell::from(self.begin() + mi),
@@ -469,6 +483,7 @@ impl Clone for SliceObj {
     fn clone(&self) -> Self {
         SliceObj {
             dark: false,
+            meta: self.meta,
             begin: self.begin.clone(),
             end: self.end.clone(),
             soft_cap: self.soft_cap.clone(),
@@ -553,11 +568,11 @@ impl Hash for StructObj {
 #[derive(Clone, Debug)]
 pub struct UnderlyingFfi {
     pub ffi_obj: Rc<RefCell<dyn Ffi>>,
-    pub methods: Vec<(String, MetadataKey)>,
+    pub methods: Vec<(String, GosMetadata)>,
 }
 
 impl UnderlyingFfi {
-    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, MetadataKey)>) -> UnderlyingFfi {
+    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, GosMetadata)>) -> UnderlyingFfi {
         UnderlyingFfi {
             ffi_obj: obj,
             methods: methods,
@@ -865,7 +880,7 @@ impl WeakUpValue {
 pub struct FfiClosureObj {
     pub ffi: Rc<RefCell<dyn Ffi>>,
     pub func_name: String,
-    pub meta: MetadataKey,
+    pub meta: GosMetadata,
 }
 
 #[derive(Clone, Debug)]
@@ -906,12 +921,21 @@ impl ClosureObj {
         }
     }
 
+    #[inline]
     pub fn new_ffi(ffi: FfiClosureObj) -> ClosureObj {
         ClosureObj {
             func: None,
             uvs: None,
             recv: None,
             ffi: Some(Box::new(ffi)),
+        }
+    }
+
+    #[inline]
+    pub fn meta(&self, fobjs: &FunctionObjs) -> GosMetadata {
+        match &self.func {
+            Some(f) => fobjs[*f].meta,
+            None => self.ffi.as_ref().unwrap().meta,
         }
     }
 }
@@ -1034,7 +1058,7 @@ pub struct FunctionVal {
     entities: HashMap<EntityKey, EntIndex>,
     uv_entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
-    variadic_type: Option<ValueType>,
+    variadic_type: Option<(GosMetadata, ValueType)>,
     is_ctor: bool,
 }
 
@@ -1050,7 +1074,9 @@ impl FunctionVal {
                 let returns: Vec<GosValue> =
                     s.results.iter().map(|x| x.zero_val(&objs.metas)).collect();
                 let params = s.params.len() + s.recv.map_or(0, |_| 1);
-                let vtype = s.variadic.map(|x| x.get_value_type(&objs.metas));
+                let vtype = s.variadic.map(|(slice_type, elem_type)| {
+                    (slice_type, elem_type.get_value_type(&objs.metas))
+                });
                 FunctionVal {
                     package: package,
                     meta: meta,
@@ -1103,7 +1129,7 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn variadic(&self) -> Option<ValueType> {
+    pub fn variadic(&self) -> Option<(GosMetadata, ValueType)> {
         self.variadic_type
     }
 

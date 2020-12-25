@@ -365,7 +365,6 @@ impl<'a> CodeGen<'a> {
                 for (_, _, pos) in lhs.iter() {
                     let mut emitter = current_func_emitter!(self);
                     let i = emitter.add_const(None, val.clone());
-                    dbg!(&val, i);
                     emitter.emit_load(i, None, self.tlookup.value_type_from_tc(t), Some(*pos));
                     types.push(t);
                 }
@@ -722,7 +721,7 @@ impl<'a> CodeGen<'a> {
             self.try_cast_to_iface(Some(*v), rhs, rhs_index, pos);
         }
         if !ellipsis {
-            if let Some(t) = variadic {
+            if let Some((_, t)) = variadic {
                 if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
                     for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
                         let rhs_index = i as OpIndex - params.len() as OpIndex;

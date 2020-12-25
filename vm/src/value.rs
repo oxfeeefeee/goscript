@@ -218,24 +218,29 @@ impl GosValue {
     pub fn new_slice(
         len: usize,
         cap: usize,
+        meta: GosMetadata,
         dval: Option<&GosValue>,
         slices: &mut SliceObjs,
     ) -> GosValue {
-        let s = Rc::new(SliceObj::new(len, cap, dval));
+        let s = Rc::new(SliceObj::new(len, cap, meta, dval));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
 
     #[inline]
-    pub fn with_slice_val(val: Vec<GosValue>, slices: &mut SliceObjs) -> GosValue {
-        let s = Rc::new(SliceObj::with_data(val));
+    pub fn with_slice_val(
+        val: Vec<GosValue>,
+        meta: GosMetadata,
+        slices: &mut SliceObjs,
+    ) -> GosValue {
+        let s = Rc::new(SliceObj::with_data(val, meta));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
 
     #[inline]
-    pub fn new_map(default_val: GosValue, maps: &mut MapObjs) -> GosValue {
-        let val = Rc::new(MapObj::new(default_val));
+    pub fn new_map(meta: GosMetadata, default_val: GosValue, maps: &mut MapObjs) -> GosValue {
+        let val = Rc::new(MapObj::new(meta, default_val));
         maps.push(Rc::downgrade(&val));
         GosValue::Map(val)
     }
@@ -447,25 +452,25 @@ impl GosValue {
         self.get_type() == other.get_type() && self == other
     }
 
-    pub fn get_meta(&self, md: &Metadata, pkgs: &PackageObjs, stack: &Stack) -> GosMetadata {
+    pub fn get_meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
             GosValue::Nil(m) => *m,
-            GosValue::Bool(_) => md.mbool,
-            GosValue::Int(_) => md.mint,
-            GosValue::Int8(_) => md.mint8,
-            GosValue::Int16(_) => md.mint16,
-            GosValue::Int32(_) => md.mint32,
-            GosValue::Int64(_) => md.mint64,
-            GosValue::Uint(_) => md.muint,
-            GosValue::Uint8(_) => md.muint8,
-            GosValue::Uint16(_) => md.muint16,
-            GosValue::Uint32(_) => md.muint32,
-            GosValue::Uint64(_) => md.muint64,
-            GosValue::Float32(_) => md.mfloat32,
-            GosValue::Float64(_) => md.mfloat64,
-            GosValue::Complex64(_, _) => md.mcomplex64,
-            GosValue::Complex128(_) => md.mcomplex128,
-            GosValue::Str(_) => md.mstr,
+            GosValue::Bool(_) => objs.metadata.mbool,
+            GosValue::Int(_) => objs.metadata.mint,
+            GosValue::Int8(_) => objs.metadata.mint8,
+            GosValue::Int16(_) => objs.metadata.mint16,
+            GosValue::Int32(_) => objs.metadata.mint32,
+            GosValue::Int64(_) => objs.metadata.mint64,
+            GosValue::Uint(_) => objs.metadata.muint,
+            GosValue::Uint8(_) => objs.metadata.muint8,
+            GosValue::Uint16(_) => objs.metadata.muint16,
+            GosValue::Uint32(_) => objs.metadata.muint32,
+            GosValue::Uint64(_) => objs.metadata.muint64,
+            GosValue::Float32(_) => objs.metadata.mfloat32,
+            GosValue::Float64(_) => objs.metadata.mfloat64,
+            GosValue::Complex64(_, _) => objs.metadata.mcomplex64,
+            GosValue::Complex128(_) => objs.metadata.mcomplex128,
+            GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b;
                 let inner = match bobj {
@@ -475,38 +480,38 @@ impl GosValue {
                         match state {
                             UpValueState::Open(d) => stack
                                 .get_with_type(d.index as usize, d.typ)
-                                .get_meta(md, pkgs, stack),
-                            UpValueState::Closed(v) => v.get_meta(md, pkgs, stack),
+                                .get_meta(objs, stack),
+                            UpValueState::Closed(v) => v.get_meta(objs, stack),
                         }
                     }
                     PointerObj::Struct(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.borrow().meta,
                         _ => *named_md,
                     },
-                    PointerObj::Slice(_, named_md) => match named_md {
-                        GosMetadata::Untyped => unimplemented!(),
+                    PointerObj::Slice(s, named_md) => match named_md {
+                        GosMetadata::Untyped => s.meta,
                         _ => *named_md,
                     },
-                    PointerObj::Map(_, named_md) => match named_md {
-                        GosMetadata::Untyped => unimplemented!(),
+                    PointerObj::Map(m, named_md) => match named_md {
+                        GosMetadata::Untyped => m.meta,
                         _ => *named_md,
                     },
                     PointerObj::StructField(sobj, index) => {
-                        sobj.borrow().fields[*index as usize].get_meta(md, pkgs, stack)
+                        sobj.borrow().fields[*index as usize].get_meta(objs, stack)
                     }
                     PointerObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
                         .borrow()
-                        .get_meta(md, pkgs, stack),
+                        .get_meta(objs, stack),
                     PointerObj::PkgMember(pkey, index) => {
-                        pkgs[*pkey].member(*index).get_meta(md, pkgs, stack)
+                        objs.packages[*pkey].member(*index).get_meta(objs, stack)
                     }
                 };
                 inner.ptr_to()
             }
-            GosValue::Closure(_) => unimplemented!(),
-            GosValue::Slice(_) => unimplemented!(),
-            GosValue::Map(_) => unimplemented!(),
-            GosValue::Interface(_) => unimplemented!(),
+            GosValue::Closure(c) => c.meta(&objs.functions),
+            GosValue::Slice(s) => s.meta,
+            GosValue::Map(m) => m.meta,
+            GosValue::Interface(i) => i.borrow().meta,
             GosValue::Struct(s) => s.borrow().meta,
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),

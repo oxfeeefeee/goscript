@@ -159,7 +159,7 @@ impl<'a> TypeLookup<'a> {
     pub fn get_sig_params_tc_types(
         &mut self,
         func: TCTypeKey,
-    ) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
+    ) -> (Vec<TCTypeKey>, Option<(TCTypeKey, TCTypeKey)>) {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         let params: Vec<TCTypeKey> = self.tc_objs.types[sig.params()]
@@ -170,10 +170,9 @@ impl<'a> TypeLookup<'a> {
             .map(|&x| self.tc_objs.lobjs[x].typ().unwrap())
             .collect();
         let variadic = if sig.variadic() {
-            let slice = &self.tc_objs.types[*params.last().unwrap()]
-                .try_as_slice()
-                .unwrap();
-            Some(slice.elem())
+            let slice_key = *params.last().unwrap();
+            let slice = &self.tc_objs.types[slice_key].try_as_slice().unwrap();
+            Some((slice_key, slice.elem()))
         } else {
             None
         };
@@ -327,7 +326,7 @@ impl<'a> TypeLookup<'a> {
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
                     match &vm_objs.metas[slice.as_non_ptr()] {
-                        MetadataType::Slice(elem) => Some(elem.clone()),
+                        MetadataType::Slice(elem) => Some((*slice, elem.clone())),
                         _ => unreachable!(),
                     }
                 } else {

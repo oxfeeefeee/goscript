@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
+use super::metadata::GosMetadata;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -290,11 +291,17 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(&mut self, index: usize, t: ValueType, slices: &mut SliceObjs) {
+    pub fn pack_variadic(
+        &mut self,
+        index: usize,
+        meta: GosMetadata,
+        t: ValueType,
+        slices: &mut SliceObjs,
+    ) {
         if index < self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
-            self.push(GosValue::with_slice_val(v, slices))
+            self.push(GosValue::with_slice_val(v, meta, slices))
         }
     }
 

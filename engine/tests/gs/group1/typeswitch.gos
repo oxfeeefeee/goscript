@@ -32,6 +32,8 @@ func typeName2(v interface{}) string {
     case *S1:
 		_ = i
         return "S1"
+	case []int:
+		return "[]int"
 	default:
 		return "unknown"
 	}
@@ -43,7 +45,8 @@ func main() {
    re := typeName(s)
    assert(re == "S1")
    re = typeName2(888)
-   fmt.Println("typeswitch", re)
+   re2 := typeName2([]int{1})
+   fmt.Println("typeswitch", re, re2)
    assert(re == "int")
    
 

@@ -123,7 +123,7 @@ impl GosMetadata {
         recv: Option<GosMetadata>,
         params: Vec<GosMetadata>,
         results: Vec<GosMetadata>,
-        variadic: Option<GosMetadata>,
+        variadic: Option<(GosMetadata, GosMetadata)>,
         metas: &mut MetadataObjs,
     ) -> GosMetadata {
         let ptypes = params.iter().map(|x| x.get_value_type(metas)).collect();
@@ -333,8 +333,8 @@ impl GosMetadata {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => unimplemented!(),
-                MetadataType::Slice(_) => GosValue::new_slice(0, 0, None, slices),
-                MetadataType::Map(_, v) => GosValue::new_map(v.zero_val_impl(mobjs), maps),
+                MetadataType::Slice(_) => GosValue::new_slice(0, 0, *self, None, slices),
+                MetadataType::Map(_, v) => GosValue::new_map(*self, v.zero_val_impl(mobjs), maps),
                 MetadataType::Interface(_) => unimplemented!(),
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
@@ -469,10 +469,10 @@ impl Fields {
         result
     }
 
-    pub fn iface_ffi_info(&self) -> Vec<(String, MetadataKey)> {
+    pub fn iface_ffi_info(&self) -> Vec<(String, GosMetadata)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
-            ret.push((String::new(), f.as_non_ptr()));
+            ret.push((String::new(), *f));
         }
         for (name, index) in self.mapping.iter() {
             ret[*index as usize].0 = name.clone();
@@ -507,7 +507,7 @@ pub struct SigMetadata {
     pub recv: Option<GosMetadata>,
     pub params: Vec<GosMetadata>,
     pub results: Vec<GosMetadata>,
-    pub variadic: Option<GosMetadata>,
+    pub variadic: Option<(GosMetadata, GosMetadata)>,
     pub params_type: Vec<ValueType>, // for calling FFI
 }
 
