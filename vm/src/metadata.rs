@@ -438,6 +438,37 @@ impl GosMetadata {
             unreachable!()
         }
     }
+
+    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+        match (self, other) {
+            (Self::NonPtr(a, _), Self::NonPtr(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr1(a, _), Self::Ptr1(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr2(a, _), Self::Ptr2(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr3(a, _), Self::Ptr3(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr4(a, _), Self::Ptr4(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr5(a, _), Self::Ptr5(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr6(a, _), Self::Ptr6(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Ptr7(a, _), Self::Ptr7(b, _)) => {
+                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            }
+            (Self::Untyped, Self::Untyped) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -478,6 +509,18 @@ impl Fields {
             ret[*index as usize].0 = name.clone();
         }
         ret
+    }
+
+    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+        if self.fields.len() != other.fields.len() {
+            return false;
+        }
+        for (i, f) in self.fields.iter().enumerate() {
+            if !f.semantic_eq(&other.fields[i], metas) {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -534,6 +577,42 @@ impl SigMetadata {
             false
         }
     }
+
+    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+        if !match (&self.recv, &other.recv) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.semantic_eq(b, metas),
+            _ => false,
+        } {
+            return false;
+        }
+
+        if self.params.len() != other.params.len() {
+            return false;
+        }
+        for (i, p) in self.params.iter().enumerate() {
+            if !p.semantic_eq(&other.params[i], metas) {
+                return false;
+            }
+        }
+
+        if self.results.len() != other.params.len() {
+            return false;
+        }
+        for (i, r) in self.results.iter().enumerate() {
+            if !r.semantic_eq(&other.results[i], metas) {
+                return false;
+            }
+        }
+        if !match (&self.variadic, &other.variadic) {
+            (None, None) => true,
+            (Some((a, _)), Some((b, _))) => a.semantic_eq(b, metas),
+            _ => false,
+        } {
+            return false;
+        }
+        true
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -577,6 +656,36 @@ impl MetadataType {
         match self {
             Self::Interface(fields) => fields,
             _ => unreachable!(),
+        }
+    }
+
+    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+        match (self, other) {
+            (Self::Bool, Self::Bool) => true,
+            (Self::Int, Self::Int) => true,
+            (Self::Int8, Self::Int8) => true,
+            (Self::Int16, Self::Int16) => true,
+            (Self::Int32, Self::Int32) => true,
+            (Self::Int64, Self::Int64) => true,
+            (Self::Uint8, Self::Uint8) => true,
+            (Self::Uint16, Self::Uint16) => true,
+            (Self::Uint32, Self::Uint32) => true,
+            (Self::Uint64, Self::Uint64) => true,
+            (Self::Float32, Self::Float32) => true,
+            (Self::Float64, Self::Float64) => true,
+            (Self::Complex64, Self::Complex64) => true,
+            (Self::Complex128, Self::Complex128) => true,
+            (Self::Str(_), Self::Str(_)) => true,
+            (Self::Struct(a, _), Self::Struct(b, _)) => a.semantic_eq(b, metas),
+            (Self::Signature(a), Self::Signature(b)) => a.semantic_eq(b, metas),
+            (Self::Slice(a), Self::Slice(b)) => a.semantic_eq(b, metas),
+            (Self::Map(ak, av), Self::Map(bk, bv)) => {
+                ak.semantic_eq(bk, metas) && av.semantic_eq(bv, metas)
+            }
+            (Self::Interface(a), Self::Interface(b)) => a.semantic_eq(b, metas),
+            (Self::Channel, Self::Channel) => unimplemented!(),
+            (Self::Named(_, a), Self::Named(_, b)) => a.semantic_eq(b, metas),
+            _ => false,
         }
     }
 }

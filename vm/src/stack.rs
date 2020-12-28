@@ -333,7 +333,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn switch_cmp(&mut self, t: ValueType) -> bool {
+    pub fn switch_cmp(&mut self, t: ValueType, objs: &VMObjects) -> bool {
         let b = if t.copyable() {
             let len = self.len();
             let a = self.get_c(len - 2);
@@ -342,7 +342,11 @@ impl Stack {
         } else {
             let a = self.get_rc(self.len() - 2);
             let b = self.get_rc(self.len() - 1);
-            a.eq(&b)
+            if t != ValueType::Metadata {
+                a.eq(&b)
+            } else {
+                a.as_meta().semantic_eq(b.as_meta(), &objs.metas)
+            }
         };
         self.pop_discard();
         b

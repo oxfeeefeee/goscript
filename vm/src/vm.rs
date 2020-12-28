@@ -673,7 +673,7 @@ impl Fiber {
                     }
                 }
                 Opcode::SWITCH => {
-                    if stack.switch_cmp(inst.t0()) {
+                    if stack.switch_cmp(inst.t0(), objs) {
                         frame.pc = Stack::offset(frame.pc, inst.imm());
                     }
                 }
