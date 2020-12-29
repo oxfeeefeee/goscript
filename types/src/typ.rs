@@ -1137,7 +1137,7 @@ fn identical_impl(
         }
         (Type::Map(mx), Type::Map(my)) => {
             identical_impl(mx.key(), my.key(), cmp_tags, dup, objs)
-                && identical_impl(mx.elem(), mx.elem(), cmp_tags, dup, objs)
+                && identical_impl(mx.elem(), my.elem(), cmp_tags, dup, objs)
         }
         (Type::Chan(cx), Type::Chan(cy)) => {
             cx.dir() == cy.dir() && identical_impl(cx.elem(), cy.elem(), cmp_tags, dup, objs)
