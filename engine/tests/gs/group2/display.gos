@@ -1,0 +1,23 @@
+package main
+
+import (
+	"fmt"
+)
+
+type III interface{}
+
+
+type A struct {
+i int
+}
+
+type B string
+
+func main() {
+    i := 0
+    var stru A
+    //var sli []int
+    var  b B
+    //var 
+    fmt.Println(&i, &stru, &stru, b, &b)
+}

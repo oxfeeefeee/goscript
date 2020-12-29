@@ -60,6 +60,7 @@ fn parse_error(s: &str, line: usize) -> io::Result<Vec<ErrInfo>> {
 }
 
 fn test_file(path: &str, trace: bool) {
+    dbg!(path);
     let pkgs = &mut HashMap::new();
     let config = types::Config {
         work_dir: Some("./".to_string()),
@@ -80,7 +81,7 @@ fn test_file(path: &str, trace: bool) {
     if trace {
         el.sort();
         print!("{}", el);
-        dbg!(results);
+        //dbg!(results);
     }
 
     let mut expected_errs = parse_comment_errors(path).unwrap();

@@ -11,6 +11,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
 use std::rc::{Rc, Weak};
@@ -772,6 +773,20 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
+        }
+    }
+}
+
+impl Display for PointerObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UpVal(uv) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&uv.inner))),
+            Self::Struct(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
+            Self::Slice(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
+            Self::Map(m, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&m))),
+            Self::SliceMember(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
+            Self::StructField(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
+            Self::PkgMember(p, i) => f.write_fmt(format_args!("{:x}i{}", key_to_u64(*p), i)),
         }
     }
 }

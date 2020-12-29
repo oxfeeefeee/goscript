@@ -45,6 +45,12 @@ fn test_g2nil() {
 }
 
 #[test]
+fn test_g2display() {
+    let err_cnt = run("./tests/gs/group2/display.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_case1() {
     let err_cnt = run("./tests/gs/group1/case1.gos", true);
     assert!(err_cnt == 0);

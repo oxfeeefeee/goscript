@@ -6,8 +6,7 @@ use super::stack::Stack;
 use ordered_float;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::fmt;
-use std::fmt::Display;
+use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::Wrapping;
 use std::rc::Rc;
@@ -678,7 +677,7 @@ impl Display for GosValue {
             GosValue::Complex64(r, i) => f.write_fmt(format_args!("({}, {})", r, i)),
             GosValue::Complex128(b) => f.write_fmt(format_args!("({}, {})", b.0, b.1)),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
-            GosValue::Pointer(_) => f.write_str("todo(boxed)"),
+            GosValue::Pointer(p) => p.fmt(f),
             GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => f.write_str("todo(slice)"),
             GosValue::Map(_) => unimplemented!(),
