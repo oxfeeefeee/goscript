@@ -140,21 +140,12 @@ impl Value {
                     Value::Float(f) => match btype {
                         BasicType::Float64 => true,
                         BasicType::Float32 => {
-                            if f.to_f32().is_some() {
-                                true
-                            } else {
-                                match rounded {
-                                    Some(r) => {
-                                        let f32_ = *f as f32;
-                                        let ok = !f32_.is_infinite();
-                                        if ok {
-                                            *r = Value::Float(((*f as f32) as f64).into());
-                                        }
-                                        ok
-                                    }
-                                    None => false,
-                                }
+                            let f32_ = *f as f32;
+                            let ok = !f32_.is_infinite();
+                            if let Some(r) = rounded {
+                                *r = Value::Float(((*f as f32) as f64).into());
                             }
+                            ok
                         }
                         BasicType::UntypedFloat => true,
                         _ => unreachable!(),

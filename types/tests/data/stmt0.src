@@ -781,6 +781,16 @@ func typeswitch3(x interface{}) {
 	}
 }
 
+func typeswitch4_by_oxfeeefeee(v interface{}) string {
+	switch v.(type) {
+	case map[string]string:
+		return "map[string]int"
+	case map[int]string:
+		return "map[string][]int"	
+	}
+	return "int"
+}
+
 func fors1() {
 	for {}
 	var i string
