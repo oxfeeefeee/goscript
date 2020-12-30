@@ -288,22 +288,31 @@ pub fn store_index(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
 
 #[inline]
 pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIndex, t: ValueType) -> RuntimeResult {
+    let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
         GosValue::Slice(s) => {
-            let target_cell = &s.borrow_data()[i];
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
-            Ok(())
+            if s.is_nil() {
+                err
+            } else {
+                let target_cell = &s.borrow_data()[i];
+                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+                Ok(())
+            }
         }
         GosValue::Map(map) => {
-            let key = GosValue::Int(i as isize);
-            map.touch_key(&key);
-            let borrowed = map.borrow_data();
-            let target_cell = borrowed.get(&key).unwrap();
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);   
-            Ok(())
+            if map.is_nil() {
+                err
+            } else {
+                let key = GosValue::Int(i as isize);
+                map.touch_key(&key);
+                let borrowed = map.borrow_data();
+                let target_cell = borrowed.get(&key).unwrap();
+                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);   
+                Ok(())
+            }
         }
         GosValue::Nil(_) => {
-            Err("assignment to entry in nil map or slice".to_string())
+            err
         }
         _ => {
             dbg!(target);

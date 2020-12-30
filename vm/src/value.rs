@@ -227,6 +227,13 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn new_slice_nil(meta: GosMetadata, slices: &mut SliceObjs) -> GosValue {
+        let s = Rc::new(SliceObj::new_nil(meta));
+        slices.push(Rc::downgrade(&s));
+        GosValue::Slice(s)
+    }
+
+    #[inline]
     pub fn with_slice_val(
         val: Vec<GosValue>,
         meta: GosMetadata,
@@ -240,6 +247,13 @@ impl GosValue {
     #[inline]
     pub fn new_map(meta: GosMetadata, default_val: GosValue, maps: &mut MapObjs) -> GosValue {
         let val = Rc::new(MapObj::new(meta, default_val));
+        maps.push(Rc::downgrade(&val));
+        GosValue::Map(val)
+    }
+
+    #[inline]
+    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, maps: &mut MapObjs) -> GosValue {
+        let val = Rc::new(MapObj::new_nil(meta, default_val));
         maps.push(Rc::downgrade(&val));
         GosValue::Map(val)
     }
@@ -408,6 +422,8 @@ impl GosValue {
         match &self {
             GosValue::Nil(_) => true,
             GosValue::Named(n) => n.0.is_nil(),
+            GosValue::Slice(s) => s.is_nil(),
+            GosValue::Map(m) => m.is_nil(),
             GosValue::Interface(iface) => iface.borrow().is_nil(),
             _ => false,
         }
@@ -680,12 +696,12 @@ impl Display for GosValue {
             GosValue::Pointer(p) => p.fmt(f),
             GosValue::Closure(_) => unimplemented!(),
             GosValue::Slice(_) => f.write_str("todo(slice)"),
-            GosValue::Map(_) => unimplemented!(),
+            GosValue::Map(_) => f.write_str("todo(map)"),
             GosValue::Interface(_) => f.write_str("todo(interface)"),
             GosValue::Struct(_) => f.write_str("todo(struct)"),
             GosValue::Channel(_) => unimplemented!(),
-            GosValue::Function(_) => unimplemented!(),
-            GosValue::Package(_) => unimplemented!(),
+            GosValue::Function(_) => f.write_str("todo(function))"),
+            GosValue::Package(_) => f.write_str("todo(package)"),
             GosValue::Metadata(_) => unimplemented!(),
             GosValue::Named(v) => f.write_fmt(format_args!("named(todo): {}", v.0)),
         }

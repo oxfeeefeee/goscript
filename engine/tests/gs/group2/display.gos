@@ -16,8 +16,8 @@ type B string
 func main() {
     i := 0
     var stru A
-    //var sli []int
+    var sli []int
+    var m map[int]string
     var  b B
-    //var 
-    fmt.Println(&i, &stru, &stru, b, &b)
+    fmt.Println(&i, &stru, &stru, b, &b, sli, &sli, m, &m)
 }

@@ -1,7 +1,9 @@
 pub mod instruction;
-pub mod objects;
 
+#[macro_use]
 pub mod metadata;
+
+pub mod objects;
 
 pub mod ffi;
 

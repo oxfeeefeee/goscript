@@ -196,7 +196,7 @@ pub struct MapObj {
     pub dark: bool,
     pub meta: GosMetadata,
     default_val: RefCell<GosValue>,
-    pub map: Rc<RefCell<GosHashMap>>,
+    pub map: Option<Rc<RefCell<GosHashMap>>>,
 }
 
 impl MapObj {
@@ -205,7 +205,16 @@ impl MapObj {
             dark: false,
             meta: meta,
             default_val: RefCell::new(default_val),
-            map: Rc::new(RefCell::new(HashMap::new())),
+            map: Some(Rc::new(RefCell::new(HashMap::new()))),
+        }
+    }
+
+    pub fn new_nil(meta: GosMetadata, default_val: GosValue) -> MapObj {
+        MapObj {
+            dark: false,
+            meta: meta,
+            default_val: RefCell::new(default_val),
+            map: None,
         }
     }
 
@@ -215,21 +224,28 @@ impl MapObj {
             dark: false,
             meta: self.meta,
             default_val: self.default_val.clone(),
-            map: Rc::new(RefCell::new(self.map.borrow().clone())),
+            map: match &self.map {
+                Some(m) => Some(Rc::new(RefCell::new(m.borrow().clone()))),
+                None => None,
+            },
         }
     }
 
     #[inline]
     pub fn insert(&self, key: GosValue, val: GosValue) -> Option<GosValue> {
-        self.map
-            .borrow_mut()
+        self.borrow_data_mut()
             .insert(key, RefCell::new(val))
             .map(|x| x.into_inner())
     }
 
     #[inline]
+    pub fn is_nil(&self) -> bool {
+        self.map.is_none()
+    }
+
+    #[inline]
     pub fn get(&self, key: &GosValue) -> GosValue {
-        let mref = self.map.borrow();
+        let mref = self.borrow_data();
         let cell = match mref.get(key) {
             Some(v) => v,
             None => &self.default_val,
@@ -239,7 +255,7 @@ impl MapObj {
 
     #[inline]
     pub fn try_get(&self, key: &GosValue) -> Option<GosValue> {
-        let mref = self.map.borrow();
+        let mref = self.borrow_data();
         mref.get(key).map(|x| x.clone().into_inner())
     }
 
@@ -247,31 +263,30 @@ impl MapObj {
     /// the value is empty
     #[inline]
     pub fn touch_key(&self, key: &GosValue) {
-        if self.map.borrow().get(&key).is_none() {
-            self.map
-                .borrow_mut()
+        if self.borrow_data().get(&key).is_none() {
+            self.borrow_data_mut()
                 .insert(key.clone(), self.default_val.clone());
         }
     }
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.map.borrow().len()
+        self.borrow_data().len()
     }
 
     #[inline]
     pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
-        self.map.borrow_mut()
+        self.map.as_ref().unwrap().borrow_mut()
     }
 
     #[inline]
     pub fn borrow_data(&self) -> Ref<GosHashMap> {
-        self.map.borrow()
+        self.map.as_ref().unwrap().borrow()
     }
 
     #[inline]
     pub fn clone_inner(&self) -> Rc<RefCell<GosHashMap>> {
-        Rc::clone(&self.map)
+        self.map.as_ref().unwrap().clone()
     }
 }
 
@@ -281,7 +296,7 @@ impl Clone for MapObj {
             dark: false,
             meta: self.meta,
             default_val: self.default_val.clone(),
-            map: Rc::clone(&self.map),
+            map: self.map.clone(),
         }
     }
 }
@@ -306,7 +321,7 @@ pub struct SliceObj {
     begin: Cell<usize>,
     end: Cell<usize>,
     soft_cap: Cell<usize>, // <= self.vec.capacity()
-    pub vec: Rc<RefCell<GosVec>>,
+    pub vec: Option<Rc<RefCell<GosVec>>>,
 }
 
 impl<'a> SliceObj {
@@ -323,7 +338,7 @@ impl<'a> SliceObj {
             begin: Cell::from(0),
             end: Cell::from(0),
             soft_cap: Cell::from(cap),
-            vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
+            vec: Some(Rc::new(RefCell::new(Vec::with_capacity(cap)))),
         };
         for _ in 0..len {
             val.push(default_val.unwrap().clone());
@@ -338,9 +353,20 @@ impl<'a> SliceObj {
             begin: Cell::from(0),
             end: Cell::from(val.len()),
             soft_cap: Cell::from(val.len()),
-            vec: Rc::new(RefCell::new(
+            vec: Some(Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
-            )),
+            ))),
+        }
+    }
+
+    pub fn new_nil(meta: GosMetadata) -> SliceObj {
+        SliceObj {
+            dark: false,
+            meta: meta,
+            begin: Cell::from(0),
+            end: Cell::from(0),
+            soft_cap: Cell::from(0),
+            vec: None,
         }
     }
 
@@ -353,15 +379,25 @@ impl<'a> SliceObj {
 
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
     pub fn deep_clone(&self) -> SliceObj {
-        let vec = Vec::from_iter(self.vec.borrow()[self.begin()..self.end()].iter().cloned());
+        let vec = match &self.vec {
+            Some(v) => Some(Rc::new(RefCell::new(Vec::from_iter(
+                v.borrow()[self.begin()..self.end()].iter().cloned(),
+            )))),
+            None => None,
+        };
         SliceObj {
             dark: false,
             meta: self.meta,
             begin: Cell::from(0),
             end: Cell::from(self.cap()),
             soft_cap: Cell::from(self.cap()),
-            vec: Rc::new(RefCell::new(vec)),
+            vec: vec,
         }
+    }
+
+    #[inline]
+    pub fn is_nil(&self) -> bool {
+        self.vec.is_none()
     }
 
     #[inline]
@@ -396,18 +432,18 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
-        self.vec.borrow_mut()
+        self.vec.as_ref().unwrap().borrow_mut()
     }
 
     #[inline]
     pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
-        self.vec.borrow()
+        self.vec.as_ref().unwrap().borrow()
     }
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
         self.try_grow_vec(self.len() + 1);
-        self.vec.borrow_mut().push(RefCell::new(val));
+        self.borrow_data_mut().push(RefCell::new(val));
         *self.end.get_mut() += 1;
     }
 
@@ -415,21 +451,20 @@ impl<'a> SliceObj {
     pub fn append(&mut self, vals: &mut GosVec) {
         let new_len = self.len() + vals.len();
         self.try_grow_vec(new_len);
-        self.vec.borrow_mut().append(vals);
+        self.borrow_data_mut().append(vals);
         *self.end.get_mut() = self.begin() + new_len;
     }
 
     #[inline]
     pub fn get(&self, i: usize) -> Option<GosValue> {
-        self.vec
-            .borrow()
+        self.borrow_data()
             .get(self.begin() + i)
             .map(|x| x.clone().into_inner())
     }
 
     #[inline]
     pub fn set(&self, i: usize, val: GosValue) {
-        self.vec.borrow()[self.begin() + i].replace(val);
+        self.borrow_data()[self.begin() + i].replace(val);
     }
 
     #[inline]
@@ -445,7 +480,7 @@ impl<'a> SliceObj {
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
             soft_cap: Cell::from(self.begin() + mi),
-            vec: Rc::clone(&self.vec),
+            vec: self.vec.clone(),
         }
     }
 
@@ -471,9 +506,9 @@ impl<'a> SliceObj {
             }
         }
         let data_len = self.len();
-        let mut vec = Vec::from_iter(self.vec.borrow()[self.begin()..self.end()].iter().cloned());
+        let mut vec = Vec::from_iter(self.borrow_data()[self.begin()..self.end()].iter().cloned());
         vec.reserve_exact(cap - vec.len());
-        self.vec = Rc::new(RefCell::new(vec));
+        self.vec = Some(Rc::new(RefCell::new(vec)));
         self.begin.set(0);
         self.end.set(data_len);
         self.soft_cap.set(cap);
@@ -488,7 +523,7 @@ impl Clone for SliceObj {
             begin: self.begin.clone(),
             end: self.end.clone(),
             soft_cap: self.soft_cap.clone(),
-            vec: Rc::clone(&self.vec),
+            vec: self.vec.clone(),
         }
     }
 }
@@ -506,7 +541,7 @@ pub type SliceEnumIter<'a> = std::iter::Enumerate<std::slice::Iter<'a, RefCell<G
 impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceObj) -> SliceRef {
         SliceRef {
-            vec_ref: s.vec.borrow(),
+            vec_ref: s.borrow_data(),
             begin: s.begin(),
             end: s.end(),
         }
@@ -1081,13 +1116,15 @@ impl FunctionVal {
     pub fn new(
         package: PackageKey,
         meta: GosMetadata,
-        objs: &VMObjects,
+        objs: &mut VMObjects,
         ctor: bool,
     ) -> FunctionVal {
         match &objs.metas[meta.as_non_ptr()] {
             MetadataType::Signature(s) => {
-                let returns: Vec<GosValue> =
-                    s.results.iter().map(|x| x.zero_val(&objs.metas)).collect();
+                let mut returns = vec![];
+                for m in s.results.iter() {
+                    returns.push(zero_val!(m, objs));
+                }
                 let params = s.params.len() + s.recv.map_or(0, |_| 1);
                 let vtype = s.variadic.map(|(slice_type, elem_type)| {
                     (slice_type, elem_type.get_value_type(&objs.metas))

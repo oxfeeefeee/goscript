@@ -392,11 +392,11 @@ impl Fiber {
                                 PointerObj::Map(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    let mref: &mut GosHashMap = &mut r.map.borrow_mut();
-                                    *mref = val.try_get_map().unwrap().map.borrow().clone();
+                                    let mref: &mut GosHashMap = &mut r.borrow_data_mut();
+                                    *mref = val.try_get_map().unwrap().borrow_data().clone();
                                 }
                                 PointerObj::SliceMember(s, index) => {
-                                    let vborrow = s.vec.borrow();
+                                    let vborrow = s.borrow_data();
                                     let target: &mut GosValue =
                                         &mut vborrow[s.begin() + index as usize].borrow_mut();
                                     stack.store_val(target, rhs_index, inst.t0());
@@ -847,11 +847,8 @@ impl Fiber {
                                     GosValue::with_slice_val(val, *md, &mut objs.slices)
                                 }
                                 MetadataType::Map(km, vm) => {
-                                    let gosv = GosValue::new_map(
-                                        *md,
-                                        vm.zero_val(&objs.metas),
-                                        &mut objs.maps,
-                                    );
+                                    let gosv =
+                                        GosValue::new_map(*md, zero_val!(vm, objs), &mut objs.maps);
                                     let map = gosv.as_map();
                                     let tk = km.get_value_type(&objs.metas);
                                     let tv = vm.get_value_type(&objs.metas);
@@ -917,12 +914,12 @@ impl Fiber {
                                 len,
                                 cap,
                                 *meta,
-                                Some(&vmeta.zero_val(&objs.metas)),
+                                Some(&zero_val!(vmeta, objs)),
                                 &mut objs.slices,
                             )
                         }
                         MetadataType::Map(_, v) => {
-                            let default = v.zero_val(&objs.metas);
+                            let default = zero_val!(v, objs);
                             GosValue::new_map(*meta, default, &mut objs.maps)
                         }
                         MetadataType::Channel => unimplemented!(),
