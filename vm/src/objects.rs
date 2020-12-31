@@ -11,6 +11,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
@@ -309,6 +310,22 @@ impl PartialEq for MapObj {
 
 impl Eq for MapObj {}
 
+impl Display for MapObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("map[")?;
+        if let Some(m) = &self.map {
+            for (i, kv) in m.borrow().iter().enumerate() {
+                if i > 0 {
+                    f.write_char(' ')?;
+                }
+                let v: &GosValue = &kv.1.borrow();
+                write!(f, "{}:{}", kv.0, v)?
+            }
+        }
+        f.write_char(']')
+    }
+}
+
 // ----------------------------------------------------------------------------
 // SliceObj
 
@@ -528,6 +545,21 @@ impl Clone for SliceObj {
     }
 }
 
+impl Display for SliceObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_char('[')?;
+        if let Some(v) = &self.vec {
+            for (i, e) in v.borrow().iter().enumerate() {
+                if i > 0 {
+                    f.write_char(' ')?;
+                }
+                write!(f, "{}", e.borrow())?
+            }
+        }
+        f.write_char(']')
+    }
+}
+
 pub struct SliceRef<'a> {
     vec_ref: Ref<'a, GosVec>,
     begin: usize,
@@ -595,6 +627,19 @@ impl Hash for StructObj {
         for f in self.fields.iter() {
             f.hash(state)
         }
+    }
+}
+
+impl Display for StructObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_char('{')?;
+        for (i, fld) in self.fields.iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
+            }
+            write!(f, "{}", fld)?
+        }
+        f.write_char('}')
     }
 }
 
@@ -693,6 +738,16 @@ impl Hash for InterfaceObj {
             IfaceUnderlying::Gos(v, _) => v.hash(state),
             IfaceUnderlying::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
             IfaceUnderlying::None => 0.hash(state),
+        }
+    }
+}
+
+impl Display for InterfaceObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.underlying() {
+            IfaceUnderlying::Gos(v, _) => write!(f, "{}", v),
+            IfaceUnderlying::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
+            IfaceUnderlying::None => f.write_str("<nil>"),
         }
     }
 }

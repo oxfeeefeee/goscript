@@ -48,6 +48,7 @@ macro_rules! current_func_emitter {
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
     ast_objs: &'a AstObjects,
+    tc_objs: &'a TCObjects,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     pkg_util: PkgUtil<'a>,
@@ -76,6 +77,7 @@ impl<'a> CodeGen<'a> {
         CodeGen {
             objects: vmo,
             ast_objs: asto,
+            tc_objs: tco,
             tlookup: TypeLookup::new(tco, ti, type_cache),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
@@ -742,44 +744,52 @@ impl<'a> CodeGen<'a> {
         (zero_val, t)
     }
 
-    fn visit_composite_expr(&mut self, expr: &Expr, meta: &GosMetadata) {
+    fn visit_composite_expr(&mut self, expr: &Expr, tctype: TCTypeKey) {
         match expr {
-            Expr::CompositeLit(clit) => self.gen_composite_literal(clit, meta),
+            Expr::CompositeLit(clit) => self.gen_composite_literal(clit, tctype),
             _ => self.visit_expr(expr),
         }
+        let t = self.tlookup.get_expr_tc_type(expr);
+        self.try_cast_to_iface(Some(tctype), Some(t), -1, expr.pos(self.ast_objs));
     }
 
-    fn gen_composite_literal(&mut self, clit: &CompositeLit, meta: &GosMetadata) {
+    fn gen_composite_literal(&mut self, clit: &CompositeLit, tctype: TCTypeKey) {
+        let meta = self.tlookup.meta_from_tc(tctype, &mut self.objects);
         let pos = Some(clit.l_brace);
+        let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
         let mtype =
             &self.objects.metas[meta.get_underlying(&self.objects.metas).as_non_ptr()].clone();
         match mtype {
-            MetadataType::Slice(elem_meta) => {
+            MetadataType::Slice(_) => {
+                let elem = typ.try_as_slice().unwrap().elem();
                 for expr in clit.elts.iter().rev() {
-                    self.visit_composite_expr(expr, elem_meta);
+                    self.visit_composite_expr(expr, elem);
                 }
             }
-            MetadataType::Map(km, vm) => {
+            MetadataType::Map(_, _) => {
+                let map_type = typ.try_as_map().unwrap();
                 for expr in clit.elts.iter() {
                     match expr {
                         Expr::KeyValue(kv) => {
-                            self.visit_composite_expr(&kv.val, vm);
-                            self.visit_composite_expr(&kv.key, km);
+                            self.visit_composite_expr(&kv.val, map_type.elem());
+                            self.visit_composite_expr(&kv.key, map_type.key());
                         }
                         _ => unreachable!(),
                     }
                 }
             }
             MetadataType::Struct(f, _) => {
+                let struct_type = typ.try_as_struct().unwrap();
                 for (i, expr) in clit.elts.iter().enumerate() {
+                    let field_type = self.tc_objs.lobjs[struct_type.fields()[i]].typ().unwrap();
                     let index = match expr {
                         Expr::KeyValue(kv) => {
-                            self.visit_composite_expr(&kv.val, &f.fields[i]);
+                            self.visit_composite_expr(&kv.val, field_type);
                             let ident = kv.key.try_as_ident().unwrap();
                             f.mapping[&self.ast_objs.idents[*ident].name]
                         }
                         _ => {
-                            self.visit_composite_expr(expr, &f.fields[i]);
+                            self.visit_composite_expr(expr, field_type);
                             i as OpIndex
                         }
                     };
@@ -915,10 +925,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
-        let meta = self
-            .tlookup
-            .get_meta_by_node_id(clit.typ.as_ref().unwrap().id(), &mut self.objects);
-        self.gen_composite_literal(clit, &meta);
+        let tctype = self.tlookup.get_expr_tc_type(clit.typ.as_ref().unwrap());
+        self.gen_composite_literal(clit, tctype);
     }
 
     fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) {

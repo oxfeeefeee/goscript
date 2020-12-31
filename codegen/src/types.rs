@@ -217,7 +217,11 @@ impl<'a> TypeLookup<'a> {
 
     // get GosValue from type checker's Obj
     fn const_value(&self, tkey: TCTypeKey, val: &ConstValue) -> GosValue {
-        let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
+        let typ = self.tc_objs.types[tkey]
+            .underlying_val(self.tc_objs)
+            .try_as_basic()
+            .unwrap()
+            .typ();
         match typ {
             BasicType::Bool | BasicType::UntypedBool => GosValue::Bool(val.bool_as_bool()),
             BasicType::Int | BasicType::UntypedInt => {
