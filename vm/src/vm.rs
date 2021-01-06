@@ -211,7 +211,13 @@ impl Fiber {
                     let ind = stack.pop_with_type(inst.t1());
                     let val = &stack.pop_with_type(inst.t0());
                     if inst.t2_as_index() == 0 {
-                        stack.push(vm_util::load_index(val, &ind));
+                        match vm_util::load_index(val, &ind) {
+                            Ok(v) => stack.push(v),
+                            Err(e) => {
+                                panic_msg = Some(e);
+                                break;
+                            }
+                        }
                     } else {
                         vm_util::push_index_comma_ok(stack, val, &ind);
                     }
@@ -220,7 +226,13 @@ impl Fiber {
                     let val = &stack.pop_with_type(inst.t0());
                     let index = inst.imm() as usize;
                     if inst.t2_as_index() == 0 {
-                        stack.push(vm_util::load_index_int(val, index));
+                        match vm_util::load_index_int(val, index) {
+                            Ok(v) => stack.push(v),
+                            Err(e) => {
+                                panic_msg = Some(e);
+                                break;
+                            }
+                        }
                     } else {
                         vm_util::push_index_comma_ok(stack, val, &GosValue::Int(index as isize));
                     }
@@ -384,6 +396,11 @@ impl Fiber {
                                     let mref: &mut StructObj = &mut r.borrow_mut();
                                     *mref = val.try_get_struct().unwrap().borrow().clone();
                                 }
+                                PointerObj::Array(a, _) => {
+                                    let rhs_s_index = Stack::offset(stack.len(), rhs_index);
+                                    let val = stack.get_with_type(rhs_s_index, inst.t0());
+                                    a.set_from(val.as_array());
+                                }
                                 PointerObj::Slice(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
@@ -478,7 +495,18 @@ impl Fiber {
                 }
                 Opcode::REF_SLICE_MEMBER => {
                     let index = stack.pop_int();
-                    let slice = stack.pop_with_type(inst.t0());
+                    let typ = inst.t0();
+                    let mut slice = stack.pop_with_type(typ);
+                    // create a slice if it's an array
+                    if typ == ValueType::Array {
+                        slice = GosValue::slice_with_array(
+                            &slice,
+                            0,
+                            -1,
+                            &mut objs.metas,
+                            &mut objs.slices,
+                        );
+                    }
                     stack.push(GosValue::new_pointer(PointerObj::new_slice_member(
                         &slice,
                         index.try_into().unwrap(),
@@ -795,9 +823,17 @@ impl Fiber {
                     let end = stack.pop_int();
                     let begin = stack.pop_int();
                     let target = stack.pop_with_type(inst.t0());
+                    dbg!(&target);
                     let result = match &target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
+                        GosValue::Array(_) => GosValue::slice_with_array(
+                            &target,
+                            begin,
+                            end,
+                            &mut objs.metas,
+                            &mut objs.slices,
+                        ),
                         _ => unreachable!(),
                     };
                     stack.push(result);
@@ -837,6 +873,15 @@ impl Fiber {
                             let umd = md.get_underlying(&objs.metas);
                             let count = stack.pop_int32();
                             let val = match &objs.metas[umd.as_non_ptr()] {
+                                MetadataType::Array(am, _) => {
+                                    let mut val = vec![];
+                                    let elem_type = am.get_value_type(&objs.metas);
+                                    for _ in 0..count {
+                                        let elem = stack.pop_with_type(elem_type);
+                                        val.push(elem);
+                                    }
+                                    GosValue::array_with_val(val, *md, &mut objs.arrays)
+                                }
                                 MetadataType::Slice(sm) => {
                                     let mut val = vec![];
                                     let elem_type = sm.get_value_type(&objs.metas);
@@ -844,7 +889,7 @@ impl Fiber {
                                         let elem = stack.pop_with_type(elem_type);
                                         val.push(elem);
                                     }
-                                    GosValue::with_slice_val(val, *md, &mut objs.slices)
+                                    GosValue::slice_with_val(val, *md, &mut objs.slices)
                                 }
                                 MetadataType::Map(km, vm) => {
                                     let gosv =
@@ -887,7 +932,12 @@ impl Fiber {
                     let param = stack.pop_with_type(inst.t0());
                     let new_val = match param {
                         GosValue::Metadata(md) => {
-                            let v = md.default_val(&objs.metas, &mut objs.slices, &mut objs.maps);
+                            let v = md.default_val(
+                                &objs.metas,
+                                &mut objs.arrays,
+                                &mut objs.slices,
+                                &mut objs.maps,
+                            );
                             GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                         }
                         _ => unimplemented!(),

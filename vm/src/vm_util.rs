@@ -1,8 +1,8 @@
 //#![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::instruction::*;
-use super::value::{VMObjects, GosValue, RuntimeResult};
 use super::stack::Stack;
+use super::value::{GosValue, RtValueResult, RuntimeResult, VMObjects};
 
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
@@ -65,6 +65,10 @@ macro_rules! deref_value {
                     PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s),
                         _ => GosValue::Named(Box::new((GosValue::Struct(s), md))),
+                    }
+                    PointerObj::Array(a, md) => match md {
+                        GosMetadata::Untyped => GosValue::Array(a),
+                        _ => GosValue::Named(Box::new((GosValue::Array(a), md))),
                     }
                     PointerObj::Slice(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Slice(s),
@@ -208,41 +212,47 @@ macro_rules! range_body {
 }
 
 #[inline]
-pub fn load_index(val: &GosValue, ind: &GosValue) -> GosValue {
+pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     match val {
-        GosValue::Slice(slice) => {
+        GosValue::Map(map) => Ok(map.get(&ind).clone()),
+        _ => {
             let index = *ind.as_int() as usize;
-            if let Some(v) = slice.get(index) {
-                v
-            } else {
-                unimplemented!();
+            match val {
+                GosValue::Array(arr) => arr
+                    .get(index)
+                    .map_or(Err(format!("index {} out of range", index)), |x| Ok(x)),
+                GosValue::Slice(slice) => slice
+                    .get(index)
+                    .map_or(Err(format!("index {} out of range", index)), |x| Ok(x)),
+                GosValue::Str(s) => s
+                    .get_byte(index)
+                    .map_or(Err(format!("index {} out of range", index)), |x| {
+                        Ok(GosValue::Int((*x).into()))
+                    }),
+                _ => unreachable!(),
             }
         }
-        GosValue::Map(map) => map.get(&ind).clone(),
-        GosValue::Str(s) => {
-            GosValue::Int(s.get_byte(*ind.as_int() as usize) as isize)
-        }
-        _ => unreachable!(),
     }
 }
 
 #[inline]
-pub fn load_index_int(val: &GosValue, i: usize) -> GosValue {
+pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
     match val {
-        GosValue::Slice(slice) => {
-            if let Some(v) = slice.get(i) {
-                v
-            } else {
-                unimplemented!();
-            }
-        }
+        GosValue::Array(arr) => arr
+            .get(i)
+            .map_or(Err(format!("index {} out of range", i)), |x| Ok(x)),
+        GosValue::Slice(slice) => slice
+            .get(i)
+            .map_or(Err(format!("index {} out of range", i)), |x| Ok(x)),
         GosValue::Map(map) => {
             let ind = GosValue::Int(i as isize);
-            map.get(&ind).clone()
+            Ok(map.get(&ind).clone())
         }
-        GosValue::Str(s) => {
-            GosValue::Int(s.get_byte(i) as isize)
-        }
+        GosValue::Str(s) => s
+            .get_byte(i)
+            .map_or(Err(format!("index {} out of range", i)), |x| {
+                Ok(GosValue::Int((*x).into()))
+            }),
         _ => {
             dbg!(val);
             unreachable!();
@@ -253,14 +263,10 @@ pub fn load_index_int(val: &GosValue, i: usize) -> GosValue {
 #[inline]
 pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue {
     match val {
-        GosValue::Struct(sval) => {
-            match &ind {
-                GosValue::Int(i) => {
-                    sval.borrow().fields[*i as usize].clone()
-                }
-                _ => unreachable!(),
-            }
-        }
+        GosValue::Struct(sval) => match &ind {
+            GosValue::Int(i) => sval.borrow().fields[*i as usize].clone(),
+            _ => unreachable!(),
+        },
         GosValue::Package(pkey) => {
             let pkg = &objs.packages[*pkey];
             pkg.member(*ind.as_int() as OpIndex).clone()
@@ -270,8 +276,18 @@ pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue 
 }
 
 #[inline]
-pub fn store_index(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType) {
+pub fn store_index(
+    stack: &Stack,
+    target: &GosValue,
+    key: &GosValue,
+    r_index: OpIndex,
+    t: ValueType,
+) {
     match target {
+        GosValue::Array(arr) => {
+            let target_cell = &arr.borrow_data()[*key.as_int() as usize];
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+        }
         GosValue::Slice(s) => {
             let target_cell = &s.borrow_data()[*key.as_int() as usize];
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
@@ -280,16 +296,27 @@ pub fn store_index(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
             map.touch_key(&key);
             let borrowed = map.borrow_data();
             let target_cell = borrowed.get(&key).unwrap();
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);   
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
         }
         _ => unreachable!(),
     }
 }
 
 #[inline]
-pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIndex, t: ValueType) -> RuntimeResult {
+pub fn store_index_int(
+    stack: &Stack,
+    target: &GosValue,
+    i: usize,
+    r_index: OpIndex,
+    t: ValueType,
+) -> RuntimeResult {
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
+        GosValue::Array(arr) => {
+            let target_cell = &arr.borrow_data()[i];
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+            Ok(())
+        }
         GosValue::Slice(s) => {
             if s.is_nil() {
                 err
@@ -307,13 +334,11 @@ pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIn
                 map.touch_key(&key);
                 let borrowed = map.borrow_data();
                 let target_cell = borrowed.get(&key).unwrap();
-                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);   
+                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
                 Ok(())
             }
         }
-        GosValue::Nil(_) => {
-            err
-        }
+        GosValue::Nil(_) => err,
         _ => {
             dbg!(target);
             unreachable!()
@@ -322,7 +347,14 @@ pub fn store_index_int(stack: &Stack, target: &GosValue, i: usize, r_index: OpIn
 }
 
 #[inline]
-pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: OpIndex, t: ValueType, objs: &VMObjects) {
+pub fn store_field(
+    stack: &Stack,
+    target: &GosValue,
+    key: &GosValue,
+    r_index: OpIndex,
+    t: ValueType,
+    objs: &VMObjects,
+) {
     match target {
         GosValue::Struct(s) => {
             match key {
@@ -331,7 +363,7 @@ pub fn store_field(stack: &Stack, target: &GosValue, key: &GosValue, r_index: Op
                     stack.store_val(target, r_index, t);
                 }
                 GosValue::Str(sval) => {
-                    let i =s.borrow().meta.field_index(sval.as_str(), &objs.metas);
+                    let i = s.borrow().meta.field_index(sval.as_str(), &objs.metas);
                     let target = &mut s.borrow_mut().fields[i as usize];
                     stack.store_val(target, r_index, t);
                 }

@@ -1,6 +1,6 @@
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{
-    FunctionKey, MapObjs, MetadataKey, MetadataObjs, SliceObjs, StructObj, VMObjects,
+    ArrayObjs, FunctionKey, MapObjs, MetadataKey, MetadataObjs, SliceObjs, StructObj, VMObjects,
 };
 use super::value::GosValue;
 use std::cell::RefCell;
@@ -10,7 +10,12 @@ use std::rc::Rc;
 #[macro_export]
 macro_rules! zero_val {
     ($meta:ident, $objs:expr) => {
-        $meta.zero_val(&$objs.metas, &mut $objs.slices, &mut $objs.maps)
+        $meta.zero_val(
+            &$objs.metas,
+            &mut $objs.arrays,
+            &mut $objs.slices,
+            &mut $objs.maps,
+        )
     };
 }
 
@@ -86,6 +91,11 @@ impl GosMetadata {
     }
 
     #[inline]
+    pub fn new_array(elem_meta: GosMetadata, size: usize, metas: &mut MetadataObjs) -> GosMetadata {
+        GosMetadata::new(MetadataType::Array(elem_meta, size), metas)
+    }
+
+    #[inline]
     pub fn new_slice(val_meta: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
         GosMetadata::new(MetadataType::Slice(val_meta), metas)
     }
@@ -146,6 +156,17 @@ impl GosMetadata {
     pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
         debug_assert!(underlying.get_value_type(metas) != ValueType::Named);
         GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
+    }
+
+    pub fn new_slice_from_array(array: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
+        let elem = match &metas[array.as_non_ptr()] {
+            MetadataType::Array(elem, _) => elem,
+            _ => {
+                dbg!(&metas[array.as_non_ptr()]);
+                unreachable!()
+            }
+        };
+        GosMetadata::new_slice(*elem, metas)
     }
 
     #[inline]
@@ -254,6 +275,7 @@ impl GosMetadata {
                     MetadataType::Complex64 => ValueType::Complex64,
                     MetadataType::Complex128 => ValueType::Complex128,
                     MetadataType::Str(_) => ValueType::Str,
+                    MetadataType::Array(_, _) => ValueType::Array,
                     MetadataType::Struct(_, _) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
                     MetadataType::Slice(_) => ValueType::Slice,
@@ -271,16 +293,18 @@ impl GosMetadata {
     pub fn zero_val(
         &self,
         mobjs: &MetadataObjs,
+        arrays: &mut ArrayObjs,
         slices: &mut SliceObjs,
         maps: &mut MapObjs,
     ) -> GosValue {
-        self.zero_val_impl(mobjs, slices, maps)
+        self.zero_val_impl(mobjs, arrays, slices, maps)
     }
 
     #[inline]
     fn zero_val_impl(
         &self,
         mobjs: &MetadataObjs,
+        arrays: &mut ArrayObjs,
         slices: &mut SliceObjs,
         maps: &mut MapObjs,
     ) -> GosValue {
@@ -305,16 +329,20 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
+                MetadataType::Array(m, size) => {
+                    let val = m.default_val(mobjs, arrays, slices, maps);
+                    GosValue::array_with_size(*size, &val, *self, arrays)
+                }
                 MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Slice(_) => GosValue::new_slice_nil(*self, slices),
                 MetadataType::Map(_, v) => {
-                    GosValue::new_map_nil(*self, v.zero_val_impl(mobjs, slices, maps), maps)
+                    GosValue::new_map_nil(*self, v.default_val(mobjs, arrays, slices, maps), maps)
                 }
                 MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
-                    let val = gm.zero_val_impl(mobjs, slices, maps);
+                    let val = gm.default_val(mobjs, arrays, slices, maps);
                     GosValue::Named(Box::new((val, *gm)))
                 }
             },
@@ -326,6 +354,7 @@ impl GosMetadata {
     pub fn default_val(
         &self,
         mobjs: &MetadataObjs,
+        arrays: &mut ArrayObjs,
         slices: &mut SliceObjs,
         maps: &mut MapObjs,
     ) -> GosValue {
@@ -349,16 +378,20 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
+                MetadataType::Array(m, size) => {
+                    let val = m.default_val(mobjs, arrays, slices, maps);
+                    GosValue::array_with_size(*size, &val, *self, arrays)
+                }
                 MetadataType::Struct(_, s) => s.copy_semantic(),
-                MetadataType::Signature(_) => unimplemented!(),
+                MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Slice(_) => GosValue::new_slice(0, 0, *self, None, slices),
                 MetadataType::Map(_, v) => {
-                    GosValue::new_map(*self, v.zero_val_impl(mobjs, slices, maps), maps)
+                    GosValue::new_map(*self, v.default_val(mobjs, arrays, slices, maps), maps)
                 }
-                MetadataType::Interface(_) => unimplemented!(),
+                MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
-                    let val = gm.default_val(mobjs, slices, maps);
+                    let val = gm.default_val(mobjs, arrays, slices, maps);
                     GosValue::Named(Box::new((val, *gm)))
                 }
             },
@@ -653,6 +686,7 @@ pub enum MetadataType {
     Complex64,
     Complex128,
     Str(GosValue),
+    Array(GosMetadata, usize),
     Struct(Fields, GosValue),
     Signature(SigMetadata),
     Slice(GosMetadata),

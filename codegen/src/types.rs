@@ -289,6 +289,10 @@ impl<'a> TypeLookup<'a> {
     fn meta_from_tc_impl(&mut self, typ: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         match &self.tc_objs.types[typ] {
             Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs),
+            Type::Array(detail) => {
+                let elem = self.meta_from_tc_impl(detail.elem(), vm_objs);
+                GosMetadata::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
+            }
             Type::Slice(detail) => {
                 let el_type = self.meta_from_tc(detail.elem(), vm_objs);
                 GosMetadata::new_slice(el_type, &mut vm_objs.metas)
@@ -394,6 +398,7 @@ impl<'a> TypeLookup<'a> {
                     unreachable!()
                 }
             },
+            Type::Array(_) => ValueType::Array,
             Type::Slice(_) => ValueType::Slice,
             Type::Map(_) => ValueType::Map,
             Type::Struct(_) => ValueType::Struct,

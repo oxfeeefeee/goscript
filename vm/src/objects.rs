@@ -32,6 +32,7 @@ new_key_type! { pub struct PackageKey; }
 
 pub type InterfaceObjs = Vec<Weak<RefCell<InterfaceObj>>>;
 pub type ClosureObjs = Vec<Weak<RefCell<ClosureObj>>>;
+pub type ArrayObjs = Vec<Weak<ArrayObj>>;
 pub type SliceObjs = Vec<Weak<SliceObj>>;
 pub type MapObjs = Vec<Weak<MapObj>>;
 pub type StructObjs = Vec<Weak<RefCell<StructObj>>>;
@@ -61,6 +62,7 @@ where
 pub struct VMObjects {
     pub interfaces: InterfaceObjs,
     pub closures: ClosureObjs,
+    pub arrays: ArrayObjs,
     pub slices: SliceObjs,
     pub maps: MapObjs,
     pub structs: StructObjs,
@@ -79,6 +81,7 @@ impl VMObjects {
         VMObjects {
             interfaces: vec![],
             closures: vec![],
+            arrays: vec![],
             slices: vec![],
             maps: vec![],
             structs: vec![],
@@ -133,14 +136,14 @@ impl StringObj {
     }
 
     #[inline]
-    pub fn get_byte(&self, i: usize) -> u8 {
-        self.as_str().as_bytes()[i]
+    pub fn get_byte(&self, i: usize) -> Option<&u8> {
+        self.as_str().as_bytes().get(i)
     }
 
     pub fn slice(&self, begin: isize, end: isize) -> StringObj {
-        let self_len = self.len() as isize + 1;
+        let self_end = self.len() as isize + 1;
         let bi = begin as usize;
-        let ei = ((self_len + end) % self_len) as usize;
+        let ei = ((self_end + end) % self_end) as usize;
         StringObj {
             data: Rc::clone(&self.data),
             begin: bi,
@@ -327,9 +330,115 @@ impl Display for MapObj {
 }
 
 // ----------------------------------------------------------------------------
-// SliceObj
+// ArrayObj
 
 pub type GosVec = Vec<RefCell<GosValue>>;
+
+#[derive(Debug)]
+pub struct ArrayObj {
+    pub dark: bool,
+    pub meta: GosMetadata,
+    pub vec: Rc<RefCell<GosVec>>,
+}
+
+impl ArrayObj {
+    pub fn with_size(size: usize, val: &GosValue, meta: GosMetadata) -> ArrayObj {
+        let mut v = GosVec::with_capacity(size);
+        for _ in 0..size {
+            v.push(RefCell::new(val.copy_semantic()))
+        }
+        ArrayObj {
+            dark: false,
+            meta: meta,
+            vec: Rc::new(RefCell::new(v)),
+        }
+    }
+
+    pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> ArrayObj {
+        ArrayObj {
+            dark: false,
+            meta: meta,
+            vec: Rc::new(RefCell::new(
+                val.into_iter().map(|x| RefCell::new(x)).collect(),
+            )),
+        }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.borrow_data().len()
+    }
+
+    #[inline]
+    pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
+        self.vec.borrow_mut()
+    }
+
+    #[inline]
+    pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
+        self.vec.borrow()
+    }
+
+    #[inline]
+    pub fn get(&self, i: usize) -> Option<GosValue> {
+        self.borrow_data().get(i).map(|x| x.clone().into_inner())
+    }
+
+    #[inline]
+    pub fn set_from(&self, other: &ArrayObj) {
+        *self.borrow_data_mut() = other.borrow_data().clone()
+    }
+}
+
+impl Display for ArrayObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_char('[')?;
+        for (i, e) in self.vec.borrow().iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
+            }
+            write!(f, "{}", e.borrow())?
+        }
+        f.write_char(']')
+    }
+}
+
+impl Hash for ArrayObj {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for e in self.borrow_data().iter() {
+            e.borrow().hash(state);
+        }
+    }
+}
+
+impl Eq for ArrayObj {}
+
+impl PartialEq for ArrayObj {
+    fn eq(&self, b: &ArrayObj) -> bool {
+        if self.borrow_data().len() != b.borrow_data().len() {
+            return false;
+        }
+        for (i, e) in self.borrow_data().iter().enumerate() {
+            if e != b.borrow_data().get(i).unwrap() {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl Clone for ArrayObj {
+    fn clone(&self) -> Self {
+        ArrayObj {
+            dark: false,
+            meta: self.meta,
+            vec: self.vec.clone(),
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// SliceObj
 
 #[derive(Debug)]
 pub struct SliceObj {
@@ -373,6 +482,27 @@ impl<'a> SliceObj {
             vec: Some(Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
             ))),
+        }
+    }
+
+    pub fn with_array(
+        arr: &ArrayObj,
+        begin: isize,
+        end: isize,
+        metas: &mut MetadataObjs,
+    ) -> SliceObj {
+        let elem_meta = GosMetadata::new_slice_from_array(arr.meta, metas);
+        let len = arr.len();
+        let self_end = len as isize + 1;
+        let bi = begin as usize;
+        let ei = ((self_end + end) % self_end) as usize;
+        SliceObj {
+            dark: false,
+            meta: elem_meta,
+            begin: Cell::from(bi),
+            end: Cell::from(ei),
+            soft_cap: Cell::from(len),
+            vec: Some(arr.vec.clone()),
         }
     }
 
@@ -548,8 +678,8 @@ impl Clone for SliceObj {
 impl Display for SliceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_char('[')?;
-        if let Some(v) = &self.vec {
-            for (i, e) in v.borrow().iter().enumerate() {
+        if self.vec.is_some() {
+            for (i, e) in self.borrow().iter().enumerate() {
                 if i > 0 {
                     f.write_char(' ')?;
                 }
@@ -772,6 +902,7 @@ pub struct ChannelObj {}
 pub enum PointerObj {
     UpVal(UpValue),
     Struct(Rc<RefCell<StructObj>>, GosMetadata),
+    Array(Rc<ArrayObj>, GosMetadata),
     Slice(Rc<SliceObj>, GosMetadata),
     Map(Rc<MapObj>, GosMetadata),
     SliceMember(Rc<SliceObj>, OpIndex),
@@ -785,6 +916,7 @@ impl PointerObj {
         match val {
             GosValue::Named(s) => match &s.0 {
                 GosValue::Struct(stru) => PointerObj::Struct(stru.clone(), s.1),
+                GosValue::Array(arr) => PointerObj::Array(arr.clone(), s.1),
                 GosValue::Slice(slice) => PointerObj::Slice(slice.clone(), s.1),
                 GosValue::Map(map) => PointerObj::Map(map.clone(), s.1),
                 _ => {
@@ -793,6 +925,7 @@ impl PointerObj {
                 }
             },
             GosValue::Struct(s) => PointerObj::Struct(s.clone(), GosMetadata::Untyped),
+            GosValue::Array(a) => PointerObj::Array(a.clone(), GosMetadata::Untyped),
             GosValue::Slice(s) => PointerObj::Slice(s.clone(), GosMetadata::Untyped),
             GosValue::Map(m) => PointerObj::Map(m.clone(), GosMetadata::Untyped),
             _ => {
@@ -834,6 +967,7 @@ impl PartialEq for PointerObj {
         match (self, other) {
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
             (Self::Struct(x, _), Self::Struct(y, _)) => x == y,
+            (Self::Array(x, _), Self::Array(y, _)) => x == y,
             (Self::Slice(x, _), Self::Slice(y, _)) => x == y,
             (Self::Map(x, _), Self::Map(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
@@ -849,6 +983,7 @@ impl Hash for PointerObj {
         match self {
             Self::UpVal(x) => x.hash(state),
             Self::Struct(s, _) => Rc::as_ptr(s).hash(state),
+            Self::Array(s, _) => Rc::as_ptr(s).hash(state),
             Self::Slice(s, _) => Rc::as_ptr(s).hash(state),
             Self::Map(s, _) => Rc::as_ptr(s).hash(state),
             Self::SliceMember(s, index) => {
@@ -872,6 +1007,7 @@ impl Display for PointerObj {
         match self {
             Self::UpVal(uv) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&uv.inner))),
             Self::Struct(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
+            Self::Array(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
             Self::Slice(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
             Self::Map(m, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&m))),
             Self::SliceMember(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),

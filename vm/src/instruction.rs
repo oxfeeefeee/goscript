@@ -245,6 +245,7 @@ pub enum ValueType {
 
     Complex128,
     Str,
+    Array,
     Struct,
 
     Named,

@@ -760,6 +760,12 @@ impl<'a> CodeGen<'a> {
         let mtype =
             &self.objects.metas[meta.get_underlying(&self.objects.metas).as_non_ptr()].clone();
         match mtype {
+            MetadataType::Array(_, _) => {
+                let elem = typ.try_as_array().unwrap().elem();
+                for expr in clit.elts.iter().rev() {
+                    self.visit_composite_expr(expr, elem);
+                }
+            }
             MetadataType::Slice(_) => {
                 let elem = typ.try_as_slice().unwrap().elem();
                 for expr in clit.elts.iter().rev() {
@@ -1112,6 +1118,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                 .get_underlying(&self.objects.metas)
                                 .get_value_type(&self.objects.metas);
                             if ut == ValueType::Struct
+                                || ut == ValueType::Array
                                 || ut == ValueType::Slice
                                 || ut == ValueType::Map
                             {

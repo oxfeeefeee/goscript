@@ -301,7 +301,7 @@ impl Stack {
         if index < self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
-            self.push(GosValue::with_slice_val(v, meta, slices))
+            self.push(GosValue::slice_with_val(v, meta, slices))
         }
     }
 

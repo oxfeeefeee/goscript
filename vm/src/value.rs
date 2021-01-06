@@ -158,6 +158,8 @@ macro_rules! shift_int {
 
 pub type RuntimeResult = result::Result<(), String>;
 
+pub type RtValueResult = result::Result<GosValue, String>;
+
 // ----------------------------------------------------------------------------
 // GosValue
 #[derive(Debug, Clone)]
@@ -186,6 +188,7 @@ pub enum GosValue {
     Metadata(GosMetadata),
 
     Str(Rc<StringObj>), // "String" is taken
+    Array(Rc<ArrayObj>),
     Pointer(Box<PointerObj>),
     Closure(Rc<ClosureObj>),
     Slice(Rc<SliceObj>),
@@ -214,6 +217,29 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn array_with_size(
+        size: usize,
+        val: &GosValue,
+        meta: GosMetadata,
+        arrays: &mut ArrayObjs,
+    ) -> GosValue {
+        let arr = Rc::new(ArrayObj::with_size(size, val, meta));
+        arrays.push(Rc::downgrade(&arr));
+        GosValue::Array(arr)
+    }
+
+    #[inline]
+    pub fn array_with_val(
+        val: Vec<GosValue>,
+        meta: GosMetadata,
+        arrays: &mut ArrayObjs,
+    ) -> GosValue {
+        let arr = Rc::new(ArrayObj::with_data(val, meta));
+        arrays.push(Rc::downgrade(&arr));
+        GosValue::Array(arr)
+    }
+
+    #[inline]
     pub fn new_slice(
         len: usize,
         cap: usize,
@@ -234,12 +260,25 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn with_slice_val(
+    pub fn slice_with_val(
         val: Vec<GosValue>,
         meta: GosMetadata,
         slices: &mut SliceObjs,
     ) -> GosValue {
         let s = Rc::new(SliceObj::with_data(val, meta));
+        slices.push(Rc::downgrade(&s));
+        GosValue::Slice(s)
+    }
+
+    #[inline]
+    pub fn slice_with_array(
+        arr: &GosValue,
+        begin: isize,
+        end: isize,
+        metas: &mut MetadataObjs,
+        slices: &mut SliceObjs,
+    ) -> GosValue {
+        let s = Rc::new(SliceObj::with_array(arr.as_array(), begin, end, metas));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
@@ -321,6 +360,11 @@ impl GosValue {
     #[inline]
     pub fn as_str(&self) -> &Rc<StringObj> {
         unwrap_gos_val!(Str, self)
+    }
+
+    #[inline]
+    pub fn as_array(&self) -> &Rc<ArrayObj> {
+        unwrap_gos_val!(Array, self)
     }
 
     #[inline]
@@ -449,6 +493,7 @@ impl GosValue {
             GosValue::Complex64(_, _) => ValueType::Complex64,
             GosValue::Complex128(_) => ValueType::Complex128,
             GosValue::Str(_) => ValueType::Str,
+            GosValue::Array(_) => ValueType::Array,
             GosValue::Pointer(_) => ValueType::Pointer,
             GosValue::Closure(_) => ValueType::Closure,
             GosValue::Slice(_) => ValueType::Slice,
@@ -486,6 +531,7 @@ impl GosValue {
             GosValue::Complex64(_, _) => objs.metadata.mcomplex64,
             GosValue::Complex128(_) => objs.metadata.mcomplex128,
             GosValue::Str(_) => objs.metadata.mstr,
+            GosValue::Array(a) => a.meta,
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b;
                 let inner = match bobj {
@@ -501,6 +547,10 @@ impl GosValue {
                     }
                     PointerObj::Struct(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.borrow().meta,
+                        _ => *named_md,
+                    },
+                    PointerObj::Array(a, named_md) => match named_md {
+                        GosMetadata::Untyped => a.meta,
                         _ => *named_md,
                     },
                     PointerObj::Slice(s, named_md) => match named_md {
@@ -580,6 +630,7 @@ impl PartialEq for GosValue {
             (Self::Package(x), Self::Package(y)) => x == y,
             (Self::Metadata(x), Self::Metadata(y)) => x == y,
             (Self::Str(x), Self::Str(y)) => *x == *y,
+            (Self::Array(x), Self::Array(y)) => *x == *y,
             (Self::Pointer(x), Self::Pointer(y)) => x == y,
             (Self::Closure(x), Self::Closure(y)) => Rc::ptr_eq(x, y),
             (Self::Slice(x), Self::Slice(y)) => Rc::ptr_eq(x, y),
@@ -624,6 +675,7 @@ impl Hash for GosValue {
             GosValue::Float32(f) => f.to_bits().hash(state),
             GosValue::Float64(f) => f.to_bits().hash(state),
             GosValue::Str(s) => s.as_str().hash(state),
+            GosValue::Array(a) => a.hash(state),
             GosValue::Complex64(i, r) => {
                 i.hash(state);
                 r.hash(state);
@@ -693,6 +745,7 @@ impl Display for GosValue {
             GosValue::Complex64(r, i) => write!(f, "({}, {})", r, i),
             GosValue::Complex128(b) => write!(f, "({}, {})", b.0, b.1),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
+            GosValue::Array(a) => write!(f, "{}", a),
             GosValue::Pointer(p) => p.fmt(f),
             GosValue::Closure(_) => f.write_str("<closure>"),
             GosValue::Slice(s) => write!(f, "{}", s),

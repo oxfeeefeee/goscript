@@ -58,6 +58,27 @@ func main() {
     assert(sl1[0] == 111)
     assert(sl1[1] == 222)
 
+    {
+        sl1 := [2]int{1,2}
+        sl2 := sl1
+        assert(sl2[0] == 1) 
+        i := 3
+        psl := &sl2[i-3]
+        *psl = 3
+        assert(sl1[0] == 3) 
+
+        *psl += 2
+        assert(sl1[0] == 5) 
+
+        sl1p := &sl1
+        (*sl1p)[0] = 8
+        assert(sl1[0] == 8)
+
+        *sl1p = [2]int{111,222}
+        assert(sl1[0] == 111)
+        assert(sl1[1] == 222)
+
+    }
 
     var m1 = map[int]int{1:2, 3: 888}
     m1p := &m1

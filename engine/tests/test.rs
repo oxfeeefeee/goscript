@@ -183,6 +183,12 @@ fn test_composite() {
 }
 
 #[test]
+fn test_array() {
+    let err_cnt = run("./tests/gs/group1/array.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 
