@@ -218,17 +218,17 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
         _ => {
             let index = *ind.as_int() as usize;
             match val {
-                GosValue::Array(arr) => arr
-                    .get(index)
-                    .map_or(Err(format!("index {} out of range", index)), |x| Ok(x)),
                 GosValue::Slice(slice) => slice
                     .get(index)
-                    .map_or(Err(format!("index {} out of range", index)), |x| Ok(x)),
+                    .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| Ok(x)),
                 GosValue::Str(s) => s
                     .get_byte(index)
-                    .map_or(Err(format!("index {} out of range", index)), |x| {
+                    .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| {
                         Ok(GosValue::Int((*x).into()))
                     }),
+                GosValue::Array(arr) => arr
+                    .get(index)
+                    .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| Ok(x)),
                 _ => unreachable!(),
             }
         }
@@ -238,21 +238,21 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
 #[inline]
 pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
     match val {
-        GosValue::Array(arr) => arr
-            .get(i)
-            .map_or(Err(format!("index {} out of range", i)), |x| Ok(x)),
         GosValue::Slice(slice) => slice
             .get(i)
-            .map_or(Err(format!("index {} out of range", i)), |x| Ok(x)),
+            .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| Ok(x)),
         GosValue::Map(map) => {
             let ind = GosValue::Int(i as isize);
             Ok(map.get(&ind).clone())
         }
         GosValue::Str(s) => s
             .get_byte(i)
-            .map_or(Err(format!("index {} out of range", i)), |x| {
+            .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| {
                 Ok(GosValue::Int((*x).into()))
             }),
+        GosValue::Array(arr) => arr
+            .get(i)
+            .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| Ok(x)),
         _ => {
             dbg!(val);
             unreachable!();
