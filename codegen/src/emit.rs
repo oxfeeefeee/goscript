@@ -4,6 +4,7 @@ use super::package::PkgVarPairs;
 use goscript_parser::ast::*;
 use goscript_parser::objects::{EntityKey, Objects as AstObjects};
 use goscript_vm::instruction::*;
+use goscript_vm::metadata::GosMetadata;
 use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
 use std::convert::TryFrom;
@@ -148,7 +149,10 @@ impl<'a> Emitter<'a> {
             }
             EntIndex::BuiltInVal(op) => self.f.emit_code(op, pos),
             EntIndex::BuiltInType(m) => {
-                let i = self.f.add_const(None, GosValue::Metadata(m));
+                let i = self.f.add_const(
+                    None,
+                    GosValue::Metadata(GosMetadata::NonPtr(m.clone(), false)),
+                );
                 self.emit_load(i, None, ValueType::Metadata, pos);
             }
             EntIndex::Blank => unreachable!(),

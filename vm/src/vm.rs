@@ -440,7 +440,7 @@ impl Fiber {
                     let val = match &objs.metas[iface.0.as_non_ptr()] {
                         MetadataType::Named(_, md) => GosValue::Named(Box::new((
                             GosValue::new_iface(
-                                *md,
+                                md.clone(),
                                 IfaceUnderlying::Gos(under, iface.1),
                                 &mut objs.interfaces,
                             ),
@@ -600,7 +600,7 @@ impl Fiber {
                                 if inst_op != Opcode::CALL_ELLIPSIS {
                                     let index =
                                         stack_base + func.param_count() + func.ret_count() - 1;
-                                    stack.pack_variadic(index, meta, vt, &mut objs.slices);
+                                    stack.pack_variadic(index, meta.clone(), *vt, &mut objs.slices);
                                 }
                             }
 
@@ -823,7 +823,6 @@ impl Fiber {
                     let end = stack.pop_int();
                     let begin = stack.pop_int();
                     let target = stack.pop_with_type(inst.t0());
-                    dbg!(&target);
                     let result = match &target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
@@ -880,7 +879,7 @@ impl Fiber {
                                         let elem = stack.pop_with_type(elem_type);
                                         val.push(elem);
                                     }
-                                    GosValue::array_with_val(val, *md, &mut objs.arrays)
+                                    GosValue::array_with_val(val, md.clone(), &mut objs.arrays)
                                 }
                                 MetadataType::Slice(sm) => {
                                     let mut val = vec![];
@@ -889,11 +888,14 @@ impl Fiber {
                                         let elem = stack.pop_with_type(elem_type);
                                         val.push(elem);
                                     }
-                                    GosValue::slice_with_val(val, *md, &mut objs.slices)
+                                    GosValue::slice_with_val(val, md.clone(), &mut objs.slices)
                                 }
                                 MetadataType::Map(km, vm) => {
-                                    let gosv =
-                                        GosValue::new_map(*md, zero_val!(vm, objs), &mut objs.maps);
+                                    let gosv = GosValue::new_map(
+                                        md.clone(),
+                                        zero_val!(vm, objs),
+                                        &mut objs.maps,
+                                    );
                                     let map = gosv.as_map();
                                     let tk = km.get_value_type(&objs.metas);
                                     let tv = vm.get_value_type(&objs.metas);
@@ -920,7 +922,7 @@ impl Fiber {
                             if umd == *md {
                                 val
                             } else {
-                                GosValue::Named(Box::new((val, *md)))
+                                GosValue::Named(Box::new((val, md.clone())))
                             }
                         }
                         _ => unimplemented!(),
@@ -963,14 +965,14 @@ impl Fiber {
                             GosValue::new_slice(
                                 len,
                                 cap,
-                                *meta,
+                                meta.clone(),
                                 Some(&zero_val!(vmeta, objs)),
                                 &mut objs.slices,
                             )
                         }
                         MetadataType::Map(_, v) => {
                             let default = zero_val!(v, objs);
-                            GosValue::new_map(*meta, default, &mut objs.maps)
+                            GosValue::new_map(meta.clone(), default, &mut objs.maps)
                         }
                         MetadataType::Channel => unimplemented!(),
                         _ => unreachable!(),
@@ -1000,7 +1002,7 @@ impl Fiber {
                     let index = Stack::offset(stack.len(), inst.imm());
                     let a = stack.get_with_type(index - 2, ValueType::Slice);
                     let vala = a.as_slice();
-                    stack.pack_variadic(index, vala.meta, inst.t1(), &mut objs.slices);
+                    stack.pack_variadic(index, vala.meta.clone(), inst.t1(), &mut objs.slices);
                     let b = stack.pop_with_type(ValueType::Slice);
                     let valb = b.as_slice();
                     vala.borrow_data_mut()

@@ -189,24 +189,26 @@ impl<'a> TypeLookup<'a> {
     fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
-            BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
-            BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint,
-            BasicType::Int8 => vm_objs.metadata.mint8,
-            BasicType::Int16 => vm_objs.metadata.mint16,
-            BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => vm_objs.metadata.mint32,
-            BasicType::Int64 => vm_objs.metadata.mint64,
-            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
-                vm_objs.metadata.muint
+            BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool.clone(),
+            BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint.clone(),
+            BasicType::Int8 => vm_objs.metadata.mint8.clone(),
+            BasicType::Int16 => vm_objs.metadata.mint16.clone(),
+            BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
+                vm_objs.metadata.mint32.clone()
             }
-            BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
-            BasicType::Uint16 => vm_objs.metadata.muint16,
-            BasicType::Uint32 => vm_objs.metadata.muint32,
-            BasicType::Uint64 => vm_objs.metadata.muint64,
-            BasicType::Float32 => vm_objs.metadata.mfloat32,
-            BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64,
-            BasicType::Complex64 => vm_objs.metadata.mcomplex64,
-            BasicType::Complex128 => vm_objs.metadata.mcomplex128,
-            BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
+            BasicType::Int64 => vm_objs.metadata.mint64.clone(),
+            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
+                vm_objs.metadata.muint.clone()
+            }
+            BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8.clone(),
+            BasicType::Uint16 => vm_objs.metadata.muint16.clone(),
+            BasicType::Uint32 => vm_objs.metadata.muint32.clone(),
+            BasicType::Uint64 => vm_objs.metadata.muint64.clone(),
+            BasicType::Float32 => vm_objs.metadata.mfloat32.clone(),
+            BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64.clone(),
+            BasicType::Complex64 => vm_objs.metadata.mcomplex64.clone(),
+            BasicType::Complex128 => vm_objs.metadata.mcomplex128.clone(),
+            BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr.clone(),
             BasicType::UntypedNil => GosMetadata::Untyped,
             _ => {
                 dbg!(typ);
@@ -334,7 +336,7 @@ impl<'a> TypeLookup<'a> {
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
                     match &vm_objs.metas[slice.as_non_ptr()] {
-                        MetadataType::Slice(elem) => Some((*slice, elem.clone())),
+                        MetadataType::Slice(elem) => Some((slice.clone(), elem.clone())),
                         _ => unreachable!(),
                     }
                 } else {

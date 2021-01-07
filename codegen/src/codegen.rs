@@ -855,7 +855,7 @@ impl<'a> CodeGen<'a> {
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
-        let fmeta = self.objects.metadata.default_sig;
+        let fmeta = self.objects.metadata.default_sig.clone();
         let f = GosValue::new_function(pkey, fmeta, &mut self.objects, true);
         let fkey = *f.as_function();
         // the 0th member is the constructor
