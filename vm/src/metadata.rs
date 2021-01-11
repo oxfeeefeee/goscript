@@ -43,61 +43,81 @@ pub struct Metadata {
 impl Metadata {
     pub fn new(objs: &mut MetadataObjs) -> Metadata {
         Metadata {
-            mbool: GosMetadata::NonPtr(objs.insert(MetadataType::Bool), false),
-            mint: GosMetadata::NonPtr(objs.insert(MetadataType::Int), false),
-            mint8: GosMetadata::NonPtr(objs.insert(MetadataType::Int8), false),
-            mint16: GosMetadata::NonPtr(objs.insert(MetadataType::Int16), false),
-            mint32: GosMetadata::NonPtr(objs.insert(MetadataType::Int32), false),
-            mint64: GosMetadata::NonPtr(objs.insert(MetadataType::Int64), false),
-            muint: GosMetadata::NonPtr(objs.insert(MetadataType::Uint), false),
-            muint8: GosMetadata::NonPtr(objs.insert(MetadataType::Uint8), false),
-            muint16: GosMetadata::NonPtr(objs.insert(MetadataType::Uint16), false),
-            muint32: GosMetadata::NonPtr(objs.insert(MetadataType::Uint32), false),
-            muint64: GosMetadata::NonPtr(objs.insert(MetadataType::Uint64), false),
-            mfloat32: GosMetadata::NonPtr(objs.insert(MetadataType::Float32), false),
-            mfloat64: GosMetadata::NonPtr(objs.insert(MetadataType::Float64), false),
-            mcomplex64: GosMetadata::NonPtr(objs.insert(MetadataType::Complex64), false),
-            mcomplex128: GosMetadata::NonPtr(objs.insert(MetadataType::Complex128), false),
+            mbool: GosMetadata::NonPtr(objs.insert(MetadataType::Bool), MetaCategory::Default),
+            mint: GosMetadata::NonPtr(objs.insert(MetadataType::Int), MetaCategory::Default),
+            mint8: GosMetadata::NonPtr(objs.insert(MetadataType::Int8), MetaCategory::Default),
+            mint16: GosMetadata::NonPtr(objs.insert(MetadataType::Int16), MetaCategory::Default),
+            mint32: GosMetadata::NonPtr(objs.insert(MetadataType::Int32), MetaCategory::Default),
+            mint64: GosMetadata::NonPtr(objs.insert(MetadataType::Int64), MetaCategory::Default),
+            muint: GosMetadata::NonPtr(objs.insert(MetadataType::Uint), MetaCategory::Default),
+            muint8: GosMetadata::NonPtr(objs.insert(MetadataType::Uint8), MetaCategory::Default),
+            muint16: GosMetadata::NonPtr(objs.insert(MetadataType::Uint16), MetaCategory::Default),
+            muint32: GosMetadata::NonPtr(objs.insert(MetadataType::Uint32), MetaCategory::Default),
+            muint64: GosMetadata::NonPtr(objs.insert(MetadataType::Uint64), MetaCategory::Default),
+            mfloat32: GosMetadata::NonPtr(
+                objs.insert(MetadataType::Float32),
+                MetaCategory::Default,
+            ),
+            mfloat64: GosMetadata::NonPtr(
+                objs.insert(MetadataType::Float64),
+                MetaCategory::Default,
+            ),
+            mcomplex64: GosMetadata::NonPtr(
+                objs.insert(MetadataType::Complex64),
+                MetaCategory::Default,
+            ),
+            mcomplex128: GosMetadata::NonPtr(
+                objs.insert(MetadataType::Complex128),
+                MetaCategory::Default,
+            ),
             mstr: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Str(GosValue::new_str("".to_string()))),
-                false,
+                MetaCategory::Default,
             ),
             default_sig: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Signature(SigMetadata::default())),
-                false,
+                MetaCategory::Default,
             ),
         }
     }
 }
 
-// bool indicates if it's meta of a type
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MetaCategory {
+    Default,
+    Array,
+    Type,
+    ArrayType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GosMetadata {
     Untyped,
-    NonPtr(MetadataKey, bool),
-    Ptr1(MetadataKey, bool),
-    Ptr2(MetadataKey, bool),
-    Ptr3(MetadataKey, bool),
-    Ptr4(MetadataKey, bool),
-    Ptr5(MetadataKey, bool),
-    Ptr6(MetadataKey, bool),
-    Ptr7(MetadataKey, bool),
+    NonPtr(MetadataKey, MetaCategory),
+    Ptr1(MetadataKey, MetaCategory),
+    Ptr2(MetadataKey, MetaCategory),
+    Ptr3(MetadataKey, MetaCategory),
+    Ptr4(MetadataKey, MetaCategory),
+    Ptr5(MetadataKey, MetaCategory),
+    Ptr6(MetadataKey, MetaCategory),
+    Ptr7(MetadataKey, MetaCategory),
 }
 
 impl GosMetadata {
     #[inline]
     pub fn new(v: MetadataType, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::NonPtr(metas.insert(v), false)
+        GosMetadata::NonPtr(metas.insert(v), MetaCategory::Default)
     }
 
     #[inline]
     pub fn new_array(elem_meta: GosMetadata, size: usize, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::new(MetadataType::Array(elem_meta, size), metas)
+        let t = MetadataType::SliceOrArray(elem_meta, size);
+        GosMetadata::NonPtr(metas.insert(t), MetaCategory::Array)
     }
 
     #[inline]
     pub fn new_slice(val_meta: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::new(MetadataType::Slice(val_meta), metas)
+        GosMetadata::new(MetadataType::SliceOrArray(val_meta, 0), metas)
     }
 
     #[inline]
@@ -124,7 +144,7 @@ impl GosMetadata {
         };
         let gos_struct = GosValue::new_struct(struct_val, &mut objs.structs);
         let key = objs.metas.insert(MetadataType::Struct(f, gos_struct));
-        let gosm = GosMetadata::NonPtr(key, false);
+        let gosm = GosMetadata::NonPtr(key, MetaCategory::Default);
         match &mut objs.metas[key] {
             MetadataType::Struct(_, v) => match v {
                 GosValue::Struct(s) => s.borrow_mut().meta = gosm,
@@ -158,15 +178,8 @@ impl GosMetadata {
         GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
-    pub fn new_slice_from_array(array: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        let elem = match &metas[array.as_non_ptr()] {
-            MetadataType::Array(elem, _) => elem,
-            _ => {
-                dbg!(&metas[array.as_non_ptr()]);
-                unreachable!()
-            }
-        };
-        GosMetadata::new_slice(*elem, metas)
+    pub fn new_slice_from_array(array: GosMetadata) -> GosMetadata {
+        GosMetadata::NonPtr(array.as_non_ptr(), MetaCategory::Default)
     }
 
     #[inline]
@@ -216,49 +229,42 @@ impl GosMetadata {
         }
     }
 
+    // todo: change name
     #[inline]
-    pub fn unwrap_key_and_is_type(&self) -> (MetadataKey, bool) {
+    pub fn unwrap_non_ptr(&self) -> (MetadataKey, MetaCategory) {
         match self {
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
-            GosMetadata::NonPtr(k, t)
-            | GosMetadata::Ptr1(k, t)
-            | GosMetadata::Ptr2(k, t)
-            | GosMetadata::Ptr3(k, t)
-            | GosMetadata::Ptr4(k, t)
-            | GosMetadata::Ptr5(k, t)
-            | GosMetadata::Ptr6(k, t)
-            | GosMetadata::Ptr7(k, t) => (*k, *t),
+            GosMetadata::NonPtr(k, mc) => (*k, *mc),
+            _ => unreachable!(),
         }
     }
 
     #[inline]
-    pub fn set_is_type(&mut self, is_type: bool) {
-        *self = match self {
+    pub fn into_type_category(self) -> GosMetadata {
+        let convert = |c| match c {
+            MetaCategory::Default => MetaCategory::Type,
+            MetaCategory::Array => MetaCategory::ArrayType,
+            _ => c,
+        };
+        match self {
+            GosMetadata::NonPtr(k, c) => GosMetadata::NonPtr(k, convert(c)),
+            GosMetadata::Ptr1(k, c) => GosMetadata::Ptr1(k, convert(c)),
+            GosMetadata::Ptr2(k, c) => GosMetadata::Ptr2(k, convert(c)),
+            GosMetadata::Ptr3(k, c) => GosMetadata::Ptr3(k, convert(c)),
+            GosMetadata::Ptr4(k, c) => GosMetadata::Ptr4(k, convert(c)),
+            GosMetadata::Ptr5(k, c) => GosMetadata::Ptr5(k, convert(c)),
+            GosMetadata::Ptr6(k, c) => GosMetadata::Ptr6(k, convert(c)),
+            GosMetadata::Ptr7(k, c) => GosMetadata::Ptr7(k, convert(c)),
             GosMetadata::Untyped => {
                 unreachable!() /* todo: panic */
             }
-            GosMetadata::NonPtr(k, _) => GosMetadata::NonPtr(*k, is_type),
-            GosMetadata::Ptr1(k, _) => GosMetadata::Ptr1(*k, is_type),
-            GosMetadata::Ptr2(k, _) => GosMetadata::Ptr2(*k, is_type),
-            GosMetadata::Ptr3(k, _) => GosMetadata::Ptr3(*k, is_type),
-            GosMetadata::Ptr4(k, _) => GosMetadata::Ptr4(*k, is_type),
-            GosMetadata::Ptr5(k, _) => GosMetadata::Ptr5(*k, is_type),
-            GosMetadata::Ptr6(k, _) => GosMetadata::Ptr6(*k, is_type),
-            GosMetadata::Ptr7(k, _) => GosMetadata::Ptr7(*k, is_type),
         }
     }
 
     #[inline]
     pub fn get_value_type(&self, metas: &MetadataObjs) -> ValueType {
-        let (key, is_type) = self.unwrap_key_and_is_type();
-        if is_type {
-            ValueType::Metadata
-        } else {
-            match self {
-                GosMetadata::Untyped => unreachable!(),
-                GosMetadata::NonPtr(_, _) => match &metas[key] {
+        match self {
+            GosMetadata::NonPtr(k, mc) => match mc {
+                MetaCategory::Default => match &metas[*k] {
                     MetadataType::Bool => ValueType::Bool,
                     MetadataType::Int => ValueType::Int,
                     MetadataType::Int8 => ValueType::Int8,
@@ -275,17 +281,21 @@ impl GosMetadata {
                     MetadataType::Complex64 => ValueType::Complex64,
                     MetadataType::Complex128 => ValueType::Complex128,
                     MetadataType::Str(_) => ValueType::Str,
-                    MetadataType::Array(_, _) => ValueType::Array,
                     MetadataType::Struct(_, _) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
-                    MetadataType::Slice(_) => ValueType::Slice,
+                    MetadataType::SliceOrArray(_, _) => ValueType::Slice,
                     MetadataType::Map(_, _) => ValueType::Map,
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel => ValueType::Channel,
                     MetadataType::Named(_, _) => ValueType::Named,
                 },
-                _ => ValueType::Pointer,
+                MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
+                MetaCategory::Array => ValueType::Array,
+            },
+            GosMetadata::Untyped => {
+                unreachable!() /* todo: panic */
             }
+            _ => ValueType::Pointer,
         }
     }
 
@@ -310,7 +320,7 @@ impl GosMetadata {
     ) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
-            GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
+            GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
                 MetadataType::Int8 => GosValue::Int8(0),
@@ -329,13 +339,16 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::Array(m, size) => {
-                    let val = m.default_val(mobjs, arrays, slices, maps);
-                    GosValue::array_with_size(*size, &val, *self, arrays)
-                }
+                MetadataType::SliceOrArray(m, size) => match mc {
+                    MetaCategory::Array => {
+                        let val = m.default_val(mobjs, arrays, slices, maps);
+                        GosValue::array_with_size(*size, &val, *self, arrays)
+                    }
+                    MetaCategory::Default => GosValue::new_slice_nil(*self, slices),
+                    _ => unreachable!(),
+                },
                 MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
-                MetadataType::Slice(_) => GosValue::new_slice_nil(*self, slices),
                 MetadataType::Map(_, v) => {
                     GosValue::new_map_nil(*self, v.default_val(mobjs, arrays, slices, maps), maps)
                 }
@@ -359,7 +372,7 @@ impl GosMetadata {
         maps: &mut MapObjs,
     ) -> GosValue {
         match &self {
-            GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
+            GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
                 MetadataType::Int8 => GosValue::Int8(0),
@@ -378,13 +391,16 @@ impl GosMetadata {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::Array(m, size) => {
-                    let val = m.default_val(mobjs, arrays, slices, maps);
-                    GosValue::array_with_size(*size, &val, *self, arrays)
-                }
+                MetadataType::SliceOrArray(m, size) => match mc {
+                    MetaCategory::Array => {
+                        let val = m.default_val(mobjs, arrays, slices, maps);
+                        GosValue::array_with_size(*size, &val, *self, arrays)
+                    }
+                    MetaCategory::Default => GosValue::new_slice(0, 0, *self, None, slices),
+                    _ => unreachable!(),
+                },
                 MetadataType::Struct(_, s) => s.copy_semantic(),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
-                MetadataType::Slice(_) => GosValue::new_slice(0, 0, *self, None, slices),
                 MetadataType::Map(_, v) => {
                     GosValue::new_map(*self, v.default_val(mobjs, arrays, slices, maps), maps)
                 }
@@ -402,7 +418,7 @@ impl GosMetadata {
     #[inline]
     pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let key = self.recv_meta_key();
-        match &metas[GosMetadata::NonPtr(key, false)
+        match &metas[GosMetadata::NonPtr(key, MetaCategory::Default)
             .get_underlying(metas)
             .as_non_ptr()]
         {
@@ -494,33 +510,44 @@ impl GosMetadata {
 
     pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
         match (self, other) {
-            (Self::NonPtr(a, _), Self::NonPtr(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::NonPtr(ak, ac), Self::NonPtr(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr1(a, _), Self::Ptr1(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr1(ak, ac), Self::Ptr1(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr2(a, _), Self::Ptr2(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr2(ak, ac), Self::Ptr2(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr3(a, _), Self::Ptr3(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr3(ak, ac), Self::Ptr3(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr4(a, _), Self::Ptr4(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr4(ak, ac), Self::Ptr4(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr5(a, _), Self::Ptr5(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr5(ak, ac), Self::Ptr5(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr6(a, _), Self::Ptr6(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr6(ak, ac), Self::Ptr6(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Ptr7(a, _), Self::Ptr7(b, _)) => {
-                a == b || metas[*a].semantic_eq(&metas[*b], metas)
+            (Self::Ptr7(ak, ac), Self::Ptr7(bk, bc)) => {
+                Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
             (Self::Untyped, Self::Untyped) => true,
             _ => false,
         }
+    }
+
+    #[inline]
+    fn semantic_eq_impl(
+        ak: &MetadataKey,
+        ac: &MetaCategory,
+        bk: &MetadataKey,
+        bc: &MetaCategory,
+        metas: &MetadataObjs,
+    ) -> bool {
+        (ac == bc) && ((ak == bk) || metas[*ak].semantic_eq(&metas[*bk], *ac, metas))
     }
 }
 
@@ -686,10 +713,9 @@ pub enum MetadataType {
     Complex64,
     Complex128,
     Str(GosValue),
-    Array(GosMetadata, usize),
+    SliceOrArray(GosMetadata, usize),
     Struct(Fields, GosValue),
     Signature(SigMetadata),
-    Slice(GosMetadata),
     Map(GosMetadata, GosMetadata),
     Interface(Fields),
     Channel, //todo
@@ -713,7 +739,7 @@ impl MetadataType {
         }
     }
 
-    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+    pub fn semantic_eq(&self, other: &Self, mc: MetaCategory, metas: &MetadataObjs) -> bool {
         match (self, other) {
             (Self::Bool, Self::Bool) => true,
             (Self::Int, Self::Int) => true,
@@ -732,7 +758,17 @@ impl MetadataType {
             (Self::Str(_), Self::Str(_)) => true,
             (Self::Struct(a, _), Self::Struct(b, _)) => a.semantic_eq(b, metas),
             (Self::Signature(a), Self::Signature(b)) => a.semantic_eq(b, metas),
-            (Self::Slice(a), Self::Slice(b)) => a.semantic_eq(b, metas),
+            (Self::SliceOrArray(a, size_a), Self::SliceOrArray(b, size_b)) => {
+                match mc {
+                    MetaCategory::Array | MetaCategory::ArrayType => {
+                        if size_a != size_b {
+                            return false;
+                        }
+                    }
+                    _ => {}
+                }
+                a.semantic_eq(b, metas)
+            }
             (Self::Map(ak, av), Self::Map(bk, bv)) => {
                 ak.semantic_eq(bk, metas) && av.semantic_eq(bv, metas)
             }

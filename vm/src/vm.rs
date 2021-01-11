@@ -499,13 +499,7 @@ impl Fiber {
                     let mut slice = stack.pop_with_type(typ);
                     // create a slice if it's an array
                     if typ == ValueType::Array {
-                        slice = GosValue::slice_with_array(
-                            &slice,
-                            0,
-                            -1,
-                            &mut objs.metas,
-                            &mut objs.slices,
-                        );
+                        slice = GosValue::slice_with_array(&slice, 0, -1, &mut objs.slices);
                     }
                     stack.push(GosValue::new_pointer(PointerObj::new_slice_member(
                         &slice,
@@ -826,13 +820,9 @@ impl Fiber {
                     let result = match &target {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
-                        GosValue::Array(_) => GosValue::slice_with_array(
-                            &target,
-                            begin,
-                            end,
-                            &mut objs.metas,
-                            &mut objs.slices,
-                        ),
+                        GosValue::Array(_) => {
+                            GosValue::slice_with_array(&target, begin, end, &mut objs.slices)
+                        }
                         _ => unreachable!(),
                     };
                     stack.push(result);
@@ -870,26 +860,30 @@ impl Fiber {
                         }
                         GosValue::Metadata(md) => {
                             let umd = md.get_underlying(&objs.metas);
+                            let (key, mc) = umd.unwrap_non_ptr();
                             let count = stack.pop_int32();
-                            let val = match &objs.metas[umd.as_non_ptr()] {
-                                MetadataType::Array(am, _) => {
-                                    let mut val = vec![];
-                                    let elem_type = am.get_value_type(&objs.metas);
-                                    for _ in 0..count {
-                                        let elem = stack.pop_with_type(elem_type);
-                                        val.push(elem);
+                            let val = match &objs.metas[key] {
+                                MetadataType::SliceOrArray(asm, _) => match mc {
+                                    MetaCategory::Default => {
+                                        let mut val = vec![];
+                                        let elem_type = asm.get_value_type(&objs.metas);
+                                        for _ in 0..count {
+                                            let elem = stack.pop_with_type(elem_type);
+                                            val.push(elem);
+                                        }
+                                        GosValue::slice_with_val(val, *md, &mut objs.slices)
                                     }
-                                    GosValue::array_with_val(val, *md, &mut objs.arrays)
-                                }
-                                MetadataType::Slice(sm) => {
-                                    let mut val = vec![];
-                                    let elem_type = sm.get_value_type(&objs.metas);
-                                    for _ in 0..count {
-                                        let elem = stack.pop_with_type(elem_type);
-                                        val.push(elem);
+                                    MetaCategory::Array => {
+                                        let mut val = vec![];
+                                        let elem_type = asm.get_value_type(&objs.metas);
+                                        for _ in 0..count {
+                                            let elem = stack.pop_with_type(elem_type);
+                                            val.push(elem);
+                                        }
+                                        GosValue::array_with_val(val, *md, &mut objs.arrays)
                                     }
-                                    GosValue::slice_with_val(val, *md, &mut objs.slices)
-                                }
+                                    _ => unreachable!(),
+                                },
                                 MetadataType::Map(km, vm) => {
                                     let gosv =
                                         GosValue::new_map(*md, zero_val!(vm, objs), &mut objs.maps);
@@ -950,7 +944,7 @@ impl Fiber {
                     let meta = meta_val.as_meta();
                     let metadata = &objs.metas[meta.as_non_ptr()];
                     let val = match metadata {
-                        MetadataType::Slice(vmeta) => {
+                        MetadataType::SliceOrArray(vmeta, _) => {
                             let (cap, len) = match index {
                                 -2 => (stack.pop_int() as usize, stack.pop_int() as usize),
                                 -1 => {

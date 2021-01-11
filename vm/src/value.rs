@@ -275,10 +275,9 @@ impl GosValue {
         arr: &GosValue,
         begin: isize,
         end: isize,
-        metas: &mut MetadataObjs,
         slices: &mut SliceObjs,
     ) -> GosValue {
-        let s = Rc::new(SliceObj::with_array(arr.as_array(), begin, end, metas));
+        let s = Rc::new(SliceObj::with_array(arr.as_array(), begin, end));
         slices.push(Rc::downgrade(&s));
         GosValue::Slice(s)
     }
@@ -334,7 +333,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t), false))
+        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t), MetaCategory::Default))
     }
 
     #[inline]

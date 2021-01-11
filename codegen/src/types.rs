@@ -104,9 +104,12 @@ impl<'a> TypeLookup<'a> {
 
     pub fn get_meta_by_node_id(&mut self, id: NodeId, objects: &mut VMObjects) -> GosMetadata {
         let tv = self.ti.types.get(&id).unwrap();
-        let mut md = self.meta_from_tc(tv.typ, objects);
-        md.set_is_type(tv.mode == OperandMode::TypeExpr);
-        md
+        let md = self.meta_from_tc(tv.typ, objects);
+        if tv.mode == OperandMode::TypeExpr {
+            md.into_type_category()
+        } else {
+            md
+        }
     }
 
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
@@ -334,7 +337,7 @@ impl<'a> TypeLookup<'a> {
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
                     match &vm_objs.metas[slice.as_non_ptr()] {
-                        MetadataType::Slice(elem) => Some((*slice, elem.clone())),
+                        MetadataType::SliceOrArray(elem, _) => Some((*slice, elem.clone())),
                         _ => unreachable!(),
                     }
                 } else {

@@ -757,17 +757,15 @@ impl<'a> CodeGen<'a> {
         let meta = self.tlookup.meta_from_tc(tctype, &mut self.objects);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
-        let mtype =
-            &self.objects.metas[meta.get_underlying(&self.objects.metas).as_non_ptr()].clone();
+        let (mkey, mc) = meta.get_underlying(&self.objects.metas).unwrap_non_ptr();
+        let mtype = &self.objects.metas[mkey].clone();
         match mtype {
-            MetadataType::Array(_, _) => {
-                let elem = typ.try_as_array().unwrap().elem();
-                for expr in clit.elts.iter().rev() {
-                    self.visit_composite_expr(expr, elem);
-                }
-            }
-            MetadataType::Slice(_) => {
-                let elem = typ.try_as_slice().unwrap().elem();
+            MetadataType::SliceOrArray(_, _) => {
+                let elem = match mc {
+                    MetaCategory::Default => typ.try_as_slice().unwrap().elem(),
+                    MetaCategory::Array => typ.try_as_array().unwrap().elem(),
+                    _ => unreachable!(),
+                };
                 for expr in clit.elts.iter().rev() {
                     self.visit_composite_expr(expr, elem);
                 }
@@ -814,10 +812,7 @@ impl<'a> CodeGen<'a> {
         );
 
         let mut emitter = current_func_emitter!(self);
-        let i = emitter.add_const(
-            None,
-            GosValue::Metadata(GosMetadata::NonPtr(meta.as_non_ptr(), false)),
-        );
+        let i = emitter.add_const(None, GosValue::Metadata(meta));
         emitter.emit_literal(ValueType::Metadata, i.into(), pos);
     }
 

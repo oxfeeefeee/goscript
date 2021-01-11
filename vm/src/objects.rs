@@ -488,13 +488,8 @@ impl<'a> SliceObj {
         }
     }
 
-    pub fn with_array(
-        arr: &ArrayObj,
-        begin: isize,
-        end: isize,
-        metas: &mut MetadataObjs,
-    ) -> SliceObj {
-        let elem_meta = GosMetadata::new_slice_from_array(arr.meta, metas);
+    pub fn with_array(arr: &ArrayObj, begin: isize, end: isize) -> SliceObj {
+        let elem_meta = GosMetadata::new_slice_from_array(arr.meta);
         let len = arr.len();
         let self_end = len as isize + 1;
         let bi = begin as usize;
