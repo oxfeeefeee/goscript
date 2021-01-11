@@ -514,24 +514,24 @@ impl GosValue {
 
     pub fn get_meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
-            GosValue::Nil(m) => m.clone(),
-            GosValue::Bool(_) => objs.metadata.mbool.clone(),
-            GosValue::Int(_) => objs.metadata.mint.clone(),
-            GosValue::Int8(_) => objs.metadata.mint8.clone(),
-            GosValue::Int16(_) => objs.metadata.mint16.clone(),
-            GosValue::Int32(_) => objs.metadata.mint32.clone(),
-            GosValue::Int64(_) => objs.metadata.mint64.clone(),
-            GosValue::Uint(_) => objs.metadata.muint.clone(),
-            GosValue::Uint8(_) => objs.metadata.muint8.clone(),
-            GosValue::Uint16(_) => objs.metadata.muint16.clone(),
-            GosValue::Uint32(_) => objs.metadata.muint32.clone(),
-            GosValue::Uint64(_) => objs.metadata.muint64.clone(),
-            GosValue::Float32(_) => objs.metadata.mfloat32.clone(),
-            GosValue::Float64(_) => objs.metadata.mfloat64.clone(),
-            GosValue::Complex64(_, _) => objs.metadata.mcomplex64.clone(),
-            GosValue::Complex128(_) => objs.metadata.mcomplex128.clone(),
-            GosValue::Str(_) => objs.metadata.mstr.clone(),
-            GosValue::Array(a) => a.meta.clone(),
+            GosValue::Nil(m) => *m,
+            GosValue::Bool(_) => objs.metadata.mbool,
+            GosValue::Int(_) => objs.metadata.mint,
+            GosValue::Int8(_) => objs.metadata.mint8,
+            GosValue::Int16(_) => objs.metadata.mint16,
+            GosValue::Int32(_) => objs.metadata.mint32,
+            GosValue::Int64(_) => objs.metadata.mint64,
+            GosValue::Uint(_) => objs.metadata.muint,
+            GosValue::Uint8(_) => objs.metadata.muint8,
+            GosValue::Uint16(_) => objs.metadata.muint16,
+            GosValue::Uint32(_) => objs.metadata.muint32,
+            GosValue::Uint64(_) => objs.metadata.muint64,
+            GosValue::Float32(_) => objs.metadata.mfloat32,
+            GosValue::Float64(_) => objs.metadata.mfloat64,
+            GosValue::Complex64(_, _) => objs.metadata.mcomplex64,
+            GosValue::Complex128(_) => objs.metadata.mcomplex128,
+            GosValue::Str(_) => objs.metadata.mstr,
+            GosValue::Array(a) => a.meta,
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b;
                 let inner = match bobj {
@@ -546,20 +546,20 @@ impl GosValue {
                         }
                     }
                     PointerObj::Struct(s, named_md) => match named_md {
-                        GosMetadata::Untyped => s.borrow().meta.clone(),
-                        _ => named_md.clone(),
+                        GosMetadata::Untyped => s.borrow().meta,
+                        _ => *named_md,
                     },
                     PointerObj::Array(a, named_md) => match named_md {
-                        GosMetadata::Untyped => a.meta.clone(),
-                        _ => named_md.clone(),
+                        GosMetadata::Untyped => a.meta,
+                        _ => *named_md,
                     },
                     PointerObj::Slice(s, named_md) => match named_md {
-                        GosMetadata::Untyped => s.meta.clone(),
-                        _ => named_md.clone(),
+                        GosMetadata::Untyped => s.meta,
+                        _ => *named_md,
                     },
                     PointerObj::Map(m, named_md) => match named_md {
-                        GosMetadata::Untyped => m.meta.clone(),
-                        _ => named_md.clone(),
+                        GosMetadata::Untyped => m.meta,
+                        _ => *named_md,
                     },
                     PointerObj::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(objs, stack)
@@ -574,15 +574,15 @@ impl GosValue {
                 inner.ptr_to()
             }
             GosValue::Closure(c) => c.meta(&objs.functions),
-            GosValue::Slice(s) => s.meta.clone(),
-            GosValue::Map(m) => m.meta.clone(),
-            GosValue::Interface(i) => i.borrow().meta.clone(),
-            GosValue::Struct(s) => s.borrow().meta.clone(),
+            GosValue::Slice(s) => s.meta,
+            GosValue::Map(m) => m.meta,
+            GosValue::Interface(i) => i.borrow().meta,
+            GosValue::Struct(s) => s.borrow().meta,
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),
             GosValue::Package(_) => unimplemented!(),
             GosValue::Metadata(_) => unimplemented!(),
-            GosValue::Named(v) => v.1.clone(),
+            GosValue::Named(v) => v.1,
         }
     }
 
@@ -592,7 +592,7 @@ impl GosValue {
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
-            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(), v.1.clone()))),
+            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(), v.1))),
             _ => self.clone(),
         }
     }

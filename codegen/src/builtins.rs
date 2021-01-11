@@ -46,11 +46,11 @@ impl Builtins {
         vals.insert("false", Opcode::PUSH_FALSE);
         vals.insert("nil", Opcode::PUSH_NIL);
         let mut types = HashMap::new();
-        types.insert("bool", md.mbool.clone());
-        types.insert("int", md.mint.clone());
-        types.insert("float64", md.mfloat64.clone());
-        types.insert("complex64", md.mcomplex64.clone());
-        types.insert("string", md.mstr.clone());
+        types.insert("bool", md.mbool);
+        types.insert("int", md.mint);
+        types.insert("float64", md.mfloat64);
+        types.insert("complex64", md.mcomplex64);
+        types.insert("string", md.mstr);
         Builtins {
             funcs: funcs,
             vals: vals,
@@ -76,7 +76,7 @@ impl Builtins {
         if let Some(op) = self.vals.get(name) {
             return EntIndex::BuiltInVal(*op);
         } else if let Some(m) = self.types.get(name) {
-            return EntIndex::BuiltInType(m.as_non_ptr());
+            return EntIndex::BuiltInType(*m);
         } else {
             unreachable!();
         }

@@ -226,7 +226,7 @@ impl MapObj {
     pub fn deep_clone(&self) -> MapObj {
         MapObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             default_val: self.default_val.clone(),
             map: match &self.map {
                 Some(m) => Some(Rc::new(RefCell::new(m.borrow().clone()))),
@@ -298,7 +298,7 @@ impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             default_val: self.default_val.clone(),
             map: self.map.clone(),
         }
@@ -431,7 +431,7 @@ impl Clone for ArrayObj {
     fn clone(&self) -> Self {
         ArrayObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             vec: self.vec.clone(),
         }
     }
@@ -494,7 +494,7 @@ impl<'a> SliceObj {
         end: isize,
         metas: &mut MetadataObjs,
     ) -> SliceObj {
-        let elem_meta = GosMetadata::new_slice_from_array(arr.meta.clone(), metas);
+        let elem_meta = GosMetadata::new_slice_from_array(arr.meta, metas);
         let len = arr.len();
         let self_end = len as isize + 1;
         let bi = begin as usize;
@@ -533,7 +533,7 @@ impl<'a> SliceObj {
     pub fn deep_clone(&self) -> SliceObj {
         SliceObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             is_nil: self.is_nil,
             begin: Cell::from(0),
             end: Cell::from(self.cap()),
@@ -625,7 +625,7 @@ impl<'a> SliceObj {
         let mi = ((self_cap + max) % self_cap) as usize;
         SliceObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             is_nil: self.is_nil,
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
@@ -669,7 +669,7 @@ impl Clone for SliceObj {
     fn clone(&self) -> Self {
         SliceObj {
             dark: false,
-            meta: self.meta.clone(),
+            meta: self.meta,
             is_nil: self.is_nil,
             begin: self.begin.clone(),
             end: self.end.clone(),
@@ -1177,8 +1177,8 @@ impl ClosureObj {
     #[inline]
     pub fn meta(&self, fobjs: &FunctionObjs) -> GosMetadata {
         match &self.func {
-            Some(f) => fobjs[*f].meta.clone(),
-            None => self.ffi.as_ref().unwrap().meta.clone(),
+            Some(f) => fobjs[*f].meta,
+            None => self.ffi.as_ref().unwrap().meta,
         }
     }
 }
@@ -1266,7 +1266,7 @@ pub enum EntIndex {
     UpValue(OpIndex),
     PackageMember(PackageKey, IdentKey),
     BuiltInVal(Opcode), // built-in identifiers
-    BuiltInType(MetadataKey),
+    BuiltInType(GosMetadata),
     Blank,
 }
 
@@ -1318,9 +1318,9 @@ impl FunctionVal {
                 for m in s.results.iter() {
                     returns.push(zero_val!(m, objs));
                 }
-                let params = s.params.len() + s.recv.as_ref().map_or(0, |_| 1);
-                let vtype = s.variadic.as_ref().map(|(slice_type, elem_type)| {
-                    (slice_type.clone(), elem_type.get_value_type(&objs.metas))
+                let params = s.params.len() + s.recv.map_or(0, |_| 1);
+                let vtype = s.variadic.map(|(slice_type, elem_type)| {
+                    (slice_type, elem_type.get_value_type(&objs.metas))
                 });
                 FunctionVal {
                     package: package,
@@ -1374,8 +1374,8 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn variadic(&self) -> &Option<(GosMetadata, ValueType)> {
-        &self.variadic_type
+    pub fn variadic(&self) -> Option<(GosMetadata, ValueType)> {
+        self.variadic_type
     }
 
     #[inline]

@@ -50,7 +50,7 @@ impl<'a> EntryGen<'a> {
         pairs: &mut PkgVarPairs,
     ) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
-        let fmeta = self.objects.metadata.default_sig.clone();
+        let fmeta = self.objects.metadata.default_sig;
         let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];

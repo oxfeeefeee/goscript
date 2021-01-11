@@ -71,7 +71,7 @@ impl Metadata {
 }
 
 // bool indicates if it's meta of a type
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GosMetadata {
     Untyped,
     NonPtr(MetadataKey, bool),
@@ -127,7 +127,7 @@ impl GosMetadata {
         let gosm = GosMetadata::NonPtr(key, false);
         match &mut objs.metas[key] {
             MetadataType::Struct(_, v) => match v {
-                GosValue::Struct(s) => s.borrow_mut().meta = gosm.clone(),
+                GosValue::Struct(s) => s.borrow_mut().meta = gosm,
                 _ => unreachable!(),
             },
             _ => unreachable!(),
@@ -166,7 +166,7 @@ impl GosMetadata {
                 unreachable!()
             }
         };
-        GosMetadata::new_slice(elem.clone(), metas)
+        GosMetadata::new_slice(*elem, metas)
     }
 
     #[inline]
@@ -309,7 +309,7 @@ impl GosMetadata {
         maps: &mut MapObjs,
     ) -> GosValue {
         match &self {
-            GosMetadata::Untyped => GosValue::Nil(self.clone()),
+            GosMetadata::Untyped => GosValue::Nil(*self),
             GosMetadata::NonPtr(k, _) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),
                 MetadataType::Int => GosValue::Int(0),
@@ -331,24 +331,22 @@ impl GosMetadata {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Array(m, size) => {
                     let val = m.default_val(mobjs, arrays, slices, maps);
-                    GosValue::array_with_size(*size, &val, self.clone(), arrays)
+                    GosValue::array_with_size(*size, &val, *self, arrays)
                 }
                 MetadataType::Struct(_, s) => s.copy_semantic(),
-                MetadataType::Signature(_) => GosValue::Nil(self.clone()),
-                MetadataType::Slice(_) => GosValue::new_slice_nil(self.clone(), slices),
-                MetadataType::Map(_, v) => GosValue::new_map_nil(
-                    self.clone(),
-                    v.default_val(mobjs, arrays, slices, maps),
-                    maps,
-                ),
-                MetadataType::Interface(_) => GosValue::Nil(self.clone()),
-                MetadataType::Channel => GosValue::Nil(self.clone()),
+                MetadataType::Signature(_) => GosValue::Nil(*self),
+                MetadataType::Slice(_) => GosValue::new_slice_nil(*self, slices),
+                MetadataType::Map(_, v) => {
+                    GosValue::new_map_nil(*self, v.default_val(mobjs, arrays, slices, maps), maps)
+                }
+                MetadataType::Interface(_) => GosValue::Nil(*self),
+                MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, arrays, slices, maps);
-                    GosValue::Named(Box::new((val, gm.clone())))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
-            _ => GosValue::Nil(self.clone()),
+            _ => GosValue::Nil(*self),
         }
     }
 
@@ -382,21 +380,19 @@ impl GosMetadata {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Array(m, size) => {
                     let val = m.default_val(mobjs, arrays, slices, maps);
-                    GosValue::array_with_size(*size, &val, self.clone(), arrays)
+                    GosValue::array_with_size(*size, &val, *self, arrays)
                 }
                 MetadataType::Struct(_, s) => s.copy_semantic(),
-                MetadataType::Signature(_) => GosValue::Nil(self.clone()),
-                MetadataType::Slice(_) => GosValue::new_slice(0, 0, self.clone(), None, slices),
-                MetadataType::Map(_, v) => GosValue::new_map(
-                    self.clone(),
-                    v.default_val(mobjs, arrays, slices, maps),
-                    maps,
-                ),
-                MetadataType::Interface(_) => GosValue::Nil(self.clone()),
+                MetadataType::Signature(_) => GosValue::Nil(*self),
+                MetadataType::Slice(_) => GosValue::new_slice(0, 0, *self, None, slices),
+                MetadataType::Map(_, v) => {
+                    GosValue::new_map(*self, v.default_val(mobjs, arrays, slices, maps), maps)
+                }
+                MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, arrays, slices, maps);
-                    GosValue::Named(Box::new((val, gm.clone())))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
             _ => unreachable!(),
@@ -419,10 +415,10 @@ impl GosMetadata {
     pub fn get_underlying(&self, metas: &MetadataObjs) -> GosMetadata {
         match self {
             GosMetadata::NonPtr(k, _) => match &metas[*k] {
-                MetadataType::Named(_, u) => u.clone(),
-                _ => self.clone(),
+                MetadataType::Named(_, u) => *u,
+                _ => *self,
             },
-            _ => self.clone(),
+            _ => *self,
         }
     }
 
@@ -560,7 +556,7 @@ impl Fields {
     pub fn iface_ffi_info(&self) -> Vec<(String, GosMetadata)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
-            ret.push((String::new(), f.clone()));
+            ret.push((String::new(), *f));
         }
         for (name, index) in self.mapping.iter() {
             ret[*index as usize].0 = name.clone();
