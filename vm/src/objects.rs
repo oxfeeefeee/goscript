@@ -444,10 +444,11 @@ impl Clone for ArrayObj {
 pub struct SliceObj {
     pub dark: bool,
     pub meta: GosMetadata,
+    is_nil: bool,
     begin: Cell<usize>,
     end: Cell<usize>,
     soft_cap: Cell<usize>, // <= self.vec.capacity()
-    pub vec: Option<Rc<RefCell<GosVec>>>,
+    pub vec: Rc<RefCell<GosVec>>,
 }
 
 impl<'a> SliceObj {
@@ -461,10 +462,11 @@ impl<'a> SliceObj {
         let mut val = SliceObj {
             dark: false,
             meta: meta,
+            is_nil: false,
             begin: Cell::from(0),
             end: Cell::from(0),
             soft_cap: Cell::from(cap),
-            vec: Some(Rc::new(RefCell::new(Vec::with_capacity(cap)))),
+            vec: Rc::new(RefCell::new(Vec::with_capacity(cap))),
         };
         for _ in 0..len {
             val.push(default_val.unwrap().clone());
@@ -476,12 +478,13 @@ impl<'a> SliceObj {
         SliceObj {
             dark: false,
             meta: meta,
+            is_nil: false,
             begin: Cell::from(0),
             end: Cell::from(val.len()),
             soft_cap: Cell::from(val.len()),
-            vec: Some(Rc::new(RefCell::new(
+            vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
-            ))),
+            )),
         }
     }
 
@@ -499,10 +502,11 @@ impl<'a> SliceObj {
         SliceObj {
             dark: false,
             meta: elem_meta,
+            is_nil: false,
             begin: Cell::from(bi),
             end: Cell::from(ei),
             soft_cap: Cell::from(len),
-            vec: Some(arr.vec.clone()),
+            vec: arr.vec.clone(),
         }
     }
 
@@ -510,10 +514,11 @@ impl<'a> SliceObj {
         SliceObj {
             dark: false,
             meta: meta,
+            is_nil: true,
             begin: Cell::from(0),
             end: Cell::from(0),
             soft_cap: Cell::from(0),
-            vec: None,
+            vec: Rc::new(RefCell::new(vec![])),
         }
     }
 
@@ -526,25 +531,22 @@ impl<'a> SliceObj {
 
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
     pub fn deep_clone(&self) -> SliceObj {
-        let vec = match &self.vec {
-            Some(v) => Some(Rc::new(RefCell::new(Vec::from_iter(
-                v.borrow()[self.begin()..self.end()].iter().cloned(),
-            )))),
-            None => None,
-        };
         SliceObj {
             dark: false,
             meta: self.meta.clone(),
+            is_nil: self.is_nil,
             begin: Cell::from(0),
             end: Cell::from(self.cap()),
             soft_cap: Cell::from(self.cap()),
-            vec: vec,
+            vec: Rc::new(RefCell::new(Vec::from_iter(
+                self.vec.borrow()[self.begin()..self.end()].iter().cloned(),
+            ))),
         }
     }
 
     #[inline]
     pub fn is_nil(&self) -> bool {
-        self.vec.is_none()
+        self.is_nil
     }
 
     #[inline]
@@ -579,12 +581,12 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
-        self.vec.as_ref().unwrap().borrow_mut()
+        self.vec.borrow_mut()
     }
 
     #[inline]
     pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
-        self.vec.as_ref().unwrap().borrow()
+        self.vec.borrow()
     }
 
     #[inline]
@@ -624,6 +626,7 @@ impl<'a> SliceObj {
         SliceObj {
             dark: false,
             meta: self.meta.clone(),
+            is_nil: self.is_nil,
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
             soft_cap: Cell::from(self.begin() + mi),
@@ -655,7 +658,7 @@ impl<'a> SliceObj {
         let data_len = self.len();
         let mut vec = Vec::from_iter(self.borrow_data()[self.begin()..self.end()].iter().cloned());
         vec.reserve_exact(cap - vec.len());
-        self.vec = Some(Rc::new(RefCell::new(vec)));
+        self.vec = Rc::new(RefCell::new(vec));
         self.begin.set(0);
         self.end.set(data_len);
         self.soft_cap.set(cap);
@@ -667,6 +670,7 @@ impl Clone for SliceObj {
         SliceObj {
             dark: false,
             meta: self.meta.clone(),
+            is_nil: self.is_nil,
             begin: self.begin.clone(),
             end: self.end.clone(),
             soft_cap: self.soft_cap.clone(),
@@ -678,13 +682,11 @@ impl Clone for SliceObj {
 impl Display for SliceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_char('[')?;
-        if self.vec.is_some() {
-            for (i, e) in self.borrow().iter().enumerate() {
-                if i > 0 {
-                    f.write_char(' ')?;
-                }
-                write!(f, "{}", e.borrow())?
+        for (i, e) in self.borrow().iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
             }
+            write!(f, "{}", e.borrow())?
         }
         f.write_char(']')
     }
