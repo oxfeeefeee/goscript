@@ -356,7 +356,7 @@ impl GosMetadata {
                 MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, arrays, slices, maps);
-                    GosValue::Named(Box::new((val, *gm)))
+                    GosValue::Named(Rc::new((val, *gm)))
                 }
             },
             _ => GosValue::Nil(*self),
@@ -408,7 +408,7 @@ impl GosMetadata {
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, arrays, slices, maps);
-                    GosValue::Named(Box::new((val, *gm)))
+                    GosValue::Named(Rc::new((val, *gm)))
                 }
             },
             _ => unreachable!(),

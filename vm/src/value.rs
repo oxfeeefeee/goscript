@@ -197,7 +197,7 @@ pub enum GosValue {
     Struct(Rc<RefCell<StructObj>>),
     Channel(Rc<RefCell<ChannelObj>>),
 
-    Named(Box<(GosValue, GosMetadata)>),
+    Named(Rc<(GosValue, GosMetadata)>),
 }
 
 impl GosValue {
@@ -417,7 +417,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Box<(GosValue, GosMetadata)> {
+    pub fn as_named(&self) -> &Rc<(GosValue, GosMetadata)> {
         unwrap_gos_val!(Named, self)
     }
 
@@ -591,7 +591,7 @@ impl GosValue {
             GosValue::Slice(s) => GosValue::Slice(Rc::new(SliceObj::clone(s))),
             GosValue::Map(m) => GosValue::Map(Rc::new(MapObj::clone(m))),
             GosValue::Struct(s) => GosValue::Struct(Rc::new(RefCell::clone(s))),
-            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(), v.1))),
+            GosValue::Named(v) => GosValue::Named(Rc::new((v.0.copy_semantic(), v.1))),
             _ => self.clone(),
         }
     }

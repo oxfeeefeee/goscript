@@ -439,7 +439,7 @@ impl Fiber {
                     let iface = ifaces[mapping as usize].clone();
                     let under = stack.get_with_type(rhs_s_index, inst.t0());
                     let val = match &objs.metas[iface.0.as_non_ptr()] {
-                        MetadataType::Named(_, md) => GosValue::Named(Box::new((
+                        MetadataType::Named(_, md) => GosValue::Named(Rc::new((
                             GosValue::new_iface(
                                 *md,
                                 IfaceUnderlying::Gos(under, iface.1),
@@ -914,7 +914,7 @@ impl Fiber {
                             if umd == *md {
                                 val
                             } else {
-                                GosValue::Named(Box::new((val, *md)))
+                                GosValue::Named(Rc::new((val, *md)))
                             }
                         }
                         _ => unimplemented!(),
