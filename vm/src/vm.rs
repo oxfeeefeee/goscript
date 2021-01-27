@@ -443,14 +443,14 @@ impl Fiber {
                             GosValue::new_iface(
                                 *md,
                                 IfaceUnderlying::Gos(under, iface.1),
-                                &mut objs.interfaces,
+                                &mut objs.gcobjs,
                             ),
                             iface.0,
                         ))),
                         MetadataType::Interface(_) => GosValue::new_iface(
                             iface.0,
                             IfaceUnderlying::Gos(under, iface.1),
-                            &mut objs.interfaces,
+                            &mut objs.gcobjs,
                         ),
                         _ => unreachable!(),
                     };
@@ -500,7 +500,7 @@ impl Fiber {
                     let mut slice = stack.pop_with_type(typ);
                     // create a slice if it's an array
                     if typ == ValueType::Array {
-                        slice = GosValue::slice_with_array(&slice, 0, -1, &mut objs.slices);
+                        slice = GosValue::slice_with_array(&slice, 0, -1, &mut objs.gcobjs);
                     }
                     stack.push(GosValue::new_pointer(PointerObj::new_slice_member(
                         &slice,
@@ -595,7 +595,7 @@ impl Fiber {
                                 if inst_op != Opcode::CALL_ELLIPSIS {
                                     let index =
                                         stack_base + func.param_count() + func.ret_count() - 1;
-                                    stack.pack_variadic(index, meta, vt, &mut objs.slices);
+                                    stack.pack_variadic(index, meta, vt, &mut objs.gcobjs);
                                 }
                             }
 
@@ -822,7 +822,7 @@ impl Fiber {
                         GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                         GosValue::Array(_) => {
-                            GosValue::slice_with_array(&target, begin, end, &mut objs.slices)
+                            GosValue::slice_with_array(&target, begin, end, &mut objs.gcobjs)
                         }
                         _ => unreachable!(),
                     };
@@ -857,7 +857,7 @@ impl Fiber {
                                 }
                                 frame = self.frames.last_mut().unwrap();
                             }
-                            GosValue::Closure(Rc::new(val))
+                            GosValue::new_runtime_closure(val, &mut objs.gcobjs)
                         }
                         GosValue::Metadata(md) => {
                             let umd = md.get_underlying(&objs.metas);
@@ -872,7 +872,7 @@ impl Fiber {
                                             let elem = stack.pop_with_type(elem_type);
                                             val.push(elem);
                                         }
-                                        GosValue::slice_with_val(val, *md, &mut objs.slices)
+                                        GosValue::slice_with_val(val, *md, &mut objs.gcobjs)
                                     }
                                     MetaCategory::Array => {
                                         let mut val = vec![];
@@ -881,13 +881,16 @@ impl Fiber {
                                             let elem = stack.pop_with_type(elem_type);
                                             val.push(elem);
                                         }
-                                        GosValue::array_with_val(val, *md, &mut objs.arrays)
+                                        GosValue::array_with_val(val, *md, &mut objs.gcobjs)
                                     }
                                     _ => unreachable!(),
                                 },
                                 MetadataType::Map(km, vm) => {
-                                    let gosv =
-                                        GosValue::new_map(*md, zero_val!(vm, objs), &mut objs.maps);
+                                    let gosv = GosValue::new_map(
+                                        *md,
+                                        zero_val!(vm, objs),
+                                        &mut objs.gcobjs,
+                                    );
                                     let map = gosv.as_map();
                                     let tk = km.get_value_type(&objs.metas);
                                     let tv = vm.get_value_type(&objs.metas);
@@ -926,12 +929,7 @@ impl Fiber {
                     let param = stack.pop_with_type(inst.t0());
                     let new_val = match param {
                         GosValue::Metadata(md) => {
-                            let v = md.default_val(
-                                &objs.metas,
-                                &mut objs.arrays,
-                                &mut objs.slices,
-                                &mut objs.maps,
-                            );
+                            let v = md.default_val(&objs.metas, &mut objs.gcobjs);
                             GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                         }
                         _ => unimplemented!(),
@@ -959,12 +957,12 @@ impl Fiber {
                                 cap,
                                 *meta,
                                 Some(&zero_val!(vmeta, objs)),
-                                &mut objs.slices,
+                                &mut objs.gcobjs,
                             )
                         }
                         MetadataType::Map(_, v) => {
                             let default = zero_val!(v, objs);
-                            GosValue::new_map(*meta, default, &mut objs.maps)
+                            GosValue::new_map(*meta, default, &mut objs.gcobjs)
                         }
                         MetadataType::Channel => unimplemented!(),
                         _ => unreachable!(),
@@ -994,7 +992,7 @@ impl Fiber {
                     let index = Stack::offset(stack.len(), inst.imm());
                     let a = stack.get_with_type(index - 2, ValueType::Slice);
                     let vala = a.as_slice();
-                    stack.pack_variadic(index, vala.meta, inst.t1(), &mut objs.slices);
+                    stack.pack_variadic(index, vala.meta, inst.t1(), &mut objs.gcobjs);
                     let b = stack.pop_with_type(ValueType::Slice);
                     let valb = b.as_slice();
                     vala.borrow_data_mut()
@@ -1026,7 +1024,7 @@ impl Fiber {
                             GosValue::new_iface(
                                 meta,
                                 IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),
-                                &mut objs.interfaces,
+                                &mut objs.gcobjs,
                             )
                         }
                         Err(m) => {

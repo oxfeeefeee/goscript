@@ -1,4 +1,5 @@
 //#![allow(dead_code)]
+use super::gc::GcObj;
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
@@ -221,22 +222,20 @@ impl GosValue {
         size: usize,
         val: &GosValue,
         meta: GosMetadata,
-        arrays: &mut ArrayObjs,
+        gcobjs: &mut GcObjs,
     ) -> GosValue {
         let arr = Rc::new(ArrayObj::with_size(size, val, meta));
-        arrays.push(Rc::downgrade(&arr));
-        GosValue::Array(arr)
+        let v = GosValue::Array(arr);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn array_with_val(
-        val: Vec<GosValue>,
-        meta: GosMetadata,
-        arrays: &mut ArrayObjs,
-    ) -> GosValue {
+    pub fn array_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let arr = Rc::new(ArrayObj::with_data(val, meta));
-        arrays.push(Rc::downgrade(&arr));
-        GosValue::Array(arr)
+        let v = GosValue::Array(arr);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
@@ -245,29 +244,28 @@ impl GosValue {
         cap: usize,
         meta: GosMetadata,
         dval: Option<&GosValue>,
-        slices: &mut SliceObjs,
+        gcobjs: &mut GcObjs,
     ) -> GosValue {
         let s = Rc::new(SliceObj::new(len, cap, meta, dval));
-        slices.push(Rc::downgrade(&s));
-        GosValue::Slice(s)
+        let v = GosValue::Slice(s);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn new_slice_nil(meta: GosMetadata, slices: &mut SliceObjs) -> GosValue {
+    pub fn new_slice_nil(meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let s = Rc::new(SliceObj::new_nil(meta));
-        slices.push(Rc::downgrade(&s));
-        GosValue::Slice(s)
+        let v = GosValue::Slice(s);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn slice_with_val(
-        val: Vec<GosValue>,
-        meta: GosMetadata,
-        slices: &mut SliceObjs,
-    ) -> GosValue {
+    pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let s = Rc::new(SliceObj::with_data(val, meta));
-        slices.push(Rc::downgrade(&s));
-        GosValue::Slice(s)
+        let v = GosValue::Slice(s);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
@@ -275,32 +273,36 @@ impl GosValue {
         arr: &GosValue,
         begin: isize,
         end: isize,
-        slices: &mut SliceObjs,
+        gcobjs: &mut GcObjs,
     ) -> GosValue {
         let s = Rc::new(SliceObj::with_array(arr.as_array(), begin, end));
-        slices.push(Rc::downgrade(&s));
-        GosValue::Slice(s)
+        let v = GosValue::Slice(s);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn new_map(meta: GosMetadata, default_val: GosValue, maps: &mut MapObjs) -> GosValue {
+    pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(MapObj::new(meta, default_val));
-        maps.push(Rc::downgrade(&val));
-        GosValue::Map(val)
+        let v = GosValue::Map(val);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, maps: &mut MapObjs) -> GosValue {
+    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(MapObj::new_nil(meta, default_val));
-        maps.push(Rc::downgrade(&val));
-        GosValue::Map(val)
+        let v = GosValue::Map(val);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
-    pub fn new_struct(obj: StructObj, structs: &mut StructObjs) -> GosValue {
+    pub fn new_struct(obj: StructObj, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(RefCell::new(obj));
-        structs.push(Rc::downgrade(&val));
-        GosValue::Struct(val)
+        let v = GosValue::Struct(val);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
@@ -315,20 +317,31 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(fkey: FunctionKey, fobjs: &FunctionObjs) -> GosValue {
+    pub fn new_closure(
+        fkey: FunctionKey,
+        fobjs: &FunctionObjs, /*, gcobjs: &mut GcObjs todo! */
+    ) -> GosValue {
         let val = ClosureObj::new_gos(fkey, fobjs, None);
         GosValue::Closure(Rc::new(val))
+    }
+
+    #[inline]
+    pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &mut GcObjs) -> GosValue {
+        let v = GosValue::Closure(Rc::new(clsobj));
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]
     pub fn new_iface(
         meta: GosMetadata,
         underlying: IfaceUnderlying,
-        ifaces: &mut InterfaceObjs,
+        gcobjs: &mut GcObjs,
     ) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
-        ifaces.push(Rc::downgrade(&val));
-        GosValue::Interface(val)
+        let v = GosValue::Interface(val);
+        gcobjs.push(GcObj::from_gosv(&v));
+        v
     }
 
     #[inline]

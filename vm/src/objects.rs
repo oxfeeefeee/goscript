@@ -1,5 +1,6 @@
 #![macro_use]
 use super::ffi::Ffi;
+use super::gc::GcObj;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::GosValue;
@@ -30,14 +31,7 @@ new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 
-pub type InterfaceObjs = Vec<Weak<RefCell<InterfaceObj>>>;
-pub type ClosureObjs = Vec<Weak<RefCell<ClosureObj>>>;
-pub type ArrayObjs = Vec<Weak<ArrayObj>>;
-pub type SliceObjs = Vec<Weak<SliceObj>>;
-pub type MapObjs = Vec<Weak<MapObj>>;
-pub type StructObjs = Vec<Weak<RefCell<StructObj>>>;
-pub type ChannelObjs = Vec<Weak<RefCell<ChannelObj>>>;
-pub type PointerObjs = Vec<Weak<GosValue>>;
+pub type GcObjs = Vec<GcObj>;
 pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataType>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
 pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
@@ -60,14 +54,7 @@ where
 
 #[derive(Debug)]
 pub struct VMObjects {
-    pub interfaces: InterfaceObjs,
-    pub closures: ClosureObjs,
-    pub arrays: ArrayObjs,
-    pub slices: SliceObjs,
-    pub maps: MapObjs,
-    pub structs: StructObjs,
-    pub channels: ChannelObjs,
-    pub pointers: PointerObjs,
+    pub gcobjs: GcObjs,
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
@@ -79,14 +66,7 @@ impl VMObjects {
         let mut metas = DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
         let md = Metadata::new(&mut metas);
         VMObjects {
-            interfaces: vec![],
-            closures: vec![],
-            arrays: vec![],
-            slices: vec![],
-            maps: vec![],
-            structs: vec![],
-            channels: vec![],
-            pointers: vec![],
+            gcobjs: vec![],
             metas: metas,
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
