@@ -189,7 +189,7 @@ pub enum GosValue {
 
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<ArrayObj>),
-    Pointer(Box<PointerObj>),
+    Pointer(Rc<PointerObj>),
     Closure(Rc<ClosureObj>),
     Slice(Rc<SliceObj>),
     Map(Rc<MapObj>),
@@ -213,7 +213,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_pointer(v: PointerObj) -> GosValue {
-        GosValue::Pointer(Box::new(v))
+        GosValue::Pointer(Rc::new(v))
     }
 
     #[inline]

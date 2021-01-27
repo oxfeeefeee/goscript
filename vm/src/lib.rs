@@ -15,3 +15,5 @@ mod stack;
 mod vm_util;
 
 pub mod vm;
+
+pub mod gc;

@@ -378,7 +378,7 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
-                            match *b {
+                            match &*b {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(
                                         uv,
@@ -415,16 +415,17 @@ impl Fiber {
                                 PointerObj::SliceMember(s, index) => {
                                     let vborrow = s.borrow_data();
                                     let target: &mut GosValue =
-                                        &mut vborrow[s.begin() + index as usize].borrow_mut();
+                                        &mut vborrow[s.begin() + *index as usize].borrow_mut();
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::StructField(s, index) => {
                                     let target: &mut GosValue =
-                                        &mut s.borrow_mut().fields[index as usize];
+                                        &mut s.borrow_mut().fields[*index as usize];
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::PkgMember(p, index) => {
-                                    let target: &mut GosValue = objs.packages[p].member_mut(index);
+                                    let target: &mut GosValue =
+                                        objs.packages[*p].member_mut(*index);
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
                             };
