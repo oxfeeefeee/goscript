@@ -1,6 +1,6 @@
 #![macro_use]
 use super::ffi::Ffi;
-use super::gc::GcObj;
+use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::GosValue;
@@ -31,7 +31,6 @@ new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 
-pub type GcObjs = Vec<GcObj>;
 pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataType>;
 pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
 pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
@@ -877,6 +876,7 @@ pub struct ChannelObj {}
 /// the pointee has a "real" pointer
 #[derive(Debug, Clone)]
 pub enum PointerObj {
+    Released,
     UpVal(UpValue),
     Struct(Rc<RefCell<StructObj>>, GosMetadata),
     Array(Rc<ArrayObj>, GosMetadata),
@@ -975,6 +975,7 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
+            Self::Released => unreachable!(),
         }
     }
 }
@@ -990,6 +991,7 @@ impl Display for PointerObj {
             Self::SliceMember(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
             Self::StructField(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
             Self::PkgMember(p, i) => f.write_fmt(format_args!("{:x}i{}", key_to_u64(*p), i)),
+            Self::Released => f.write_str("released!!!"),
         }
     }
 }

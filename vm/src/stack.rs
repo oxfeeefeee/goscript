@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
 use super::value::*;

@@ -1,5 +1,5 @@
 //#![allow(dead_code)]
-use super::gc::GcObj;
+use super::gc::{GcObj, GcObjs};
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
@@ -190,8 +190,8 @@ pub enum GosValue {
 
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<ArrayObj>),
-    Pointer(Rc<PointerObj>),
-    Closure(Rc<ClosureObj>),
+    Pointer(Rc<RefCell<PointerObj>>),
+    Closure(Rc<RefCell<ClosureObj>>),
     Slice(Rc<SliceObj>),
     Map(Rc<MapObj>),
     Interface(Rc<RefCell<InterfaceObj>>),
@@ -214,7 +214,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_pointer(v: PointerObj) -> GosValue {
-        GosValue::Pointer(Rc::new(v))
+        GosValue::Pointer(Rc::new(RefCell::new(v)))
     }
 
     #[inline]
@@ -322,12 +322,12 @@ impl GosValue {
         fobjs: &FunctionObjs, /*, gcobjs: &mut GcObjs todo! */
     ) -> GosValue {
         let val = ClosureObj::new_gos(fkey, fobjs, None);
-        GosValue::Closure(Rc::new(val))
+        GosValue::Closure(Rc::new(RefCell::new(val)))
     }
 
     #[inline]
     pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &mut GcObjs) -> GosValue {
-        let v = GosValue::Closure(Rc::new(clsobj));
+        let v = GosValue::Closure(Rc::new(RefCell::new(clsobj)));
         gcobjs.push(GcObj::from_gosv(&v));
         v
     }
@@ -415,7 +415,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &Rc<ClosureObj> {
+    pub fn as_closure(&self) -> &Rc<RefCell<ClosureObj>> {
         unwrap_gos_val!(Closure, self)
     }
 
@@ -425,7 +425,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_pointer(&self) -> &PointerObj {
+    pub fn as_pointer(&self) -> &Rc<RefCell<PointerObj>> {
         unwrap_gos_val!(Pointer, self)
     }
 
@@ -545,7 +545,7 @@ impl GosValue {
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.meta,
             GosValue::Pointer(b) => {
-                let bobj: &PointerObj = &*b;
+                let bobj: &PointerObj = &*b.borrow();
                 let inner = match bobj {
                     //PointerObj::Nil => GosMetadata::Untyped,
                     PointerObj::UpVal(uv) => {
@@ -582,10 +582,11 @@ impl GosValue {
                     PointerObj::PkgMember(pkey, index) => {
                         objs.packages[*pkey].member(*index).get_meta(objs, stack)
                     }
+                    PointerObj::Released => unreachable!(),
                 };
                 inner.ptr_to()
             }
-            GosValue::Closure(c) => c.meta(&objs.functions),
+            GosValue::Closure(c) => c.borrow().meta(&objs.functions),
             GosValue::Slice(s) => s.meta,
             GosValue::Map(m) => m.meta,
             GosValue::Interface(i) => i.borrow().meta,
@@ -703,7 +704,7 @@ impl Hash for GosValue {
                 i.borrow().hash(state);
             }
             GosValue::Pointer(p) => {
-                PointerObj::hash(p, state);
+                PointerObj::hash(&p.borrow(), state);
             }
             GosValue::Named(n) => n.0.hash(state),
             _ => unreachable!(),
@@ -758,7 +759,7 @@ impl Display for GosValue {
             GosValue::Complex128(b) => write!(f, "({}, {})", b.0, b.1),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
             GosValue::Array(a) => write!(f, "{}", a),
-            GosValue::Pointer(p) => p.fmt(f),
+            GosValue::Pointer(p) => p.borrow().fmt(f),
             GosValue::Closure(_) => f.write_str("<closure>"),
             GosValue::Slice(s) => write!(f, "{}", s),
             GosValue::Map(m) => write!(f, "{}", m),

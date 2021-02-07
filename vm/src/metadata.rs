@@ -1,5 +1,6 @@
+use super::gc::GcObjs;
 use super::instruction::{OpIndex, ValueType};
-use super::objects::{FunctionKey, GcObjs, MetadataKey, MetadataObjs, StructObj, VMObjects};
+use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
 use std::cell::RefCell;
 use std::collections::HashMap;

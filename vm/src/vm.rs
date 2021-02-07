@@ -29,7 +29,7 @@ struct Referers {
 
 #[derive(Clone, Debug)]
 struct CallFrame {
-    closure: Rc<ClosureObj>,
+    closure: Rc<RefCell<ClosureObj>>,
     pc: usize,
     stack_base: usize,
     // local pointers are used in two cases
@@ -41,7 +41,7 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn with_closure(c: Rc<ClosureObj>, sbase: usize) -> CallFrame {
+    fn with_closure(c: Rc<RefCell<ClosureObj>>, sbase: usize) -> CallFrame {
         CallFrame {
             closure: c,
             pc: 0,
@@ -76,11 +76,11 @@ impl CallFrame {
 
     #[inline]
     fn func(&self) -> FunctionKey {
-        self.closure.func.unwrap()
+        self.closure.borrow().func.unwrap()
     }
 
     #[inline]
-    fn closure(&self) -> &Rc<ClosureObj> {
+    fn closure(&self) -> &Rc<RefCell<ClosureObj>> {
         &self.closure
     }
 
@@ -283,10 +283,8 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(Rc::new(ClosureObj::new_gos(
-                        func,
-                        &objs.functions,
-                        Some(val.copy_semantic()),
+                    stack.push(GosValue::Closure(Rc::new(RefCell::new(
+                        ClosureObj::new_gos(func, &objs.functions, Some(val.copy_semantic())),
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
@@ -305,7 +303,7 @@ impl Fiber {
                                 &objs.functions,
                                 Some(val.copy_semantic()),
                             );
-                            GosValue::Closure(Rc::new(cls))
+                            GosValue::Closure(Rc::new(RefCell::new(cls)))
                         }
                         IfaceUnderlying::Ffi(ffi) => {
                             let (name, meta) = ffi.methods[inst.imm() as usize].clone();
@@ -314,7 +312,7 @@ impl Fiber {
                                 func_name: name,
                                 meta: meta,
                             };
-                            GosValue::Closure(Rc::new(ClosureObj::new_ffi(cls)))
+                            GosValue::Closure(Rc::new(RefCell::new(ClosureObj::new_ffi(cls))))
                         }
                         IfaceUnderlying::None => {
                             panic_msg = Some("access nil interface".to_string());
@@ -378,7 +376,8 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
-                            match &*b {
+                            let r: &PointerObj = &b.borrow();
+                            match r {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(
                                         uv,
@@ -428,6 +427,7 @@ impl Fiber {
                                         objs.packages[*p].member_mut(*index);
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
+                                PointerObj::Released => unreachable!(),
                             };
                         }
                         _ => unreachable!(),
@@ -541,7 +541,7 @@ impl Fiber {
                 Opcode::PRE_CALL => {
                     let val = stack.pop_with_type(ValueType::Closure);
                     let cls_rc = val.as_closure();
-                    let cls: &ClosureObj = &*cls_rc;
+                    let cls: &ClosureObj = &*cls_rc.borrow();
                     let next_frame = CallFrame::with_closure(cls_rc.clone(), stack.len());
                     match cls.func {
                         Some(key) => {
@@ -559,7 +559,8 @@ impl Fiber {
                 }
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
                     let mut nframe = self.next_frames.pop().unwrap();
-                    let cls: &ClosureObj = &nframe.closure().clone();
+                    let ref_cls = nframe.closure().clone();
+                    let cls: &ClosureObj = &ref_cls.borrow();
                     match cls.func {
                         Some(key) => {
                             if let Some(uvs) = &cls.uvs {

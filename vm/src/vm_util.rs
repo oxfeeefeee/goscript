@@ -60,7 +60,8 @@ macro_rules! deref_value {
     ($pointers:expr, $self_:ident, $stack:ident, $frames:expr, $objs:expr) => {{
         match $pointers {
             GosValue::Pointer(b) => {
-                match &*b {
+                let r: &PointerObj = &b.borrow();
+                match r {
                     PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
                     PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s.clone()),
@@ -81,6 +82,7 @@ macro_rules! deref_value {
                     PointerObj::SliceMember(s, index) => s.get(*index as usize).unwrap(),
                     PointerObj::StructField(s, index) => s.borrow().fields[*index as usize].clone(),
                     PointerObj::PkgMember(pkg, index) => $objs.packages[*pkg].member(*index).clone(),
+                    PointerObj::Released => unreachable!(),
                 }
             }
             _ => unreachable!(),
