@@ -350,7 +350,14 @@ impl<'a> TypeLookup<'a> {
                 inner.ptr_to()
             }
             Type::Named(detail) => {
+                // put a place holder there to avoid recursion
+                let mdph = GosMetadata::new(
+                    MetadataType::Named(Methods::new(), GosMetadata::Untyped),
+                    &mut vm_objs.metas,
+                );
+                self.types_cache.insert(typ, mdph);
                 let underlying = self.meta_from_tc(detail.underlying(), vm_objs);
+                self.types_cache.remove(&typ);
                 let md = GosMetadata::new_named(underlying, &mut vm_objs.metas);
                 for key in detail.methods().iter() {
                     let mobj = &self.tc_objs.lobjs[*key];

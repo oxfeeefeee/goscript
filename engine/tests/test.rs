@@ -189,6 +189,12 @@ fn test_array() {
 }
 
 #[test]
+fn test_linked() {
+    let err_cnt = run("./tests/gs/group1/linked.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_leetcode5() {
     time_test!();
 
