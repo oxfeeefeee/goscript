@@ -1,5 +1,5 @@
 //#![allow(dead_code)]
-use super::gc::{GcObj, GcObjs};
+use super::gc::{GcObjs, GcWeak};
 use super::instruction::{Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
@@ -226,7 +226,7 @@ impl GosValue {
     ) -> GosValue {
         let arr = Rc::new(ArrayObj::with_size(size, val, meta));
         let v = GosValue::Array(arr);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -234,7 +234,7 @@ impl GosValue {
     pub fn array_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let arr = Rc::new(ArrayObj::with_data(val, meta));
         let v = GosValue::Array(arr);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -248,7 +248,7 @@ impl GosValue {
     ) -> GosValue {
         let s = Rc::new(SliceObj::new(len, cap, meta, dval));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -256,7 +256,7 @@ impl GosValue {
     pub fn new_slice_nil(meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let s = Rc::new(SliceObj::new_nil(meta));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -264,7 +264,7 @@ impl GosValue {
     pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcObjs) -> GosValue {
         let s = Rc::new(SliceObj::with_data(val, meta));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -277,7 +277,7 @@ impl GosValue {
     ) -> GosValue {
         let s = Rc::new(SliceObj::with_array(arr.as_array(), begin, end));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -285,7 +285,7 @@ impl GosValue {
     pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(MapObj::new(meta, default_val));
         let v = GosValue::Map(val);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -293,7 +293,7 @@ impl GosValue {
     pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(MapObj::new_nil(meta, default_val));
         let v = GosValue::Map(val);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -301,7 +301,7 @@ impl GosValue {
     pub fn new_struct(obj: StructObj, gcobjs: &mut GcObjs) -> GosValue {
         let val = Rc::new(RefCell::new(obj));
         let v = GosValue::Struct(val);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -328,7 +328,7 @@ impl GosValue {
     #[inline]
     pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &mut GcObjs) -> GosValue {
         let v = GosValue::Closure(Rc::new(RefCell::new(clsobj)));
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -340,7 +340,7 @@ impl GosValue {
     ) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
         let v = GosValue::Interface(val);
-        gcobjs.push(GcObj::from_gosv(&v));
+        gcobjs.push(GcWeak::from_gosv(&v));
         v
     }
 
@@ -546,9 +546,9 @@ impl GosValue {
             GosValue::Array(a) => a.meta,
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b.borrow();
-                let inner = match bobj {
+                let pointee = match &bobj.inner {
                     //PointerObj::Nil => GosMetadata::Untyped,
-                    PointerObj::UpVal(uv) => {
+                    PointerInner::UpVal(uv) => {
                         let state: &UpValueState = &uv.inner.borrow();
                         match state {
                             UpValueState::Open(d) => stack
@@ -557,34 +557,34 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(objs, stack),
                         }
                     }
-                    PointerObj::Struct(s, named_md) => match named_md {
+                    PointerInner::Struct(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.borrow().meta,
                         _ => *named_md,
                     },
-                    PointerObj::Array(a, named_md) => match named_md {
+                    PointerInner::Array(a, named_md) => match named_md {
                         GosMetadata::Untyped => a.meta,
                         _ => *named_md,
                     },
-                    PointerObj::Slice(s, named_md) => match named_md {
+                    PointerInner::Slice(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.meta,
                         _ => *named_md,
                     },
-                    PointerObj::Map(m, named_md) => match named_md {
+                    PointerInner::Map(m, named_md) => match named_md {
                         GosMetadata::Untyped => m.meta,
                         _ => *named_md,
                     },
-                    PointerObj::StructField(sobj, index) => {
+                    PointerInner::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(objs, stack)
                     }
-                    PointerObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
+                    PointerInner::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
                         .borrow()
                         .get_meta(objs, stack),
-                    PointerObj::PkgMember(pkey, index) => {
+                    PointerInner::PkgMember(pkey, index) => {
                         objs.packages[*pkey].member(*index).get_meta(objs, stack)
                     }
-                    PointerObj::Released => unreachable!(),
+                    PointerInner::Released => unreachable!(),
                 };
-                inner.ptr_to()
+                pointee.ptr_to()
             }
             GosValue::Closure(c) => c.borrow().meta(&objs.functions),
             GosValue::Slice(s) => s.meta,

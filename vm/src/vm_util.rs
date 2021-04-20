@@ -61,28 +61,28 @@ macro_rules! deref_value {
         match $pointers {
             GosValue::Pointer(b) => {
                 let r: &PointerObj = &b.borrow();
-                match r {
-                    PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
-                    PointerObj::Struct(s, md) => match md {
+                match &r.inner {
+                    PointerInner::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
+                    PointerInner::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s.clone()),
                         _ => GosValue::Named(Rc::new((GosValue::Struct(s.clone()), *md))),
                     }
-                    PointerObj::Array(a, md) => match md {
+                    PointerInner::Array(a, md) => match md {
                         GosMetadata::Untyped => GosValue::Array(a.clone()),
                         _ => GosValue::Named(Rc::new((GosValue::Array(a.clone()), *md))),
                     }
-                    PointerObj::Slice(s, md) => match md {
+                    PointerInner::Slice(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Slice(s.clone()),
                         _ => GosValue::Named(Rc::new((GosValue::Slice(s.clone()), *md))),
                     }
-                    PointerObj::Map(s, md) => match md {
+                    PointerInner::Map(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Map(s.clone()),
                         _ => GosValue::Named(Rc::new((GosValue::Map(s.clone()), *md))),
                     }
-                    PointerObj::SliceMember(s, index) => s.get(*index as usize).unwrap(),
-                    PointerObj::StructField(s, index) => s.borrow().fields[*index as usize].clone(),
-                    PointerObj::PkgMember(pkg, index) => $objs.packages[*pkg].member(*index).clone(),
-                    PointerObj::Released => unreachable!(),
+                    PointerInner::SliceMember(s, index) => s.get(*index as usize).unwrap(),
+                    PointerInner::StructField(s, index) => s.borrow().fields[*index as usize].clone(),
+                    PointerInner::PkgMember(pkg, index) => $objs.packages[*pkg].member(*index).clone(),
+                    PointerInner::Released => unreachable!(),
                 }
             }
             _ => unreachable!(),

@@ -5,10 +5,10 @@ use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
-pub type GcObjs = Vec<GcObj>;
+pub type GcObjs = Vec<GcWeak>;
 
 #[derive(Debug)]
-enum GcWeak {
+pub enum GcWeak {
     Array(Weak<ArrayObj>),
     Pointer(Weak<RefCell<PointerObj>>),
     Closure(Weak<RefCell<ClosureObj>>),
@@ -20,15 +20,9 @@ enum GcWeak {
     Named(Weak<(GosValue, GosMetadata)>),
 }
 
-#[derive(Debug)]
-pub struct GcObj {
-    weak: GcWeak,
-    rc: i32,
-}
-
-impl GcObj {
-    pub fn from_gosv(v: &GosValue) -> GcObj {
-        let weak = match v {
+impl GcWeak {
+    pub fn from_gosv(v: &GosValue) -> GcWeak {
+        match v {
             GosValue::Array(a) => GcWeak::Array(Rc::downgrade(a)),
             GosValue::Pointer(p) => GcWeak::Pointer(Rc::downgrade(p)),
             GosValue::Closure(c) => GcWeak::Closure(Rc::downgrade(c)),
@@ -39,13 +33,20 @@ impl GcObj {
             GosValue::Channel(c) => GcWeak::Channel(Rc::downgrade(c)),
             GosValue::Named(n) => GcWeak::Named(Rc::downgrade(n)),
             _ => unreachable!(),
-        };
-        GcObj { weak: weak, rc: 0 }
+        }
     }
 
-    fn read_rc(&mut self) {
-        let rc = match &self.weak {
-            GcWeak::Array(w) => w.strong_count(),
+    fn read_rc(&mut self) -> usize {
+        match &self {
+            GcWeak::Array(w) => {
+                if let Some(arr) = w.upgrade() {
+                    let c = w.strong_count();
+                    arr.rc.set(c);
+                    c
+                } else {
+                    0
+                }
+            }
             GcWeak::Pointer(w) => w.strong_count(),
             GcWeak::Closure(w) => w.strong_count(),
             GcWeak::Slice(w) => w.strong_count(),
@@ -54,12 +55,11 @@ impl GcObj {
             GcWeak::Struct(w) => w.strong_count(),
             GcWeak::Channel(w) => w.strong_count(),
             GcWeak::Named(w) => w.strong_count(),
-        };
-        self.rc = rc as i32;
+        }
     }
 
     fn release(&self) {
-        match &self.weak {
+        match &self {
             GcWeak::Array(w) => {
                 if let Some(s) = w.upgrade() {
                     s.borrow_data_mut().clear();
@@ -68,7 +68,7 @@ impl GcObj {
             GcWeak::Pointer(w) => {
                 if let Some(s) = w.upgrade() {
                     let r: &mut PointerObj = &mut (*s).borrow_mut();
-                    *r = PointerObj::Released;
+                    r.inner = PointerInner::Released;
                 }
             }
             GcWeak::Closure(w) => {
@@ -106,7 +106,7 @@ impl GcObj {
                 if let Some(s) = w.upgrade() {
                     match s.0.clone() {
                         GosValue::Array(a) => a.borrow_data_mut().clear(),
-                        GosValue::Pointer(p) => *((*p).borrow_mut()) = PointerObj::Released,
+                        GosValue::Pointer(p) => (*p).borrow_mut().inner = PointerInner::Released,
                         GosValue::Slice(mut slice) => slice.borrow_mut().borrow_data_mut().clear(),
                         GosValue::Map(mut m) => m.borrow_mut().borrow_data_mut().clear(),
                         GosValue::Interface(i) => {
@@ -119,4 +119,11 @@ impl GcObj {
             }
         };
     }
+}
+
+pub fn gc(objs: &mut GcObjs) {
+    for o in objs.iter_mut() {
+        dbg!(o.read_rc());
+    }
+    dbg!(objs.len());
 }
