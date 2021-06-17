@@ -3,7 +3,7 @@ use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
 use super::value::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::rc::Rc;
 
@@ -140,7 +140,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
+    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, Cell<usize>)> {
         self.cursor -= 1;
         let mut ret = GosValue::new_nil();
         std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);

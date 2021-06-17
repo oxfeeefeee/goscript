@@ -2,7 +2,7 @@ use super::gc::GcObjs;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -141,7 +141,7 @@ impl GosMetadata {
         let gosm = GosMetadata::NonPtr(key, MetaCategory::Default);
         match &mut objs.metas[key] {
             MetadataType::Struct(_, v) => match v {
-                GosValue::Struct(s) => s.borrow_mut().meta = gosm,
+                GosValue::Struct(s) => s.0.borrow_mut().meta = gosm,
                 _ => unreachable!(),
             },
             _ => unreachable!(),
@@ -338,7 +338,7 @@ impl GosMetadata {
                 MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
-                    GosValue::Named(Rc::new((val, *gm)))
+                    GosValue::Named(Rc::new((val, *gm, Cell::new(0))))
                 }
             },
             _ => GosValue::Nil(*self),
@@ -384,7 +384,7 @@ impl GosMetadata {
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
-                    GosValue::Named(Rc::new((val, *gm)))
+                    GosValue::Named(Rc::new((val, *gm, Cell::new(0))))
                 }
             },
             _ => unreachable!(),

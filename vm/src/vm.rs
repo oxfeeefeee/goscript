@@ -8,7 +8,7 @@ use super::stack::Stack;
 use super::value::*;
 use super::vm_util;
 use goscript_parser::FileSet;
-use std::cell::{Ref, RefCell};
+use std::cell::{Cell, Ref, RefCell};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::pin::Pin;
@@ -30,7 +30,7 @@ struct Referers {
 
 #[derive(Clone, Debug)]
 struct CallFrame {
-    closure: Rc<RefCell<ClosureObj>>,
+    closure: Rc<(RefCell<ClosureObj>, Cell<usize>)>,
     pc: usize,
     stack_base: usize,
     // local pointers are used in two cases
@@ -42,7 +42,7 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn with_closure(c: Rc<RefCell<ClosureObj>>, sbase: usize) -> CallFrame {
+    fn with_closure(c: Rc<(RefCell<ClosureObj>, Cell<usize>)>, sbase: usize) -> CallFrame {
         CallFrame {
             closure: c,
             pc: 0,
@@ -77,11 +77,11 @@ impl CallFrame {
 
     #[inline]
     fn func(&self) -> FunctionKey {
-        self.closure.borrow().func.unwrap()
+        self.closure.0.borrow().func.unwrap()
     }
 
     #[inline]
-    fn closure(&self) -> &Rc<RefCell<ClosureObj>> {
+    fn closure(&self) -> &Rc<(RefCell<ClosureObj>, Cell<usize>)> {
         &self.closure
     }
 
@@ -168,12 +168,12 @@ impl Fiber {
                         // and when it gets cloned, the underlying rust vec is not copied
                         // which leads to all function calls shares the same vec instance
                         GosValue::Slice(s) => {
-                            let slice = s.deep_clone();
-                            GosValue::Slice(Rc::new(slice))
+                            let slice = s.0.deep_clone();
+                            GosValue::Slice(Rc::new((slice, Cell::new(0))))
                         }
                         GosValue::Map(m) => {
-                            let map = m.deep_clone();
-                            GosValue::Map(Rc::new(map))
+                            let map = m.0.deep_clone();
+                            GosValue::Map(Rc::new((map, Cell::new(0))))
                         }
                         _ => gos_val.copy_semantic(),
                     };
@@ -271,8 +271,10 @@ impl Fiber {
                         frame = self.frames.last_mut().unwrap();
                     }
                     let val = match &target {
-                        GosValue::Named(n) => n.0.as_struct().borrow().fields[ind as usize].clone(),
-                        GosValue::Struct(sval) => sval.borrow().fields[ind as usize].clone(),
+                        GosValue::Named(n) => {
+                            n.0.as_struct().0.borrow().fields[ind as usize].clone()
+                        }
+                        GosValue::Struct(sval) => sval.0.borrow().fields[ind as usize].clone(),
                         _ => {
                             dbg!(&target);
                             unreachable!()
@@ -284,8 +286,13 @@ impl Fiber {
                 Opcode::BIND_METHOD => {
                     let val = stack.pop_with_type(inst.t0());
                     let func = *consts[inst.imm() as usize].as_function();
-                    stack.push(GosValue::Closure(Rc::new(RefCell::new(
-                        ClosureObj::new_gos(func, &objs.functions, Some(val.copy_semantic())),
+                    stack.push(GosValue::Closure(Rc::new((
+                        RefCell::new(ClosureObj::new_gos(
+                            func,
+                            &objs.functions,
+                            Some(val.copy_semantic()),
+                        )),
+                        Cell::new(0),
                     ))));
                 }
                 Opcode::BIND_INTERFACE_METHOD => {
@@ -295,7 +302,7 @@ impl Fiber {
                         GosValue::Interface(_) => val,
                         _ => unreachable!(),
                     };
-                    let borrowed = val.as_interface().borrow();
+                    let borrowed = val.as_interface().0.borrow();
                     let cls = match borrowed.underlying() {
                         IfaceUnderlying::Gos(val, funcs) => {
                             let func = funcs[inst.imm() as usize];
@@ -304,7 +311,7 @@ impl Fiber {
                                 &objs.functions,
                                 Some(val.copy_semantic()),
                             );
-                            GosValue::Closure(Rc::new(RefCell::new(cls)))
+                            GosValue::Closure(Rc::new((RefCell::new(cls), Cell::new(0))))
                         }
                         IfaceUnderlying::Ffi(ffi) => {
                             let (name, meta) = ffi.methods[inst.imm() as usize].clone();
@@ -313,7 +320,10 @@ impl Fiber {
                                 func_name: name,
                                 meta: meta,
                             };
-                            GosValue::Closure(Rc::new(RefCell::new(ClosureObj::new_ffi(cls))))
+                            GosValue::Closure(Rc::new((
+                                RefCell::new(ClosureObj::new_ffi(cls)),
+                                Cell::new(0),
+                            )))
                         }
                         IfaceUnderlying::None => {
                             panic_msg = Some("access nil interface".to_string());
@@ -348,11 +358,11 @@ impl Fiber {
                     }
                     match &target {
                         GosValue::Named(n) => {
-                            let field = &mut n.0.as_struct().borrow_mut().fields[imm as usize];
+                            let field = &mut n.0.as_struct().0.borrow_mut().fields[imm as usize];
                             stack.store_val(field, rhs_index, inst.t0());
                         }
                         GosValue::Struct(s) => {
-                            let field = &mut s.borrow_mut().fields[imm as usize];
+                            let field = &mut s.0.borrow_mut().fields[imm as usize];
                             stack.store_val(field, rhs_index, inst.t0());
                         }
                         _ => {
@@ -377,7 +387,7 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
-                            let r: &PointerObj = &b.borrow();
+                            let r: &PointerObj = &b.0.borrow();
                             match r {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(
@@ -393,34 +403,34 @@ impl Fiber {
                                 PointerObj::Struct(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    let mref: &mut StructObj = &mut r.borrow_mut();
-                                    *mref = val.try_get_struct().unwrap().borrow().clone();
+                                    let mref: &mut StructObj = &mut r.0.borrow_mut();
+                                    *mref = val.try_get_struct().unwrap().0.borrow().clone();
                                 }
                                 PointerObj::Array(a, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    a.set_from(val.as_array());
+                                    a.0.set_from(&val.as_array().0);
                                 }
                                 PointerObj::Slice(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    r.set_from(val.as_slice());
+                                    r.0.set_from(&val.as_slice().0);
                                 }
                                 PointerObj::Map(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                    let mref: &mut GosHashMap = &mut r.borrow_data_mut();
-                                    *mref = val.try_get_map().unwrap().borrow_data().clone();
+                                    let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
+                                    *mref = val.try_get_map().unwrap().0.borrow_data().clone();
                                 }
                                 PointerObj::SliceMember(s, index) => {
-                                    let vborrow = s.borrow_data();
+                                    let vborrow = s.0.borrow_data();
                                     let target: &mut GosValue =
-                                        &mut vborrow[s.begin() + *index as usize].borrow_mut();
+                                        &mut vborrow[s.0.begin() + *index as usize].borrow_mut();
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::StructField(s, index) => {
                                     let target: &mut GosValue =
-                                        &mut s.borrow_mut().fields[*index as usize];
+                                        &mut s.0.borrow_mut().fields[*index as usize];
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
                                 PointerObj::PkgMember(p, index) => {
@@ -447,6 +457,7 @@ impl Fiber {
                                 &mut objs.gcobjs,
                             ),
                             iface.0,
+                            Cell::new(0),
                         ))),
                         MetadataType::Interface(_) => GosValue::new_iface(
                             iface.0,
@@ -542,7 +553,7 @@ impl Fiber {
                 Opcode::PRE_CALL => {
                     let val = stack.pop_with_type(ValueType::Closure);
                     let cls_rc = val.as_closure();
-                    let cls: &ClosureObj = &*cls_rc.borrow();
+                    let cls: &ClosureObj = &*cls_rc.0.borrow();
                     let next_frame = CallFrame::with_closure(cls_rc.clone(), stack.len());
                     match cls.func {
                         Some(key) => {
@@ -561,7 +572,7 @@ impl Fiber {
                 Opcode::CALL | Opcode::CALL_ELLIPSIS => {
                     let mut nframe = self.next_frames.pop().unwrap();
                     let ref_cls = nframe.closure().clone();
-                    let cls: &ClosureObj = &ref_cls.borrow();
+                    let cls: &ClosureObj = &ref_cls.0.borrow();
                     match cls.func {
                         Some(key) => {
                             if let Some(uvs) = &cls.uvs {
@@ -772,7 +783,7 @@ impl Fiber {
                 }
 
                 Opcode::TYPE_ASSERT => {
-                    let val = match stack.pop_interface().borrow().underlying() {
+                    let val = match stack.pop_interface().0.borrow().underlying() {
                         IfaceUnderlying::Gos(v, _) => v.copy_semantic(),
                         _ => GosValue::new_nil(),
                     };
@@ -790,7 +801,7 @@ impl Fiber {
                     }
                 }
                 Opcode::TYPE => {
-                    let val = match stack.pop_interface().borrow().underlying() {
+                    let val = match stack.pop_interface().0.borrow().underlying() {
                         IfaceUnderlying::Gos(v, _) => v.copy_semantic(),
                         _ => GosValue::new_nil(),
                     };
@@ -821,7 +832,9 @@ impl Fiber {
                     let begin = stack.pop_int();
                     let target = stack.pop_with_type(inst.t0());
                     let result = match &target {
-                        GosValue::Slice(sl) => GosValue::Slice(Rc::new(sl.slice(begin, end, max))),
+                        GosValue::Slice(sl) => {
+                            GosValue::Slice(Rc::new((sl.0.slice(begin, end, max), Cell::new(0))))
+                        }
                         GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                         GosValue::Array(_) => {
                             GosValue::slice_with_array(&target, begin, end, &mut objs.gcobjs)
@@ -899,13 +912,13 @@ impl Fiber {
                                     for _ in 0..count {
                                         let k = stack.pop_with_type(tk);
                                         let v = stack.pop_with_type(tv);
-                                        map.insert(k, v);
+                                        map.0.insert(k, v);
                                     }
                                     gosv
                                 }
                                 MetadataType::Struct(f, zero) => {
                                     let struct_val = zero.copy_semantic();
-                                    let mut sref = struct_val.as_struct().borrow_mut();
+                                    let mut sref = struct_val.as_struct().0.borrow_mut();
                                     for _ in 0..count {
                                         let index = stack.pop_uint();
                                         let tv = f.fields[index].get_value_type(&objs.metas);
@@ -919,7 +932,7 @@ impl Fiber {
                             if umd == *md {
                                 val
                             } else {
-                                GosValue::Named(Rc::new((val, *md)))
+                                GosValue::Named(Rc::new((val, *md, Cell::new(0))))
                             }
                         }
                         _ => unimplemented!(),
@@ -974,10 +987,10 @@ impl Fiber {
                 }
                 Opcode::LEN => match &stack.pop_with_type(inst.t0()) {
                     GosValue::Slice(slice) => {
-                        stack.push(GosValue::Int(slice.len() as isize));
+                        stack.push(GosValue::Int(slice.0.len() as isize));
                     }
                     GosValue::Map(map) => {
-                        stack.push(GosValue::Int(map.len() as isize));
+                        stack.push(GosValue::Int(map.0.len() as isize));
                     }
                     GosValue::Str(sval) => {
                         stack.push(GosValue::Int(sval.len() as isize));
@@ -986,7 +999,7 @@ impl Fiber {
                 },
                 Opcode::CAP => match &stack.pop_with_type(inst.t0()) {
                     GosValue::Slice(slice) => {
-                        stack.push(GosValue::Int(slice.cap() as isize));
+                        stack.push(GosValue::Int(slice.0.cap() as isize));
                     }
                     _ => unreachable!(),
                 },
@@ -994,11 +1007,12 @@ impl Fiber {
                     let index = Stack::offset(stack.len(), inst.imm());
                     let a = stack.get_with_type(index - 2, ValueType::Slice);
                     let vala = a.as_slice();
-                    stack.pack_variadic(index, vala.meta, inst.t1(), &mut objs.gcobjs);
+                    stack.pack_variadic(index, vala.0.meta, inst.t1(), &mut objs.gcobjs);
                     let b = stack.pop_with_type(ValueType::Slice);
                     let valb = b.as_slice();
-                    vala.borrow_data_mut()
-                        .append(&mut valb.borrow_data().clone());
+                    vala.0
+                        .borrow_data_mut()
+                        .append(&mut valb.0.borrow_data().clone());
                 }
                 Opcode::ASSERT => {
                     if !stack.pop_bool() {

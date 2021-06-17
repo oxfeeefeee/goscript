@@ -2,22 +2,22 @@ use super::metadata::GosMetadata;
 use super::objects::*;
 use super::value::GosValue;
 use std::borrow::BorrowMut;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 pub type GcObjs = Vec<GcWeak>;
 
 #[derive(Debug)]
 pub enum GcWeak {
-    Array(Weak<ArrayObj>),
-    Pointer(Weak<RefCell<PointerObj>>),
-    Closure(Weak<RefCell<ClosureObj>>),
-    Slice(Weak<SliceObj>),
-    Map(Weak<MapObj>),
-    Interface(Weak<RefCell<InterfaceObj>>),
-    Struct(Weak<RefCell<StructObj>>),
-    Channel(Weak<RefCell<ChannelObj>>),
-    Named(Weak<(GosValue, GosMetadata)>),
+    Array(Weak<(ArrayObj, Cell<usize>)>),
+    Pointer(Weak<(RefCell<PointerObj>, Cell<usize>)>),
+    Closure(Weak<(RefCell<ClosureObj>, Cell<usize>)>),
+    Slice(Weak<(SliceObj, Cell<usize>)>),
+    Map(Weak<(MapObj, Cell<usize>)>),
+    Interface(Weak<(RefCell<InterfaceObj>, Cell<usize>)>),
+    Struct(Weak<(RefCell<StructObj>, Cell<usize>)>),
+    Channel(Weak<(RefCell<ChannelObj>, Cell<usize>)>),
+    Named(Weak<(GosValue, GosMetadata, Cell<usize>)>),
 }
 
 impl GcWeak {
@@ -41,6 +41,7 @@ impl GcWeak {
             GcWeak::Array(w) => {
                 if let Some(arr) = w.upgrade() {
                     let c = w.strong_count();
+                    arr.1.set(c);
                     c
                 } else {
                     0
@@ -61,18 +62,18 @@ impl GcWeak {
         match &self {
             GcWeak::Array(w) => {
                 if let Some(s) = w.upgrade() {
-                    s.borrow_data_mut().clear();
+                    s.0.borrow_data_mut().clear();
                 }
             }
             GcWeak::Pointer(w) => {
                 if let Some(s) = w.upgrade() {
-                    let r: &mut PointerObj = &mut (*s).borrow_mut();
+                    let r: &mut PointerObj = &mut (*s).0.borrow_mut();
                     *r = PointerObj::Released;
                 }
             }
             GcWeak::Closure(w) => {
                 if let Some(s) = w.upgrade() {
-                    let r: &mut ClosureObj = &mut RefCell::borrow_mut(&s);
+                    let r: &mut ClosureObj = &mut RefCell::borrow_mut(&s.0);
                     if let Some(uvs) = &mut r.uvs {
                         uvs.clear();
                     }
@@ -82,36 +83,36 @@ impl GcWeak {
             }
             GcWeak::Slice(w) => {
                 if let Some(mut s) = w.upgrade() {
-                    s.borrow_mut().borrow_data_mut().clear();
+                    s.borrow_mut().0.borrow_data_mut().clear();
                 }
             }
             GcWeak::Map(w) => {
                 if let Some(mut s) = w.upgrade() {
-                    s.borrow_mut().borrow_data_mut().clear();
+                    s.borrow_mut().0.borrow_data_mut().clear();
                 }
             }
             GcWeak::Interface(w) => {
                 if let Some(s) = w.upgrade() {
-                    RefCell::borrow_mut(&s).set_underlying(IfaceUnderlying::None);
+                    RefCell::borrow_mut(&s.0).set_underlying(IfaceUnderlying::None);
                 }
             }
             GcWeak::Struct(w) => {
                 if let Some(s) = w.upgrade() {
-                    RefCell::borrow_mut(&s).fields.clear();
+                    RefCell::borrow_mut(&s.0).fields.clear();
                 }
             }
             GcWeak::Channel(_) => unimplemented!(),
             GcWeak::Named(w) => {
                 if let Some(s) = w.upgrade() {
                     match s.0.clone() {
-                        GosValue::Array(a) => a.borrow_data_mut().clear(),
-                        GosValue::Pointer(p) => *(*p).borrow_mut() = PointerObj::Released,
-                        GosValue::Slice(mut slice) => slice.borrow_mut().borrow_data_mut().clear(),
-                        GosValue::Map(mut m) => m.borrow_mut().borrow_data_mut().clear(),
+                        GosValue::Array(a) => a.0.borrow_data_mut().clear(),
+                        GosValue::Pointer(p) => *p.0.borrow_mut() = PointerObj::Released,
+                        GosValue::Slice(slice) => slice.0.borrow_data_mut().clear(),
+                        GosValue::Map(m) => m.0.borrow_data_mut().clear(),
                         GosValue::Interface(i) => {
-                            RefCell::borrow_mut(&i).set_underlying(IfaceUnderlying::None)
+                            RefCell::borrow_mut(&i.0).set_underlying(IfaceUnderlying::None)
                         }
-                        GosValue::Struct(s) => RefCell::borrow_mut(&s).fields.clear(),
+                        GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
                         _ => unreachable!(),
                     }
                 }

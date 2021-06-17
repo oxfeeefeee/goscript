@@ -876,12 +876,12 @@ pub struct ChannelObj {}
 pub enum PointerObj {
     Released,
     UpVal(UpValue),
-    Struct(Rc<RefCell<StructObj>>, GosMetadata),
-    Array(Rc<ArrayObj>, GosMetadata),
-    Slice(Rc<SliceObj>, GosMetadata),
-    Map(Rc<MapObj>, GosMetadata),
-    SliceMember(Rc<SliceObj>, OpIndex),
-    StructField(Rc<RefCell<StructObj>>, OpIndex),
+    Struct(Rc<(RefCell<StructObj>, Cell<usize>)>, GosMetadata),
+    Array(Rc<(ArrayObj, Cell<usize>)>, GosMetadata),
+    Slice(Rc<(SliceObj, Cell<usize>)>, GosMetadata),
+    Map(Rc<(MapObj, Cell<usize>)>, GosMetadata),
+    SliceMember(Rc<(SliceObj, Cell<usize>)>, OpIndex),
+    StructField(Rc<(RefCell<StructObj>, Cell<usize>)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -914,8 +914,8 @@ impl PointerObj {
     pub fn set_local_ref_type(&self, val: GosValue) {
         match self {
             Self::Struct(v, _) => {
-                let mref: &mut StructObj = &mut v.borrow_mut();
-                *mref = val.try_get_struct().unwrap().borrow().clone();
+                let mref: &mut StructObj = &mut v.0.borrow_mut();
+                *mref = val.try_get_struct().unwrap().0.borrow().clone();
             }
             _ => unreachable!(),
         }

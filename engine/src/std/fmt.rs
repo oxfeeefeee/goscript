@@ -20,7 +20,7 @@ impl Fmt {
     }
 
     fn println(&self, params: Vec<GosValue>) {
-        let vec = params[0].as_slice().get_vec();
+        let vec = params[0].as_slice().0.get_vec();
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {

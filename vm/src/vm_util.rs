@@ -60,27 +60,27 @@ macro_rules! deref_value {
     ($pointers:expr, $self_:ident, $stack:ident, $frames:expr, $objs:expr) => {{
         match $pointers {
             GosValue::Pointer(b) => {
-                let r: &PointerObj = &b.borrow();
+                let r: &PointerObj = &b.0.borrow();
                 match r {
                     PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
                     PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Struct(s.clone()), *md))),
+                        _ => GosValue::Named(Rc::new((GosValue::Struct(s.clone()), *md, Cell::new(0)))),
                     }
                     PointerObj::Array(a, md) => match md {
                         GosMetadata::Untyped => GosValue::Array(a.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Array(a.clone()), *md))),
+                        _ => GosValue::Named(Rc::new((GosValue::Array(a.clone()), *md, Cell::new(0)))),
                     }
                     PointerObj::Slice(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Slice(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Slice(s.clone()), *md))),
+                        _ => GosValue::Named(Rc::new((GosValue::Slice(s.clone()), *md, Cell::new(0)))),
                     }
                     PointerObj::Map(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Map(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Map(s.clone()), *md))),
+                        _ => GosValue::Named(Rc::new((GosValue::Map(s.clone()), *md, Cell::new(0)))),
                     }
-                    PointerObj::SliceMember(s, index) => s.get(*index as usize).unwrap(),
-                    PointerObj::StructField(s, index) => s.borrow().fields[*index as usize].clone(),
+                    PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
+                    PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
                     PointerObj::PkgMember(pkg, index) => $objs.packages[*pkg].member(*index).clone(),
                     PointerObj::Released => unreachable!(),
                 }
@@ -96,7 +96,7 @@ macro_rules! range_vars {
         let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
         let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
         let mut $m_iter: Option<std::collections::hash_map::Iter<GosValue, RefCell<GosValue>>> = None;
-        let mut $l_ref: Option<Rc<SliceObj>> = None;
+        let mut $l_ref: Option<Rc<(SliceObj, Cell<usize>)>> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
         let mut $s_ref: Option<Rc<StringObj>> = None;
@@ -111,7 +111,7 @@ macro_rules! range_init {
         $str_ref:ident, $str_ptr:ident, $str_iter:ident) => {{
         match &$target {
             GosValue::Map(m) => {
-                let map = m.clone_inner();
+                let map = m.0.clone_inner();
                 $map_ref.replace(map);
                 let r = $map_ref.as_ref().unwrap().borrow();
                 let p = Box::into_raw(Box::new(r));
@@ -122,7 +122,7 @@ macro_rules! range_init {
             GosValue::Slice(sl) => {
                 let slice = sl.clone();
                 $slice_ref.replace(slice);
-                let r = $slice_ref.as_ref().unwrap().borrow();
+                let r = $slice_ref.as_ref().unwrap().0.borrow();
                 let p = Box::into_raw(Box::new(r));
                 $slice_ptr = Some(p);
                 let sliceref = unsafe { p.as_ref().unwrap() };
@@ -216,11 +216,11 @@ macro_rules! range_body {
 #[inline]
 pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     match val {
-        GosValue::Map(map) => Ok(map.get(&ind).clone()),
+        GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
         _ => {
             let index = *ind.as_int() as usize;
             match val {
-                GosValue::Slice(slice) => slice
+                GosValue::Slice(slice) => slice.0
                     .get(index)
                     .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| Ok(x)),
                 GosValue::Str(s) => s
@@ -228,7 +228,7 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
                     .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| {
                         Ok(GosValue::Int((*x).into()))
                     }),
-                GosValue::Array(arr) => arr
+                GosValue::Array(arr) => arr.0
                     .get(index)
                     .map_or_else(|| {Err(format!("index {} out of range", index))}, |x| Ok(x)),
                 _ => unreachable!(),
@@ -240,19 +240,19 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
 #[inline]
 pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
     match val {
-        GosValue::Slice(slice) => slice
+        GosValue::Slice(slice) => slice.0
             .get(i)
             .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| Ok(x)),
         GosValue::Map(map) => {
             let ind = GosValue::Int(i as isize);
-            Ok(map.get(&ind).clone())
+            Ok(map.0.get(&ind).clone())
         }
         GosValue::Str(s) => s
             .get_byte(i)
             .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| {
                 Ok(GosValue::Int((*x).into()))
             }),
-        GosValue::Array(arr) => arr
+        GosValue::Array(arr) => arr.0
             .get(i)
             .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| Ok(x)),
         _ => {
@@ -266,7 +266,7 @@ pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
 pub fn load_field(val: &GosValue, ind: &GosValue, objs: &VMObjects) -> GosValue {
     match val {
         GosValue::Struct(sval) => match &ind {
-            GosValue::Int(i) => sval.borrow().fields[*i as usize].clone(),
+            GosValue::Int(i) => sval.0.borrow().fields[*i as usize].clone(),
             _ => unreachable!(),
         },
         GosValue::Package(pkey) => {
@@ -287,16 +287,16 @@ pub fn store_index(
 ) {
     match target {
         GosValue::Array(arr) => {
-            let target_cell = &arr.borrow_data()[*key.as_int() as usize];
+            let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
         }
         GosValue::Slice(s) => {
-            let target_cell = &s.borrow_data()[*key.as_int() as usize];
+            let target_cell = &s.0.borrow_data()[*key.as_int() as usize];
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
         }
         GosValue::Map(map) => {
-            map.touch_key(&key);
-            let borrowed = map.borrow_data();
+            map.0.touch_key(&key);
+            let borrowed = map.0.borrow_data();
             let target_cell = borrowed.get(&key).unwrap();
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
         }
@@ -315,26 +315,26 @@ pub fn store_index_int(
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
         GosValue::Array(arr) => {
-            let target_cell = &arr.borrow_data()[i];
+            let target_cell = &arr.0.borrow_data()[i];
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
             Ok(())
         }
         GosValue::Slice(s) => {
-            if s.is_nil() {
+            if s.0.is_nil() {
                 err
             } else {
-                let target_cell = &s.borrow_data()[i];
+                let target_cell = &s.0.borrow_data()[i];
                 stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
                 Ok(())
             }
         }
         GosValue::Map(map) => {
-            if map.is_nil() {
+            if map.0.is_nil() {
                 err
             } else {
                 let key = GosValue::Int(i as isize);
-                map.touch_key(&key);
-                let borrowed = map.borrow_data();
+                map.0.touch_key(&key);
+                let borrowed = map.0.borrow_data();
                 let target_cell = borrowed.get(&key).unwrap();
                 stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
                 Ok(())
@@ -361,12 +361,12 @@ pub fn store_field(
         GosValue::Struct(s) => {
             match key {
                 GosValue::Int(i) => {
-                    let target = &mut s.borrow_mut().fields[*i as usize];
+                    let target = &mut s.0.borrow_mut().fields[*i as usize];
                     stack.store_val(target, r_index, t);
                 }
                 GosValue::Str(sval) => {
-                    let i = s.borrow().meta.field_index(sval.as_str(), &objs.metas);
-                    let target = &mut s.borrow_mut().fields[i as usize];
+                    let i = s.0.borrow().meta.field_index(sval.as_str(), &objs.metas);
+                    let target = &mut s.0.borrow_mut().fields[i as usize];
                     stack.store_val(target, r_index, t);
                 }
                 _ => unreachable!(),
@@ -378,7 +378,7 @@ pub fn store_field(
 
 #[inline]
 pub fn push_index_comma_ok(stack: &mut Stack, map: &GosValue, index: &GosValue) {
-    let (v, b) = match map.as_map().try_get(index) {
+    let (v, b) = match map.as_map().0.try_get(index) {
         Some(v) => (v, true),
         None => (GosValue::new_nil(), false),
     };
