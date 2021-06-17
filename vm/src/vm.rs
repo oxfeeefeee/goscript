@@ -378,8 +378,8 @@ impl Fiber {
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
                             let r: &PointerObj = &b.borrow();
-                            match &r.inner {
-                                PointerInner::UpVal(uv) => {
+                            match r {
+                                PointerObj::UpVal(uv) => {
                                     store_up_value!(
                                         uv,
                                         self,
@@ -390,45 +390,45 @@ impl Fiber {
                                     );
                                     frame = self.frames.last_mut().unwrap();
                                 }
-                                PointerInner::Struct(r, _) => {
+                                PointerObj::Struct(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     let mref: &mut StructObj = &mut r.borrow_mut();
                                     *mref = val.try_get_struct().unwrap().borrow().clone();
                                 }
-                                PointerInner::Array(a, _) => {
+                                PointerObj::Array(a, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     a.set_from(val.as_array());
                                 }
-                                PointerInner::Slice(r, _) => {
+                                PointerObj::Slice(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     r.set_from(val.as_slice());
                                 }
-                                PointerInner::Map(r, _) => {
+                                PointerObj::Map(r, _) => {
                                     let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                     let val = stack.get_with_type(rhs_s_index, inst.t0());
                                     let mref: &mut GosHashMap = &mut r.borrow_data_mut();
                                     *mref = val.try_get_map().unwrap().borrow_data().clone();
                                 }
-                                PointerInner::SliceMember(s, index) => {
+                                PointerObj::SliceMember(s, index) => {
                                     let vborrow = s.borrow_data();
                                     let target: &mut GosValue =
                                         &mut vborrow[s.begin() + *index as usize].borrow_mut();
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
-                                PointerInner::StructField(s, index) => {
+                                PointerObj::StructField(s, index) => {
                                     let target: &mut GosValue =
                                         &mut s.borrow_mut().fields[*index as usize];
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
-                                PointerInner::PkgMember(p, index) => {
+                                PointerObj::PkgMember(p, index) => {
                                     let target: &mut GosValue =
                                         objs.packages[*p].member_mut(*index);
                                     stack.store_val(target, rhs_index, inst.t0());
                                 }
-                                PointerInner::Released => unreachable!(),
+                                PointerObj::Released => unreachable!(),
                             };
                         }
                         _ => unreachable!(),
@@ -482,9 +482,7 @@ impl Fiber {
                 Opcode::REF_UPVALUE => {
                     let index = inst.imm();
                     let upvalue = frame.local_ptrs.as_ref().unwrap()[index as usize].clone();
-                    stack.push(GosValue::new_pointer(PointerObj::new_upvalue(
-                        upvalue.clone(),
-                    )));
+                    stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
                 }
                 Opcode::REF_LOCAL => {
                     let t = inst.t0();
@@ -505,8 +503,8 @@ impl Fiber {
                     if typ == ValueType::Array {
                         slice = GosValue::slice_with_array(&slice, 0, -1, &mut objs.gcobjs);
                     }
-                    stack.push(GosValue::new_pointer(PointerObj::new_slice_member(
-                        &slice,
+                    stack.push(GosValue::new_pointer(PointerObj::SliceMember(
+                        slice.as_slice().clone(),
                         index.try_into().unwrap(),
                     )));
                 }
@@ -517,21 +515,21 @@ impl Fiber {
                         GosValue::Struct(_) => struct_,
                         _ => unreachable!(),
                     };
-                    stack.push(GosValue::new_pointer(PointerObj::new_struct_field(
-                        &struct_,
+                    stack.push(GosValue::new_pointer(PointerObj::StructField(
+                        struct_.as_struct().clone(),
                         inst.imm(),
                     )));
                 }
                 Opcode::REF_PKG_MEMBER => {
                     let pkg = read_imm_pkg!(code, frame, objs);
-                    stack.push(GosValue::new_pointer(PointerObj::new_pkg_member(
+                    stack.push(GosValue::new_pointer(PointerObj::PkgMember(
                         pkg,
                         inst.imm(),
                     )));
                 }
                 Opcode::REF_LITERAL => {
                     let v = stack.pop_with_type(inst.t0());
-                    stack.push(GosValue::new_pointer(PointerObj::new_upvalue(
+                    stack.push(GosValue::new_pointer(PointerObj::UpVal(
                         UpValue::new_closed(v),
                     )))
                 }
@@ -934,7 +932,7 @@ impl Fiber {
                     let new_val = match param {
                         GosValue::Metadata(md) => {
                             let v = md.default_val(&objs.metas, &mut objs.gcobjs);
-                            GosValue::new_pointer(PointerObj::new_upvalue(UpValue::new_closed(v)))
+                            GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                         }
                         _ => unimplemented!(),
                     };

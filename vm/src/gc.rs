@@ -41,7 +41,6 @@ impl GcWeak {
             GcWeak::Array(w) => {
                 if let Some(arr) = w.upgrade() {
                     let c = w.strong_count();
-                    arr.rc.set(c);
                     c
                 } else {
                     0
@@ -68,7 +67,7 @@ impl GcWeak {
             GcWeak::Pointer(w) => {
                 if let Some(s) = w.upgrade() {
                     let r: &mut PointerObj = &mut (*s).borrow_mut();
-                    r.inner = PointerInner::Released;
+                    *r = PointerObj::Released;
                 }
             }
             GcWeak::Closure(w) => {
@@ -106,7 +105,7 @@ impl GcWeak {
                 if let Some(s) = w.upgrade() {
                     match s.0.clone() {
                         GosValue::Array(a) => a.borrow_data_mut().clear(),
-                        GosValue::Pointer(p) => (*p).borrow_mut().inner = PointerInner::Released,
+                        GosValue::Pointer(p) => *(*p).borrow_mut() = PointerObj::Released,
                         GosValue::Slice(mut slice) => slice.borrow_mut().borrow_data_mut().clear(),
                         GosValue::Map(mut m) => m.borrow_mut().borrow_data_mut().clear(),
                         GosValue::Interface(i) => {
@@ -121,9 +120,19 @@ impl GcWeak {
     }
 }
 
+pub struct TestD {
+    pub a: Rc<(RefCell<i8>, i8)>,
+}
+
 pub fn gc(objs: &mut GcObjs) {
     for o in objs.iter_mut() {
         dbg!(o.read_rc());
     }
     dbg!(objs.len());
+
+    let t = TestD {
+        a: Rc::new((RefCell::<i8>::new(0), 0)),
+    };
+    let mut b = t.a.0.borrow_mut();
+    *b = 2;
 }

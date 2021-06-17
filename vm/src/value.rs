@@ -546,9 +546,9 @@ impl GosValue {
             GosValue::Array(a) => a.meta,
             GosValue::Pointer(b) => {
                 let bobj: &PointerObj = &*b.borrow();
-                let pointee = match &bobj.inner {
+                let pointee = match bobj {
                     //PointerObj::Nil => GosMetadata::Untyped,
-                    PointerInner::UpVal(uv) => {
+                    PointerObj::UpVal(uv) => {
                         let state: &UpValueState = &uv.inner.borrow();
                         match state {
                             UpValueState::Open(d) => stack
@@ -557,32 +557,32 @@ impl GosValue {
                             UpValueState::Closed(v) => v.get_meta(objs, stack),
                         }
                     }
-                    PointerInner::Struct(s, named_md) => match named_md {
+                    PointerObj::Struct(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.borrow().meta,
                         _ => *named_md,
                     },
-                    PointerInner::Array(a, named_md) => match named_md {
+                    PointerObj::Array(a, named_md) => match named_md {
                         GosMetadata::Untyped => a.meta,
                         _ => *named_md,
                     },
-                    PointerInner::Slice(s, named_md) => match named_md {
+                    PointerObj::Slice(s, named_md) => match named_md {
                         GosMetadata::Untyped => s.meta,
                         _ => *named_md,
                     },
-                    PointerInner::Map(m, named_md) => match named_md {
+                    PointerObj::Map(m, named_md) => match named_md {
                         GosMetadata::Untyped => m.meta,
                         _ => *named_md,
                     },
-                    PointerInner::StructField(sobj, index) => {
+                    PointerObj::StructField(sobj, index) => {
                         sobj.borrow().fields[*index as usize].get_meta(objs, stack)
                     }
-                    PointerInner::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
+                    PointerObj::SliceMember(sobj, index) => sobj.borrow_data()[*index as usize]
                         .borrow()
                         .get_meta(objs, stack),
-                    PointerInner::PkgMember(pkey, index) => {
+                    PointerObj::PkgMember(pkey, index) => {
                         objs.packages[*pkey].member(*index).get_meta(objs, stack)
                     }
-                    PointerInner::Released => unreachable!(),
+                    PointerObj::Released => unreachable!(),
                 };
                 pointee.ptr_to()
             }

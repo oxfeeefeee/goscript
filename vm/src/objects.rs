@@ -315,7 +315,6 @@ pub type GosVec = Vec<RefCell<GosValue>>;
 
 #[derive(Debug)]
 pub struct ArrayObj {
-    pub rc: Cell<usize>,
     pub meta: GosMetadata,
     pub vec: Rc<RefCell<GosVec>>,
 }
@@ -327,7 +326,6 @@ impl ArrayObj {
             v.push(RefCell::new(val.copy_semantic()))
         }
         ArrayObj {
-            rc: Cell::new(0),
             meta: meta,
             vec: Rc::new(RefCell::new(v)),
         }
@@ -335,7 +333,6 @@ impl ArrayObj {
 
     pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> ArrayObj {
         ArrayObj {
-            rc: Cell::new(0),
             meta: meta,
             vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
@@ -409,7 +406,6 @@ impl PartialEq for ArrayObj {
 impl Clone for ArrayObj {
     fn clone(&self) -> Self {
         ArrayObj {
-            rc: Cell::new(0),
             meta: self.meta,
             vec: self.vec.clone(),
         }
@@ -872,89 +868,12 @@ pub struct ChannelObj {}
 /// - struct field
 /// - package member
 /// and for pointers to locals, the default way of handling it is to use "UpValue"
-/// (PointerInner::UpVal). Struct/Map/Slice are optimizations for this type, when
+/// (PointerObj::UpVal). Struct/Map/Slice are optimizations for this type, when
 /// the pointee has a "real" pointer
 ///
 
 #[derive(Debug, Clone)]
-pub struct PointerObj {
-    pub rc: Cell<usize>,
-    pub inner: PointerInner,
-}
-
-impl PointerObj {
-    #[inline]
-    pub fn new_local(val: GosValue) -> PointerObj {
-        PointerObj {
-            rc: Cell::new(0),
-            inner: PointerInner::new_local(val),
-        }
-    }
-
-    #[inline]
-    pub fn new_upvalue(uv: UpValue) -> PointerObj {
-        PointerObj {
-            rc: Cell::new(0),
-            inner: PointerInner::UpVal(uv),
-        }
-    }
-
-    #[inline]
-    pub fn new_pkg_member(pkg: PackageKey, index: OpIndex) -> PointerObj {
-        PointerObj {
-            rc: Cell::new(0),
-            inner: PointerInner::PkgMember(pkg, index),
-        }
-    }
-
-    #[inline]
-    pub fn new_slice_member(slice: &GosValue, index: OpIndex) -> PointerObj {
-        let s = slice.as_slice();
-        PointerObj {
-            rc: Cell::new(0),
-            inner: PointerInner::SliceMember(s.clone(), index),
-        }
-    }
-
-    #[inline]
-    pub fn new_struct_field(stru: &GosValue, index: OpIndex) -> PointerObj {
-        let s = stru.as_struct();
-        PointerObj {
-            rc: Cell::new(0),
-            inner: PointerInner::StructField(s.clone(), index),
-        }
-    }
-
-    #[inline]
-    pub fn set_local_ref_type(&self, val: GosValue) {
-        self.inner.set_local_ref_type(val)
-    }
-}
-
-impl Eq for PointerObj {}
-
-impl PartialEq for PointerObj {
-    #[inline]
-    fn eq(&self, other: &PointerObj) -> bool {
-        self.inner.eq(&other.inner)
-    }
-}
-
-impl Hash for PointerObj {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner.hash(state)
-    }
-}
-
-impl Display for PointerObj {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_fmt(format_args!("{}", &self.inner))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum PointerInner {
+pub enum PointerObj {
     Released,
     UpVal(UpValue),
     Struct(Rc<RefCell<StructObj>>, GosMetadata),
@@ -966,24 +885,24 @@ pub enum PointerInner {
     PkgMember(PackageKey, OpIndex),
 }
 
-impl PointerInner {
+impl PointerObj {
     #[inline]
-    pub fn new_local(val: GosValue) -> PointerInner {
+    pub fn new_local(val: GosValue) -> PointerObj {
         match val {
             GosValue::Named(s) => match &s.0 {
-                GosValue::Struct(stru) => PointerInner::Struct(stru.clone(), s.1),
-                GosValue::Array(arr) => PointerInner::Array(arr.clone(), s.1),
-                GosValue::Slice(slice) => PointerInner::Slice(slice.clone(), s.1),
-                GosValue::Map(map) => PointerInner::Map(map.clone(), s.1),
+                GosValue::Struct(stru) => PointerObj::Struct(stru.clone(), s.1),
+                GosValue::Array(arr) => PointerObj::Array(arr.clone(), s.1),
+                GosValue::Slice(slice) => PointerObj::Slice(slice.clone(), s.1),
+                GosValue::Map(map) => PointerObj::Map(map.clone(), s.1),
                 _ => {
                     dbg!(s);
                     unreachable!()
                 }
             },
-            GosValue::Struct(s) => PointerInner::Struct(s.clone(), GosMetadata::Untyped),
-            GosValue::Array(a) => PointerInner::Array(a.clone(), GosMetadata::Untyped),
-            GosValue::Slice(s) => PointerInner::Slice(s.clone(), GosMetadata::Untyped),
-            GosValue::Map(m) => PointerInner::Map(m.clone(), GosMetadata::Untyped),
+            GosValue::Struct(s) => PointerObj::Struct(s.clone(), GosMetadata::Untyped),
+            GosValue::Array(a) => PointerObj::Array(a.clone(), GosMetadata::Untyped),
+            GosValue::Slice(s) => PointerObj::Slice(s.clone(), GosMetadata::Untyped),
+            GosValue::Map(m) => PointerObj::Map(m.clone(), GosMetadata::Untyped),
             _ => {
                 dbg!(val);
                 unreachable!()
@@ -1003,11 +922,11 @@ impl PointerInner {
     }
 }
 
-impl Eq for PointerInner {}
+impl Eq for PointerObj {}
 
-impl PartialEq for PointerInner {
+impl PartialEq for PointerObj {
     #[inline]
-    fn eq(&self, other: &PointerInner) -> bool {
+    fn eq(&self, other: &PointerObj) -> bool {
         match (self, other) {
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
             (Self::Struct(x, _), Self::Struct(y, _)) => x == y,
@@ -1022,7 +941,7 @@ impl PartialEq for PointerInner {
     }
 }
 
-impl Hash for PointerInner {
+impl Hash for PointerObj {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Self::UpVal(x) => x.hash(state),
@@ -1047,7 +966,7 @@ impl Hash for PointerInner {
     }
 }
 
-impl Display for PointerInner {
+impl Display for PointerObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UpVal(uv) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&uv.inner))),
