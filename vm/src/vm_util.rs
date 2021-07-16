@@ -1,8 +1,10 @@
 //#![allow(dead_code)]
 //use super::opcode::OpIndex;
+use super::gc::GcObjs;
 use super::instruction::*;
 use super::stack::Stack;
 use super::value::{GosValue, RtValueResult, RuntimeResult, VMObjects};
+use super::objects::MetadataObjs;
 
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
@@ -13,10 +15,10 @@ macro_rules! read_imm_pkg {
 }
 
 macro_rules! store_local {
-    ($stack:ident, $s_index:expr, $rhs_index:expr, $typ:expr) => {{
+    ($stack:ident, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
         if $rhs_index < 0 {
             let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
-            $stack.store_copy_semantic($s_index, rhs_s_index, $typ);
+            $stack.store_copy_semantic($s_index, rhs_s_index, $typ, $gcos);
         } else {
             let op_ex = Instruction::index2code($rhs_index);
             $stack.store_with_op($s_index, $stack.len() - 1, op_ex, $typ);
@@ -41,16 +43,16 @@ macro_rules! load_up_value {
 }
 
 macro_rules! store_up_value {
-    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr, $rhs_index:ident, $typ:expr) => {{
+    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr, $rhs_index:ident, $typ:expr, $gcos:expr) => {{
         let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
         match uv {
             UpValueState::Open(desc) => {
                 let upframe =&mut $frames[desc.frame as usize];
                 let index = Stack::offset(upframe.stack_base, desc.index);
-                store_local!($stack, index, $rhs_index, $typ);
+                store_local!($stack, index, $rhs_index, $typ, $gcos);
             }
             UpValueState::Closed(v) => {
-                $stack.store_val(v, $rhs_index, $typ);
+                $stack.store_val(v, $rhs_index, $typ, $gcos);
             }
         }
     }};
@@ -96,7 +98,7 @@ macro_rules! range_vars {
         let mut $m_ref: Option<Rc<RefCell<GosHashMap>>> = None;
         let mut $m_ptr: Option<*mut Ref<GosHashMap>> = None;
         let mut $m_iter: Option<std::collections::hash_map::Iter<GosValue, RefCell<GosValue>>> = None;
-        let mut $l_ref: Option<Rc<(SliceObj, Cell<usize>)>> = None;
+        let mut $l_ref: Option<Rc<(SliceObj, RCount)>> = None;
         let mut $l_ptr: Option<*mut SliceRef> = None;
         let mut $l_iter: Option<SliceEnumIter> = None;
         let mut $s_ref: Option<Rc<StringObj>> = None;
@@ -284,21 +286,22 @@ pub fn store_index(
     key: &GosValue,
     r_index: OpIndex,
     t: ValueType,
+    gcos: &mut GcObjs,
 ) {
     match target {
         GosValue::Array(arr) => {
             let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
         }
         GosValue::Slice(s) => {
             let target_cell = &s.0.borrow_data()[*key.as_int() as usize];
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
         }
         GosValue::Map(map) => {
             map.0.touch_key(&key);
             let borrowed = map.0.borrow_data();
             let target_cell = borrowed.get(&key).unwrap();
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
         }
         _ => unreachable!(),
     }
@@ -311,12 +314,13 @@ pub fn store_index_int(
     i: usize,
     r_index: OpIndex,
     t: ValueType,
+    gcos: &mut GcObjs,
 ) -> RuntimeResult {
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
         GosValue::Array(arr) => {
             let target_cell = &arr.0.borrow_data()[i];
-            stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+            stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
             Ok(())
         }
         GosValue::Slice(s) => {
@@ -324,7 +328,7 @@ pub fn store_index_int(
                 err
             } else {
                 let target_cell = &s.0.borrow_data()[i];
-                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+                stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
                 Ok(())
             }
         }
@@ -336,7 +340,7 @@ pub fn store_index_int(
                 map.0.touch_key(&key);
                 let borrowed = map.0.borrow_data();
                 let target_cell = borrowed.get(&key).unwrap();
-                stack.store_val(&mut target_cell.borrow_mut(), r_index, t);
+                stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
                 Ok(())
             }
         }
@@ -355,19 +359,20 @@ pub fn store_field(
     key: &GosValue,
     r_index: OpIndex,
     t: ValueType,
-    objs: &VMObjects,
+    metas: &MetadataObjs,
+    gcos: &mut GcObjs,
 ) {
     match target {
         GosValue::Struct(s) => {
             match key {
                 GosValue::Int(i) => {
                     let target = &mut s.0.borrow_mut().fields[*i as usize];
-                    stack.store_val(target, r_index, t);
+                    stack.store_val(target, r_index, t, gcos);
                 }
                 GosValue::Str(sval) => {
-                    let i = s.0.borrow().meta.field_index(sval.as_str(), &objs.metas);
+                    let i = s.0.borrow().meta.field_index(sval.as_str(), metas);
                     let target = &mut s.0.borrow_mut().fields[i as usize];
-                    stack.store_val(target, r_index, t);
+                    stack.store_val(target, r_index, t, gcos);
                 }
                 _ => unreachable!(),
             };

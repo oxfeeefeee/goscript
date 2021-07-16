@@ -15,6 +15,7 @@ use std::result;
 
 type F32 = ordered_float::OrderedFloat<f32>;
 type F64 = ordered_float::OrderedFloat<f64>;
+pub type RCount = Cell<i32>;
 
 macro_rules! unwrap_gos_val {
     ($name:tt, $self_:ident) => {
@@ -189,16 +190,16 @@ pub enum GosValue {
     Metadata(GosMetadata),
 
     Str(Rc<StringObj>), // "String" is taken
-    Array(Rc<(ArrayObj, Cell<usize>)>),
-    Pointer(Rc<(RefCell<PointerObj>, Cell<usize>)>),
-    Closure(Rc<(RefCell<ClosureObj>, Cell<usize>)>),
-    Slice(Rc<(SliceObj, Cell<usize>)>),
-    Map(Rc<(MapObj, Cell<usize>)>),
-    Interface(Rc<(RefCell<InterfaceObj>, Cell<usize>)>),
-    Struct(Rc<(RefCell<StructObj>, Cell<usize>)>),
-    Channel(Rc<(RefCell<ChannelObj>, Cell<usize>)>),
+    Array(Rc<(ArrayObj, RCount)>),
+    Pointer(Rc<(RefCell<PointerObj>, RCount)>),
+    Closure(Rc<(RefCell<ClosureObj>, RCount)>),
+    Slice(Rc<(SliceObj, RCount)>),
+    Map(Rc<(MapObj, RCount)>),
+    Interface(Rc<(RefCell<InterfaceObj>, RCount)>),
+    Struct(Rc<(RefCell<StructObj>, RCount)>),
+    Channel(Rc<(RefCell<ChannelObj>, RCount)>),
 
-    Named(Rc<(GosValue, GosMetadata, Cell<usize>)>),
+    Named(Rc<(GosValue, GosMetadata, RCount)>),
 }
 
 impl GosValue {
@@ -224,7 +225,7 @@ impl GosValue {
         meta: GosMetadata,
         gcobjs: &mut GcObjs,
     ) -> GosValue {
-        let arr = Rc::new((ArrayObj::with_size(size, val, meta), Cell::new(0)));
+        let arr = Rc::new((ArrayObj::with_size(size, val, meta, gcobjs), Cell::new(0)));
         let v = GosValue::Array(arr);
         gcobjs.push(GcWeak::from_gosv(&v));
         v
@@ -381,27 +382,27 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_array(&self) -> &Rc<(ArrayObj, Cell<usize>)> {
+    pub fn as_array(&self) -> &Rc<(ArrayObj, RCount)> {
         unwrap_gos_val!(Array, self)
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &Rc<(SliceObj, Cell<usize>)> {
+    pub fn as_slice(&self) -> &Rc<(SliceObj, RCount)> {
         unwrap_gos_val!(Slice, self)
     }
 
     #[inline]
-    pub fn as_map(&self) -> &Rc<(MapObj, Cell<usize>)> {
+    pub fn as_map(&self) -> &Rc<(MapObj, RCount)> {
         unwrap_gos_val!(Map, self)
     }
 
     #[inline]
-    pub fn as_interface(&self) -> &Rc<(RefCell<InterfaceObj>, Cell<usize>)> {
+    pub fn as_interface(&self) -> &Rc<(RefCell<InterfaceObj>, RCount)> {
         unwrap_gos_val!(Interface, self)
     }
 
     #[inline]
-    pub fn as_channel(&self) -> &Rc<(RefCell<ChannelObj>, Cell<usize>)> {
+    pub fn as_channel(&self) -> &Rc<(RefCell<ChannelObj>, RCount)> {
         unwrap_gos_val!(Channel, self)
     }
 
@@ -416,12 +417,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> &Rc<(RefCell<StructObj>, Cell<usize>)> {
+    pub fn as_struct(&self) -> &Rc<(RefCell<StructObj>, RCount)> {
         unwrap_gos_val!(Struct, self)
     }
 
     #[inline]
-    pub fn as_closure(&self) -> &Rc<(RefCell<ClosureObj>, Cell<usize>)> {
+    pub fn as_closure(&self) -> &Rc<(RefCell<ClosureObj>, RCount)> {
         unwrap_gos_val!(Closure, self)
     }
 
@@ -431,12 +432,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_pointer(&self) -> &Rc<(RefCell<PointerObj>, Cell<usize>)> {
+    pub fn as_pointer(&self) -> &Rc<(RefCell<PointerObj>, RCount)> {
         unwrap_gos_val!(Pointer, self)
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Rc<(GosValue, GosMetadata, Cell<usize>)> {
+    pub fn as_named(&self) -> &Rc<(GosValue, GosMetadata, RCount)> {
         unwrap_gos_val!(Named, self)
     }
 
@@ -448,7 +449,7 @@ impl GosValue {
         }
     }
 
-    pub fn try_get_struct(&self) -> Option<&Rc<(RefCell<StructObj>, Cell<usize>)>> {
+    pub fn try_get_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
         match &self {
             GosValue::Struct(_) => Some(self.as_struct()),
             GosValue::Named(n) => Some(n.0.as_struct()),
@@ -456,7 +457,7 @@ impl GosValue {
         }
     }
 
-    pub fn try_get_map(&self) -> Option<&Rc<(MapObj, Cell<usize>)>> {
+    pub fn try_get_map(&self) -> Option<&Rc<(MapObj, RCount)>> {
         match &self {
             GosValue::Map(_) => Some(self.as_map()),
             GosValue::Named(n) => Some(n.0.as_map()),
@@ -606,13 +607,25 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self) -> GosValue {
+    pub fn copy_semantic(&self, gcos: &mut GcObjs) -> GosValue {
         match self {
-            GosValue::Slice(s) => GosValue::Slice(Rc::new((SliceObj::clone(&s.0), Cell::new(0)))),
-            GosValue::Map(m) => GosValue::Map(Rc::new((MapObj::clone(&m.0), Cell::new(0)))),
-            GosValue::Struct(s) => GosValue::Struct(Rc::new((RefCell::clone(&s.0), Cell::new(0)))),
+            GosValue::Slice(s) => {
+                let rc = Rc::new((SliceObj::clone(&s.0), Cell::new(0)));
+                gcos.push(GcWeak::Slice(Rc::downgrade(&rc)));
+                GosValue::Slice(rc)
+            }
+            GosValue::Map(m) => {
+                let rc = Rc::new((MapObj::clone(&m.0), Cell::new(0)));
+                gcos.push(GcWeak::Map(Rc::downgrade(&rc)));
+                GosValue::Map(rc)
+            }
+            GosValue::Struct(s) => {
+                let rc = Rc::new((RefCell::clone(&s.0), Cell::new(0)));
+                gcos.push(GcWeak::Struct(Rc::downgrade(&rc)));
+                GosValue::Struct(rc)
+            }
             GosValue::Named(v) => {
-                GosValue::Named(Rc::new((v.0.copy_semantic(), v.1, Cell::new(0))))
+                GosValue::Named(Rc::new((v.0.copy_semantic(gcos), v.1, Cell::new(0))))
             }
             _ => self.clone(),
         }
@@ -623,6 +636,53 @@ impl GosValue {
         let mut s = a.as_str().as_str().to_string();
         s.push_str(b.as_str().as_str());
         GosValue::new_str(s)
+    }
+
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        match &self {
+            GosValue::Array(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Pointer(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Slice(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Interface(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Channel(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Named(obj) => obj.2.set(obj.2.get() - 1),
+            _ => {}
+        };
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self) {
+        match &self {
+            GosValue::Array(obj) => obj.1.set(1),
+            GosValue::Pointer(obj) => obj.1.set(1),
+            GosValue::Closure(obj) => obj.1.set(1),
+            GosValue::Slice(obj) => obj.1.set(1),
+            GosValue::Map(obj) => obj.1.set(1),
+            GosValue::Interface(obj) => obj.1.set(1),
+            GosValue::Struct(obj) => obj.1.set(1),
+            GosValue::Channel(obj) => obj.1.set(1),
+            GosValue::Named(obj) => obj.2.set(1),
+            _ => {}
+        };
+    }
+
+    pub fn rc(&self) -> i32 {
+        match &self {
+            GosValue::Array(obj) => obj.1.get(),
+            GosValue::Pointer(obj) => obj.1.get(),
+            GosValue::Closure(obj) => obj.1.get(),
+            GosValue::Slice(obj) => obj.1.get(),
+            GosValue::Map(obj) => obj.1.get(),
+            GosValue::Interface(obj) => obj.1.get(),
+            GosValue::Struct(obj) => obj.1.get(),
+            GosValue::Channel(obj) => obj.1.get(),
+            GosValue::Named(obj) => obj.2.get(),
+            _ => unreachable!(),
+        }
     }
 }
 

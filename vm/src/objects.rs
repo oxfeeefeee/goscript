@@ -3,7 +3,7 @@ use super::ffi::Ffi;
 use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
-use super::value::GosValue;
+use super::value::{GosValue, RCount};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::Cell;
@@ -320,10 +320,15 @@ pub struct ArrayObj {
 }
 
 impl ArrayObj {
-    pub fn with_size(size: usize, val: &GosValue, meta: GosMetadata) -> ArrayObj {
+    pub fn with_size(
+        size: usize,
+        val: &GosValue,
+        meta: GosMetadata,
+        gcos: &mut GcObjs,
+    ) -> ArrayObj {
         let mut v = GosVec::with_capacity(size);
         for _ in 0..size {
-            v.push(RefCell::new(val.copy_semantic()))
+            v.push(RefCell::new(val.copy_semantic(gcos)))
         }
         ArrayObj {
             meta: meta,
@@ -822,6 +827,22 @@ impl InterfaceObj {
     pub fn is_nil(&self) -> bool {
         self.underlying() == &IfaceUnderlying::None
     }
+
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        match self.underlying() {
+            IfaceUnderlying::Gos(v, _) => v.ref_sub_one(),
+            _ => {}
+        };
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self) {
+        match self.underlying() {
+            IfaceUnderlying::Gos(v, _) => v.mark_dirty(),
+            _ => {}
+        };
+    }
 }
 
 impl Eq for InterfaceObj {}
@@ -876,12 +897,12 @@ pub struct ChannelObj {}
 pub enum PointerObj {
     Released,
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, Cell<usize>)>, GosMetadata),
-    Array(Rc<(ArrayObj, Cell<usize>)>, GosMetadata),
-    Slice(Rc<(SliceObj, Cell<usize>)>, GosMetadata),
-    Map(Rc<(MapObj, Cell<usize>)>, GosMetadata),
-    SliceMember(Rc<(SliceObj, Cell<usize>)>, OpIndex),
-    StructField(Rc<(RefCell<StructObj>, Cell<usize>)>, OpIndex),
+    Struct(Rc<(RefCell<StructObj>, RCount)>, GosMetadata),
+    Array(Rc<(ArrayObj, RCount)>, GosMetadata),
+    Slice(Rc<(SliceObj, RCount)>, GosMetadata),
+    Map(Rc<(MapObj, RCount)>, GosMetadata),
+    SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
+    StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -919,6 +940,32 @@ impl PointerObj {
             }
             _ => unreachable!(),
         }
+    }
+
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        match &self {
+            PointerObj::UpVal(uv) => uv.ref_sub_one(),
+            PointerObj::Struct(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Slice(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
+            _ => {}
+        };
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self) {
+        match &self {
+            PointerObj::UpVal(uv) => uv.mark_dirty(),
+            PointerObj::Struct(s, _) => s.1.set(1),
+            PointerObj::Slice(s, _) => s.1.set(1),
+            PointerObj::Map(s, _) => s.1.set(1),
+            PointerObj::SliceMember(s, _) => s.1.set(1),
+            PointerObj::StructField(s, _) => s.1.set(1),
+            _ => {}
+        };
     }
 }
 
@@ -1058,6 +1105,22 @@ impl UpValue {
     pub fn close(&self, val: GosValue) {
         *self.inner.borrow_mut() = UpValueState::Closed(val);
     }
+
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        let state: &UpValueState = &self.inner.borrow();
+        if let UpValueState::Closed(uvs) = state {
+            uvs.ref_sub_one()
+        }
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self) {
+        let state: &UpValueState = &self.inner.borrow();
+        if let UpValueState::Closed(uvs) = state {
+            uvs.mark_dirty()
+        }
+    }
 }
 
 impl Hash for UpValue {
@@ -1142,6 +1205,34 @@ impl ClosureObj {
         match &self.func {
             Some(f) => fobjs[*f].meta,
             None => self.ffi.as_ref().unwrap().meta,
+        }
+    }
+
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        if self.func.is_some() {
+            if let Some(uvs) = &self.uvs {
+                for (_, v) in uvs.iter() {
+                    v.ref_sub_one()
+                }
+            }
+            if let Some(recv) = &self.recv {
+                recv.ref_sub_one()
+            }
+        }
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self) {
+        if self.func.is_some() {
+            if let Some(uvs) = &self.uvs {
+                for (_, v) in uvs.iter() {
+                    v.mark_dirty()
+                }
+            }
+            if let Some(recv) = &self.recv {
+                recv.mark_dirty()
+            }
         }
     }
 }

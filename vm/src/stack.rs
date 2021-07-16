@@ -3,7 +3,7 @@ use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
 use super::value::*;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::rc::Rc;
 
@@ -140,7 +140,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, Cell<usize>)> {
+    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, RCount)> {
         self.cursor -= 1;
         let mut ret = GosValue::new_nil();
         std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
@@ -243,13 +243,11 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &mut GcObjs) {
         if t.copyable() {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
-            let v = self
-                .get_rc(ri)
-                .copy_semantic(/*Some((self.get_rc(li), pkgs, self)), md*/);
+            let v = self.get_rc(ri).copy_semantic(gcos);
             *self.get_rc_mut(li) = v;
         }
     }
@@ -268,13 +266,19 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType) {
+    pub fn store_val(
+        &self,
+        target: &mut GosValue,
+        r_index: OpIndex,
+        t: ValueType,
+        gcos: &mut GcObjs,
+    ) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
             if t.copyable() {
                 self.get_c(rhs_s_index).get_v128(t)
             } else {
-                self.get_rc(rhs_s_index).copy_semantic()
+                self.get_rc(rhs_s_index).copy_semantic(gcos)
             }
         } else {
             let ri = Stack::offset(self.len(), -1);
@@ -508,6 +512,13 @@ impl Stack {
     #[inline]
     pub fn copy_to_rc(&mut self, t: ValueType) {
         *self.get_rc_mut(self.cursor - 1) = self.get_c(self.cursor - 1).get_v128(t)
+    }
+
+    pub fn clear_rc_garbage(&mut self) {
+        let nil = GosValue::new_nil();
+        for i in self.cursor..self.max {
+            self.rc[i] = nil.clone();
+        }
     }
 }
 

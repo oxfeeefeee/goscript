@@ -329,7 +329,7 @@ impl GosMetadata {
                     MetaCategory::Default => GosValue::new_slice_nil(*self, gcos),
                     _ => unreachable!(),
                 },
-                MetadataType::Struct(_, s) => s.copy_semantic(),
+                MetadataType::Struct(_, s) => s.copy_semantic(gcos),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Map(_, v) => {
                     GosValue::new_map_nil(*self, v.default_val(mobjs, gcos), gcos)
@@ -375,7 +375,7 @@ impl GosMetadata {
                     MetaCategory::Default => GosValue::new_slice(0, 0, *self, None, gcos),
                     _ => unreachable!(),
                 },
-                MetadataType::Struct(_, s) => s.copy_semantic(),
+                MetadataType::Struct(_, s) => s.copy_semantic(gcos),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Map(_, v) => {
                     GosValue::new_map(*self, v.default_val(mobjs, gcos), gcos)

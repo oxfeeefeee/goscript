@@ -14,6 +14,8 @@ type List struct {
 	tail *Node
 }
 
+var glist = List{}
+
 func (L *List) Insert(key interface{}) {
 	list := &Node{
 		next: L.head,
@@ -73,12 +75,20 @@ func (l *List) Reverse() {
 
 func main() {
 	link := List{}
+	link.Insert(1)
+	link.Insert(3)
 	link.Insert(5)
+	link.Insert(7)
 	link.Insert(9)
-	link.Insert(13)
-	link.Insert(22)
-	link.Insert(28)
-	link.Insert(36)
+
+	link2 := List{}
+	link2.Insert(10)
+	link2.Insert(30)
+	link2.Insert(50)
+	link2.Insert(70)
+	link2.Insert(90)
+	link2.head.prev = link2.tail
+	link2.tail.next = link2.head
 	
 	fmt.Println("\n==============================\n")
 	fmt.Println("Head: %v\n", link.head.key)
@@ -89,4 +99,10 @@ func main() {
 	fmt.Println("tail: %v\n", link.tail.key)
 	link.Reverse()
 	fmt.Println("\n==============================\n")
+
+	glist.Insert(2)
+	glist.Insert(4)
+	glist.Insert(6)
+	glist.Insert(8)
+	glist.Insert(10)
 }
