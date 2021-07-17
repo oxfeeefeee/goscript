@@ -62,24 +62,24 @@ macro_rules! deref_value {
     ($pointers:expr, $self_:ident, $stack:ident, $frames:expr, $objs:expr) => {{
         match $pointers {
             GosValue::Pointer(b) => {
-                let r: &PointerObj = &b.0.borrow();
+                let r: &PointerObj = &b;
                 match r {
                     PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
                     PointerObj::Struct(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Struct(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Struct(s.clone()), *md, Cell::new(0)))),
+                        _ => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *md))),
                     }
                     PointerObj::Array(a, md) => match md {
                         GosMetadata::Untyped => GosValue::Array(a.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Array(a.clone()), *md, Cell::new(0)))),
+                        _ => GosValue::Named(Box::new((GosValue::Array(a.clone()), *md))),
                     }
                     PointerObj::Slice(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Slice(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Slice(s.clone()), *md, Cell::new(0)))),
+                        _ => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *md))),
                     }
                     PointerObj::Map(s, md) => match md {
                         GosMetadata::Untyped => GosValue::Map(s.clone()),
-                        _ => GosValue::Named(Rc::new((GosValue::Map(s.clone()), *md, Cell::new(0)))),
+                        _ => GosValue::Named(Box::new((GosValue::Map(s.clone()), *md))),
                     }
                     PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
                     PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),

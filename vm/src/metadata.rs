@@ -2,7 +2,7 @@ use super::gc::GcObjs;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -338,7 +338,7 @@ impl GosMetadata {
                 MetadataType::Channel => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
-                    GosValue::Named(Rc::new((val, *gm, Cell::new(0))))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
             _ => GosValue::Nil(*self),
@@ -384,7 +384,7 @@ impl GosMetadata {
                 MetadataType::Channel => unimplemented!(),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
-                    GosValue::Named(Rc::new((val, *gm, Cell::new(0))))
+                    GosValue::Named(Box::new((val, *gm)))
                 }
             },
             _ => unreachable!(),

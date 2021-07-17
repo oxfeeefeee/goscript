@@ -191,7 +191,7 @@ pub enum GosValue {
 
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
-    Pointer(Rc<(RefCell<PointerObj>, RCount)>),
+    Pointer(Box<PointerObj>),
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
     Slice(Rc<(SliceObj, RCount)>),
     Map(Rc<(MapObj, RCount)>),
@@ -199,7 +199,7 @@ pub enum GosValue {
     Struct(Rc<(RefCell<StructObj>, RCount)>),
     Channel(Rc<(RefCell<ChannelObj>, RCount)>),
 
-    Named(Rc<(GosValue, GosMetadata, RCount)>),
+    Named(Box<(GosValue, GosMetadata)>),
 }
 
 impl GosValue {
@@ -215,7 +215,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_pointer(v: PointerObj) -> GosValue {
-        GosValue::Pointer(Rc::new((RefCell::new(v), Cell::new(0))))
+        GosValue::Pointer(Box::new(v))
     }
 
     #[inline]
@@ -432,12 +432,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_pointer(&self) -> &Rc<(RefCell<PointerObj>, RCount)> {
+    pub fn as_pointer(&self) -> &Box<PointerObj> {
         unwrap_gos_val!(Pointer, self)
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Rc<(GosValue, GosMetadata, RCount)> {
+    pub fn as_named(&self) -> &Box<(GosValue, GosMetadata)> {
         unwrap_gos_val!(Named, self)
     }
 
@@ -552,7 +552,7 @@ impl GosValue {
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.0.meta,
             GosValue::Pointer(b) => {
-                let bobj: &PointerObj = &*b.0.borrow();
+                let bobj: &PointerObj = &*b;
                 let pointee = match bobj {
                     //PointerObj::Nil => GosMetadata::Untyped,
                     PointerObj::UpVal(uv) => {
@@ -624,9 +624,7 @@ impl GosValue {
                 gcos.push(GcWeak::Struct(Rc::downgrade(&rc)));
                 GosValue::Struct(rc)
             }
-            GosValue::Named(v) => {
-                GosValue::Named(Rc::new((v.0.copy_semantic(gcos), v.1, Cell::new(0))))
-            }
+            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(gcos), v.1))),
             _ => self.clone(),
         }
     }
@@ -642,14 +640,14 @@ impl GosValue {
     pub fn ref_sub_one(&self) {
         match &self {
             GosValue::Array(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Pointer(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Pointer(obj) => obj.ref_sub_one(),
             GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Slice(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Interface(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Channel(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Named(obj) => obj.2.set(obj.2.get() - 1),
+            GosValue::Named(obj) => obj.0.ref_sub_one(),
             _ => {}
         };
     }
@@ -658,14 +656,14 @@ impl GosValue {
     pub fn mark_dirty(&self) {
         match &self {
             GosValue::Array(obj) => obj.1.set(1),
-            GosValue::Pointer(obj) => obj.1.set(1),
+            GosValue::Pointer(obj) => obj.mark_dirty(),
             GosValue::Closure(obj) => obj.1.set(1),
             GosValue::Slice(obj) => obj.1.set(1),
             GosValue::Map(obj) => obj.1.set(1),
             GosValue::Interface(obj) => obj.1.set(1),
             GosValue::Struct(obj) => obj.1.set(1),
             GosValue::Channel(obj) => obj.1.set(1),
-            GosValue::Named(obj) => obj.2.set(1),
+            GosValue::Named(obj) => obj.0.mark_dirty(),
             _ => {}
         };
     }
@@ -673,14 +671,12 @@ impl GosValue {
     pub fn rc(&self) -> i32 {
         match &self {
             GosValue::Array(obj) => obj.1.get(),
-            GosValue::Pointer(obj) => obj.1.get(),
             GosValue::Closure(obj) => obj.1.get(),
             GosValue::Slice(obj) => obj.1.get(),
             GosValue::Map(obj) => obj.1.get(),
             GosValue::Interface(obj) => obj.1.get(),
             GosValue::Struct(obj) => obj.1.get(),
             GosValue::Channel(obj) => obj.1.get(),
-            GosValue::Named(obj) => obj.2.get(),
             _ => unreachable!(),
         }
     }
@@ -774,7 +770,7 @@ impl Hash for GosValue {
                 i.0.borrow().hash(state);
             }
             GosValue::Pointer(p) => {
-                PointerObj::hash(&p.0.borrow(), state);
+                PointerObj::hash(&p, state);
             }
             GosValue::Named(n) => n.0.hash(state),
             _ => unreachable!(),
@@ -829,7 +825,7 @@ impl Display for GosValue {
             GosValue::Complex128(b) => write!(f, "({}, {})", b.0, b.1),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
             GosValue::Array(a) => write!(f, "{}", a.0),
-            GosValue::Pointer(p) => p.0.borrow().fmt(f),
+            GosValue::Pointer(p) => p.fmt(f),
             GosValue::Closure(_) => f.write_str("<closure>"),
             GosValue::Slice(s) => write!(f, "{}", s.0),
             GosValue::Map(m) => write!(f, "{}", m.0),

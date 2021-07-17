@@ -423,7 +423,7 @@ impl Fiber {
                     let s_index = Stack::offset(stack.len(), index);
                     match stack.get_with_type(s_index, ValueType::Pointer) {
                         GosValue::Pointer(b) => {
-                            let r: &PointerObj = &b.0.borrow();
+                            let r: &PointerObj = &b;
                             match r {
                                 PointerObj::UpVal(uv) => {
                                     store_up_value!(
@@ -487,14 +487,13 @@ impl Fiber {
                     let iface = ifaces[mapping as usize].clone();
                     let under = stack.get_with_type(rhs_s_index, inst.t0());
                     let val = match &objs.metas[iface.0.as_non_ptr()] {
-                        MetadataType::Named(_, md) => GosValue::Named(Rc::new((
+                        MetadataType::Named(_, md) => GosValue::Named(Box::new((
                             GosValue::new_iface(
                                 *md,
                                 IfaceUnderlying::Gos(under, iface.1),
                                 &mut objs.gcobjs,
                             ),
                             iface.0,
-                            Cell::new(0),
                         ))),
                         MetadataType::Interface(_) => GosValue::new_iface(
                             iface.0,
@@ -969,7 +968,7 @@ impl Fiber {
                             if umd == *md {
                                 val
                             } else {
-                                GosValue::Named(Rc::new((val, *md, Cell::new(0))))
+                                GosValue::Named(Box::new((val, *md)))
                             }
                         }
                         _ => unimplemented!(),

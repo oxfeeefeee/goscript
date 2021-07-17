@@ -12,6 +12,8 @@ type Node struct {
 type List struct {
 	head *Node
 	tail *Node
+	t1 *Node
+	t2 *Node
 }
 
 var glist = List{}
@@ -74,6 +76,7 @@ func (l *List) Reverse() {
 }
 
 func main() {
+	
 	link := List{}
 	link.Insert(1)
 	link.Insert(3)
@@ -81,6 +84,7 @@ func main() {
 	link.Insert(7)
 	link.Insert(9)
 
+	
 	link2 := List{}
 	link2.Insert(10)
 	link2.Insert(30)
@@ -90,19 +94,27 @@ func main() {
 	link2.head.prev = link2.tail
 	link2.tail.next = link2.head
 	
+	
+	
 	fmt.Println("\n==============================\n")
 	fmt.Println("Head: %v\n", link.head.key)
 	fmt.Println("Tail: %v\n", link.tail.key)
+	//fmt.Println("ttt: %v\n", link.ttt.key)
 	link.Display()
 	fmt.Println("\n==============================\n")
 	fmt.Println("head: %v\n", link.head.key)
 	fmt.Println("tail: %v\n", link.tail.key)
 	link.Reverse()
 	fmt.Println("\n==============================\n")
+	
 
+	
 	glist.Insert(2)
 	glist.Insert(4)
 	glist.Insert(6)
 	glist.Insert(8)
 	glist.Insert(10)
+	glist.t1 = glist.head
+	glist.t2 = glist.head
+	
 }
