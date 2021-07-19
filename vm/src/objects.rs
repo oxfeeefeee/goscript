@@ -3,7 +3,7 @@ use super::ffi::Ffi;
 use super::gc::GcObjs;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
-use super::value::{GosValue, RCount};
+use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::Cell;
@@ -837,9 +837,9 @@ impl InterfaceObj {
     }
 
     /// for gc
-    pub fn mark_dirty(&self) {
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => v.mark_dirty(),
+            IfaceUnderlying::Gos(v, _) => v.mark_dirty(queue),
             _ => {}
         };
     }
@@ -956,14 +956,14 @@ impl PointerObj {
     }
 
     /// for gc
-    pub fn mark_dirty(&self) {
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
-            PointerObj::UpVal(uv) => uv.mark_dirty(),
-            PointerObj::Struct(s, _) => s.1.set(1),
-            PointerObj::Slice(s, _) => s.1.set(1),
-            PointerObj::Map(s, _) => s.1.set(1),
-            PointerObj::SliceMember(s, _) => s.1.set(1),
-            PointerObj::StructField(s, _) => s.1.set(1),
+            PointerObj::UpVal(uv) => uv.mark_dirty(queue),
+            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
             _ => {}
         };
     }
@@ -1115,10 +1115,10 @@ impl UpValue {
     }
 
     /// for gc
-    pub fn mark_dirty(&self) {
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
         let state: &UpValueState = &self.inner.borrow();
         if let UpValueState::Closed(uvs) = state {
-            uvs.mark_dirty()
+            uvs.mark_dirty(queue)
         }
     }
 }
@@ -1223,15 +1223,15 @@ impl ClosureObj {
     }
 
     /// for gc
-    pub fn mark_dirty(&self) {
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
         if self.func.is_some() {
             if let Some(uvs) = &self.uvs {
                 for (_, v) in uvs.iter() {
-                    v.mark_dirty()
+                    v.mark_dirty(queue)
                 }
             }
             if let Some(recv) = &self.recv {
-                recv.mark_dirty()
+                recv.mark_dirty(queue)
             }
         }
     }

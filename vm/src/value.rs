@@ -7,6 +7,7 @@ use super::stack::Stack;
 use ordered_float;
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
+use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::num::Wrapping;
@@ -15,7 +16,18 @@ use std::result;
 
 type F32 = ordered_float::OrderedFloat<f32>;
 type F64 = ordered_float::OrderedFloat<f64>;
-pub type RCount = Cell<i32>;
+pub type IRC = i32;
+pub type RCount = Cell<IRC>;
+pub type RCQueue = VecDeque<IRC>;
+
+#[inline]
+pub fn rcount_mark_and_queue(rc: &RCount, queue: &mut RCQueue) {
+    let i = rc.get();
+    if i <= 0 {
+        queue.push_back(i);
+        rc.set(1);
+    }
+}
 
 macro_rules! unwrap_gos_val {
     ($name:tt, $self_:ident) => {
@@ -653,22 +665,22 @@ impl GosValue {
     }
 
     /// for gc
-    pub fn mark_dirty(&self) {
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
-            GosValue::Array(obj) => obj.1.set(1),
-            GosValue::Pointer(obj) => obj.mark_dirty(),
-            GosValue::Closure(obj) => obj.1.set(1),
-            GosValue::Slice(obj) => obj.1.set(1),
-            GosValue::Map(obj) => obj.1.set(1),
-            GosValue::Interface(obj) => obj.1.set(1),
-            GosValue::Struct(obj) => obj.1.set(1),
-            GosValue::Channel(obj) => obj.1.set(1),
-            GosValue::Named(obj) => obj.0.mark_dirty(),
+            GosValue::Array(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Pointer(obj) => obj.mark_dirty(queue),
+            GosValue::Closure(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Slice(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Interface(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Struct(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Channel(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Named(obj) => obj.0.mark_dirty(queue),
             _ => {}
         };
     }
 
-    pub fn rc(&self) -> i32 {
+    pub fn rc(&self) -> IRC {
         match &self {
             GosValue::Array(obj) => obj.1.get(),
             GosValue::Closure(obj) => obj.1.get(),
@@ -677,6 +689,19 @@ impl GosValue {
             GosValue::Interface(obj) => obj.1.get(),
             GosValue::Struct(obj) => obj.1.get(),
             GosValue::Channel(obj) => obj.1.get(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn set_rc(&self, rc: IRC) {
+        match &self {
+            GosValue::Array(obj) => obj.1.set(rc),
+            GosValue::Closure(obj) => obj.1.set(rc),
+            GosValue::Slice(obj) => obj.1.set(rc),
+            GosValue::Map(obj) => obj.1.set(rc),
+            GosValue::Interface(obj) => obj.1.set(rc),
+            GosValue::Struct(obj) => obj.1.set(rc),
+            GosValue::Channel(obj) => obj.1.set(rc),
             _ => unreachable!(),
         }
     }

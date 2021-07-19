@@ -1,4 +1,4 @@
-// Linked List in Golang
+// for testing GC
 package main
 
 import "fmt"
