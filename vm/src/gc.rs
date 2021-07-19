@@ -159,16 +159,17 @@ fn release(obj: &mut GosValue) {
 
 /// put the non-zero-rc on the left, and the others on the right
 fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
-    if to_scan.is_empty() {
+    let len = to_scan.len();
+    if len == 0 {
         return 0;
     }
     let mut p0 = 0;
-    let mut p1 = to_scan.len() - 1;
+    let mut p1 = len - 1;
     loop {
-        while to_scan[p0].rc() > 0 {
+        while p0 < len - 1 && to_scan[p0].rc() > 0 {
             p0 += 1;
         }
-        while to_scan[p1].rc() <= 0 {
+        while p1 > 1 && to_scan[p1].rc() <= 0 {
             p1 -= 1;
         }
         if p0 >= p1 {
