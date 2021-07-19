@@ -1,6 +1,5 @@
 use super::objects::*;
 use super::value::{GosValue, RCQueue, RCount, IRC};
-use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::rc::{Rc, Weak};
@@ -148,8 +147,18 @@ fn release(obj: &mut GosValue) {
             r.recv = None;
             r.ffi = None;
         }
-        GosValue::Slice(s) => s.borrow_mut().0.borrow_data_mut().clear(),
-        GosValue::Map(m) => m.borrow_mut().0.borrow_data_mut().clear(),
+        GosValue::Slice(s) => {
+            let sdata = &s.0;
+            if !sdata.is_nil() {
+                sdata.borrow_data_mut().clear();
+            }
+        }
+        GosValue::Map(m) => {
+            let mdata = &m.0;
+            if !mdata.is_nil() {
+                mdata.borrow_data_mut().clear();
+            }
+        }
         GosValue::Interface(i) => RefCell::borrow_mut(&i.0).set_underlying(IfaceUnderlying::None),
         GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
         GosValue::Channel(_) => unimplemented!(),
