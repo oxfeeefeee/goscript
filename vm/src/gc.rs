@@ -1,4 +1,3 @@
-use super::metadata::GosMetadata;
 use super::objects::*;
 use super::value::{GosValue, RCount};
 use std::borrow::BorrowMut;
@@ -117,14 +116,23 @@ fn children_ref_sub_one(val: &GosValue) {
             .for_each(|obj| obj.borrow().ref_sub_one()),
         GosValue::Closure(c) => c.0.borrow().ref_sub_one(),
         GosValue::Slice(s) => {
-            s.0.borrow_data_mut()
-                .iter()
-                .for_each(|obj| obj.borrow().ref_sub_one())
+            let sdata = &s.0;
+            if !sdata.is_nil() {
+                sdata
+                    .borrow_data()
+                    .iter()
+                    .for_each(|obj| obj.borrow().ref_sub_one())
+            }
         }
-        GosValue::Map(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
-            k.ref_sub_one();
-            v.borrow().ref_sub_one();
-        }),
+        GosValue::Map(m) => {
+            let mdata = &m.0;
+            if !mdata.is_nil() {
+                mdata.borrow_data().iter().for_each(|(k, v)| {
+                    k.ref_sub_one();
+                    v.borrow().ref_sub_one();
+                })
+            }
+        }
         GosValue::Interface(i) => i.0.borrow().ref_sub_one(),
         GosValue::Struct(s) => s.0.borrow().fields.iter().for_each(|obj| obj.ref_sub_one()),
         GosValue::Channel(_) => unimplemented!(),
