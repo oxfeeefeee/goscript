@@ -165,21 +165,10 @@ impl Fiber {
                     Opcode::PUSH_CONST => {
                         let index = inst.imm();
                         let gos_val = &consts[index as usize];
-                        let val = match gos_val {
-                            // Slice/Map are special cases here because, they are stored literal,
-                            // and when it gets cloned, the underlying rust vec is not copied
-                            // which leads to all function calls shares the same vec instance
-                            GosValue::Slice(s) => {
-                                let slice = s.0.deep_clone();
-                                GosValue::Slice(Rc::new((slice, Cell::new(0))))
-                            }
-                            GosValue::Map(m) => {
-                                let map = m.0.deep_clone();
-                                GosValue::Map(Rc::new((map, Cell::new(0))))
-                            }
-                            _ => gos_val.copy_semantic(&mut objs.gcobjs),
-                        };
-                        stack.push(val);
+                        // Slice/Map/Array are special cases here because, they are stored literal,
+                        // and when it gets cloned, the underlying rust vec is not copied
+                        // which leads to all function calls shares the same vec instance
+                        stack.push(gos_val.deep_clone(&mut objs.gcobjs));
                     }
                     Opcode::PUSH_NIL => stack.push_nil(),
                     Opcode::PUSH_FALSE => stack.push_bool(false),
@@ -1164,6 +1153,7 @@ impl Fiber {
         }
 
         stack.clear_rc_garbage();
+        println!("stack: {}", &stack);
         gc::gc(&mut objs.gcobjs);
     }
 }

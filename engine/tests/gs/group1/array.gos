@@ -9,7 +9,7 @@ type Node struct{
 }
 
 
-func main() {
+func ttt() {
     var a = [3]string{"a", "b", "c"}
     a[0] = "ccccccccc"
     i := 0
@@ -18,6 +18,7 @@ func main() {
     var b [2]int
 
     var c [3]Node
+    assert(c[2].i == 0)
     p := &c[2]
     p.i = 88
     p.j = "haha"
@@ -29,6 +30,9 @@ func main() {
     d[1][1] = 99
 
     fmt.Println(a[0], a[1], a, b, b[:1], a[1:], a[1:][0], c, c[0], d[1][0], d[1][1])
+}
 
-    
+func main() {
+    ttt()
+    ttt()
 }

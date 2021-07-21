@@ -132,7 +132,6 @@ impl GosMetadata {
     pub fn new_struct(f: Fields, objs: &mut VMObjects) -> GosMetadata {
         let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| zero_val!(x, objs)).collect();
         let struct_val = StructObj {
-            dark: false,
             meta: GosMetadata::Untyped, // placeholder, will be set below
             fields: field_zeros,
         };

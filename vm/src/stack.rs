@@ -5,6 +5,7 @@ use super::metadata::GosMetadata;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
+use std::fmt::{self, Display};
 use std::rc::Rc;
 
 const DEFAULT_SIZE: usize = 10240;
@@ -34,6 +35,22 @@ pub struct Stack {
     rc: Vec<GosValue>,
     cursor: usize,
     max: usize,
+}
+
+impl Display for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[stack] cursor: {}\n", self.cursor)?;
+        f.write_str("======c  top=======\n")?;
+        for i in 0..(self.cursor + 1) {
+            write!(f, "{}\n", self.c[i].get_uint())?;
+        }
+        f.write_str("======c  botton====\n")?;
+        f.write_str("=====rc  top=======\n")?;
+        for i in 0..(self.cursor + 1) {
+            write!(f, "{}\n", &self.rc[i])?;
+        }
+        f.write_str("=====rc  botton====\n")
+    }
 }
 
 impl Stack {
