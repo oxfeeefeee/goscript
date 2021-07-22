@@ -36,7 +36,7 @@ The project "engine" is the entry/wrapper. there are test cases in [here](https:
 + Standard library: just got started.
 + Production readiness: far from. The parser and the type checker are probably ok because they were ported and passes
 the test cases comes with the original code. The backend has a lot of rough edges, and we need much more test cases.
-+ Next step: no new features for now, ponish then work on the standard library.
++ Next step: no new features for now, polish then work on the standard library.
 
 ### Get in touch
 + email: pb01005051 at gmail.
