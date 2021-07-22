@@ -298,7 +298,7 @@ impl Value {
                 Value::Complex(Box::new(Value::with_f64(0.0)), Box::new(self.clone()))
             }
             Value::Unknown => Value::Unknown,
-            _ => panic!(format!("{} not Int or Float", self)),
+            _ => panic!("{} not Int or Float", self),
         }
     }
 
@@ -308,7 +308,7 @@ impl Value {
         match self {
             Value::Int(_) | Value::Float(_) | Value::Rat(_) | Value::Unknown => self.clone(),
             Value::Complex(r, _) => *r.clone(),
-            _ => panic!(format!("{} not numeric", self)),
+            _ => panic!("{} not numeric", self),
         }
     }
 
@@ -319,7 +319,7 @@ impl Value {
             Value::Int(_) | Value::Float(_) | Value::Rat(_) => Value::with_f64(0.0),
             Value::Complex(_, i) => *i.clone(),
             Value::Unknown => Value::Unknown,
-            _ => panic!(format!("{} not numeric", self)),
+            _ => panic!("{} not numeric", self),
         }
     }
 
@@ -354,7 +354,7 @@ impl Value {
             }
             Value::Complex(r, i) => r.sign() | i.sign(),
             Value::Unknown => 1, // avoid spurious division by zero errors
-            _ => panic!(format!("{} not numeric", self)),
+            _ => panic!("{} not numeric", self),
         }
     }
 

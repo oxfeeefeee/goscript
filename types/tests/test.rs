@@ -102,20 +102,20 @@ fn test_file(path: &str, trace: bool) {
                 }
             }
             if !found {
-                panic!(format!("unexpected error(1): {}", e));
+                panic!("unexpected error(1): {}", e);
             }
         } else {
-            panic!(format!("unexpected error(2): {}", e));
+            panic!("unexpected error(2): {}", e);
         }
     }
 
     for (_, errs) in expected_errs.iter() {
         for info in errs.iter() {
             if !info.checked {
-                panic!(format!(
+                panic!(
                     "expected error at line {} not reported: {}",
                     info.line, info.text
-                ));
+                );
             }
         }
     }
