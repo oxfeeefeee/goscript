@@ -1,5 +1,5 @@
 # Goscript
-Go specs implemented as a scripting language.
+Go specs implemented as a script language.
 
 ### The Goal
 + Runs most pure Go code, probably add some dynamic features if requested.
@@ -28,10 +28,11 @@ The project "engine" is the entry/wrapper. there are test cases in [here](https:
     - parser -- a port of the official implementation that comes with the Go installer.
     - type checker  -- a port of the official implementation that comes with the Go installer.
     - codegen -- generates the bytecode.
-    - VM -- runs the bytecode.
+    - vm -- runs the bytecode.
+    - engine -- the wrapper.
 
 ### Progress
-+ Language: supports most features, the biggest missing part is goroutine/channel/defer.
++ Language: the biggest missing part is goroutine/channel/defer, supports most features, some of them are, probably for the first time, implemented in a script language :), like Pointer/Interface/Struct.
 + Standard library: just got started.
 + Production readiness: far from. The parser and the type checker are probably ok because they were ported and passes
 the test cases comes with the original code. The backend has a lot of rough edges, and we need much more test cases.
