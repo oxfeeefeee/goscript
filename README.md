@@ -22,6 +22,7 @@ The project "engine" is the entry/wrapper. there are test cases in [here](https:
 + In some cases, when your project gets big:
     - If Go were an embedded language it would be better than Lua.
     - If Go were a glue language it would be better than Python, in terms of project maintainability.
++ I found a new hammer(Rust) that I like, and decided to use it on a nail(Go) that I like. 
 
 ### Implementation
 + There are five projects: 
