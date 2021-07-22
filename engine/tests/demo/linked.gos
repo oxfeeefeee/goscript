@@ -1,4 +1,4 @@
-// for testing GC
+// for testing GC; taken from internet
 package main
 
 import "fmt"

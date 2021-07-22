@@ -1,8 +1,16 @@
 # Goscript
-Go specs implemented as a scripting language in Rust.
+Go specs implemented as a scripting language.
 
 ### The Goal
-+ To be full compatible with Go, i.e. to be able to run any valid Go code.(But only a subset of features will be supported in version 0.1)
++ Runs most pure Go code, probably add some dynamic features if requested.
+
+### How do I try
+The project "engine" is the entry/wrapper. there are test cases in [here](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests to browse through.
++ Make sure your Rust installation is up to date.
++ Clone this repository.
++ Go to goscript/engine
++ Run cargo test -- --nocapture
+
 
 ### Use Cases
 + As an embedded language like Lua.
@@ -16,13 +24,19 @@ Go specs implemented as a scripting language in Rust.
     - If Go were a glue language it would be better than Python, in terms of project maintainability.
 
 ### Implementation
-+ The parser is a port of the official Go implementation.
-+ The VM is based on that of Lua/Wren.
++ There are five projects: 
+    - parser -- a port of the official implementation that comes with the Go installer.
+    - type checker  -- a port of the official implementation that comes with the Go installer.
+    - codegen -- generates the bytecode.
+    - VM -- runs the bytecode.
 
-### Progress/Roadmap
-+ You can take a look at [here](https://github.com/oxfeeefeee/goscript/blob/master/codegen/tests/data/leetcode5.gos) to see what it can run for now.
-+ The parser works fine, the core part of the VM is basically working.
-+ 4 major components to go: TypeChecker, GC, Library, API. I'm planning to work on the TypeCheker in the next few weeks before go back to the VM.
+### Progress
++ Language: supports most features, the biggest missing part is goroutine/channel/defer.
++ Standard library: just got started.
++ Production readiness: far from. The parser and the type checker are probably ok because they were ported and passes
+the test cases comes with the original code. The backend has a lot of rough edges, and we need much more test cases.
++ Next step: no new features for now, ponish then work on the standard library.
 
-### Join us
-+ If you like the idea, and would like to help, please contact oxfeeefeee at gmail.
+### Get in touch
++ email: oxfeeefeee at gmail.
++ wechat: oxfeeefeee
