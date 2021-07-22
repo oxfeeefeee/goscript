@@ -191,11 +191,7 @@ fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
 
 pub fn gc(objs: &mut GcObjs) {
     let mut to_scan: Vec<GosValue> = objs.iter().filter_map(|o| o.to_gosv()).collect();
-    for v in to_scan.iter() {
-        println!("{}", v);
-        dbg!(v.rc());
-    }
-    dbg!(to_scan.len());
+    print!("objs before GC: {}\n", to_scan.len());
     for v in to_scan.iter() {
         children_ref_sub_one(v);
     }
@@ -227,11 +223,5 @@ pub fn gc(objs: &mut GcObjs) {
     }
 
     let result: Vec<GosValue> = objs.iter().filter_map(|o| o.to_gosv()).collect();
-    for v in result.iter() {
-        println!("{}", v);
-        //dbg!(&v);
-        dbg!(v.rc());
-    }
-
-    dbg!(result.len());
+    print!("objs left after GC: {}\n", result.len());
 }

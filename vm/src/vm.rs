@@ -1153,7 +1153,6 @@ impl Fiber {
         }
 
         stack.clear_rc_garbage();
-        println!("stack: {}", &stack);
         gc::gc(&mut objs.gcobjs);
     }
 }
