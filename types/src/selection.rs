@@ -50,11 +50,11 @@ impl Selection {
         objs: &TCObjects,
     ) -> Selection {
         Selection {
-            kind: kind,
-            recv: recv,
-            obj: obj,
-            indices: indices,
-            indirect: indirect,
+            kind,
+            recv,
+            obj,
+            indices,
+            indirect,
             typ: None,
             id: objs.lobjs[obj].id(objs).to_string(),
         }
@@ -127,10 +127,11 @@ impl Selection {
     /// See Selection for more information.
     fn eval_type(&self, objs: &mut TCObjects) -> TypeKey {
         let obj = &objs.lobjs[self.obj];
+        let oty = obj.typ().unwrap();
         match self.kind {
-            SelectionKind::FieldVal => obj.typ().unwrap(),
+            SelectionKind::FieldVal => oty,
             SelectionKind::MethodVal => {
-                let t = &objs.types[obj.typ().unwrap()];
+                let t = &objs.types[oty];
                 let mut sig = *t.try_as_signature().unwrap();
                 let mut new_recv = objs.lobjs[sig.recv().unwrap()].clone();
                 new_recv.set_type(self.recv);
@@ -138,7 +139,7 @@ impl Selection {
                 objs.types.insert(typ::Type::Signature(sig))
             }
             SelectionKind::MethodExpr => {
-                let t = &objs.types[obj.typ().unwrap()];
+                let t = &objs.types[oty];
                 let mut sig = *t.try_as_signature().unwrap();
                 let mut arg0 = objs.lobjs[sig.recv().unwrap()].clone();
                 arg0.set_type(self.recv);

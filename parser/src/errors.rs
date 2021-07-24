@@ -42,7 +42,7 @@ impl ErrorList {
         }
     }
 
-    pub fn add(&self, p: position::Position, msg: String, soft: bool, by_parser: bool) {
+    pub fn add(&self, pos: position::Position, msg: String, soft: bool, by_parser: bool) {
         let order = if msg.starts_with('\t') {
             self.errors
                 .borrow()
@@ -53,14 +53,14 @@ impl ErrorList {
                 .pos
                 .offset
         } else {
-            p.offset
+            pos.offset
         };
         self.errors.borrow_mut().push(Error {
-            pos: p,
-            msg: msg,
-            soft: soft,
-            by_parser: by_parser,
-            order: order,
+            pos,
+            msg,
+            soft,
+            by_parser,
+            order,
         });
     }
 
@@ -86,8 +86,8 @@ pub struct FilePosErrors<'a> {
 impl<'a> FilePosErrors<'a> {
     pub fn new(file: &'a position::File, elist: &'a ErrorList) -> FilePosErrors<'a> {
         FilePosErrors {
-            file: file,
-            elist: elist,
+            file,
+            elist,
         }
     }
 

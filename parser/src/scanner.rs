@@ -23,7 +23,7 @@ impl<'a> Scanner<'a> {
     pub fn new(
         file: &'a mut position::File,
         src: &'a str,
-        err: &'a errors::ErrorList,
+        errors: &'a errors::ErrorList,
     ) -> Scanner<'a> {
         let dir = Path::new(file.name())
             .parent()
@@ -31,10 +31,10 @@ impl<'a> Scanner<'a> {
             .to_string_lossy()
             .into_owned();
         Scanner {
-            file: file,
-            dir: dir,
+            file,
+            dir,
             src: src.chars().peekable(),
-            errors: err,
+            errors,
             offset: 0,
             line_offset: 0,
             semi1: false,

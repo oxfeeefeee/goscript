@@ -79,14 +79,14 @@ impl<'a> Importer<'a> {
         pos: position::Pos,
     ) -> Importer<'a> {
         Importer {
-            config: config,
-            fset: fset,
-            pkgs: pkgs,
-            all_results: all_results,
-            ast_objs: ast_objs,
-            tc_objs: tc_objs,
-            errors: errors,
-            pos: pos,
+            config,
+            fset,
+            pkgs,
+            all_results,
+            ast_objs,
+            tc_objs,
+            errors,
+            pos,
         }
     }
 
@@ -94,9 +94,8 @@ impl<'a> Importer<'a> {
         if key.path == "unsafe" {
             return Ok(*self.tc_objs.universe().unsafe_pkg());
         }
-        let pb = self.validate_path(key)?;
-        let path = pb.0.as_path();
-        let import_path = pb.1;
+        let (path, import_path) = self.validate_path(key)?;
+        let path = path.as_path();
         let pkg = self.tc_objs.new_package(import_path.clone());
         self.pkgs.insert(import_path, pkg);
         let files = self.parse_dir(path)?;
@@ -126,7 +125,7 @@ impl<'a> Importer<'a> {
             wd.push(&key.path);
             if let Some(base) = &self.config.base_path {
                 if let Ok(rel) = wd.as_path().strip_prefix(base) {
-                    import_path = rel.to_string_lossy().to_string()
+                    import_path = rel.to_string_lossy().into_owned();
                 }
             }
             wd
@@ -229,8 +228,7 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     if p.is_dir() {
         let mut paths = vec![];
         for entry in fs::read_dir(p)? {
-            let entry = entry?;
-            let path = entry.path();
+            let path = entry?.path();
             if !path.is_dir() {
                 paths.push(path);
             }

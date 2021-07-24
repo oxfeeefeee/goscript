@@ -93,31 +93,37 @@ pub enum Decl {
     Func(FuncDeclKey),
 }
 
+macro_rules! acast {
+    ($e:expr -> $t:ty) => {
+        NodeId::Address(&**$e as *const $t as usize)
+    }
+}
+
 impl Expr {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Expr {
-        Expr::Bad(Rc::new(BadExpr { from: from, to: to }))
+        Expr::Bad(Rc::new(BadExpr { from, to }))
     }
 
-    pub fn new_selector(x: Expr, sel: IdentKey) -> Expr {
-        Expr::Selector(Rc::new(SelectorExpr { expr: x, sel: sel }))
+    pub fn new_selector(expr: Expr, sel: IdentKey) -> Expr {
+        Expr::Selector(Rc::new(SelectorExpr { expr, sel }))
     }
 
-    pub fn new_ellipsis(pos: position::Pos, x: Option<Expr>) -> Expr {
-        Expr::Ellipsis(Rc::new(Ellipsis { pos: pos, elt: x }))
+    pub fn new_ellipsis(pos: position::Pos, elt: Option<Expr>) -> Expr {
+        Expr::Ellipsis(Rc::new(Ellipsis { pos, elt }))
     }
 
     pub fn new_basic_lit(pos: position::Pos, token: token::Token) -> Expr {
         Expr::BasicLit(Rc::new(BasicLit {
-            pos: pos,
-            token: token,
+            pos,
+            token,
         }))
     }
 
-    pub fn new_unary_expr(pos: position::Pos, op: token::Token, expr: Expr) -> Expr {
+    pub fn new_unary_expr(op_pos: position::Pos, op: token::Token, expr: Expr) -> Expr {
         Expr::Unary(Rc::new(UnaryExpr {
-            op_pos: pos,
-            op: op,
-            expr: expr,
+            op_pos,
+            op,
+            expr,
         }))
     }
 
@@ -142,11 +148,7 @@ impl Expr {
     }
 
     pub fn is_bad(&self) -> bool {
-        if let Expr::Bad(_) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, Expr::Bad(_))
     }
 
     pub fn is_type_switch_assert(&self) -> bool {
@@ -227,35 +229,35 @@ impl Node for Expr {
 
     fn id(&self) -> NodeId {
         match &self {
-            Expr::Bad(e) => NodeId::Address(&**e as *const BadExpr as usize),
+            Expr::Bad(e) => acast!(e -> BadExpr),
             Expr::Ident(e) => NodeId::IdentExpr(*e),
-            Expr::Ellipsis(e) => NodeId::Address(&**e as *const Ellipsis as usize),
-            Expr::BasicLit(e) => NodeId::Address(&**e as *const BasicLit as usize),
-            Expr::FuncLit(e) => NodeId::Address(&**e as *const FuncLit as usize),
-            Expr::CompositeLit(e) => NodeId::Address(&**e as *const CompositeLit as usize),
-            Expr::Paren(e) => NodeId::Address(&**e as *const ParenExpr as usize),
+            Expr::Ellipsis(e) => acast!(e -> Ellipsis),
+            Expr::BasicLit(e) => acast!(e -> BasicLit),
+            Expr::FuncLit(e) => acast!(e -> FuncLit),
+            Expr::CompositeLit(e) => acast!(e -> CompositeLit),
+            Expr::Paren(e) => acast!(e -> ParenExpr),
             Expr::Selector(e) => e.id(),
-            Expr::Index(e) => NodeId::Address(&**e as *const IndexExpr as usize),
-            Expr::Slice(e) => NodeId::Address(&**e as *const SliceExpr as usize),
-            Expr::TypeAssert(e) => NodeId::Address(&**e as *const TypeAssertExpr as usize),
+            Expr::Index(e) => acast!(e -> IndexExpr),
+            Expr::Slice(e) => acast!(e -> SliceExpr),
+            Expr::TypeAssert(e) => acast!(e -> TypeAssertExpr),
             Expr::Call(e) => e.id(),
-            Expr::Star(e) => NodeId::Address(&**e as *const StarExpr as usize),
-            Expr::Unary(e) => NodeId::Address(&**e as *const UnaryExpr as usize),
-            Expr::Binary(e) => NodeId::Address(&**e as *const BinaryExpr as usize),
-            Expr::KeyValue(e) => NodeId::Address(&**e as *const KeyValueExpr as usize),
-            Expr::Array(e) => NodeId::Address(&**e as *const ArrayType as usize),
-            Expr::Struct(e) => NodeId::Address(&**e as *const StructType as usize),
+            Expr::Star(e) => acast!(e -> StarExpr),
+            Expr::Unary(e) => acast!(e -> UnaryExpr),
+            Expr::Binary(e) => acast!(e -> BinaryExpr),
+            Expr::KeyValue(e) => acast!(e -> KeyValueExpr),
+            Expr::Array(e) => acast!(e -> ArrayType),
+            Expr::Struct(e) => acast!(e -> StructType),
             Expr::Func(e) => NodeId::FuncTypeExpr(*e),
-            Expr::Interface(e) => NodeId::Address(&**e as *const InterfaceType as usize),
-            Expr::Map(e) => NodeId::Address(&**e as *const MapType as usize),
-            Expr::Chan(e) => NodeId::Address(&**e as *const ChanType as usize),
+            Expr::Interface(e) => acast!(e -> InterfaceType),
+            Expr::Map(e) => acast!(e -> MapType),
+            Expr::Chan(e) => acast!(e -> ChanType),
         }
     }
 }
 
 impl Stmt {
     pub fn new_bad(from: position::Pos, to: position::Pos) -> Stmt {
-        Stmt::Bad(Rc::new(BadStmt { from: from, to: to }))
+        Stmt::Bad(Rc::new(BadStmt { from, to }))
     }
 
     pub fn new_assign(
@@ -372,27 +374,27 @@ impl Node for Stmt {
 
     fn id(&self) -> NodeId {
         match &self {
-            Stmt::Bad(s) => NodeId::Address(&**s as *const BadStmt as usize),
-            Stmt::Decl(d) => NodeId::Address(&**d as *const Decl as usize),
-            Stmt::Empty(e) => NodeId::Address(&**e as *const EmptyStmt as usize),
+            Stmt::Bad(s) => acast!(s -> BadStmt),
+            Stmt::Decl(d) => acast!(d -> Decl),
+            Stmt::Empty(e) => acast!(e -> EmptyStmt),
             Stmt::Labeled(s) => NodeId::LabeledStmt(*s),
-            Stmt::Expr(e) => NodeId::Address(&**e as *const Expr as usize),
-            Stmt::Send(s) => NodeId::Address(&**s as *const SendStmt as usize),
-            Stmt::IncDec(s) => NodeId::Address(&**s as *const IncDecStmt as usize),
+            Stmt::Expr(e) => acast!(e -> Expr),
+            Stmt::Send(s) => acast!(s -> SendStmt),
+            Stmt::IncDec(s) => acast!(s -> IncDecStmt),
             Stmt::Assign(s) => NodeId::AssignStmt(*s),
-            Stmt::Go(s) => NodeId::Address(&**s as *const GoStmt as usize),
-            Stmt::Defer(s) => NodeId::Address(&**s as *const DeferStmt as usize),
-            Stmt::Return(s) => NodeId::Address(&**s as *const ReturnStmt as usize),
-            Stmt::Branch(s) => NodeId::Address(&**s as *const BranchStmt as usize),
-            Stmt::Block(s) => NodeId::Address(&**s as *const BlockStmt as usize),
-            Stmt::If(s) => NodeId::Address(&**s as *const IfStmt as usize),
-            Stmt::Case(s) => NodeId::Address(&**s as *const CaseClause as usize),
-            Stmt::Switch(s) => NodeId::Address(&**s as *const SwitchStmt as usize),
-            Stmt::TypeSwitch(s) => NodeId::Address(&**s as *const TypeSwitchStmt as usize),
-            Stmt::Comm(s) => NodeId::Address(&**s as *const CommClause as usize),
-            Stmt::Select(s) => NodeId::Address(&**s as *const SelectStmt as usize),
-            Stmt::For(s) => NodeId::Address(&**s as *const ForStmt as usize),
-            Stmt::Range(s) => NodeId::Address(&**s as *const RangeStmt as usize),
+            Stmt::Go(s) => acast!(s -> GoStmt),
+            Stmt::Defer(s) => acast!(s -> DeferStmt),
+            Stmt::Return(s) => acast!(s -> ReturnStmt),
+            Stmt::Branch(s) => acast!(s -> BranchStmt),
+            Stmt::Block(s) => acast!(s -> BlockStmt),
+            Stmt::If(s) => acast!(s -> IfStmt),
+            Stmt::Case(s) => acast!(s -> CaseClause),
+            Stmt::Switch(s) => acast!(s -> SwitchStmt),
+            Stmt::TypeSwitch(s) => acast!(s -> TypeSwitchStmt),
+            Stmt::Comm(s) => acast!(s -> CommClause),
+            Stmt::Select(s) => acast!(s -> SelectStmt),
+            Stmt::For(s) => acast!(s -> ForStmt),
+            Stmt::Range(s) => acast!(s -> RangeStmt),
         }
     }
 }
@@ -432,9 +434,9 @@ impl Node for Spec {
 
     fn id(&self) -> NodeId {
         match &self {
-            Spec::Import(s) => NodeId::Address(&**s as *const ImportSpec as usize),
-            Spec::Value(s) => NodeId::Address(&**s as *const ValueSpec as usize),
-            Spec::Type(s) => NodeId::Address(&**s as *const TypeSpec as usize),
+            Spec::Import(s) => acast!(s -> ImportSpec),
+            Spec::Value(s) => acast!(s -> ValueSpec),
+            Spec::Type(s) => acast!(s -> TypeSpec),
         }
     }
 }
@@ -467,8 +469,8 @@ impl Node for Decl {
 
     fn id(&self) -> NodeId {
         match self {
-            Decl::Bad(d) => NodeId::Address(&**d as *const BadDecl as usize),
-            Decl::Gen(d) => NodeId::Address(&**d as *const GenDecl as usize),
+            Decl::Bad(d) => acast!(d -> BadDecl),
+            Decl::Gen(d) => acast!(d -> GenDecl),
             Decl::Func(d) => NodeId::FuncDecl(*d),
         }
     }
@@ -528,10 +530,7 @@ pub enum IdentEntity {
 
 impl IdentEntity {
     pub fn is_none(&self) -> bool {
-        match self {
-            IdentEntity::NoEntity => true,
-            _ => false,
-        }
+        matches!(self, IdentEntity::NoEntity)
     }
 
     pub fn into_key(self) -> Option<EntityKey> {
@@ -762,9 +761,9 @@ impl FuncType {
         results: Option<FieldList>,
     ) -> FuncType {
         FuncType {
-            func: func,
-            params: params,
-            results: results,
+            func,
+            params,
+            results,
         }
     }
 }
@@ -916,9 +915,9 @@ impl LabeledStmt {
         stmt: Stmt,
     ) -> LabeledStmtKey {
         let l = LabeledStmt {
-            label: label,
-            colon: colon,
-            stmt: stmt,
+            label,
+            colon,
+            stmt,
         };
         arena.l_stmts.insert(l)
     }
@@ -959,14 +958,14 @@ impl AssignStmt {
         arena: &mut Objects,
         lhs: Vec<Expr>,
         tpos: position::Pos,
-        tok: token::Token,
+        token: token::Token,
         rhs: Vec<Expr>,
     ) -> AssignStmtKey {
         let ass = AssignStmt {
-            lhs: lhs,
+            lhs,
             token_pos: tpos,
-            token: tok,
-            rhs: rhs,
+            token,
+            rhs,
         };
         arena.a_stmts.insert(ass)
     }
@@ -1010,11 +1009,11 @@ pub struct BlockStmt {
 }
 
 impl BlockStmt {
-    pub fn new(l: position::Pos, list: Vec<Stmt>, r: position::Pos) -> BlockStmt {
+    pub fn new(l_brace: position::Pos, list: Vec<Stmt>, r_brace: position::Pos) -> BlockStmt {
         BlockStmt {
-            l_brace: l,
-            list: list,
-            r_brace: r,
+            l_brace,
+            list,
+            r_brace,
         }
     }
 
@@ -1141,9 +1140,9 @@ impl FieldList {
         closing: Option<position::Pos>,
     ) -> FieldList {
         FieldList {
-            openning: openning,
-            list: list,
-            closing: closing,
+            openning,
+            list,
+            closing,
         }
     }
 

@@ -7,6 +7,7 @@ use super::package::*;
 use super::scope::*;
 use super::typ::*;
 use std::collections::HashMap;
+use std::array::IntoIter as ArrayIntoIter;
 
 /// ExprKind describes the kind of an expression; the kind
 /// determines if an expression is valid in 'statement context'.
@@ -99,22 +100,19 @@ impl Universe {
         Universe::def_builtins(&builtins, ftype, &uskey, &unsafe_, objs);
         // iota byte rune
         let (iota, byte, rune) = Universe::iota_byte_rune(&uskey, objs);
-        let slice_of_bytes = objs.new_t_slice(byte);
         let no_value_tuple = objs.new_t_tuple(vec![]);
-        let indir = objs.new_type_name(0, None, "*".to_string(), None);
-        let guard_sig = objs.new_t_signature(None, None, no_value_tuple, no_value_tuple, false);
         Universe {
             scope: uskey,
-            unsafe_: unsafe_,
-            iota: iota,
-            byte: byte,
-            rune: rune,
-            slice_of_bytes: slice_of_bytes,
-            no_value_tuple: no_value_tuple,
-            indir: indir,
-            guard_sig: guard_sig,
-            types: types,
-            builtins: builtins,
+            unsafe_,
+            iota,
+            byte,
+            rune,
+            slice_of_bytes: objs.new_t_slice(byte),
+            no_value_tuple,
+            indir: objs.new_type_name(0, None, "*".to_string(), None),
+            guard_sig: objs.new_t_signature(None, None, no_value_tuple, no_value_tuple, false),
+            types,
+            builtins,
         }
     }
 
@@ -236,9 +234,7 @@ impl Universe {
     }
 
     fn basic_types(tobjs: &mut Types) -> HashMap<BasicType, TypeKey> {
-        vec![
-            // use vec becasue array doesn't have into_iter()!
-            // may be more expensive, but looks better this way.
+        ArrayIntoIter::new([
             (BasicType::Invalid, BasicInfo::IsInvalid, "invalid type"),
             (BasicType::Bool, BasicInfo::IsBoolean, "bool"),
             (BasicType::Int, BasicInfo::IsInteger, "int"),
@@ -273,18 +269,16 @@ impl Universe {
                 "untyped string",
             ),
             (BasicType::UntypedNil, BasicInfo::IsInvalid, "untyped nil"),
-        ]
-        .into_iter()
+        ])
         .map(|(t, i, n)| (t, tobjs.insert(Type::Basic(BasicDetail::new(t, i, n)))))
         .collect::<HashMap<_, _>>()
     }
 
     fn alias_types(tobjs: &mut Types) -> HashMap<BasicType, TypeKey> {
-        [
+        ArrayIntoIter::new([
             (BasicType::Byte, BasicInfo::IsInteger, "byte"),
             (BasicType::Rune, BasicInfo::IsInteger, "rune"),
-        ]
-        .iter()
+        ])
         .map(|(t, i, n)| (*t, tobjs.insert(Type::Basic(BasicDetail::new(*t, *i, n)))))
         .collect::<HashMap<_, _>>()
     }
@@ -295,8 +289,7 @@ impl Universe {
         unsafe_: &PackageKey,
         objs: &mut TCObjects,
     ) {
-        for (n, t, v) in vec![
-            // use vec becasue array doesn't have into_iter()!
+        for (n, t, v) in ArrayIntoIter::new([
             (
                 "true",
                 BasicType::UntypedBool,
@@ -308,8 +301,7 @@ impl Universe {
                 constant::Value::with_bool(false),
             ),
             ("iota", BasicType::UntypedInt, constant::Value::with_i64(0)),
-        ]
-        .into_iter()
+        ])
         {
             let cst = LangObj::new_const(0, None, n.to_owned(), Some(types[&t]), v);
             Universe::def(objs.lobjs.insert(cst), universe, unsafe_, objs);
@@ -327,7 +319,7 @@ impl Universe {
     }
 
     fn builtin_funcs() -> HashMap<Builtin, BuiltinInfo> {
-        vec![
+        ArrayIntoIter::new([
             // use vec becasue array doesn't have into_iter()!
             (Builtin::Append, "append", 1, true, ExprKind::Expression),
             (Builtin::Cap, "cap", 1, false, ExprKind::Expression),
@@ -356,8 +348,7 @@ impl Universe {
             (Builtin::Assert, "assert", 1, false, ExprKind::Statement),
             (Builtin::Trace, "trace", 0, true, ExprKind::Statement),
             (Builtin::Ffi, "ffi", 2, true, ExprKind::Expression),
-        ]
-        .into_iter()
+        ])
         .map(|(f, name, no, v, k)| {
             (
                 f,

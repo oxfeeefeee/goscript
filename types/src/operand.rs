@@ -79,9 +79,9 @@ impl Operand {
 
     pub fn with(mode: OperandMode, expr: Option<ast::Expr>, typ: Option<TypeKey>) -> Operand {
         Operand {
-            mode: mode,
-            expr: expr,
-            typ: typ,
+            mode,
+            expr,
+            typ,
         }
     }
 
@@ -421,12 +421,8 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
         self.visit_expr(expr)?;
         self.f.write_str(".(")?;
         match &typ {
-            Some(t) => {
-                self.visit_expr(t)?;
-            }
-            None => {
-                self.f.write_str("(bad expr)")?;
-            }
+            Some(t) => self.visit_expr(t)?,
+            None => self.f.write_str("(bad expr)")?,
         }
         self.f.write_char(')')
     }

@@ -43,9 +43,9 @@ impl<'a> Displayer<'a> {
         tco: Option<&'a TCObjects>,
     ) -> Displayer<'a> {
         Displayer {
-            obj: obj,
-            asto: asto,
-            tco: tco,
+            obj,
+            asto,
+            tco,
         }
     }
 

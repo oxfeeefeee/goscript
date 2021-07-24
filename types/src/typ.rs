@@ -187,10 +187,7 @@ impl Type {
     }
 
     pub fn is_named(&self) -> bool {
-        match self {
-            Type::Basic(_) | Type::Named(_) => true,
-            _ => false,
-        }
+        matches!(self, Type::Basic(_) | Type::Named(_))
     }
     pub fn is_invalid(&self, objs: &TCObjects) -> bool {
         match self.underlying_val(objs) {
@@ -265,10 +262,7 @@ impl Type {
         }
     }
     pub fn is_interface(&self, objs: &TCObjects) -> bool {
-        match self.underlying_val(objs) {
-            Type::Interface(_) => true,
-            _ => false,
-        }
+        matches!(self.underlying_val(objs), Type::Interface(_))
     }
     /// has_nil reports whether a type includes the nil value.
     pub fn has_nil(&self, objs: &TCObjects) -> bool {
@@ -335,30 +329,24 @@ pub enum BasicType {
 
 impl BasicType {
     pub fn is_unsigned(&self) -> bool {
-        match self {
-            BasicType::Uint
+        matches!(self,             BasicType::Uint
             | BasicType::Uint8
             | BasicType::Uint16
             | BasicType::Uint32
             | BasicType::Uint64
             | BasicType::Byte
             | BasicType::Rune
-            | BasicType::Uintptr => true,
-            _ => false,
-        }
+            | BasicType::Uintptr)
     }
 
     pub fn is_untyped(&self) -> bool {
-        match self {
-            BasicType::UntypedBool
+        matches!(self, BasicType::UntypedBool
             | BasicType::UntypedInt
             | BasicType::UntypedRune
             | BasicType::UntypedFloat
             | BasicType::UntypedComplex
             | BasicType::UntypedString
-            | BasicType::UntypedNil => true,
-            _ => false,
-        }
+            | BasicType::UntypedNil)
     }
 
     pub fn real_type(&self) -> BasicType {
@@ -382,28 +370,19 @@ pub enum BasicInfo {
 
 impl BasicInfo {
     pub fn is_ordered(&self) -> bool {
-        match self {
-            BasicInfo::IsInteger | BasicInfo::IsFloat | BasicInfo::IsString => true,
-            _ => false,
-        }
+        matches!(self, BasicInfo::IsInteger | BasicInfo::IsFloat | BasicInfo::IsString)
     }
 
     pub fn is_numeric(&self) -> bool {
-        match self {
-            BasicInfo::IsInteger | BasicInfo::IsFloat | BasicInfo::IsComplex => true,
-            _ => false,
-        }
+        matches!(self, BasicInfo::IsInteger | BasicInfo::IsFloat | BasicInfo::IsComplex)
     }
 
     pub fn is_const_type(&self) -> bool {
-        match self {
-            BasicInfo::IsBoolean
+        matches!(self, BasicInfo::IsBoolean
             | BasicInfo::IsInteger
             | BasicInfo::IsFloat
             | BasicInfo::IsComplex
-            | BasicInfo::IsString => true,
-            _ => false,
-        }
+            | BasicInfo::IsString)
     }
 }
 
@@ -418,9 +397,9 @@ pub struct BasicDetail {
 impl BasicDetail {
     pub fn new(typ: BasicType, info: BasicInfo, name: &'static str) -> BasicDetail {
         BasicDetail {
-            typ: typ,
-            info: info,
-            name: name,
+            typ,
+            info,
+            name,
         }
     }
 
@@ -462,8 +441,8 @@ pub struct ArrayDetail {
 impl ArrayDetail {
     pub fn new(elem: TypeKey, len: Option<u64>) -> ArrayDetail {
         ArrayDetail {
-            len: len,
-            elem: elem,
+            len,
+            elem,
         }
     }
 
@@ -525,8 +504,8 @@ impl StructDetail {
             assert!(tags.is_none() || fields.len() >= tags.as_ref().unwrap().len());
         }
         StructDetail {
-            fields: fields,
-            tags: tags,
+            fields,
+            tags,
         }
     }
 
@@ -568,7 +547,7 @@ pub struct TupleDetail {
 
 impl TupleDetail {
     pub fn new(vars: Vec<ObjKey>) -> TupleDetail {
-        TupleDetail { vars: vars }
+        TupleDetail { vars }
     }
 
     pub fn vars(&self) -> &Vec<ObjKey> {
@@ -754,11 +733,7 @@ impl InterfaceDetail {
     }
 
     pub fn all_methods_push(&self, t: ObjKey) {
-        if self.all_methods.borrow_mut().is_none() {
-            *self.all_methods.borrow_mut() = Some(vec![t]);
-        } else {
-            self.all_methods.borrow_mut().as_mut().unwrap().push(t);
-        }
+        self.all_methods.borrow_mut().get_or_insert_with(|| Some(Vec::new())).push(t);
     }
 
     pub fn is_empty(&self) -> bool {
@@ -793,8 +768,8 @@ pub struct MapDetail {
 impl MapDetail {
     pub fn new(key: TypeKey, elem: TypeKey) -> MapDetail {
         MapDetail {
-            key: key,
-            elem: elem,
+            key,
+            elem,
         }
     }
 
@@ -823,8 +798,8 @@ pub struct ChanDetail {
 impl ChanDetail {
     pub fn new(dir: ChanDir, elem: TypeKey) -> ChanDetail {
         ChanDetail {
-            dir: dir,
-            elem: elem,
+            dir,
+            elem,
         }
     }
 
@@ -857,9 +832,9 @@ impl NamedDetail {
         }
         //todo: where to set obj's typ to self?
         NamedDetail {
-            obj: obj,
-            underlying: underlying,
-            methods: methods,
+            obj,
+            underlying,
+            methods,
         }
     }
 
@@ -904,28 +879,16 @@ pub fn size_of(t: &TypeKey, objs: &TCObjects) -> usize {
 
 /// underlying_type returns the underlying type of type 't'
 pub fn underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
-    let typ = &objs.types[t];
-    match typ.underlying() {
-        Some(ut) => ut,
-        None => t,
-    }
+    objs.types[t].underlying().unwrap_or(t)
 }
 
 /// deep_underlying_type returns the 'deep' underlying type of type 't'
 /// chains only exist while named types are incomplete.
-pub fn deep_underlying_type(t: TypeKey, objs: &TCObjects) -> TypeKey {
-    let mut typ = &objs.types[t];
-    let mut ret = t;
-    loop {
-        match typ.underlying() {
-            Some(ut) => {
-                typ = &objs.types[ut];
-                ret = ut;
-                continue;
-            }
-            None => return ret,
-        }
+pub fn deep_underlying_type(mut t: TypeKey, objs: &TCObjects) -> TypeKey {
+    while let Some(ut) = objs.types[t].underlying() {
+        t = ut;
     }
+    t
 }
 
 pub fn is_named(t: TypeKey, objs: &TCObjects) -> bool {
@@ -1245,7 +1208,7 @@ fn fmt_type_impl(
         }
         Type::Chan(detail) => {
             let (s, paren) = match detail.dir() {
-                ChanDir::SendRecv => ("chan ", {
+                ChanDir::SendRecv => ("chan", {
                     // chan (<-chan T) requires parentheses
                     let elm = &objs.types[detail.elem()];
                     if let Some(c) = elm.try_as_chan() {
@@ -1254,9 +1217,10 @@ fn fmt_type_impl(
                         false
                     }
                 }),
-                ChanDir::SendOnly => ("chan<- ", false),
-                ChanDir::RecvOnly => ("<-chan ", false),
+                ChanDir::SendOnly => ("chan<-", false),
+                ChanDir::RecvOnly => ("<-chan", false),
             };
+            f.write_char(' ')?;
             f.write_str(s)?;
             if paren {
                 f.write_char('(')?;
@@ -1272,10 +1236,10 @@ fn fmt_type_impl(
                 if let Some(pkg) = o.pkg() {
                     objs.pkgs[pkg].fmt_with_qualifier(f, objs.fmt_qualifier.as_ref())?;
                 }
-                f.write_str(o.name())?;
+                f.write_str(o.name())
             } else {
-                f.write_str("<Named w/o object>")?;
-            }
+                f.write_str("<Named w/o object>")
+            }?;
         }
     }
     Ok(())

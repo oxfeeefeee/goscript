@@ -22,9 +22,9 @@ pub struct VarProperty {
 impl VarProperty {
     pub fn new(embedded: bool, field: bool, used: bool) -> VarProperty {
         VarProperty {
-            embedded: embedded,
-            is_field: field,
-            used: used,
+            embedded,
+            is_field,
+            used,
         }
     }
 }
@@ -58,66 +58,39 @@ pub enum EntityType {
 
 impl EntityType {
     pub fn is_pkg_name(&self) -> bool {
-        match self {
-            EntityType::PkgName(_, _) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::PkgName(_, _))
     }
 
     pub fn is_const(&self) -> bool {
-        match self {
-            EntityType::Const(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Const(_))
     }
 
     pub fn is_type_name(&self) -> bool {
-        match self {
-            EntityType::TypeName => true,
-            _ => false,
-        }
+        matches!(self, EntityType::TypeName)
     }
 
     pub fn is_var(&self) -> bool {
-        match self {
-            EntityType::Var(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Var(_))
     }
 
     pub fn is_func(&self) -> bool {
-        match self {
-            EntityType::Func(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Func(_))
     }
 
     pub fn is_label(&self) -> bool {
-        match self {
-            EntityType::Label(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Label(_))
     }
 
     pub fn is_builtin(&self) -> bool {
-        match self {
-            EntityType::Builtin(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Builtin(_))
     }
 
     pub fn is_nil(&self) -> bool {
-        match self {
-            EntityType::Nil => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Nil)
     }
 
     pub fn is_dependency(&self) -> bool {
-        match self {
-            EntityType::Const(_) | EntityType::Var(_) | EntityType::Func(_) => true,
-            _ => false,
-        }
+        matches!(self, EntityType::Const(_) | EntityType::Var(_) | EntityType::Func(_))
     }
 
     pub fn func_has_ptr_recv(&self) -> bool {
@@ -152,9 +125,7 @@ impl EntityType {
 
     pub fn label_set_used(&mut self, used: bool) {
         match self {
-            EntityType::Label(u) => {
-                *u = used;
-            }
+            EntityType::Label(u) => *u = used,
             _ => unreachable!(),
         }
     }

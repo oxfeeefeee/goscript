@@ -223,25 +223,25 @@ impl Value {
 
     pub fn to_int(&self) -> Cow<Value> {
         let f64_to_int = |x| -> Cow<Value> {
-            match BigRational::from_f64(x) {
+            Cow::Owned(match BigRational::from_f64(x) {
                 Some(v) => {
                     if v.is_integer() {
-                        Cow::Owned(Value::Int(v.to_integer()))
+                        Value::Int(v.to_integer()))
                     } else {
-                        Cow::Owned(Value::Unknown)
+                        Value::Unknown
                     }
                 }
-                None => Cow::Owned(Value::Unknown),
-            }
+                None => Value::Unknown,
+            })
         };
         match self {
             Value::Int(_) => Cow::Borrowed(self),
             Value::Rat(r) => {
-                if r.is_integer() {
-                    Cow::Owned(Value::Int(r.to_integer()))
+                Cow::Owned(if r.is_integer() {
+                    Value::Int(r.to_integer())
                 } else {
-                    Cow::Owned(Value::Unknown)
-                }
+                    Value::Unknown
+                })
             }
             Value::Float(f) => f64_to_int(**f),
             Value::Complex(r, i) => {
@@ -377,11 +377,11 @@ impl Value {
         let (x, y) = Value::match_type(Cow::Borrowed(x), Cow::Borrowed(y));
         match (&*x, &*y) {
             (Value::Unknown, Value::Unknown) => Value::Unknown,
-            (Value::Bool(a), Value::Bool(b)) => match op {
-                Token::LAND => Value::Bool(*a && *b),
-                Token::LOR => Value::Bool(*a || *b),
+            (Value::Bool(a), Value::Bool(b)) => Value::Bool(match op {
+                Token::LAND => *a && *b,
+                Token::LOR => *a || *b,
                 _ => unreachable!(),
-            },
+            }),
             (Value::Int(a), Value::Int(b)) => {
                 match op {
                     Token::ADD => Value::Int(a + b),
@@ -397,20 +397,20 @@ impl Value {
                     _ => unreachable!(),
                 }
             }
-            (Value::Rat(a), Value::Rat(b)) => match op {
-                Token::ADD => Value::Rat(a + b),
-                Token::SUB => Value::Rat(a - b),
-                Token::MUL => Value::Rat(a * b),
-                Token::QUO => Value::Rat(a / b),
+            (Value::Rat(a), Value::Rat(b)) => Value::Rat(match op {
+                Token::ADD => a + b),
+                Token::SUB => a - b,
+                Token::MUL => a * b,
+                Token::QUO => a / b,
                 _ => unreachable!(),
-            },
-            (Value::Float(a), Value::Float(b)) => match op {
-                Token::ADD => Value::Float(*a + *b),
-                Token::SUB => Value::Float(*a - *b),
-                Token::MUL => Value::Float(*a * *b),
-                Token::QUO => Value::Float(*a / *b),
+            }),
+            (Value::Float(a), Value::Float(b)) => Value::Float(match op {
+                Token::ADD => *a + *b,
+                Token::SUB => *a - *b,
+                Token::MUL => *a * *b,
+                Token::QUO => *a / *b,
                 _ => unreachable!(),
-            },
+            }),
             (Value::Complex(ar, ai), Value::Complex(br, bi)) => match op {
                 Token::ADD => Value::Complex(bx(add(ar, br)), bx(add(ai, bi))),
                 Token::SUB => Value::Complex(bx(sub(ar, br)), bx(sub(ai, bi))),
@@ -555,11 +555,11 @@ impl Value {
     pub fn shift(x: &Value, op: &Token, s: usize) -> Value {
         match x {
             Value::Unknown => Value::Unknown,
-            Value::Int(i) => match op {
-                Token::SHL => Value::Int(i << s),
-                Token::SHR => Value::Int(i >> s),
+            Value::Int(i) => Value::Int(match op {
+                Token::SHL => i << s,
+                Token::SHR => i >> s,
                 _ => unreachable!(),
-            },
+            }),
             _ => unreachable!(),
         }
     }
@@ -597,14 +597,8 @@ impl Value {
         match self {
             Value::Int(i) => match i.to_i64() {
                 Some(v) => (v, true),
-                _ => (
-                    if self.sign() > 0 {
-                        std::i64::MAX
-                    } else {
-                        std::i64::MIN
-                    },
-                    false,
-                ),
+                _ if self.sign() > 0 => (std::i64::MAX, false),
+                _ => (std::i64::MIN, false),
             },
             Value::Unknown => (0, false),
             _ => panic!("not an integer"),
@@ -785,16 +779,16 @@ pub fn short_quote_str(s: &str, max: usize) -> String {
 }
 
 pub fn int_from_literal(lit: &str) -> Value {
-    let result = if lit.starts_with("0x") {
-        BigInt::from_str_radix(&lit[2..], 16)
+    let (litwos, radix) = if lit.starts_with("0x") {
+        (&lit[2..], 16)
     } else if lit.starts_with("0o") {
-        BigInt::from_str_radix(&lit[2..], 10)
+        (&lit[2..], 10)
     } else if lit.starts_with("0b") {
-        BigInt::from_str_radix(&lit[2..], 2)
+        (&lit[2..], 2)
     } else {
-        BigInt::from_str_radix(lit, 10)
+        (lit, 10)
     };
-    match result {
+    match BigInt::from_str_radix(litwos, radix) {
         Ok(i) => Value::Int(i),
         Err(_) => Value::Unknown,
     }
@@ -811,10 +805,10 @@ fn shorten_with_ellipsis(s: String, max: usize) -> String {
     if s.len() <= max {
         s
     } else {
-        let mut buf: Vec<char> = s.chars().collect();
-        buf = buf[0..(buf.len() - 3)].to_vec();
-        buf.append(&mut "...".to_owned().chars().collect());
-        buf.into_iter().collect()
+        // this does not do what you expect it to do.
+        // it will return the correct amount of characters,
+        // but the amount of bytes may still be higher than `max`
+        s.chars().take(max).chain("...".chars()).collect()
     }
 }
 

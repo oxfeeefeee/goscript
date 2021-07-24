@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
             objects: objs,
             scanner: s,
             errors: el,
-            trace: trace,
+            trace,
             indent: 0,
             pos: 0,
             token: Token::NONE,
@@ -171,9 +171,9 @@ impl<'a> Parser<'a> {
             unreachable!();
         };
         let list = &ass_stmt!(self, assign).lhs;
-	    let mut n = 0; // number of new variables
+        let mut n = 0; // number of new variables
         for expr in list {
-            match expr { 
+            match expr {
                 Expr::Ident(id) => {
                     let ident = ident_mut!(self, *id);
                     if ident.name != "_" {
@@ -181,8 +181,8 @@ impl<'a> Parser<'a> {
                         match top_scope.look_up(&ident.name) {
                             Some(e) => { ident.entity = IdentEntity::Entity(*e); },
                             None => {
-                                let entity = new_entity!(self, EntityKind::Var, 
-                                    ident.name.clone(), DeclObj::AssignStmt(assign), 
+                                let entity = new_entity!(self, EntityKind::Var,
+                                    ident.name.clone(), DeclObj::AssignStmt(assign),
                                     EntityData::NoData);
                                 top_scope.insert(ident.name.clone(), entity);
                                 ident.entity = IdentEntity::Entity(entity);
@@ -192,7 +192,7 @@ impl<'a> Parser<'a> {
                     }
                 },
                 _ => {
-                    self.error_expected(expr.pos(&self.objects), 
+                    self.error_expected(expr.pos(&self.objects),
                         "identifier on left side of :=");
                 },
             }
@@ -293,7 +293,7 @@ impl<'a> Parser<'a> {
                     self.print_trace(pos, &format!("next: {}", token));
                     self.token = token;
                     self.pos = pos;
-                    break; 
+                    break;
                 },
             }
         }
@@ -442,13 +442,13 @@ impl<'a> Parser<'a> {
 
     fn parse_ident_list(&mut self) -> Vec<IdentKey> {
         self.trace_begin("IdentList");
-        
+
         let mut list = vec![self.parse_ident()];
         while self.token == Token::COMMA {
             self.next();
             list.push(self.parse_ident());
         }
-       
+
         self.trace_end();
         list
     }
@@ -521,11 +521,11 @@ impl<'a> Parser<'a> {
         } else {
             typ.unwrap()
         };
-       
+
         self.trace_end();
         ret
     }
-    
+
     // If the result is an identifier, it is not resolved.
     fn parse_type_name(&mut self) -> Expr {
         self.trace_begin("TypeName");
@@ -589,12 +589,12 @@ impl<'a> Parser<'a> {
         }).collect()
     }
 
-    
+
     fn parse_field_decl(&mut self, scope: ScopeKey) -> FieldKey {
         self.trace_begin("FieldDecl");
 
         // 1st FieldDecl
-	    // A type name used as an anonymous field looks like a field identifier.
+        // A type name used as an anonymous field looks like a field identifier.
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(false));
@@ -611,7 +611,7 @@ impl<'a> Parser<'a> {
                 t
             }
             // ["*"] TypeName (AnonymousField)
-            None => { 
+            None => {
                 let first = &list[0]; // we always have at least one element
                 if list.len() > 1 {
                     self.error_expected(self.pos, "type");
@@ -664,7 +664,7 @@ impl<'a> Parser<'a> {
                     list.push(self.parse_field_decl(scope));
                 }
                 _ => {break;}
-            } 
+            }
         }
         let rbrace = self.expect(&Token::RBRACE);
 
@@ -695,7 +695,6 @@ impl<'a> Parser<'a> {
                 let typ = if let Some(t) = self.try_ident_or_type() {
                     self.resolve(&t);
                     t
-                    
                 } else {
                     self.error_str(pos, "'...' parameter is missing type");
                     Expr::new_bad(pos, self.pos)
@@ -723,7 +722,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("ParameterList");
 
         // 1st ParameterDecl
-	    // A list of identifiers looks like a list of type names.
+        // A list of identifiers looks like a list of type names.
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(ellipsis_ok));
@@ -744,8 +743,8 @@ impl<'a> Parser<'a> {
             let field = new_field!(self, idents, t, None);
             params.push(field);
             // Go spec: The scope of an identifier denoting a function
-			// parameter or result variable is the function body.
-			self.declare(DeclObj::Field(field), EntityData::NoData,
+            // parameter or result variable is the function body.
+            self.declare(DeclObj::Field(field), EntityData::NoData,
                 EntityKind::Var, &scope);
             if let Some(ident) = to_resolve {
                 self.resolve(&ident);
@@ -822,7 +821,7 @@ impl<'a> Parser<'a> {
         let params = self.parse_parameters(scope, true);
         let results = self.parse_result(scope);
 
-        self.trace_end();   
+        self.trace_end();
         (params, results)
     }
 
@@ -981,10 +980,10 @@ impl<'a> Parser<'a> {
             list.push(self.parse_stmt());
         }
 
-        self.trace_end();  
-        list    
+        self.trace_end();
+        list
     }
-    
+
     fn parse_body(&mut self, scope: ScopeKey) -> BlockStmt {
         self.trace_begin("Body");
 
@@ -1012,7 +1011,7 @@ impl<'a> Parser<'a> {
         self.trace_end();
         BlockStmt::new(lbrace, list, rbrace)
     }
-    
+
     // ----------------------------------------------------------------------------
     // Expressions
 
@@ -1028,9 +1027,9 @@ impl<'a> Parser<'a> {
             let body = self.parse_body(scope);
             self.expr_level -= 1;
             Expr::FuncLit(Rc::new(FuncLit{typ: typ_key, body: Rc::new(body)}))
-        }; 
- 
-        self.trace_end(); 
+        };
+
+        self.trace_end();
         ret
     }
 
@@ -1104,7 +1103,7 @@ impl<'a> Parser<'a> {
             Some(self.parse_type())
         };
         let rparen = self.expect(&Token::RPAREN);
-        
+
         self.trace_end();
         Expr::TypeAssert(Rc::new(TypeAssertExpr{
             expr: x, l_paren: lparen, typ: typ, r_paren: rparen}))
@@ -1237,7 +1236,7 @@ impl<'a> Parser<'a> {
             x
         };
 
-        self.trace_end();  
+        self.trace_end();
         ret
     }
 
@@ -1254,7 +1253,7 @@ impl<'a> Parser<'a> {
             x
         };
 
-        self.trace_end(); 
+        self.trace_end();
         ret
     }
 
@@ -1294,29 +1293,20 @@ impl<'a> Parser<'a> {
     fn check_expr(&self, x: Expr) -> Expr {
         let unparenx = Parser::unparen(&x);
         match unparenx {
-            Expr::Bad(_) => x,
-            Expr::Ident(_) => x,
-            Expr::BasicLit(_) => x,
-            Expr::FuncLit(_) => x,
-            Expr::CompositeLit(_) => x,
-            Expr::Paren(_) => { unreachable!(); },
-            Expr::Selector(_) => x,
-            Expr::Index(_) => x,
-            Expr::Slice(_) => x,
+            Expr::Bad(_) | Expr::Ident(_) | Expr::BasicLit(_) | Expr::FuncLit(_) | Expr::CompositeLit(_) => x,
+            Expr::Paren(_) => unreachable!(),
+            Expr::Selector(_) | Expr::Index(_) | Expr::Slice(_) => x,
             // If t.Type == nil we have a type assertion of the form
             // y.(type), which is only allowed in type switch expressions.
             // It's hard to exclude those but for the case where we are in
             // a type switch. Instead be lenient and test this in the type
             // checker.
             Expr::TypeAssert(_) => x,
-            Expr::Call(_) => x,
-            Expr::Star(_) => x,
-            Expr::Unary(_) => x,
-            Expr::Binary(_) => x,
+            Expr::Call(_) | Expr::Star(_) | Expr::Unary(_) | Expr::Binary(_) => x,
             _ => {
                 self.error_expected(self.pos, "expression");
                 Expr::new_bad(
-                    x.pos(&self.objects), 
+                    x.pos(&self.objects),
                     self.safe_pos(x.end(&self.objects)))
             }
         }
@@ -1326,9 +1316,7 @@ impl<'a> Parser<'a> {
     fn is_type_name(x: &Expr) -> bool {
         match x {
             Expr::Bad(_) | Expr::Ident(_) => true,
-            Expr::Selector(s) => {
-                if let Expr::Ident(_) = s.expr {true} else {false}
-            },
+            Expr::Selector(s) => matches!(s.expr, Expr::Ident(_)),
             _ => false
         }
     }
@@ -1338,19 +1326,25 @@ impl<'a> Parser<'a> {
         match x {
             Expr::Bad(_) | Expr::Ident(_)  | Expr::Array(_) |
             Expr::Struct(_) | Expr::Map(_) => true,
-            Expr::Selector(s) => {
-                if let Expr::Ident(_) = s.expr {true} else {false}
-            },
+            Expr::Selector(s) => matches!(s.expr, Expr::Ident(_)),
             _ => false
         }
     }
 
     pub fn deref(x: &Expr) -> &Expr {
-        if let Expr::Star(s) = x {&s.expr} else {x}
+        if let Expr::Star(s) = x {
+            &s.expr
+        } else {
+            x
+        }
     }
 
     pub fn unparen(x: &Expr) -> &Expr {
-        if let Expr::Paren(p) = x {Parser::unparen(&p.expr)} else {x}
+        if let Expr::Paren(p) = x {
+            Parser::unparen(&p.expr)
+        } else {
+            x
+        }
     }
 
     // checkExprOrType checks that x is an expression or a type
@@ -1358,14 +1352,14 @@ impl<'a> Parser<'a> {
     fn check_expr_or_type(&self, x: Expr) -> Expr {
         let unparenx = Parser::unparen(&x);
         match unparenx {
-            Expr::Paren(_) => {unreachable!()},
+            Expr::Paren(_) => unreachable!(),
             Expr::Array(array) => {
                 if let Some(expr) = &array.len {
                     if let Expr::Ellipsis(ell) = expr {
-                        self.error_str(ell.pos, 
+                        self.error_str(ell.pos,
                             "expected array length, found '...'");
                         return Expr::new_bad(unparenx.pos(&self.objects),
-                            self.safe_pos(unparenx.end(&self.objects))); 
+                            self.safe_pos(unparenx.end(&self.objects)));
                     }
                 }
             },
@@ -1429,7 +1423,7 @@ impl<'a> Parser<'a> {
             }
             lhs = false; // no need to try to resolve again
         }
-        
+
         self.trace_end();
         x
     }
@@ -1739,7 +1733,7 @@ impl<'a> Parser<'a> {
 
     fn parse_branch_stmt(&mut self, token: Token) -> Stmt {
         self.trace_begin("BranchStmt");
-        
+
         let pos = self.expect(&token);
         let mut label = None;
         if let Token::IDENT(_) = self.token {
@@ -1752,16 +1746,17 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         self.trace_end();
-        Stmt::Branch(Rc::new(BranchStmt{
-            token_pos: pos, token: token, label: label}))
+        Stmt::Branch(Rc::new(BranchStmt {
+            token_pos: pos, token, label
+        }))
     }
 
     fn make_expr(&self, s: Option<Stmt>, want: &str) -> Option<Expr> {
         match s {
             Some(stmt) => {
-                match stmt {
+                Some(match stmt {
                     Stmt::Expr(x) => {
-                        Some(self.check_expr(*x))
+                        self.check_expr(*x)
                     }
                     _ => {
                         let found = if let Stmt::Assign(_) = stmt {
@@ -1774,13 +1769,13 @@ impl<'a> Parser<'a> {
                             "expected {}, found {} {}", want, found, extra);
                         let pos = stmt.pos(&self.objects);
                         self.error(pos, stri);
-                        Some(Expr::new_bad(
-                            pos, self.safe_pos(stmt.end(&self.objects))))
+                        Expr::new_bad(
+                            pos, self.safe_pos(stmt.end(&self.objects)))
                     }
-                }
+                })
             }
             None => None,
-        }  
+        }
     }
 
     fn parse_if_header(&mut self) -> (Option<Stmt>, Expr) {
@@ -1791,7 +1786,7 @@ impl<'a> Parser<'a> {
 
         let outer = self.expr_level;
         self.expr_level = -1;
-        
+
         let mut init = match self.token {
             Token::SEMICOLON(_) => None,
             _ => {
@@ -1999,7 +1994,7 @@ impl<'a> Parser<'a> {
                 tag: self.make_expr(s2, "switch expression"),
                 body: Rc::new(body)}))
         };
- 
+
         self.close_scope();
         self.trace_end();
         ret
@@ -2008,7 +2003,7 @@ impl<'a> Parser<'a> {
     fn parse_comm_clause(&mut self) -> CommClause {
         self.trace_begin("CommClause");
         self.open_scope();
-        
+
         let pos = self.pos;
         let comm = if self.token == Token::CASE {
             self.next();
@@ -2017,7 +2012,7 @@ impl<'a> Parser<'a> {
                 // SendStmt
                 if lhs.len() > 1 {
                     self.error_expected(lhs[0].pos(&self.objects), "1 expression");
-				    // continue with first expression
+                    // continue with first expression
                 }
                 let arrow = self.pos;
                 self.next();
@@ -2147,19 +2142,19 @@ impl<'a> Parser<'a> {
                     }
                 };
                 // parseSimpleStmt returned a right-hand side that
-		        // is a single unary expression of the form "range x"
+                // is a single unary expression of the form "range x"
                 if let Expr::Unary(unary) = ass.rhs.remove(0) {
                     Stmt::Range(Rc::new(RangeStmt{
                         for_pos: pos,
-                        key: key,
-                        val: val,
+                        key,
+                        val,
                         token_pos: ass.token_pos,
                         token: ass.token,
                         expr: unary.expr.clone(),
                         body: Rc::new(body),
                     }))
                 } else {
-                    unreachable!();    
+                    unreachable!();
                 }
             } else {
                 unreachable!();
@@ -2173,23 +2168,23 @@ impl<'a> Parser<'a> {
                 body: Rc::new(body),
             }))
         };
-        
+
         self.close_scope();
         self.trace_end();
         ret
     }
-    
+
     fn parse_stmt(&mut self) -> Stmt {
         self.trace_begin("Statement");
 
         let ret = match &self.token {
-            Token::CONST | Token::TYPE | Token::VAR => 
+            Token::CONST | Token::TYPE | Token::VAR =>
                 Stmt::Decl(Rc::new(self.parse_decl(Token::is_stmt_start))),
             Token::IDENT(_) | Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
             Token::CHAR(_) | Token::STRING(_) | Token::FUNC | Token::LPAREN | // operands
-		    Token::LBRACK | Token::STRUCT | 
+            Token::LBRACK | Token::STRUCT |
             Token::MAP | Token::CHAN | Token::INTERFACE | // composite types
-		    Token::ADD | Token::SUB | Token::MUL | Token::AND |
+            Token::ADD | Token::SUB | Token::MUL | Token::AND |
             Token::XOR | Token::ARROW | Token::NOT => { // unary operators
                 let s = self.parse_simple_stmt(ParseSimpleMode::LabelOk).0;
                 if let Stmt::Labeled(_) = s {} else {self.expect_semi();}
@@ -2234,7 +2229,7 @@ impl<'a> Parser<'a> {
         self.trace_end();
         ret
     }
-    
+
     // ----------------------------------------------------------------------------
     // Declarations
 
@@ -2255,7 +2250,7 @@ impl<'a> Parser<'a> {
 
         let ident = match self.token {
             Token::PERIOD => {
-                let i = new_ident!(self, self.pos, ".".to_string(), 
+                let i = new_ident!(self, self.pos, ".".to_string(),
                     IdentEntity::NoEntity);
                 self.next();
                 Some(i)
@@ -2268,7 +2263,7 @@ impl<'a> Parser<'a> {
             Token::STRING(lit) => {
                 let litstr: &String = lit.as_ref();
                 if !Parser::is_valid_import(litstr) {
-                    let msg = format!("{}{}", "invalid import path: ", litstr); 
+                    let msg = format!("{}{}", "invalid import path: ", litstr);
                     self.error(pos, msg);
                 }
                 let token = self.token.clone();
@@ -2278,13 +2273,13 @@ impl<'a> Parser<'a> {
             _ => {
                 // use expect() error handling
                 let token = Token::STRING("_".to_string().into());
-                self.expect(&token); 
+                self.expect(&token);
                 token
             }
         };
         self.expect_semi();
         let index = specs_mut!(self).insert(Spec::Import(Rc::new(ImportSpec{
-            name: ident, 
+            name: ident,
             path: BasicLit{pos: pos, token: path_token},
             end_pos: None})));
         self.imports.push(index);
@@ -2323,16 +2318,16 @@ impl<'a> Parser<'a> {
         }
 
         // Go spec: The scope of a constant or variable identifier declared inside
-	    // a function begins at the end of the ConstSpec or VarSpec and ends at
-	    // the end of the innermost containing block.
-	    // (Global identifiers are resolved in a separate phase after parsing.)
+        // a function begins at the end of the ConstSpec or VarSpec and ends at
+        // the end of the innermost containing block.
+        // (Global identifiers are resolved in a separate phase after parsing.)
         let spec =  specs_mut!(self_).insert(Spec::Value(Rc::new(ValueSpec{
             names: idents, typ: typ, values: values})));
         let kind = if let Token::VAR = keyword {
                 EntityKind::Var
             } else {EntityKind::Con};
         self_.declare(
-            DeclObj::Spec(spec), 
+            DeclObj::Spec(spec),
             EntityData::ConIota(iota),
             kind,
             &self_.top_scope.unwrap());
@@ -2346,9 +2341,9 @@ impl<'a> Parser<'a> {
 
         let ident = self.parse_ident();
         // Go spec: The scope of a type identifier declared inside a function begins
-	    // at the identifier in the TypeSpec and ends at the end of the innermost
-	    // containing block.
-	    // (Global identifiers are resolved in a separate phase after parsing.)
+        // at the identifier in the TypeSpec and ends at the end of the innermost
+        // containing block.
+        // (Global identifiers are resolved in a separate phase after parsing.)
         let placeholder = Expr::new_bad(0, 0);
         let spec_val = Spec::Type(Rc::new(TypeSpec{
             name: ident, assign: 0, typ: placeholder
@@ -2371,7 +2366,7 @@ impl<'a> Parser<'a> {
         index
     }
 
-    fn parse_gen_decl(&mut self, keyword: &Token, 
+    fn parse_gen_decl(&mut self, keyword: &Token,
         f: fn (&mut Parser<'a>, &Token, isize) -> SpecKey) -> Decl {
         self.trace_begin(&format!("GenDecl({})", keyword.text()));
 
@@ -2443,8 +2438,8 @@ impl<'a> Parser<'a> {
             if ident!(self, ident).name != "init" {
                 self.declare(
                     DeclObj::FuncDecl(decl),
-                    EntityData::NoData, 
-                    EntityKind::Fun, 
+                    EntityData::NoData,
+                    EntityKind::Fun,
                     &self.pkg_scope.unwrap(),
                     );
             }
@@ -2468,8 +2463,8 @@ impl<'a> Parser<'a> {
                         self.parse_gen_decl(&token, Parser::parse_type_spec)
                     }
                     _ => {unreachable!();}
-                }  
-            } 
+                }
+            }
             Token::FUNC => {
                 self.parse_func_decl()
             }
@@ -2490,11 +2485,11 @@ impl<'a> Parser<'a> {
 
     pub fn parse_file(&mut self) -> Option<File> {
         self.trace_begin("File");
-        
+
         let err_count = self.errors.len();
         let pos = self.expect(&Token::PACKAGE);
         // Go spec: The package clause is not a declaration;
-	    // the package name does not appear in any scope.
+        // the package name does not appear in any scope.
         let ident = self.parse_ident();
         if ident!(self, ident).name == "_" {
             self.error_str(self.pos, "invalid package name _");
@@ -2502,8 +2497,8 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         // Don't bother parsing the rest if we had errors parsing the package clause.
-	    // Likely not a Go source file at all.
-	    if self.errors.len() > err_count {
+        // Likely not a Go source file at all.
+        if self.errors.len() > err_count {
             self.trace_end();
             return None
         }
@@ -2552,10 +2547,10 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn test_parser () {
+    #[test]
+    fn test_parser () {
         let mut fs = position::FileSet::new();
         let f = fs.add_file("testfile1.gs".to_string(), None, 1000);
 
@@ -2565,7 +2560,7 @@ mod test {
                 a = 1;
             }
         }
-        "###; 
+        "###;
         let o = &mut Objects::new();
         let el = &mut ErrorList::new();
         let mut p = Parser::new(o, f, el, s1, true);
@@ -2573,4 +2568,4 @@ mod test {
         p.pkg_scope = p.top_scope;
         p.parse_decl(Token::is_decl_start);
     }
-} 
+}

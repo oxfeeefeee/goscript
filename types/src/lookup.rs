@@ -258,7 +258,7 @@ pub fn try_deref(t: TypeKey, objs: &TCObjects) -> (TypeKey, bool) {
 }
 
 /// deref_struct_ptr dereferences typ if it is a (named or unnamed) pointer to a
-/// (named or unnamed) struct and returns its base. Otherwise it returns typ.   
+/// (named or unnamed) struct and returns its base. Otherwise it returns typ.
 pub fn deref_struct_ptr(t: TypeKey, objs: &TCObjects) -> TypeKey {
     let ut = typ::underlying_type(t, objs);
     match &objs.types[ut] {
@@ -280,15 +280,7 @@ pub fn field_index(
     name: &str,
     objs: &TCObjects,
 ) -> Option<usize> {
-    if name != "_" {
-        fields
-            .iter()
-            .enumerate()
-            .find(|(_i, x)| objs.lobjs[**x].same_id(pkg, name, objs))
-            .map(|(i, _x)| i)
-    } else {
-        None
-    }
+    lookup_method(fields, pkg, name, objs).map(|(i, _)| i)
 }
 /// lookup_method returns the index of and method with matching package and name.
 pub fn lookup_method<'a>(
@@ -301,7 +293,7 @@ pub fn lookup_method<'a>(
         methods
             .iter()
             .enumerate()
-            .find(|(_i, x)| objs.lobjs[**x].same_id(pkg, name, objs))
+            .find(|(_, x)| objs.lobjs[**x].same_id(pkg, name, objs))
     } else {
         None
     }
@@ -507,12 +499,11 @@ fn ptr_recv(lo: &obj::LangObj, objs: &TCObjects) -> bool {
 
 /// concat_vec returns the result of concatenating list and i.
 fn concat_vec(list: Option<Vec<usize>>, i: usize) -> Option<Vec<usize>> {
-    if list.is_none() {
-        return Some(vec![i]);
-    }
-    let mut result = list.unwrap();
-    result.push(i);
-    Some(result)
+    Some(concat_vec_inner(list.unwrap_or_else(|| Vec::with_capacity(1)), i))
+}
+fn concat_vec_inner(mut list: Vec<usize>, i: usize) -> Vec<usize> {
+    list.push(i);
+    list
 }
 
 #[derive(Debug)]
@@ -628,7 +619,7 @@ fn add_to_method_set(
                         SelectionKind::MethodVal,
                         None,
                         *okey,
-                        concat_vec(Some(indices.clone()), i).unwrap(),
+                        concat_vec_inner(indices.clone(), i),
                         indirect,
                         objs,
                     )),
