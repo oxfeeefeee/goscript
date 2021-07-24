@@ -5,11 +5,11 @@ Go specs implemented as a script language.
 + Runs most pure Go code, probably add some dynamic features if requested.
 
 ### How do I try
-The project "engine" is the entry/wrapper. there are test cases in [here](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests to browse through.
+The project "engine" is the entry/wrapper. there are test cases in [here](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests) to browse through.
 + Make sure your Rust installation is up to date.
 + Clone this repository.
 + Go to goscript/engine
-+ Run cargo test -- --nocapture
++ Run `cargo test -- --nocapture`
 
 
 ### Use Cases
@@ -40,5 +40,5 @@ the test cases comes with the original code. The backend has a lot of rough edge
 + Next step: no new features for now, polish then work on the standard library.
 
 ### Get in touch
-+ email: pb01005051 at gmail.
-+ wechat: oxfeeefeee
++ email: [`pb01005051` at Gmail](mailto:pb01005051@gmail).
++ wechat: `oxfeeefeee`
