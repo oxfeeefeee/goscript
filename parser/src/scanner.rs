@@ -353,6 +353,7 @@ impl<'a> Scanner<'a> {
                 }
                 None => {
                     self.error("raw string literal not terminated");
+                    break;
                 }
             };
         }

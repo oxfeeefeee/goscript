@@ -51,3 +51,12 @@ fn test_parser_dir() {
     let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
     println!("hohohoh{}", t);
 }
+
+#[test]
+fn test_issue3() {
+    let mut fs = fe::FileSet::new();
+    let o = &mut fe::objects::Objects::new();
+    let el = &mut fe::errors::ErrorList::new();
+    let (p, _) = fe::parse_file(o, &mut fs, el, "/a", "`", false);
+    print!("{}", p.get_errors());
+}
