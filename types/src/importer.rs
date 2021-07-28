@@ -219,8 +219,13 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
     let mut read = |path: PathBuf| -> io::Result<()> {
         if let Some(ext) = path.extension() {
             if ext == "gos" || ext == "go" || ext == "src" {
-                let content = fs::read_to_string(path.as_path())?;
-                result.push((path, content))
+                if let Some(fs) = path.file_stem() {
+                    let s = fs.to_str();
+                    if s.is_some() && !s.unwrap().ends_with("_test") {
+                        let content = fs::read_to_string(path.as_path())?;
+                        result.push((path, content))
+                    }
+                }
             }
         }
         Ok(())
