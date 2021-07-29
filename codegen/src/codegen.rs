@@ -1026,56 +1026,57 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
         // check if this is a built in function first
         let pos = Some(func_expr.pos(&self.ast_objs));
-        if let Expr::Ident(ikey) = func_expr {
-            let ident = self.ast_objs.idents[*ikey].clone();
-            if ident.entity.into_key().is_none() {
-                return if let Some(i) = self.builtins.func_index(&ident.name) {
-                    let t = self.tlookup.get_expr_value_type(&params[0]);
-                    let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
-                    for e in params.iter() {
-                        self.visit_expr(e);
+        match self.tlookup.get_expr_mode(func_expr) {
+            OperandMode::Builtin(_) => {
+                let ikey = func_expr.try_as_ident().unwrap();
+                let ident = self.ast_objs.idents[*ikey].clone();
+                assert!(ident.entity.into_key().is_none());
+
+                let i = self.builtins.func_index(&ident.name).unwrap();
+                let t = self.tlookup.get_expr_value_type(&params[0]);
+                let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
+                for e in params.iter() {
+                    self.visit_expr(e);
+                }
+                // some of the built in funcs are not recorded
+                if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
+                    self.try_cast_params_to_iface(t, params, ellipsis);
+                    if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
+                        // FFI needs the signature of the call
+                        let meta = self.tlookup.meta_from_tc(t, self.objects);
+                        let mut emitter = current_func_emitter!(self);
+                        let i = emitter.add_const(None, GosValue::Metadata(meta));
+                        emitter.emit_load(i, None, ValueType::Metadata, pos);
                     }
-                    // some of the built in funcs are not recorded
-                    if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
-                        self.try_cast_params_to_iface(t, params, ellipsis);
-                        if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
-                            // FFI needs the signature of the call
-                            let meta = self.tlookup.meta_from_tc(t, self.objects);
-                            let mut emitter = current_func_emitter!(self);
-                            let i = emitter.add_const(None, GosValue::Metadata(meta));
-                            emitter.emit_load(i, None, ValueType::Metadata, pos);
-                        }
-                    }
-                    let bf = &self.builtins.get_func_by_index(i as usize);
-                    let count = params.len();
-                    let (t_variadic, count) = if bf.variadic {
-                        if ellipsis {
-                            (None, Some(0)) // do not pack params if there is ellipsis
-                        } else {
-                            (
-                                Some(t_last),
-                                Some((bf.params_count - 1 - count as isize) as OpIndex),
-                            )
-                        }
+                }
+                let bf = &self.builtins.get_func_by_index(i as usize);
+                let count = params.len();
+                let (t_variadic, count) = if bf.variadic {
+                    if ellipsis {
+                        (None, Some(0)) // do not pack params if there is ellipsis
                     } else {
-                        (None, Some(count as OpIndex))
-                    };
-                    let func = current_func_mut!(self);
-                    func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
+                        (
+                            Some(t_last),
+                            Some((bf.params_count - 1 - count as isize) as OpIndex),
+                        )
+                    }
                 } else {
-                    unreachable!()
+                    (None, Some(count as OpIndex))
                 };
+                let func = current_func_mut!(self);
+                func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
+            }
+            _ => {
+                // normal goscript function
+                self.visit_expr(func_expr);
+                current_func_emitter!(self).emit_pre_call(pos);
+                let _ = params.iter().map(|e| self.visit_expr(e)).count();
+                let t = self.tlookup.get_expr_tc_type(func_expr);
+                self.try_cast_params_to_iface(t, params, ellipsis);
+                // do not pack params if there is ellipsis
+                current_func_emitter!(self).emit_call(ellipsis, pos);
             }
         }
-
-        // normal goscript function
-        self.visit_expr(func_expr);
-        current_func_emitter!(self).emit_pre_call(pos);
-        let _ = params.iter().map(|e| self.visit_expr(e)).count();
-        let t = self.tlookup.get_expr_tc_type(func_expr);
-        self.try_cast_params_to_iface(t, params, ellipsis);
-        // do not pack params if there is ellipsis
-        current_func_emitter!(self).emit_call(ellipsis, pos);
     }
 
     fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) {
