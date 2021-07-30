@@ -498,29 +498,32 @@ impl Fiber {
                             _ => unreachable!(),
                         }
                     }
-                    Opcode::CAST_TO_INTERFACE => {
-                        let (target, mapping) = inst.imm824();
-                        let rhs_s_index = Stack::offset(stack.len(), target);
-                        let iface = ifaces[mapping as usize].clone();
-                        let under = stack.get_with_type(rhs_s_index, inst.t0());
-                        let val = match &objs.metas[iface.0.as_non_ptr()] {
-                            MetadataType::Named(_, md) => GosValue::Named(Box::new((
-                                GosValue::new_iface(
-                                    *md,
+                    Opcode::CAST => match inst.t0() {
+                        ValueType::Interface => {
+                            let (target, mapping) = inst.imm824();
+                            let rhs_s_index = Stack::offset(stack.len(), target);
+                            let iface = ifaces[mapping as usize].clone();
+                            let under = stack.get_with_type(rhs_s_index, inst.t1());
+                            let val = match &objs.metas[iface.0.as_non_ptr()] {
+                                MetadataType::Named(_, md) => GosValue::Named(Box::new((
+                                    GosValue::new_iface(
+                                        *md,
+                                        IfaceUnderlying::Gos(under, iface.1),
+                                        &mut objs.gcobjs,
+                                    ),
+                                    iface.0,
+                                ))),
+                                MetadataType::Interface(_) => GosValue::new_iface(
+                                    iface.0,
                                     IfaceUnderlying::Gos(under, iface.1),
                                     &mut objs.gcobjs,
                                 ),
-                                iface.0,
-                            ))),
-                            MetadataType::Interface(_) => GosValue::new_iface(
-                                iface.0,
-                                IfaceUnderlying::Gos(under, iface.1),
-                                &mut objs.gcobjs,
-                            ),
-                            _ => unreachable!(),
-                        };
-                        stack.set(rhs_s_index, val);
-                    }
+                                _ => unreachable!(),
+                            };
+                            stack.set(rhs_s_index, val);
+                        }
+                        _ => unimplemented!(),
+                    },
                     Opcode::ADD => stack.add(inst.t0()),
                     Opcode::SUB => stack.sub(inst.t0()),
                     Opcode::MUL => stack.mul(inst.t0()),

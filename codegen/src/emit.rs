@@ -248,7 +248,13 @@ impl<'a> Emitter<'a> {
         m_index: OpIndex,
         pos: Option<usize>,
     ) {
-        let mut inst = Instruction::new(Opcode::CAST_TO_INTERFACE, Some(typ), None, None, None);
+        let mut inst = Instruction::new(
+            Opcode::CAST,
+            Some(ValueType::Interface),
+            Some(typ),
+            None,
+            None,
+        );
         inst.set_imm824(rhs, m_index);
         self.f.push_inst_pos(inst, pos);
     }

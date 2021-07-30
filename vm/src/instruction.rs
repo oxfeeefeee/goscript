@@ -32,7 +32,7 @@ pub enum Opcode {
     STORE_DEREF,
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
-    CAST_TO_INTERFACE,
+    CAST,
     // arithmetic, logical, ref, deref, arrow
     ADD,       // +
     SUB,       // -
@@ -133,7 +133,7 @@ impl Opcode {
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
-            Opcode::CAST_TO_INTERFACE => ("CAST_TO_INTERFACE", 0),
+            Opcode::CAST => ("CAST", 0),
 
             Opcode::ADD => ("ADD", -1),
             Opcode::SUB => ("SUB", -1),
