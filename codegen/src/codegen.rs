@@ -20,6 +20,7 @@ use goscript_vm::zero_val;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
+use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
@@ -824,6 +825,14 @@ impl<'a> CodeGen<'a> {
         emitter.emit_load(i, None, ValueType::Metadata, pos);
     }
 
+    fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
+        let val = self.tlookup.get_const_value(node);
+        let mut emitter = current_func_emitter!(self);
+        let t = val.get_type();
+        let i = emitter.add_const(None, val);
+        emitter.emit_load(i, None, t, pos);
+    }
+
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
         let entity = ident.entity.clone().into_key().unwrap();
@@ -908,11 +917,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_basic_lit(&mut self, this: &Expr, blit: &BasicLit) {
-        let val = self.tlookup.get_const_value(this.id());
-        let mut emitter = current_func_emitter!(self);
-        let t = val.get_type();
-        let i = emitter.add_const(None, val);
-        emitter.emit_load(i, None, t, Some(blit.pos));
+        self.gen_const(this.id(), Some(blit.pos));
     }
 
     /// Add function as a const and then generate a closure of it
@@ -1023,10 +1028,20 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
-        // check if this is a built in function first
+    fn visit_expr_call(
+        &mut self,
+        this: &Expr,
+        func_expr: &Expr,
+        params: &Vec<Expr>,
+        ellipsis: bool,
+    ) {
         let pos = Some(func_expr.pos(&self.ast_objs));
+        if let OperandMode::Constant(_) = self.tlookup.get_expr_mode(this) {
+            self.gen_const(this.id(), pos);
+            return;
+        }
         match self.tlookup.get_expr_mode(func_expr) {
+            // built in function
             OperandMode::Builtin(_) => {
                 let ikey = func_expr.try_as_ident().unwrap();
                 let ident = self.ast_objs.idents[*ikey].clone();
@@ -1066,8 +1081,14 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let func = current_func_mut!(self);
                 func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
             }
+            // conversion
+            OperandMode::TypeExpr => {
+                let t0 = self.tlookup.get_type_expr_value_type(func_expr);
+                let t1 = self.tlookup.get_type_expr_value_type(&params[0]);
+                dbg!("11111", t0, t1);
+            }
+            // normal goscript function
             _ => {
-                // normal goscript function
                 self.visit_expr(func_expr);
                 current_func_emitter!(self).emit_pre_call(pos);
                 let _ = params.iter().map(|e| self.visit_expr(e)).count();
