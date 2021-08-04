@@ -522,6 +522,14 @@ impl Fiber {
                             };
                             stack.set(rhs_s_index, val);
                         }
+                        ValueType::Float64 => {
+                            let (target, _) = inst.imm824();
+                            let rhs_s_index = Stack::offset(stack.len(), target);
+
+                            ////
+                            stack.set(rhs_s_index, GosValue::Float64(42.0.into()));
+                            //test
+                        }
                         _ => unimplemented!(),
                     },
                     Opcode::ADD => stack.add(inst.t0()),

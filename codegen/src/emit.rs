@@ -241,20 +241,15 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    pub fn emit_cast_to_interface(
+    pub fn emit_cast(
         &mut self,
-        typ: ValueType,
+        t0: ValueType,
+        t1: ValueType,
         rhs: OpIndex,
         m_index: OpIndex,
         pos: Option<usize>,
     ) {
-        let mut inst = Instruction::new(
-            Opcode::CAST,
-            Some(ValueType::Interface),
-            Some(typ),
-            None,
-            None,
-        );
+        let mut inst = Instruction::new(Opcode::CAST, Some(t0), Some(t1), None, None);
         inst.set_imm824(rhs, m_index);
         self.f.push_inst_pos(inst, pos);
     }

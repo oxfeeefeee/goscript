@@ -685,20 +685,21 @@ impl<'a> CodeGen<'a> {
         pos: usize,
     ) -> ValueType {
         let mut ret_type = None;
-        if let Some(t1) = lhs {
-            if self.tlookup.underlying_value_type_from_tc(t1) == ValueType::Interface {
+        if let Some(t0) = lhs {
+            if self.tlookup.underlying_value_type_from_tc(t0) == ValueType::Interface {
                 let (cast, typ) = match rhs {
-                    Some(t2) => {
-                        let vt2 = self.tlookup.underlying_value_type_from_tc(t2);
-                        (vt2 != ValueType::Interface && vt2 != ValueType::Nil, vt2)
+                    Some(t1) => {
+                        let vt1 = self.tlookup.underlying_value_type_from_tc(t1);
+                        (vt1 != ValueType::Interface && vt1 != ValueType::Nil, vt1)
                     }
                     None => (true, ValueType::Slice), // it must be a variadic parameter
                 };
                 if cast {
                     let index =
                         self.iface_mapping
-                            .get_index(&(t1, rhs), &mut self.tlookup, self.objects);
-                    current_func_emitter!(self).emit_cast_to_interface(
+                            .get_index(&(t0, rhs), &mut self.tlookup, self.objects);
+                    current_func_emitter!(self).emit_cast(
+                        ValueType::Interface,
                         typ,
                         rhs_index,
                         index,
@@ -1083,9 +1084,21 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
             // conversion
             OperandMode::TypeExpr => {
-                let t0 = self.tlookup.get_type_expr_value_type(func_expr);
-                let t1 = self.tlookup.get_type_expr_value_type(&params[0]);
-                dbg!("11111", t0, t1);
+                assert!(params.len() == 1);
+                self.visit_expr(&params[0]);
+                let tct0 = self.tlookup.get_expr_tc_type(func_expr);
+                let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
+                let t0 = self.tlookup.underlying_value_type_from_tc(tct0);
+                let t1 = self.tlookup.underlying_value_type_from_tc(tct1);
+                let iface_index = match t0 {
+                    ValueType::Interface => self.iface_mapping.get_index(
+                        &(tct0, Some(tct1)),
+                        &mut self.tlookup,
+                        self.objects,
+                    ),
+                    _ => 0,
+                };
+                current_func_emitter!(self).emit_cast(t0, t1, -1, iface_index, pos);
             }
             // normal goscript function
             _ => {

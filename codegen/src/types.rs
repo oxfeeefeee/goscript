@@ -93,10 +93,6 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn get_type_expr_value_type(&mut self, e: &Expr) -> ValueType {
-        self.value_type_from_tc(self.get_expr_tc_type(e))
-    }
-
     pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
         let tv = self.ti.types.get(&e.id()).unwrap();
         if tv.mode == OperandMode::TypeExpr {
