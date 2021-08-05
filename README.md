@@ -1,5 +1,5 @@
 # Goscript
-Go specs implemented as a script language.
+Go specs implemented as a scripting language.
 
 ### The Goal
 + Runs most pure Go code, probably add some dynamic features if requested.
