@@ -215,10 +215,10 @@ macro_rules! range_body {
     }};
 }
 
-#[inline]
 pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     match val {
         GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
+        GosValue::Named(n) => load_index(&n.0, ind),
         _ => {
             let index = *ind.as_int() as usize;
             match val {
@@ -239,7 +239,6 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     }
 }
 
-#[inline]
 pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
     match val {
         GosValue::Slice(slice) => slice.0
@@ -257,6 +256,7 @@ pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
         GosValue::Array(arr) => arr.0
             .get(i)
             .map_or_else(|| {Err(format!("index {} out of range", i))}, |x| Ok(x)),
+        GosValue::Named(n) => load_index_int(&n.0, i),
         _ => {
             dbg!(val);
             unreachable!();

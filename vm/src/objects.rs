@@ -444,7 +444,6 @@ impl Clone for ArrayObj {
 
 #[derive(Debug)]
 pub struct SliceObj {
-    pub dark: bool,
     pub meta: GosMetadata,
     is_nil: bool,
     begin: Cell<usize>,
@@ -462,7 +461,6 @@ impl<'a> SliceObj {
     ) -> SliceObj {
         assert!(cap >= len);
         let mut val = SliceObj {
-            dark: false,
             meta: meta,
             is_nil: false,
             begin: Cell::from(0),
@@ -478,7 +476,6 @@ impl<'a> SliceObj {
 
     pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> SliceObj {
         SliceObj {
-            dark: false,
             meta: meta,
             is_nil: false,
             begin: Cell::from(0),
@@ -497,7 +494,6 @@ impl<'a> SliceObj {
         let bi = begin as usize;
         let ei = ((self_end + end) % self_end) as usize;
         SliceObj {
-            dark: false,
             meta: elem_meta,
             is_nil: false,
             begin: Cell::from(bi),
@@ -509,7 +505,6 @@ impl<'a> SliceObj {
 
     pub fn new_nil(meta: GosMetadata) -> SliceObj {
         SliceObj {
-            dark: false,
             meta: meta,
             is_nil: true,
             begin: Cell::from(0),
@@ -529,7 +524,6 @@ impl<'a> SliceObj {
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
     pub fn deep_clone(&self, gcos: &mut GcObjs) -> SliceObj {
         SliceObj {
-            dark: false,
             meta: self.meta,
             is_nil: self.is_nil,
             begin: Cell::from(0),
@@ -623,7 +617,6 @@ impl<'a> SliceObj {
         let ei = ((self_len + end) % self_len) as usize;
         let mi = ((self_cap + max) % self_cap) as usize;
         SliceObj {
-            dark: false,
             meta: self.meta,
             is_nil: self.is_nil,
             begin: Cell::from(self.begin() + bi),
@@ -667,7 +660,6 @@ impl<'a> SliceObj {
 impl Clone for SliceObj {
     fn clone(&self) -> Self {
         SliceObj {
-            dark: false,
             meta: self.meta,
             is_nil: self.is_nil,
             begin: self.begin.clone(),

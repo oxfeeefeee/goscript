@@ -376,11 +376,15 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn underlying_value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
+    pub fn underlying_tc(&self, typ: TCTypeKey) -> TCTypeKey {
         match &self.tc_objs.types[typ] {
-            Type::Named(n) => self.value_type_from_tc(n.underlying()),
-            _ => self.value_type_from_tc(typ),
+            Type::Named(n) => n.underlying(),
+            _ => typ,
         }
+    }
+
+    pub fn underlying_value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
+        self.value_type_from_tc(self.underlying_tc(typ))
     }
 
     pub fn value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {

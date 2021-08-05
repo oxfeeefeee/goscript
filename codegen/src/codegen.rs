@@ -24,7 +24,7 @@ use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
-    OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey,
+    identical, OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey,
 };
 
 macro_rules! current_func_mut {
@@ -1083,22 +1083,51 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
             }
             // conversion
+            // from the specs:
+            /*
+            A non-constant value x can be converted to type T in any of these cases:
+                x is assignable to T.
+                ignoring struct tags (see below), x's type and T have identical underlying types.
+                ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
+                x's type and T are both integer or floating point types.
+                x's type and T are both complex types.
+                x is an integer or a slice of bytes or runes and T is a string type.
+                x is a string and T is a slice of bytes or runes.
+            A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
+                x's type is identical to T.
+                x's type V and T have identical underlying types and at least one of V or T is not a defined type.
+                T is an interface type and x implements T.
+                x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
+                x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
+                x is an untyped constant representable by a value of type T.
+            */
             OperandMode::TypeExpr => {
                 assert!(params.len() == 1);
                 self.visit_expr(&params[0]);
                 let tct0 = self.tlookup.get_expr_tc_type(func_expr);
+                let utct0 = self.tlookup.underlying_tc(tct0);
+                let t0 = self.tlookup.value_type_from_tc(utct0);
                 let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
-                let t0 = self.tlookup.underlying_value_type_from_tc(tct0);
-                let t1 = self.tlookup.underlying_value_type_from_tc(tct1);
-                let iface_index = match t0 {
-                    ValueType::Interface => self.iface_mapping.get_index(
-                        &(tct0, Some(tct1)),
-                        &mut self.tlookup,
-                        self.objects,
-                    ),
-                    _ => 0,
-                };
-                current_func_emitter!(self).emit_cast(t0, t1, -1, iface_index, pos);
+                let utct1 = self.tlookup.underlying_tc(tct1);
+                let t1 = self.tlookup.value_type_from_tc(utct1);
+                // just ignore conversion if it's nil or types are identical
+                if t1 != ValueType::Nil && !identical(utct0, utct1, self.tc_objs) {
+                    let iface_index = match t0 {
+                        ValueType::Interface => {
+                            if t1 != ValueType::Nil {
+                                self.iface_mapping.get_index(
+                                    &(tct0, Some(tct1)),
+                                    &mut self.tlookup,
+                                    self.objects,
+                                )
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    };
+                    current_func_emitter!(self).emit_cast(t0, t1, -1, iface_index, pos);
+                }
             }
             // normal goscript function
             _ => {
