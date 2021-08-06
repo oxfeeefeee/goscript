@@ -1351,12 +1351,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if code == Opcode::SHL || code == Opcode::SHR {
             let rtype = self.tlookup.get_expr_value_type(right);
             if rtype != ValueType::Uint32 {
-                current_func_mut!(self).emit_inst(
-                    Opcode::TO_UINT32,
-                    [Some(rtype), None, None],
-                    None,
-                    None,
-                );
+                // convert the second operator to uint32
+                current_func_emitter!(self).emit_cast(ValueType::Uint32, rtype, -1, 0, pos);
             }
         }
 

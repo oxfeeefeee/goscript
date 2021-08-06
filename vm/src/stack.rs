@@ -507,7 +507,7 @@ impl Stack {
     }
 
     #[inline]
-    fn get_c_mut(&mut self, i: usize) -> &mut GosValue64 {
+    pub fn get_c_mut(&mut self, i: usize) -> &mut GosValue64 {
         unsafe { self.c.get_unchecked_mut(i) }
     }
 

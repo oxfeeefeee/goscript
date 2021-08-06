@@ -225,10 +225,7 @@ impl<'a> Emitter<'a> {
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |(code, shift_t)| {
             if let Some(t) = shift_t {
-                self.f.push_inst_pos(
-                    Instruction::new(Opcode::TO_UINT32, Some(t), None, None, None),
-                    pos,
-                );
+                self.emit_cast(ValueType::Uint32, t, -1, 0, pos);
             }
             Instruction::code2index(code)
         });
