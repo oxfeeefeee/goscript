@@ -170,6 +170,76 @@ macro_rules! shift_int {
     };
 }
 
+macro_rules! convert_to_uint {
+    ($val:expr, $vt:expr, $typ:tt) => {{
+        unsafe {
+            match $vt {
+                ValueType::Uint => {
+                    $val.data.uint32 = $val.data.uint as $typ;
+                    Ok(())
+                }
+                ValueType::Uint8 => {
+                    $val.data.uint32 = $val.data.uint8 as $typ;
+                    Ok(())
+                }
+                ValueType::Uint16 => {
+                    $val.data.uint32 = $val.data.uint16 as $typ;
+                    Ok(())
+                }
+                ValueType::Uint32 => {
+                    $val.data.uint32 = $val.data.uint32 as $typ;
+                    Ok(())
+                }
+                ValueType::Uint64 => {
+                    $val.data.uint32 = $val.data.uint64 as $typ;
+                    Ok(())
+                }
+                ValueType::Int => {
+                    if $val.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        $val.data.uint32 = $val.data.int as $typ;
+                        Ok(())
+                    }
+                }
+                ValueType::Int8 => {
+                    if $val.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        $val.data.uint32 = $val.data.int8 as $typ;
+                        Ok(())
+                    }
+                }
+                ValueType::Int16 => {
+                    if $val.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        $val.data.uint32 = $val.data.int16 as $typ;
+                        Ok(())
+                    }
+                }
+                ValueType::Int32 => {
+                    if $val.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        $val.data.uint32 = $val.data.int32 as $typ;
+                        Ok(())
+                    }
+                }
+                ValueType::Int64 => {
+                    if $val.data.int < 0 {
+                        Err("negative shift operand".to_string())
+                    } else {
+                        $val.data.uint32 = $val.data.int64 as $typ;
+                        Ok(())
+                    }
+                }
+                _ => unreachable!(),
+            }
+        }
+    }};
+}
+
 pub type RuntimeResult = result::Result<(), String>;
 
 pub type RtValueResult = result::Result<GosValue, String>;
@@ -1163,68 +1233,7 @@ impl GosValue64 {
 
     #[inline]
     pub fn to_uint32(&mut self, t: ValueType) -> RuntimeResult {
-        unsafe {
-            match t {
-                ValueType::Uint => {
-                    self.data.uint32 = self.data.uint as u32;
-                    Ok(())
-                }
-                ValueType::Uint8 => {
-                    self.data.uint32 = self.data.uint8 as u32;
-                    Ok(())
-                }
-                ValueType::Uint16 => {
-                    self.data.uint32 = self.data.uint16 as u32;
-                    Ok(())
-                }
-                ValueType::Uint32 => Ok(()),
-                ValueType::Uint64 => {
-                    self.data.uint32 = self.data.uint64 as u32;
-                    Ok(())
-                }
-                ValueType::Int => {
-                    if self.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        self.data.uint32 = self.data.int as u32;
-                        Ok(())
-                    }
-                }
-                ValueType::Int8 => {
-                    if self.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        self.data.uint32 = self.data.int8 as u32;
-                        Ok(())
-                    }
-                }
-                ValueType::Int16 => {
-                    if self.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        self.data.uint32 = self.data.int16 as u32;
-                        Ok(())
-                    }
-                }
-                ValueType::Int32 => {
-                    if self.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        self.data.uint32 = self.data.int32 as u32;
-                        Ok(())
-                    }
-                }
-                ValueType::Int64 => {
-                    if self.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        self.data.uint32 = self.data.int64 as u32;
-                        Ok(())
-                    }
-                }
-                _ => unreachable!(),
-            }
-        }
+        convert_to_uint!(self, t, u32)
     }
 
     #[inline]
@@ -1373,7 +1382,20 @@ impl GosValue64 {
             Opcode::OR => GosValue64::binary_op_or(a, b, t),
             Opcode::XOR => GosValue64::binary_op_xor(a, b, t),
             Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
-            _ => unreachable!(),
+            Opcode::SHL => {
+                let mut v = a.clone();
+                v.binary_op_shl(b.get_uint32(), t);
+                v
+            }
+            Opcode::SHR => {
+                let mut v = a.clone();
+                v.binary_op_shr(b.get_uint32(), t);
+                v
+            }
+            _ => {
+                dbg!(t, op);
+                unreachable!()
+            }
         }
     }
 
