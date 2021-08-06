@@ -1528,6 +1528,16 @@ impl FunctionVal {
         self.emit_inst(code, [Some(t), None, None], None, pos);
     }
 
+    pub fn emit_code_with_type2(
+        &mut self,
+        code: Opcode,
+        t0: ValueType,
+        t1: Option<ValueType>,
+        pos: Option<usize>,
+    ) {
+        self.emit_inst(code, [Some(t0), t1, None], None, pos);
+    }
+
     pub fn emit_code_with_imm(&mut self, code: Opcode, imm: OpIndex, pos: Option<usize>) {
         self.emit_inst(code, [None, None, None], Some(imm), pos);
     }

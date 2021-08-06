@@ -1348,13 +1348,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             _ => None,
         };
         self.visit_expr(right);
-        if code == Opcode::SHL || code == Opcode::SHR {
-            let rtype = self.tlookup.get_expr_value_type(right);
-            if rtype != ValueType::Uint32 {
-                // convert the second operator to uint32
-                current_func_emitter!(self).emit_cast(ValueType::Uint32, rtype, -1, 0, pos);
-            }
-        }
 
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
@@ -1363,7 +1356,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let diff = func.next_code_index() - i - 1;
             func.instruction_mut(i - 1).set_imm(diff as OpIndex);
         } else {
-            current_func_mut!(self).emit_code_with_type(code, t, pos);
+            let t1 = if code == Opcode::SHL || code == Opcode::SHR {
+                Some(self.tlookup.get_expr_value_type(right))
+            } else {
+                None
+            };
+            current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
         }
     }
 

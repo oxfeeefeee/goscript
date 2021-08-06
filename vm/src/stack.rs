@@ -126,6 +126,12 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pop_c(&mut self) -> GosValue64 {
+        self.cursor -= 1;
+        self.get_c(self.cursor).clone()
+    }
+
+    #[inline]
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         self.cursor -= 1;
         if t.copyable() {
@@ -328,11 +334,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn top_to_uint(&mut self, t: ValueType) -> RuntimeResult {
-        self.get_c_mut(self.cursor - 1).to_uint32(t)
-    }
-
-    #[inline]
     pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;
@@ -410,15 +411,19 @@ impl Stack {
     }
 
     #[inline]
-    pub fn shl(&mut self, t: ValueType) {
-        let right = self.pop_uint32();
-        self.get_c_mut(self.len() - 1).binary_op_shl(right, t);
+    pub fn shl(&mut self, t0: ValueType, t1: ValueType) {
+        let mut right = self.pop_c();
+        right.to_uint32(t1);
+        self.get_c_mut(self.len() - 1)
+            .binary_op_shl(right.get_uint32(), t0);
     }
 
     #[inline]
-    pub fn shr(&mut self, t: ValueType) {
-        let right = self.pop_uint32();
-        self.get_c_mut(self.len() - 1).binary_op_shr(right, t);
+    pub fn shr(&mut self, t0: ValueType, t1: ValueType) {
+        let mut right = self.pop_c();
+        right.to_uint32(t1);
+        self.get_c_mut(self.len() - 1)
+            .binary_op_shr(right.get_uint32(), t0);
     }
 
     #[inline]

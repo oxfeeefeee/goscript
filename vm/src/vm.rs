@@ -523,13 +523,7 @@ impl Fiber {
                                 };
                                 stack.set(rhs_s_index, val);
                             }
-                            ValueType::Uint32 => {
-                                let re = stack.get_c_mut(rhs_s_index).to_uint32(inst.t1());
-                                if let Err(e) = re {
-                                    panic_msg = Some(e);
-                                    break;
-                                }
-                            }
+                            ValueType::Uint32 => stack.get_c_mut(rhs_s_index).to_uint32(inst.t1()),
                             ValueType::Float64 => {
                                 stack.set(rhs_s_index, GosValue::Float64(42.0.into()));
                                 unimplemented!();
@@ -549,8 +543,8 @@ impl Fiber {
                     Opcode::OR => stack.or(inst.t0()),
                     Opcode::XOR => stack.xor(inst.t0()),
                     Opcode::AND_NOT => stack.and_not(inst.t0()),
-                    Opcode::SHL => stack.shl(inst.t0()),
-                    Opcode::SHR => stack.shr(inst.t0()),
+                    Opcode::SHL => stack.shl(inst.t0(), inst.t1()),
+                    Opcode::SHR => stack.shr(inst.t0(), inst.t1()),
                     Opcode::UNARY_ADD => {}
                     Opcode::UNARY_SUB => stack.unary_negate(inst.t0()),
                     Opcode::UNARY_XOR => stack.unary_xor(inst.t0()),

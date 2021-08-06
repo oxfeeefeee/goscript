@@ -225,6 +225,9 @@ impl<'a> Emitter<'a> {
         assert!(rhs_index == -1 || op.is_none());
         let imm0 = op.map_or(rhs_index, |(code, shift_t)| {
             if let Some(t) = shift_t {
+                // there is no space left to store the type of the type of the rhs operand.
+                // emit a (possibly temporary) CAST.
+                // also this makes the code in VM much easier.
                 self.emit_cast(ValueType::Uint32, t, -1, 0, pos);
             }
             Instruction::code2index(code)

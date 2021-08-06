@@ -174,66 +174,16 @@ macro_rules! convert_to_uint {
     ($val:expr, $vt:expr, $typ:tt) => {{
         unsafe {
             match $vt {
-                ValueType::Uint => {
-                    $val.data.uint32 = $val.data.uint as $typ;
-                    Ok(())
-                }
-                ValueType::Uint8 => {
-                    $val.data.uint32 = $val.data.uint8 as $typ;
-                    Ok(())
-                }
-                ValueType::Uint16 => {
-                    $val.data.uint32 = $val.data.uint16 as $typ;
-                    Ok(())
-                }
-                ValueType::Uint32 => {
-                    $val.data.uint32 = $val.data.uint32 as $typ;
-                    Ok(())
-                }
-                ValueType::Uint64 => {
-                    $val.data.uint32 = $val.data.uint64 as $typ;
-                    Ok(())
-                }
-                ValueType::Int => {
-                    if $val.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        $val.data.uint32 = $val.data.int as $typ;
-                        Ok(())
-                    }
-                }
-                ValueType::Int8 => {
-                    if $val.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        $val.data.uint32 = $val.data.int8 as $typ;
-                        Ok(())
-                    }
-                }
-                ValueType::Int16 => {
-                    if $val.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        $val.data.uint32 = $val.data.int16 as $typ;
-                        Ok(())
-                    }
-                }
-                ValueType::Int32 => {
-                    if $val.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        $val.data.uint32 = $val.data.int32 as $typ;
-                        Ok(())
-                    }
-                }
-                ValueType::Int64 => {
-                    if $val.data.int < 0 {
-                        Err("negative shift operand".to_string())
-                    } else {
-                        $val.data.uint32 = $val.data.int64 as $typ;
-                        Ok(())
-                    }
-                }
+                ValueType::Uint => $val.data.uint32 = $val.data.uint as $typ,
+                ValueType::Uint8 => $val.data.uint32 = $val.data.uint8 as $typ,
+                ValueType::Uint16 => $val.data.uint32 = $val.data.uint16 as $typ,
+                ValueType::Uint32 => $val.data.uint32 = $val.data.uint32 as $typ,
+                ValueType::Uint64 => $val.data.uint32 = $val.data.uint64 as $typ,
+                ValueType::Int => $val.data.uint32 = $val.data.int as $typ,
+                ValueType::Int8 => $val.data.uint32 = $val.data.int8 as $typ,
+                ValueType::Int16 => $val.data.uint32 = $val.data.int16 as $typ,
+                ValueType::Int32 => $val.data.uint32 = $val.data.int32 as $typ,
+                ValueType::Int64 => $val.data.uint32 = $val.data.int64 as $typ,
                 _ => unreachable!(),
             }
         }
@@ -1232,8 +1182,8 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn to_uint32(&mut self, t: ValueType) -> RuntimeResult {
-        convert_to_uint!(self, t, u32)
+    pub fn to_uint32(&mut self, t: ValueType) {
+        convert_to_uint!(self, t, u32);
     }
 
     #[inline]
