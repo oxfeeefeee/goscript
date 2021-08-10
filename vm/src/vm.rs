@@ -523,10 +523,21 @@ impl Fiber {
                                 };
                                 stack.set(rhs_s_index, val);
                             }
+                            ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
+                            ValueType::Uint8 => stack.get_c_mut(rhs_s_index).to_uint8(inst.t1()),
+                            ValueType::Uint16 => stack.get_c_mut(rhs_s_index).to_uint16(inst.t1()),
                             ValueType::Uint32 => stack.get_c_mut(rhs_s_index).to_uint32(inst.t1()),
+                            ValueType::Uint64 => stack.get_c_mut(rhs_s_index).to_uint64(inst.t1()),
+                            ValueType::Int => stack.get_c_mut(rhs_s_index).to_int(inst.t1()),
+                            ValueType::Int8 => stack.get_c_mut(rhs_s_index).to_int8(inst.t1()),
+                            ValueType::Int16 => stack.get_c_mut(rhs_s_index).to_int16(inst.t1()),
+                            ValueType::Int32 => stack.get_c_mut(rhs_s_index).to_int32(inst.t1()),
+                            ValueType::Int64 => stack.get_c_mut(rhs_s_index).to_int64(inst.t1()),
+                            ValueType::Float32 => {
+                                stack.get_c_mut(rhs_s_index).to_float32(inst.t1())
+                            }
                             ValueType::Float64 => {
-                                stack.set(rhs_s_index, GosValue::Float64(42.0.into()));
-                                unimplemented!();
+                                stack.get_c_mut(rhs_s_index).to_float64(inst.t1())
                             }
                             _ => {
                                 // we do not support tags yet, is there anything to implement?

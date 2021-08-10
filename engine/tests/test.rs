@@ -50,6 +50,16 @@ fn test_g2display() {
     assert!(err_cnt == 0);
 }
 
+/*
+#[test]
+fn test_unicode0() {
+    time_test!();
+
+    let err_cnt = run("./tests/group2/unicode0.gos", true);
+    assert!(err_cnt == 0);
+}
+*/
+
 #[test]
 fn test_case1() {
     let err_cnt = run("./tests/group1/case1.gos", true);
@@ -153,6 +163,12 @@ fn test_interface() {
 }
 
 #[test]
+fn test_interface2() {
+    let err_cnt = run("./tests/group1/interface2.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_initorder() {
     let err_cnt = run("./tests/group1/initorder.gos", true);
     assert!(err_cnt == 0);
@@ -185,6 +201,12 @@ fn test_composite() {
 #[test]
 fn test_array() {
     let err_cnt = run("./tests/group1/array.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
+fn test_conversion() {
+    let err_cnt = run("./tests/group1/conversion.gos", true);
     assert!(err_cnt == 0);
 }
 

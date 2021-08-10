@@ -170,20 +170,48 @@ macro_rules! shift_int {
     };
 }
 
-macro_rules! convert_to_uint {
-    ($val:expr, $vt:expr, $typ:tt) => {{
+macro_rules! convert_to_int {
+    ($val:expr, $vt:expr, $d_type:tt, $typ:tt) => {{
         unsafe {
             match $vt {
-                ValueType::Uint => $val.data.uint32 = $val.data.uint as $typ,
-                ValueType::Uint8 => $val.data.uint32 = $val.data.uint8 as $typ,
-                ValueType::Uint16 => $val.data.uint32 = $val.data.uint16 as $typ,
-                ValueType::Uint32 => $val.data.uint32 = $val.data.uint32 as $typ,
-                ValueType::Uint64 => $val.data.uint32 = $val.data.uint64 as $typ,
-                ValueType::Int => $val.data.uint32 = $val.data.int as $typ,
-                ValueType::Int8 => $val.data.uint32 = $val.data.int8 as $typ,
-                ValueType::Int16 => $val.data.uint32 = $val.data.int16 as $typ,
-                ValueType::Int32 => $val.data.uint32 = $val.data.int32 as $typ,
-                ValueType::Int64 => $val.data.uint32 = $val.data.int64 as $typ,
+                ValueType::Uint => $val.data.$d_type = $val.data.uint as $typ,
+                ValueType::Uint8 => $val.data.$d_type = $val.data.uint8 as $typ,
+                ValueType::Uint16 => $val.data.$d_type = $val.data.uint16 as $typ,
+                ValueType::Uint32 => $val.data.$d_type = $val.data.uint32 as $typ,
+                ValueType::Uint64 => $val.data.$d_type = $val.data.uint64 as $typ,
+                ValueType::Int => $val.data.$d_type = $val.data.int as $typ,
+                ValueType::Int8 => $val.data.$d_type = $val.data.int8 as $typ,
+                ValueType::Int16 => $val.data.$d_type = $val.data.int16 as $typ,
+                ValueType::Int32 => $val.data.$d_type = $val.data.int32 as $typ,
+                ValueType::Int64 => $val.data.$d_type = $val.data.int64 as $typ,
+                ValueType::Float32 => $val.data.$d_type = f32::from($val.data.float32) as $typ,
+                ValueType::Float64 => $val.data.$d_type = f64::from($val.data.float64) as $typ,
+                _ => unreachable!(),
+            }
+        }
+    }};
+}
+
+macro_rules! convert_to_float {
+    ($val:expr, $vt:expr, $d_type:tt, $f_type:tt, $typ:tt) => {{
+        unsafe {
+            match $vt {
+                ValueType::Uint => $val.data.$d_type = $f_type::from($val.data.uint as $typ),
+                ValueType::Uint8 => $val.data.$d_type = $f_type::from($val.data.uint8 as $typ),
+                ValueType::Uint16 => $val.data.$d_type = $f_type::from($val.data.uint16 as $typ),
+                ValueType::Uint32 => $val.data.$d_type = $f_type::from($val.data.uint32 as $typ),
+                ValueType::Uint64 => $val.data.$d_type = $f_type::from($val.data.uint64 as $typ),
+                ValueType::Int => $val.data.$d_type = $f_type::from($val.data.int as $typ),
+                ValueType::Int8 => $val.data.$d_type = $f_type::from($val.data.int8 as $typ),
+                ValueType::Int16 => $val.data.$d_type = $f_type::from($val.data.int16 as $typ),
+                ValueType::Int32 => $val.data.$d_type = $f_type::from($val.data.int32 as $typ),
+                ValueType::Int64 => $val.data.$d_type = $f_type::from($val.data.int64 as $typ),
+                ValueType::Float32 => {
+                    $val.data.$d_type = $f_type::from(f32::from($val.data.float32) as $typ)
+                }
+                ValueType::Float64 => {
+                    $val.data.$d_type = $f_type::from(f64::from($val.data.float64) as $typ)
+                }
                 _ => unreachable!(),
             }
         }
@@ -1182,8 +1210,63 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn to_uint(&mut self, t: ValueType) {
+        convert_to_int!(self, t, uint, usize);
+    }
+
+    #[inline]
+    pub fn to_uint8(&mut self, t: ValueType) {
+        convert_to_int!(self, t, uint8, u8);
+    }
+
+    #[inline]
+    pub fn to_uint16(&mut self, t: ValueType) {
+        convert_to_int!(self, t, uint16, u16);
+    }
+
+    #[inline]
     pub fn to_uint32(&mut self, t: ValueType) {
-        convert_to_uint!(self, t, u32);
+        convert_to_int!(self, t, uint32, u32);
+    }
+
+    #[inline]
+    pub fn to_uint64(&mut self, t: ValueType) {
+        convert_to_int!(self, t, uint64, u64);
+    }
+
+    #[inline]
+    pub fn to_int(&mut self, t: ValueType) {
+        convert_to_int!(self, t, int, isize);
+    }
+
+    #[inline]
+    pub fn to_int8(&mut self, t: ValueType) {
+        convert_to_int!(self, t, int8, i8);
+    }
+
+    #[inline]
+    pub fn to_int16(&mut self, t: ValueType) {
+        convert_to_int!(self, t, int16, i16);
+    }
+
+    #[inline]
+    pub fn to_int32(&mut self, t: ValueType) {
+        convert_to_int!(self, t, int32, i32);
+    }
+
+    #[inline]
+    pub fn to_int64(&mut self, t: ValueType) {
+        convert_to_int!(self, t, int64, i64);
+    }
+
+    #[inline]
+    pub fn to_float32(&mut self, t: ValueType) {
+        convert_to_float!(self, t, float32, F32, f32);
+    }
+
+    #[inline]
+    pub fn to_float64(&mut self, t: ValueType) {
+        convert_to_float!(self, t, float64, F64, f64);
     }
 
     #[inline]
