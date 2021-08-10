@@ -1,0 +1,35 @@
+package main
+
+//import "fmt"
+
+type type1 []struct {
+    Field1 string
+    Field2 int
+}
+type type2 []struct {
+    Field1 string
+    Field2 int
+}
+
+
+func main() {
+    
+    i := uint(42.0)
+    f := float64(i)
+    u := uint(f)
+    assert(u == 42)
+    
+    {
+        f2 := float64(-3.25)
+        assert(f2 == -3.25)
+        f3 := float32(f2)
+        assert(f3 == -3.25)
+        i := int(f3)
+        assert(i == -3)
+    }
+    
+    t1 := type1{{"A", 1}, {"B", 2}}
+    t2 := type2(t1)
+    assert(t2[1].Field2 == 2)
+    
+}
