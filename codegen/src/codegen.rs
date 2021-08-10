@@ -897,7 +897,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     type Result = ();
 
     fn visit_expr(&mut self, expr: &Expr) {
-        walk_expr(self, expr)
+        if let OperandMode::Constant(_) = self.tlookup.get_expr_mode(expr) {
+            self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
+        } else {
+            walk_expr(self, expr)
+        }
     }
 
     fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) {
@@ -1029,18 +1033,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_expr_call(
-        &mut self,
-        this: &Expr,
-        func_expr: &Expr,
-        params: &Vec<Expr>,
-        ellipsis: bool,
-    ) {
+    fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
         let pos = Some(func_expr.pos(&self.ast_objs));
-        if let OperandMode::Constant(_) = self.tlookup.get_expr_mode(this) {
-            self.gen_const(this.id(), pos);
-            return;
-        }
         match self.tlookup.get_expr_mode(func_expr) {
             // built in function
             OperandMode::Builtin(_) => {
