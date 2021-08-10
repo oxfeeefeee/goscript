@@ -897,11 +897,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     type Result = ();
 
     fn visit_expr(&mut self, expr: &Expr) {
-        if let OperandMode::Constant(_) = self.tlookup.get_expr_mode(expr) {
-            self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
-        } else {
-            walk_expr(self, expr)
+        if let Some(mode) = self.tlookup.try_get_expr_mode(expr) {
+            if let OperandMode::Constant(_) = mode {
+                self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
+                return;
+            }
         }
+        walk_expr(self, expr);
     }
 
     fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) {

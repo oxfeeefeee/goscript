@@ -55,6 +55,10 @@ impl<'a> TypeLookup<'a> {
         self.ti.types.get(&id).unwrap().typ
     }
 
+    pub fn try_get_expr_mode(&self, e: &Expr) -> Option<&OperandMode> {
+        self.ti.types.get(&e.id()).map(|x| &x.mode)
+    }
+
     pub fn get_expr_mode(&self, e: &Expr) -> &OperandMode {
         &self.ti.types.get(&e.id()).unwrap().mode
     }
@@ -251,7 +255,7 @@ impl<'a> TypeLookup<'a> {
                 let (i, _) = val.to_int().int_as_u64();
                 GosValue::Uint(i as usize)
             }
-            BasicType::Uint8 => {
+            BasicType::Uint8 | BasicType::Byte => {
                 let (i, _) = val.to_int().int_as_u64();
                 GosValue::Uint8(i as u8)
             }
@@ -284,7 +288,10 @@ impl<'a> TypeLookup<'a> {
                 GosValue::Complex128(Box::new((cr, ci)))
             }
             BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
-            _ => unreachable!(),
+            _ => {
+                dbg!(typ);
+                unreachable!();
+            }
         }
     }
 
