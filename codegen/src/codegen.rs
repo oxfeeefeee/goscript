@@ -1134,14 +1134,19 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         }
                         _ => 0,
                     };
-                    // get the type of slice element if we are converting slice to string
-                    let t2 = if t0 == ValueType::Str && t1 == ValueType::Slice {
-                        Some(self.tlookup.value_type_from_tc(
-                            self.tc_objs.types[utct1].try_as_slice().unwrap().elem(),
-                        ))
+                    // get the type of slice element if we are converting to or from a slice
+                    let tct2 = if t0 == ValueType::Slice {
+                        Some(utct0)
+                    } else if t1 == ValueType::Slice {
+                        Some(utct1)
                     } else {
                         None
                     };
+                    let t2 = tct2.map(|x| {
+                        self.tlookup.value_type_from_tc(
+                            self.tc_objs.types[x].try_as_slice().unwrap().elem(),
+                        )
+                    });
                     current_func_emitter!(self).emit_cast(t0, t1, t2, -1, iface_index, pos);
                 }
             }

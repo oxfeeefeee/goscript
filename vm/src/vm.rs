@@ -559,7 +559,25 @@ impl Fiber {
                                 stack.set(rhs_s_index, GosValue::new_str(result));
                             }
                             ValueType::Slice => {
-                                unimplemented!()
+                                let from = stack.get_rc(rhs_s_index).as_str();
+                                let result = match inst.t2() {
+                                    ValueType::Int32 => (
+                                        objs.metadata.mint32,
+                                        from.as_str()
+                                            .chars()
+                                            .map(|x| GosValue::Int32(x as i32))
+                                            .collect(),
+                                    ),
+                                    ValueType::Uint8 => (
+                                        objs.metadata.muint8,
+                                        from.as_str().bytes().map(|x| GosValue::Uint8(x)).collect(),
+                                    ),
+                                    _ => unreachable!(),
+                                };
+                                stack.set(
+                                    rhs_s_index,
+                                    GosValue::slice_with_val(result.1, result.0, &mut objs.gcobjs),
+                                )
                             }
                             ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
                             ValueType::Uint8 => stack.get_c_mut(rhs_s_index).to_uint8(inst.t1()),

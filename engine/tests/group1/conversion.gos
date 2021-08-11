@@ -33,7 +33,6 @@ func main() {
     assert(t2[1].Field2 == 2)
     
 
-    //b := []byte("Hello, 世界")
     s1 := string(100)
     assert(s1 == "d")
     fmt.Println(s1)
@@ -46,4 +45,17 @@ func main() {
     s3 := string(data)
     assert(s3 == "test")
     fmt.Println(s3)
+
+    b4 := []byte("dHello, 世界")
+    r4 := []rune("dHello, 世界")
+    assert(b4[0] == 100)
+    assert(r4[0] == 100)
+    s51 := string(b4)
+    s52 := string(r4)
+    assert(s51[0] == 'd')
+    assert(s52[0] == 'd')
+    shijie := "世界"
+    assert(s51[8] == shijie[0])
+    assert(s52[9] == shijie[1])
+    fmt.Println(b4, r4, s51, s52)
 }
