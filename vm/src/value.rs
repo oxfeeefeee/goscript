@@ -427,6 +427,16 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_uint8(&self) -> &u8 {
+        unwrap_gos_val!(Uint8, self)
+    }
+
+    #[inline]
+    pub fn as_int32(&self) -> &i32 {
+        unwrap_gos_val!(Int32, self)
+    }
+
+    #[inline]
     pub fn as_int_mut(&mut self) -> &mut isize {
         unwrap_gos_val!(Int, self)
     }
