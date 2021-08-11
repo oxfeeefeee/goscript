@@ -1,6 +1,6 @@
 package main
 
-//import "fmt"
+import "fmt"
 
 type type1 []struct {
     Field1 string
@@ -32,4 +32,18 @@ func main() {
     t2 := type2(t1)
     assert(t2[1].Field2 == 2)
     
+
+    //b := []byte("Hello, 世界")
+    s1 := string(100)
+    assert(s1 == "d")
+    fmt.Println(s1)
+
+    s2 := string([]rune{100, 101})
+    assert(s2 == "de")
+    fmt.Println(s2)
+
+    data := []byte{'t','e','s','t'}
+    s3 := string(data)
+    assert(s3 == "test")
+    fmt.Println(s3)
 }

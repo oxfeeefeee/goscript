@@ -517,7 +517,7 @@ impl Stack {
     }
 
     #[inline]
-    fn get_rc(&self, i: usize) -> &GosValue {
+    pub fn get_rc(&self, i: usize) -> &GosValue {
         unsafe { self.rc.get_unchecked(i) }
     }
 

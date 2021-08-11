@@ -701,6 +701,7 @@ impl<'a> CodeGen<'a> {
                     current_func_emitter!(self).emit_cast(
                         ValueType::Interface,
                         typ,
+                        None,
                         rhs_index,
                         index,
                         Some(pos),
@@ -1133,7 +1134,15 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         }
                         _ => 0,
                     };
-                    current_func_emitter!(self).emit_cast(t0, t1, -1, iface_index, pos);
+                    // get the type of slice element if we are converting slice to string
+                    let t2 = if t0 == ValueType::Str && t1 == ValueType::Slice {
+                        Some(self.tlookup.value_type_from_tc(
+                            self.tc_objs.types[utct1].try_as_slice().unwrap().elem(),
+                        ))
+                    } else {
+                        None
+                    };
+                    current_func_emitter!(self).emit_cast(t0, t1, t2, -1, iface_index, pos);
                 }
             }
             // normal goscript function

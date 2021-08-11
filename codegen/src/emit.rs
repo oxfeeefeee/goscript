@@ -228,7 +228,7 @@ impl<'a> Emitter<'a> {
                 // there is no space left to store the type of the type of the rhs operand.
                 // emit a (possibly temporary) CAST.
                 // also this makes the code in VM much easier.
-                self.emit_cast(ValueType::Uint32, t, -1, 0, pos);
+                self.emit_cast(ValueType::Uint32, t, None, -1, 0, pos);
             }
             Instruction::code2index(code)
         });
@@ -245,11 +245,12 @@ impl<'a> Emitter<'a> {
         &mut self,
         t0: ValueType,
         t1: ValueType,
+        t2: Option<ValueType>,
         rhs: OpIndex,
         m_index: OpIndex,
         pos: Option<usize>,
     ) {
-        let mut inst = Instruction::new(Opcode::CAST, Some(t0), Some(t1), None, None);
+        let mut inst = Instruction::new(Opcode::CAST, Some(t0), Some(t1), t2, None);
         inst.set_imm824(rhs, m_index);
         self.f.push_inst_pos(inst, pos);
     }

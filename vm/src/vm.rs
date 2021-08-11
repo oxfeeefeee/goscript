@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::convert::TryInto;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::str;
 
 #[derive(Debug)]
 pub struct ByteCode {
@@ -523,6 +524,43 @@ impl Fiber {
                                 };
                                 stack.set(rhs_s_index, val);
                             }
+                            ValueType::Str => {
+                                let result = match inst.t1() {
+                                    ValueType::Slice => {
+                                        let slice = stack.get_rc(rhs_s_index).as_slice();
+                                        match inst.t2() {
+                                            ValueType::Int32 => slice
+                                                .0
+                                                .borrow_data()
+                                                .iter()
+                                                .map(|x| {
+                                                    vm_util::char_from_i32(*(x.borrow().as_int32()))
+                                                })
+                                                .collect(),
+                                            ValueType::Uint8 => {
+                                                let buf: Vec<u8> = slice
+                                                    .0
+                                                    .borrow_data()
+                                                    .iter()
+                                                    .map(|x| *(x.borrow().as_uint8()))
+                                                    .collect();
+                                                // todo: error handling
+                                                str::from_utf8(&buf).unwrap().to_string()
+                                            }
+                                            _ => unreachable!(),
+                                        }
+                                    }
+                                    _ => {
+                                        let target = stack.get_c_mut(rhs_s_index);
+                                        target.to_uint32(inst.t1());
+                                        vm_util::char_from_u32(target.get_uint32()).to_string()
+                                    }
+                                };
+                                stack.set(rhs_s_index, GosValue::new_str(result));
+                            }
+                            ValueType::Slice => {
+                                unimplemented!()
+                            }
                             ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
                             ValueType::Uint8 => stack.get_c_mut(rhs_s_index).to_uint8(inst.t1()),
                             ValueType::Uint16 => stack.get_c_mut(rhs_s_index).to_uint16(inst.t1()),
@@ -541,6 +579,7 @@ impl Fiber {
                             }
                             _ => {
                                 // we do not support tags yet, is there anything to implement?
+                                dbg!(inst.t0());
                                 unimplemented!()
                             }
                         }

@@ -215,6 +215,16 @@ macro_rules! range_body {
     }};
 }
 
+#[inline]
+pub fn char_from_u32(u: u32) -> char {
+    unsafe { char::from_u32_unchecked(u) }
+}
+
+#[inline]
+pub fn char_from_i32(i: i32) -> char {
+    unsafe { char::from_u32_unchecked(i as u32) }
+}
+
 pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     match val {
         GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
