@@ -769,7 +769,18 @@ impl<'a> CodeGen<'a> {
                     _ => unreachable!(),
                 };
                 for expr in clit.elts.iter().rev() {
-                    self.visit_composite_expr(expr, elem);
+                    match expr {
+                        Expr::KeyValue(kv) => {
+                            self.visit_composite_expr(&kv.val, elem);
+                            // the key is a constant
+                            self.visit_expr(&kv.key);
+                        }
+                        _ => {
+                            self.visit_composite_expr(expr, elem);
+                            // -1 as a placeholder for when the index is missing
+                            current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, None);
+                        }
+                    };
                 }
             }
             MetadataType::Map(_, _) => {
@@ -1361,7 +1372,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_key_value(&mut self, _: &Expr, _key: &Expr, _val: &Expr) {
+    fn visit_expr_key_value(&mut self, e: &Expr, _key: &Expr, _val: &Expr) {
+        dbg!(e);
         unimplemented!();
     }
 

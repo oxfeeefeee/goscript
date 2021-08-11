@@ -971,27 +971,41 @@ impl Fiber {
                                 let (key, mc) = umd.unwrap_non_ptr();
                                 let count = stack.pop_int32();
                                 let val = match &objs.metas[key] {
-                                    MetadataType::SliceOrArray(asm, _) => match mc {
-                                        MetaCategory::Default => {
-                                            let mut val = vec![];
-                                            let elem_type = asm.get_value_type(&objs.metas);
-                                            for _ in 0..count {
-                                                let elem = stack.pop_with_type(elem_type);
-                                                val.push(elem);
+                                    MetadataType::SliceOrArray(asm, _) => {
+                                        let elem_type = asm.get_value_type(&objs.metas);
+                                        let zero_val = asm.zero_val(&objs.metas, &mut objs.gcobjs);
+                                        let mut val = vec![];
+                                        let mut cur_index = -1;
+                                        for _ in 0..count {
+                                            let i = stack.pop_int();
+                                            let elem = stack.pop_with_type(elem_type);
+                                            if i < 0 {
+                                                cur_index += 1;
+                                            } else {
+                                                cur_index = i;
                                             }
-                                            GosValue::slice_with_val(val, *md, &mut objs.gcobjs)
-                                        }
-                                        MetaCategory::Array => {
-                                            let mut val = vec![];
-                                            let elem_type = asm.get_value_type(&objs.metas);
-                                            for _ in 0..count {
-                                                let elem = stack.pop_with_type(elem_type);
+                                            let gap = cur_index - (val.len() as isize);
+                                            if gap == 0 {
                                                 val.push(elem);
+                                            } else if gap > 0 {
+                                                for _ in 0..gap {
+                                                    val.push(zero_val.clone());
+                                                }
+                                                val.push(elem);
+                                            } else {
+                                                val[cur_index as usize] = elem;
                                             }
-                                            GosValue::array_with_val(val, *md, &mut objs.gcobjs)
                                         }
-                                        _ => unreachable!(),
-                                    },
+                                        match mc {
+                                            MetaCategory::Default => {
+                                                GosValue::slice_with_val(val, *md, &mut objs.gcobjs)
+                                            }
+                                            MetaCategory::Array => {
+                                                GosValue::array_with_val(val, *md, &mut objs.gcobjs)
+                                            }
+                                            _ => unreachable!(),
+                                        }
+                                    }
                                     MetadataType::Map(km, vm) => {
                                         let gosv = GosValue::new_map(
                                             *md,

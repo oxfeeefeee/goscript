@@ -8,6 +8,24 @@ import (
 type Point3D struct { x, y, z int }
 type Point3Df struct { x, y, z float32 }
 
+type acceptRange struct {
+	lo uint8 
+	hi uint8 
+}
+
+var t = [16]Point3D{{1,2,3},{y:4}}
+
+
+var acceptRanges = [16]acceptRange{
+	0: {1, 2},
+	1: {1, 2},
+	2: {1, 0x9F},
+	3: {0x90, 1},
+	4: {1, 0x8F},
+}
+
+
+
 func main() {
     
     var p = Point3D{8,9,10}
@@ -24,6 +42,20 @@ func main() {
 
     var pf = Point3Df{1.1,20000000000000000000,3}
     assert(pf.x == 1.1)
-    fmt.Println(pf.x, pf.y, pf.z)
+
+    var t2 = []acceptRange{10:{1,1}, {2,2}, 1:{3,3}}
+    fmt.Println(t2)
+    assert(t2[0].lo == 0)
+    assert(t2[1].lo == 3)
+    assert(t2[11].lo == 2)
+    assert(len(t2) == 12)
+
+    var t3 = []acceptRange{1:{1,1}, {2,2}, 10:{3,3}}
+    fmt.Println(t3)
+    assert(t3[0].lo == 0)
+    assert(t3[1].lo == 1)
+    assert(t3[2].lo == 2)
+    assert(len(t3) == 11)
+    
     
 }
