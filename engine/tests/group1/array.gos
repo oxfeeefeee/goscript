@@ -8,6 +8,13 @@ type Node struct{
     j string
 }
 
+var first = [4]uint8{1,2,3,4}
+
+func testb() {
+    var b byte = 1
+    assert(first[b] == 2)
+}
+
 
 func ttt() {
     var a = [3]string{"a", "b", "c"}
@@ -35,4 +42,6 @@ func ttt() {
 func main() {
     ttt()
     ttt()
+
+    testb()
 }

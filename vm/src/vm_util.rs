@@ -3,7 +3,7 @@
 use super::gc::GcObjs;
 use super::instruction::*;
 use super::stack::Stack;
-use super::value::{GosValue, RtValueResult, RuntimeResult, VMObjects};
+use super::value::{GosValue, RtValueResult, RuntimeResult, VMObjects, GosValue64};
 use super::objects::MetadataObjs;
 
 macro_rules! read_imm_pkg {
@@ -230,7 +230,9 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
         GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
         GosValue::Named(n) => load_index(&n.0, ind),
         _ => {
-            let index = *ind.as_int() as usize;
+            let (mut ind64, t) = GosValue64::from_v128(ind);
+            ind64.to_uint(t);
+            let index = ind64.get_uint();
             match val {
                 GosValue::Slice(slice) => slice.0
                     .get(index)
