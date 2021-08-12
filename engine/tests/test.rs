@@ -50,7 +50,6 @@ fn test_g2display() {
     assert!(err_cnt == 0);
 }
 
-/*
 #[test]
 fn test_unicode0() {
     time_test!();
@@ -58,7 +57,6 @@ fn test_unicode0() {
     let err_cnt = run("./tests/group2/unicode0.gos", true);
     assert!(err_cnt == 0);
 }
-*/
 
 #[test]
 fn test_case1() {

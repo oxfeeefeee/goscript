@@ -1,0 +1,38 @@
+package main
+
+import (
+	"fmt"
+    "unicode/utf8"
+)
+
+func ExampleDecodeLastRune() {
+	b := []byte("Hello, 世界")
+	utf8.DecodeLastRune(b)
+
+	
+	for len(b) > 0 {
+		r, size := utf8.DecodeLastRune(b)
+		fmt.Println("%c %v\n", r, size)
+
+		b = b[:len(b)-size]
+	}
+	
+	// Output:
+	// 界 3
+	// 世 3
+	//   1
+	// , 1
+	// o 1
+	// l 1
+	// l 1
+	// e 1
+	// H 1
+}
+
+
+func main() {
+    ExampleDecodeLastRune()
+	fmt.Println(utf8.RuneError, "a \n b👌")
+	s := "\\ \n \\"
+	fmt.Println(s[0], len(s), s)
+}
