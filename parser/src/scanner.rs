@@ -443,9 +443,37 @@ impl<'a> Scanner<'a> {
         let max: u32;
         match self.peek_char() {
             Some(&ch) => match ch {
-                'a' | 'b' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' => {
+                'a' => {
                     self.advance_and_push(lit, ch);
-                    return Some(ch);
+                    return Some('\u{0007}');
+                }
+                'b' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\u{0008}');
+                }
+                'f' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\u{000c}');
+                }
+                'n' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\n');
+                }
+                'r' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\r');
+                }
+                't' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\t');
+                }
+                'v' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\u{000b}');
+                }
+                '\\' => {
+                    self.advance_and_push(lit, ch);
+                    return Some('\u{005c}');
                 }
                 c if c == quote => {
                     self.advance_and_push(lit, c);
@@ -812,6 +840,7 @@ mod test {
         "slkfdskfl\nsd"
         `d\\n\r\r\r\naaa`
         'a' 'aa' '\t'
+        "aaa\nbbb"
         .25
         break
         /*dff"#;

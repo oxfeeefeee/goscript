@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use super::typ::{BasicDetail, BasicInfo, BasicType};
 use goscript_parser::token::Token;
 use num_bigint::{BigInt, Sign};
@@ -574,7 +573,7 @@ impl Value {
 
     pub fn str_as_string(&self) -> String {
         match self {
-            Value::Str(s) => quote_str(s),
+            Value::Str(s) => s.to_string(), //quote_str(s)
             Value::Unknown => "".to_string(),
             _ => panic!("not a string"),
         }
@@ -773,11 +772,6 @@ impl Value {
 
 // ----------------------------------------------------------------------------
 // utilities
-
-pub fn quote_str(s: &str) -> String {
-    //todo: really works the same as the Go version? does it matter?
-    s.escape_default().collect()
-}
 
 pub fn short_quote_str(s: &str, max: usize) -> String {
     let result = s.escape_default().collect();
