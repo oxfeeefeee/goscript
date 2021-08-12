@@ -7,8 +7,10 @@ pub struct Fmt {}
 
 impl Ffi for Fmt {
     fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue> {
-        if func_name == "println" {
-            self.println(params)
+        match func_name {
+            "println" => self.println(params),
+            "printf" => self.printf(params),
+            _ => unreachable!(),
         }
         vec![]
     }
@@ -32,5 +34,10 @@ impl Fmt {
             })
             .collect();
         println!("{}", strs.join(", "));
+    }
+
+    fn printf(&self, params: Vec<GosValue>) {
+        let vec = params[0].as_slice().0.get_vec();
+        unimplemented!();
     }
 }
