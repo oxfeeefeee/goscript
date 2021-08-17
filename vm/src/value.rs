@@ -283,19 +283,19 @@ impl GosValue {
         size: usize,
         val: &GosValue,
         meta: GosMetadata,
-        gcobjs: &mut GcoVec,
+        gcobjs: &GcoVec,
     ) -> GosValue {
         let arr = Rc::new((ArrayObj::with_size(size, val, meta, gcobjs), Cell::new(0)));
         let v = GosValue::Array(arr);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn array_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn array_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
         let arr = Rc::new((ArrayObj::with_data(val, meta), Cell::new(0)));
         let v = GosValue::Array(arr);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
@@ -305,67 +305,62 @@ impl GosValue {
         cap: usize,
         meta: GosMetadata,
         dval: Option<&GosValue>,
-        gcobjs: &mut GcoVec,
+        gcobjs: &GcoVec,
     ) -> GosValue {
         let s = Rc::new((SliceObj::new(len, cap, meta, dval), Cell::new(0)));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn new_slice_nil(meta: GosMetadata, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn new_slice_nil(meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((SliceObj::new_nil(meta), Cell::new(0)));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((SliceObj::with_data(val, meta), Cell::new(0)));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn slice_with_array(
-        arr: &GosValue,
-        begin: isize,
-        end: isize,
-        gcobjs: &mut GcoVec,
-    ) -> GosValue {
+    pub fn slice_with_array(arr: &GosValue, begin: isize, end: isize, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((
             SliceObj::with_array(&arr.as_array().0, begin, end),
             Cell::new(0),
         ));
         let v = GosValue::Slice(s);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((MapObj::new(meta, default_val), Cell::new(0)));
         let v = GosValue::Map(val);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((MapObj::new_nil(meta, default_val), Cell::new(0)));
         let v = GosValue::Map(val);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn new_struct(obj: StructObj, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn new_struct(obj: StructObj, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((RefCell::new(obj), Cell::new(0)));
         let v = GosValue::Struct(val);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
@@ -374,7 +369,7 @@ impl GosValue {
         package: PackageKey,
         meta: GosMetadata,
         objs: &mut VMObjects,
-        gcv: &mut GcoVec,
+        gcv: &GcoVec,
         ctor: bool,
     ) -> GosValue {
         let val = FunctionVal::new(package, meta, objs, gcv, ctor);
@@ -391,24 +386,20 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &mut GcoVec) -> GosValue {
+    pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &GcoVec) -> GosValue {
         let v = GosValue::Closure(Rc::new((RefCell::new(clsobj), Cell::new(0))));
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn new_iface(
-        meta: GosMetadata,
-        underlying: IfaceUnderlying,
-        gcobjs: &mut GcoVec,
-    ) -> GosValue {
+    pub fn new_iface(meta: GosMetadata, underlying: IfaceUnderlying, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((
             RefCell::new(InterfaceObj::new(meta, underlying)),
             Cell::new(0),
         ));
         let v = GosValue::Interface(val);
-        gcobjs.push(GcWeak::from_gosv(&v));
+        gcobjs.add(&v);
         v
     }
 
@@ -678,21 +669,21 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, gcos: &mut GcoVec) -> GosValue {
+    pub fn copy_semantic(&self, gcos: &GcoVec) -> GosValue {
         match self {
             GosValue::Slice(s) => {
                 let rc = Rc::new((SliceObj::clone(&s.0), Cell::new(0)));
-                gcos.push(GcWeak::Slice(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
                 GosValue::Slice(rc)
             }
             GosValue::Map(m) => {
                 let rc = Rc::new((MapObj::clone(&m.0), Cell::new(0)));
-                gcos.push(GcWeak::Map(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Map(Rc::downgrade(&rc)));
                 GosValue::Map(rc)
             }
             GosValue::Struct(s) => {
                 let rc = Rc::new((RefCell::clone(&s.0), Cell::new(0)));
-                gcos.push(GcWeak::Struct(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
                 GosValue::Struct(rc)
             }
             GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(gcos), v.1))),
@@ -701,26 +692,26 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> GosValue {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> GosValue {
         match self {
             GosValue::Slice(s) => {
                 let rc = Rc::new((s.0.deep_clone(gcos), Cell::new(0)));
-                gcos.push(GcWeak::Slice(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
                 GosValue::Slice(rc)
             }
             GosValue::Map(m) => {
                 let rc = Rc::new((m.0.deep_clone(gcos), Cell::new(0)));
-                gcos.push(GcWeak::Map(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Map(Rc::downgrade(&rc)));
                 GosValue::Map(rc)
             }
             GosValue::Array(arr) => {
                 let rc = Rc::new((arr.0.deep_clone(gcos), Cell::new(0)));
-                gcos.push(GcWeak::Array(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Array(Rc::downgrade(&rc)));
                 GosValue::Array(rc)
             }
             GosValue::Struct(s) => {
                 let rc = Rc::new((RefCell::new(s.0.borrow().deep_clone(gcos)), Cell::new(0)));
-                gcos.push(GcWeak::Struct(Rc::downgrade(&rc)));
+                gcos.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
                 GosValue::Struct(rc)
             }
             GosValue::Pointer(p) => GosValue::Pointer(Box::new(p.deep_clone(gcos))),

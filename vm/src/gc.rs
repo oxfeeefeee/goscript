@@ -1,10 +1,36 @@
 use super::objects::*;
 use super::value::{GosValue, RCQueue, RCount, IRC};
+use std::cell::Ref;
 use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::rc::{Rc, Weak};
 
-pub type GcoVec = Vec<GcWeak>;
+pub struct GcoVec {
+    inner: Rc<RefCell<Vec<GcWeak>>>,
+}
+
+impl GcoVec {
+    pub fn new() -> GcoVec {
+        GcoVec {
+            inner: Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+
+    #[inline]
+    pub fn add(&self, v: &GosValue) {
+        let weak = GcWeak::from_gosv(v);
+        self.add_weak(weak);
+    }
+
+    #[inline]
+    pub fn add_weak(&self, w: GcWeak) {
+        self.inner.borrow_mut().push(w);
+    }
+
+    fn borrow_data(&self) -> Ref<Vec<GcWeak>> {
+        self.inner.borrow()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum GcWeak {
@@ -189,8 +215,12 @@ fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
     p0
 }
 
-pub fn gc(objs: &mut GcoVec) {
-    let mut to_scan: Vec<GosValue> = objs.iter().filter_map(|o| o.to_gosv()).collect();
+pub fn gc(objs: &GcoVec) {
+    let mut to_scan: Vec<GosValue> = objs
+        .borrow_data()
+        .iter()
+        .filter_map(|o| o.to_gosv())
+        .collect();
     print!("objs before GC: {}\n", to_scan.len());
     for v in to_scan.iter() {
         children_ref_sub_one(v);
@@ -222,6 +252,10 @@ pub fn gc(objs: &mut GcoVec) {
         }
     }
 
-    let result: Vec<GosValue> = objs.iter().filter_map(|o| o.to_gosv()).collect();
+    let result: Vec<GosValue> = objs
+        .borrow_data()
+        .iter()
+        .filter_map(|o| o.to_gosv())
+        .collect();
     print!("objs left after GC: {}\n", result.len());
 }

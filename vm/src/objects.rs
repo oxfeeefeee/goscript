@@ -6,8 +6,7 @@ use super::metadata::*;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
-use std::cell::Cell;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -197,7 +196,7 @@ impl MapObj {
     }
 
     /// deep_clone creates a new MapObj with duplicated content of 'self.map'
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> MapObj {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> MapObj {
         let m = self.map.as_ref().map(|x| {
             Rc::new(RefCell::new(
                 x.borrow()
@@ -323,12 +322,7 @@ pub struct ArrayObj {
 }
 
 impl ArrayObj {
-    pub fn with_size(
-        size: usize,
-        val: &GosValue,
-        meta: GosMetadata,
-        gcos: &mut GcoVec,
-    ) -> ArrayObj {
+    pub fn with_size(size: usize, val: &GosValue, meta: GosMetadata, gcos: &GcoVec) -> ArrayObj {
         let mut v = GosVec::with_capacity(size);
         for _ in 0..size {
             v.push(RefCell::new(val.copy_semantic(gcos)))
@@ -348,7 +342,7 @@ impl ArrayObj {
         }
     }
 
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> ArrayObj {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> ArrayObj {
         ArrayObj {
             meta: self.meta,
             vec: Rc::new(RefCell::new(
@@ -515,7 +509,7 @@ impl<'a> SliceObj {
     }
 
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> SliceObj {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> SliceObj {
         SliceObj {
             meta: self.meta,
             is_nil: self.is_nil,
@@ -723,7 +717,7 @@ pub struct StructObj {
 }
 
 impl StructObj {
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> StructObj {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> StructObj {
         StructObj {
             meta: self.meta,
             fields: Vec::from_iter(self.fields.iter().map(|x| x.deep_clone(gcos))),
@@ -959,7 +953,7 @@ impl PointerObj {
         }
     }
 
-    pub fn deep_clone(&self, gcos: &mut GcoVec) -> PointerObj {
+    pub fn deep_clone(&self, gcos: &GcoVec) -> PointerObj {
         match &self {
             PointerObj::Released => PointerObj::Released,
             PointerObj::Struct(s, m) => PointerObj::Struct(
@@ -1398,7 +1392,7 @@ impl FunctionVal {
         package: PackageKey,
         meta: GosMetadata,
         objs: &VMObjects,
-        gcv: &mut GcoVec,
+        gcv: &GcoVec,
         ctor: bool,
     ) -> FunctionVal {
         match &objs.metas[meta.as_non_ptr()] {

@@ -266,7 +266,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &mut GcoVec) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &GcoVec) {
         if t.copyable() {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
@@ -289,13 +289,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_val(
-        &self,
-        target: &mut GosValue,
-        r_index: OpIndex,
-        t: ValueType,
-        gcos: &mut GcoVec,
-    ) {
+    pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
             if t.copyable() {
@@ -319,13 +313,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(
-        &mut self,
-        index: usize,
-        meta: GosMetadata,
-        t: ValueType,
-        gcos: &mut GcoVec,
-    ) {
+    pub fn pack_variadic(&mut self, index: usize, meta: GosMetadata, t: ValueType, gcos: &GcoVec) {
         if index < self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));

@@ -298,7 +298,7 @@ pub fn store_index(
     key: &GosValue,
     r_index: OpIndex,
     t: ValueType,
-    gcos: &mut GcoVec,
+    gcos: &GcoVec,
 ) {
     match target {
         GosValue::Array(arr) => {
@@ -326,7 +326,7 @@ pub fn store_index_int(
     i: usize,
     r_index: OpIndex,
     t: ValueType,
-    gcos: &mut GcoVec,
+    gcos: &GcoVec,
 ) -> RuntimeResult {
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
@@ -372,7 +372,7 @@ pub fn store_field(
     r_index: OpIndex,
     t: ValueType,
     metas: &MetadataObjs,
-    gcos: &mut GcoVec,
+    gcos: &GcoVec,
 ) {
     match target {
         GosValue::Struct(s) => {

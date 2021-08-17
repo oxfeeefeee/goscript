@@ -36,7 +36,7 @@ impl<'a> EntryGen<'a> {
             objects: Box::pin(VMObjects::new()),
             ast_objs: asto,
             tc_objs: tco,
-            dummy_gcv: Vec::new(),
+            dummy_gcv: GcoVec::new(),
             packages: Vec::new(),
             iface_mapping: IfaceMapping::new(),
             pkg_indices: HashMap::new(),
@@ -58,7 +58,7 @@ impl<'a> EntryGen<'a> {
             null_key!(),
             fmeta.clone(),
             &mut self.objects,
-            &mut self.dummy_gcv,
+            &self.dummy_gcv,
             false,
         );
         let fkey = *f.as_function();

@@ -293,12 +293,12 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn zero_val(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
+    pub fn zero_val(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
         self.zero_val_impl(mobjs, gcos)
     }
 
     #[inline]
-    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
+    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
             GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
@@ -345,7 +345,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn default_val(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
+    pub fn default_val(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
         match &self {
             GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),

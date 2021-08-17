@@ -113,7 +113,7 @@ impl Fiber {
     fn run(
         &mut self,
         code: &ByteCode,
-        gcv: &mut GcoVec,
+        gcv: &GcoVec,
         ffi_factory: &FfiFactory,
         fs: Option<&FileSet>,
     ) {
@@ -126,7 +126,7 @@ impl Fiber {
     fn main_loop(
         &mut self,
         code: &ByteCode,
-        gcv: &mut GcoVec,
+        gcv: &GcoVec,
         ffi_factory: &FfiFactory,
         fs: Option<&FileSet>,
     ) {
@@ -1249,8 +1249,8 @@ impl GosVM {
 
     pub fn run(&mut self, ffi: &FfiFactory, fs: Option<&FileSet>) {
         let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
-        let mut gcv = GcoVec::new();
-        fb.run(&self.code, &mut gcv, ffi, fs);
+        let gcv = GcoVec::new();
+        fb.run(&self.code, &gcv, ffi, fs);
     }
 }
 
