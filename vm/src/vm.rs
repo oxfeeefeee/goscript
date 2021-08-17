@@ -407,7 +407,7 @@ impl Fiber {
                     Opcode::LOAD_PKG_FIELD => {
                         let index = inst.imm();
                         let pkg_key = read_imm_pkg!(code, frame, objs);
-                        let pkg = &mut objs.packages[pkg_key];
+                        let pkg = &objs.packages[pkg_key];
                         stack.push(pkg.member(index).clone());
                     }
                     Opcode::STORE_PKG_FIELD => {

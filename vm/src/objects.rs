@@ -176,7 +176,6 @@ pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
 
 #[derive(Debug)]
 pub struct MapObj {
-    pub dark: bool,
     pub meta: GosMetadata,
     default_val: RefCell<GosValue>,
     pub map: Option<Rc<RefCell<GosHashMap>>>,
@@ -185,7 +184,6 @@ pub struct MapObj {
 impl MapObj {
     pub fn new(meta: GosMetadata, default_val: GosValue) -> MapObj {
         MapObj {
-            dark: false,
             meta: meta,
             default_val: RefCell::new(default_val),
             map: Some(Rc::new(RefCell::new(HashMap::new()))),
@@ -194,7 +192,6 @@ impl MapObj {
 
     pub fn new_nil(meta: GosMetadata, default_val: GosValue) -> MapObj {
         MapObj {
-            dark: false,
             meta: meta,
             default_val: RefCell::new(default_val),
             map: None,
@@ -217,7 +214,6 @@ impl MapObj {
             ))
         });
         MapObj {
-            dark: false,
             meta: self.meta,
             default_val: self.default_val.clone(),
             map: m,
@@ -286,7 +282,6 @@ impl MapObj {
 impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
-            dark: false,
             meta: self.meta,
             default_val: self.default_val.clone(),
             map: self.map.clone(),
