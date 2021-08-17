@@ -414,7 +414,7 @@ impl Fiber {
                         let (rhs_index, imm) = inst.imm824();
                         let pkg = &mut objs.packages[read_imm_pkg!(code, frame, objs)];
                         stack.store_val(
-                            pkg.member_mut(imm),
+                            &mut pkg.member_mut(imm),
                             rhs_index,
                             inst.t0(),
                             &mut objs.gcobjs,
@@ -485,7 +485,7 @@ impl Fiber {
                                     }
                                     PointerObj::PkgMember(p, index) => {
                                         let target: &mut GosValue =
-                                            objs.packages[*p].member_mut(*index);
+                                            &mut objs.packages[*p].member_mut(*index);
                                         stack.store_val(
                                             target,
                                             rhs_index,

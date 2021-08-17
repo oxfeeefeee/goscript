@@ -1281,7 +1281,7 @@ impl ClosureObj {
 #[derive(Clone, Debug)]
 pub struct PackageVal {
     name: String,
-    members: Vec<GosValue>, // imports, const, var, func are all stored here
+    members: Vec<Rc<RefCell<GosValue>>>, // imports, const, var, func are all stored here
     member_indices: HashMap<String, OpIndex>,
     // maps func_member_index of the constructor to pkg_member_index
     var_mapping: Option<HashMap<OpIndex, OpIndex>>,
@@ -1298,7 +1298,7 @@ impl PackageVal {
     }
 
     pub fn add_member(&mut self, name: String, val: GosValue) -> OpIndex {
-        self.members.push(val);
+        self.members.push(Rc::new(RefCell::new(val)));
         let index = (self.members.len() - 1) as OpIndex;
         self.member_indices.insert(name, index);
         index as OpIndex
@@ -1313,9 +1313,9 @@ impl PackageVal {
         index
     }
 
-    pub fn var_mut(&mut self, fn_member_index: OpIndex) -> &mut GosValue {
+    pub fn var_mut(&self, fn_member_index: OpIndex) -> RefMut<GosValue> {
         let index = self.var_mapping.as_ref().unwrap()[&fn_member_index];
-        &mut self.members[index as usize]
+        self.members[index as usize].borrow_mut()
     }
 
     pub fn var_count(&self) -> usize {
@@ -1335,13 +1335,13 @@ impl PackageVal {
     }
 
     #[inline]
-    pub fn member(&self, i: OpIndex) -> &GosValue {
-        &self.members[i as usize]
+    pub fn member(&self, i: OpIndex) -> Ref<GosValue> {
+        self.members[i as usize].borrow()
     }
 
     #[inline]
-    pub fn member_mut(&mut self, i: OpIndex) -> &mut GosValue {
-        &mut self.members[i as usize]
+    pub fn member_mut(&self, i: OpIndex) -> RefMut<GosValue> {
+        self.members[i as usize].borrow_mut()
     }
 }
 

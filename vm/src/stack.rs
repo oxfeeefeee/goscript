@@ -337,7 +337,7 @@ impl Stack {
     pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;
-            let var = pkg.var_mut(var_index);
+            let var: &mut GosValue = &mut pkg.var_mut(var_index);
             let t = var.get_type();
             *var = self.pop_with_type(t);
         }
