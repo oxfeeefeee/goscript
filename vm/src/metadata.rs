@@ -1,4 +1,4 @@
-use super::gc::GcObjs;
+use super::gc::GcoVec;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
@@ -8,8 +8,8 @@ use std::rc::Rc;
 
 #[macro_export]
 macro_rules! zero_val {
-    ($meta:ident, $objs:expr) => {
-        $meta.zero_val(&$objs.metas, &mut $objs.gcobjs)
+    ($meta:ident, $objs:expr, $gcv:expr) => {
+        $meta.zero_val(&$objs.metas, $gcv)
     };
 }
 
@@ -129,13 +129,13 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn new_struct(f: Fields, objs: &mut VMObjects) -> GosMetadata {
-        let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| zero_val!(x, objs)).collect();
+    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> GosMetadata {
+        let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| zero_val!(x, objs, gcv)).collect();
         let struct_val = StructObj {
             meta: GosMetadata::Untyped, // placeholder, will be set below
             fields: field_zeros,
         };
-        let gos_struct = GosValue::new_struct(struct_val, &mut objs.gcobjs);
+        let gos_struct = GosValue::new_struct(struct_val, gcv);
         let key = objs.metas.insert(MetadataType::Struct(f, gos_struct));
         let gosm = GosMetadata::NonPtr(key, MetaCategory::Default);
         match &mut objs.metas[key] {
@@ -293,12 +293,12 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn zero_val(&self, mobjs: &MetadataObjs, gcos: &mut GcObjs) -> GosValue {
+    pub fn zero_val(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
         self.zero_val_impl(mobjs, gcos)
     }
 
     #[inline]
-    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &mut GcObjs) -> GosValue {
+    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
         match &self {
             GosMetadata::Untyped => GosValue::Nil(*self),
             GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
@@ -345,7 +345,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn default_val(&self, mobjs: &MetadataObjs, gcos: &mut GcObjs) -> GosValue {
+    pub fn default_val(&self, mobjs: &MetadataObjs, gcos: &mut GcoVec) -> GosValue {
         match &self {
             GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::Bool(false),

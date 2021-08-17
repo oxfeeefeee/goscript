@@ -37,7 +37,7 @@ impl Fmt {
     }
 
     fn printf(&self, params: Vec<GosValue>) {
-        let vec = params[0].as_slice().0.get_vec();
+        let _vec = params[0].as_slice().0.get_vec();
         unimplemented!();
     }
 }

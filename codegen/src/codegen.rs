@@ -11,6 +11,7 @@ use super::interface::IfaceMapping;
 use super::package::PkgUtil;
 use super::types::{TypeCache, TypeLookup};
 
+use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::objects::EntIndex;
@@ -50,6 +51,7 @@ pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
+    dummy_gcv: &'a mut GcoVec,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     pkg_util: PkgUtil<'a>,
@@ -66,6 +68,7 @@ impl<'a> CodeGen<'a> {
         vmo: &'a mut VMObjects,
         asto: &'a AstObjects,
         tco: &'a TCObjects,
+        dummy_gcv: &'a mut GcoVec,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
         mapping: &'a mut IfaceMapping,
@@ -79,6 +82,7 @@ impl<'a> CodeGen<'a> {
             objects: vmo,
             ast_objs: asto,
             tc_objs: tco,
+            dummy_gcv: dummy_gcv,
             tlookup: TypeLookup::new(tco, ti, type_cache),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
@@ -152,8 +156,10 @@ impl<'a> CodeGen<'a> {
             return (EntIndex::Blank, None, pos);
         }
         if is_def {
-            let meta = self.tlookup.gen_def_type_meta(*ikey, self.objects);
-            let zero_val = zero_val!(meta, self.objects);
+            let meta = self
+                .tlookup
+                .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
+            let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
             let func = current_func_mut!(self);
             let ident_key = ident.entity.clone().into_key();
             let index = func.add_local(ident_key);
@@ -275,9 +281,11 @@ impl<'a> CodeGen<'a> {
                                 )
                             }
                             None => {
-                                let t = self
-                                    .tlookup
-                                    .get_meta_by_node_id(sexpr.expr.id(), self.objects);
+                                let t = self.tlookup.get_meta_by_node_id(
+                                    sexpr.expr.id(),
+                                    self.objects,
+                                    self.dummy_gcv,
+                                );
                                 let name = &self.ast_objs.idents[sexpr.sel].name;
                                 let i = t.field_index(name, &self.objects.metas);
 
@@ -385,7 +393,7 @@ impl<'a> CodeGen<'a> {
                         Expr::TypeAssert(tae) => {
                             self.visit_expr(&tae.expr);
                             let t = self.tlookup.get_expr_tc_type(tae.typ.as_ref().unwrap());
-                            let meta = self.tlookup.meta_from_tc(t, self.objects);
+                            let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
                             let func = current_func_mut!(self);
                             let index = func.add_const(None, GosValue::Metadata(meta));
                             func.emit_code_with_flag_imm(
@@ -634,8 +642,10 @@ impl<'a> CodeGen<'a> {
         body: &BlockStmt,
     ) -> FunctionKey {
         let typ = &self.ast_objs.ftypes[fkey];
-        let fmeta = self.tlookup.meta_from_tc(tc_type, &mut self.objects);
-        let f = GosValue::new_function(self.pkg_key, fmeta, &mut self.objects, false);
+        let fmeta = self
+            .tlookup
+            .meta_from_tc(tc_type, &mut self.objects, self.dummy_gcv);
+        let f = GosValue::new_function(self.pkg_key, fmeta, self.objects, self.dummy_gcv, false);
         let fkey = *f.as_function();
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
         if let Some(fl) = &typ.results {
@@ -695,9 +705,12 @@ impl<'a> CodeGen<'a> {
                     None => (true, ValueType::Slice), // it must be a variadic parameter
                 };
                 if cast {
-                    let index =
-                        self.iface_mapping
-                            .get_index(&(t0, rhs), &mut self.tlookup, self.objects);
+                    let index = self.iface_mapping.get_index(
+                        &(t0, rhs),
+                        &mut self.tlookup,
+                        self.objects,
+                        self.dummy_gcv,
+                    );
                     current_func_emitter!(self).emit_cast(
                         ValueType::Interface,
                         typ,
@@ -742,8 +755,8 @@ impl<'a> CodeGen<'a> {
 
     fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
         let t = self.tlookup.get_expr_tc_type(expr);
-        let meta = self.tlookup.meta_from_tc(t, self.objects);
-        let zero_val = zero_val!(meta, self.objects);
+        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
+        let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
         (zero_val, t)
     }
 
@@ -757,7 +770,9 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_composite_literal(&mut self, clit: &CompositeLit, tctype: TCTypeKey) {
-        let meta = self.tlookup.meta_from_tc(tctype, &mut self.objects);
+        let meta = self
+            .tlookup
+            .meta_from_tc(tctype, &mut self.objects, self.dummy_gcv);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
         let (mkey, mc) = meta.get_underlying(&self.objects.metas).unwrap_non_ptr();
@@ -831,7 +846,9 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_type_meta(&mut self, typ: &Expr) {
-        let m = self.tlookup.get_meta_by_node_id(typ.id(), self.objects);
+        let m = self
+            .tlookup
+            .get_meta_by_node_id(typ.id(), self.objects, self.dummy_gcv);
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Metadata(m));
         let pos = Some(typ.pos(&self.ast_objs));
@@ -863,8 +880,10 @@ impl<'a> CodeGen<'a> {
         for v in vars.iter() {
             for n in v.names.iter() {
                 let ident = &self.ast_objs.idents[*n];
-                let meta = self.tlookup.gen_def_type_meta(*n, self.objects);
-                let val = zero_val!(meta, self.objects);
+                let meta = self
+                    .tlookup
+                    .gen_def_type_meta(*n, self.objects, self.dummy_gcv);
+                let val = zero_val!(meta, self.objects, self.dummy_gcv);
                 self.objects.packages[pkey].add_member(ident.name.clone(), val);
             }
         }
@@ -873,7 +892,7 @@ impl<'a> CodeGen<'a> {
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.metadata.default_sig;
-        let f = GosValue::new_function(pkey, fmeta, &mut self.objects, true);
+        let f = GosValue::new_function(pkey, fmeta, self.objects, self.dummy_gcv, true);
         let fkey = *f.as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
@@ -974,7 +993,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         let (t0, t1) = self.tlookup.get_selection_value_types(this.id());
-        let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
+        let meta = self
+            .tlookup
+            .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
         let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
             if meta
@@ -1067,7 +1088,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     self.try_cast_params_to_iface(t, params, ellipsis);
                     if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
                         // FFI needs the signature of the call
-                        let meta = self.tlookup.meta_from_tc(t, self.objects);
+                        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
                         let mut emitter = current_func_emitter!(self);
                         let i = emitter.add_const(None, GosValue::Metadata(meta));
                         emitter.emit_load(i, None, ValueType::Metadata, pos);
@@ -1127,6 +1148,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                     &(tct0, Some(tct1)),
                                     &mut self.tlookup,
                                     self.objects,
+                                    self.dummy_gcv,
                                 )
                             } else {
                                 0
@@ -1169,7 +1191,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             OperandMode::TypeExpr => {
                 let m = self
                     .tlookup
-                    .meta_from_tc(self.tlookup.get_expr_tc_type(expr), self.objects)
+                    .meta_from_tc(
+                        self.tlookup.get_expr_tc_type(expr),
+                        self.objects,
+                        self.dummy_gcv,
+                    )
                     .ptr_to();
                 let mut emitter = current_func_emitter!(self);
                 let index = emitter.add_const(None, GosValue::Metadata(m));
@@ -1192,7 +1218,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let index = self.resolve_ident(ikey);
                     match index {
                         EntIndex::LocalVar(i) => {
-                            let meta = self.tlookup.get_meta_by_node_id(expr.id(), self.objects);
+                            let meta = self.tlookup.get_meta_by_node_id(
+                                expr.id(),
+                                self.objects,
+                                self.dummy_gcv,
+                            );
                             let t = meta.get_value_type(&self.objects.metas);
                             let ut = meta
                                 .get_underlying(&self.objects.metas)
@@ -1281,9 +1311,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                     None => {
                         self.visit_expr(&sexpr.expr);
-                        let t0 = self
-                            .tlookup
-                            .get_meta_by_node_id(sexpr.expr.id(), &mut self.objects);
+                        let t0 = self.tlookup.get_meta_by_node_id(
+                            sexpr.expr.id(),
+                            &mut self.objects,
+                            self.dummy_gcv,
+                        );
                         let name = &self.ast_objs.idents[sexpr.sel].name;
                         let i = t0.field_index(name, &self.objects.metas);
                         current_func_mut!(self).emit_code_with_type_imm(
@@ -1440,7 +1472,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 }
                 Spec::Type(ts) => {
                     let ident = self.ast_objs.idents[ts.name].clone();
-                    let m = self.tlookup.gen_def_type_meta(ts.name, self.objects);
+                    let m = self
+                        .tlookup
+                        .gen_def_type_meta(ts.name, self.objects, self.dummy_gcv);
                     self.current_func_add_const_def(&ident, GosValue::Metadata(m));
                 }
                 Spec::Value(vs) => match &gdecl.token {
@@ -1470,9 +1504,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
             let name = &self.ast_objs.idents[decl.name].name;
-            let meta = self
-                .tlookup
-                .get_meta_by_node_id(field.typ.id(), self.objects);
+            let meta =
+                self.tlookup
+                    .get_meta_by_node_id(field.typ.id(), self.objects, self.dummy_gcv);
             meta.set_method_code(name, fkey, &mut self.objects.metas);
         } else {
             let ident = &self.ast_objs.idents[decl.name];

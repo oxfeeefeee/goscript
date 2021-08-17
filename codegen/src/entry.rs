@@ -10,6 +10,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
 use goscript_types::{Config, PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
@@ -21,6 +22,7 @@ pub struct EntryGen<'a> {
     objects: Pin<Box<VMObjects>>,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
+    dummy_gcv: GcoVec,
     packages: Vec<PackageKey>,
     iface_mapping: IfaceMapping,
     // pkg_indices maps TCPackageKey to the index (in the generated code) of the package
@@ -34,6 +36,7 @@ impl<'a> EntryGen<'a> {
             objects: Box::pin(VMObjects::new()),
             ast_objs: asto,
             tc_objs: tco,
+            dummy_gcv: Vec::new(),
             packages: Vec::new(),
             iface_mapping: IfaceMapping::new(),
             pkg_indices: HashMap::new(),
@@ -51,7 +54,13 @@ impl<'a> EntryGen<'a> {
     ) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let fmeta = self.objects.metadata.default_sig;
-        let f = GosValue::new_function(null_key!(), fmeta.clone(), &mut self.objects, false);
+        let f = GosValue::new_function(
+            null_key!(),
+            fmeta.clone(),
+            &mut self.objects,
+            &mut self.dummy_gcv,
+            false,
+        );
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];
         let mut emitter = Emitter::new(func);
@@ -93,6 +102,7 @@ impl<'a> EntryGen<'a> {
                 &mut self.objects,
                 self.ast_objs,
                 self.tc_objs,
+                &mut self.dummy_gcv,
                 &ti,
                 &mut type_cache,
                 &mut self.iface_mapping,

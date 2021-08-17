@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::rc::{Rc, Weak};
 
-pub type GcObjs = Vec<GcWeak>;
+pub type GcoVec = Vec<GcWeak>;
 
 #[derive(Debug, Clone)]
 pub enum GcWeak {
@@ -189,7 +189,7 @@ fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
     p0
 }
 
-pub fn gc(objs: &mut GcObjs) {
+pub fn gc(objs: &mut GcoVec) {
     let mut to_scan: Vec<GosValue> = objs.iter().filter_map(|o| o.to_gosv()).collect();
     print!("objs before GC: {}\n", to_scan.len());
     for v in to_scan.iter() {

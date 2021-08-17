@@ -2,6 +2,7 @@
 
 use super::types::TypeLookup;
 use goscript_types::TypeKey as TCTypeKey;
+use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::objects::{FunctionKey, VMObjects};
@@ -39,11 +40,12 @@ impl IfaceMapping {
         i_s: &(TCTypeKey, Option<TCTypeKey>),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
     ) -> OpIndex {
         if let Some(i) = self.iface_indices.get(i_s) {
             return *i;
         }
-        let mapping = IfaceMapping::get_iface_info(i_s, lookup, objs);
+        let mapping = IfaceMapping::get_iface_info(i_s, lookup, objs, dummy_gcv);
         let index = self.ifaces.len() as OpIndex;
         self.ifaces.push(mapping);
         self.iface_indices.insert(*i_s, index);
@@ -54,12 +56,13 @@ impl IfaceMapping {
         i_s: &(TCTypeKey, Option<TCTypeKey>),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
     ) -> (GosMetadata, Vec<Rc<RefCell<MethodDesc>>>) {
-        let i = lookup.meta_from_tc(i_s.0, objs);
+        let i = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
         if i_s.1.is_none() {
             return (i, vec![]);
         }
-        let s = lookup.meta_from_tc(i_s.1.unwrap(), objs);
+        let s = lookup.meta_from_tc(i_s.1.unwrap(), objs, dummy_gcv);
         let ifields = match &objs.metas[i.as_non_ptr()] {
             MetadataType::Named(_, iface) => match &objs.metas[iface.as_non_ptr()] {
                 MetadataType::Interface(m) => m,

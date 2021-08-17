@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::gc::GcObjs;
+use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
 use super::value::*;
@@ -266,7 +266,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &mut GcObjs) {
+    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &mut GcoVec) {
         if t.copyable() {
             *self.get_c_mut(li) = *self.get_c(ri);
         } else {
@@ -294,7 +294,7 @@ impl Stack {
         target: &mut GosValue,
         r_index: OpIndex,
         t: ValueType,
-        gcos: &mut GcObjs,
+        gcos: &mut GcoVec,
     ) {
         let val = if r_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), r_index);
@@ -324,7 +324,7 @@ impl Stack {
         index: usize,
         meta: GosMetadata,
         t: ValueType,
-        gcos: &mut GcObjs,
+        gcos: &mut GcoVec,
     ) {
         if index < self.len() {
             let mut v = Vec::new();
@@ -334,7 +334,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn init_pkg_vars(&mut self, pkg: &mut PackageVal, count: usize) {
+    pub fn init_pkg_vars(&mut self, pkg: &PackageVal, count: usize) {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;
             let var: &mut GosValue = &mut pkg.var_mut(var_index);

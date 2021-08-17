@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::ffi::FfiFactory;
-use super::gc;
+use super::gc::{gc, GcoVec};
 use super::instruction::*;
 use super::metadata::*;
 use super::objects::{u64_to_key, ClosureObj, GosHashMap, SliceEnumIter, SliceRef, StringEnumIter};
@@ -110,15 +110,27 @@ impl Fiber {
         }
     }
 
-    fn run(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory, fs: Option<&FileSet>) {
+    fn run(
+        &mut self,
+        code: &ByteCode,
+        gcv: &mut GcoVec,
+        ffi_factory: &FfiFactory,
+        fs: Option<&FileSet>,
+    ) {
         let cls = GosValue::new_closure(code.entry, &code.objects.functions);
         let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
         self.frames.push(frame);
-        self.main_loop(code, ffi_factory, fs);
+        self.main_loop(code, gcv, ffi_factory, fs);
     }
 
-    fn main_loop(&mut self, code: &mut ByteCode, ffi_factory: &FfiFactory, fs: Option<&FileSet>) {
-        let objs: &mut VMObjects = &mut code.objects;
+    fn main_loop(
+        &mut self,
+        code: &ByteCode,
+        gcv: &mut GcoVec,
+        ffi_factory: &FfiFactory,
+        fs: Option<&FileSet>,
+    ) {
+        let objs: &VMObjects = &code.objects;
         let pkgs = &code.packages;
         let ifaces = &code.ifaces;
         let mut frame = self.frames.last_mut().unwrap();
@@ -169,7 +181,7 @@ impl Fiber {
                         // Slice/Map/Array are special cases here because, they are stored literal,
                         // and when it gets cloned, the underlying rust vec is not copied
                         // which leads to all function calls shares the same vec instance
-                        stack.push(gos_val.deep_clone(&mut objs.gcobjs));
+                        stack.push(gos_val.deep_clone(gcv));
                     }
                     Opcode::PUSH_NIL => stack.push_nil(),
                     Opcode::PUSH_FALSE => stack.push_bool(false),
@@ -185,7 +197,7 @@ impl Fiber {
                     Opcode::STORE_LOCAL => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack_base, index);
-                        store_local!(stack, s_index, rhs_index, inst.t0(), &mut objs.gcobjs);
+                        store_local!(stack, s_index, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
@@ -204,7 +216,7 @@ impl Fiber {
                             self.frames,
                             rhs_index,
                             inst.t0(),
-                            &mut objs.gcobjs
+                            gcv
                         );
                         frame = self.frames.last_mut().unwrap();
                     }
@@ -247,14 +259,7 @@ impl Fiber {
                         let s_index = Stack::offset(stack.len(), index);
                         let key = stack.get_with_type(s_index + 1, inst.t2());
                         let target = &stack.get_with_type(s_index, inst.t1());
-                        vm_util::store_index(
-                            stack,
-                            target,
-                            &key,
-                            rhs_index,
-                            inst.t0(),
-                            &mut objs.gcobjs,
-                        );
+                        vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::STORE_INDEX_IMM => {
                         // the only place we can store the immediate index is t2
@@ -268,7 +273,7 @@ impl Fiber {
                             imm as usize,
                             rhs_index,
                             inst.t0(),
-                            &mut objs.gcobjs,
+                            gcv,
                         ) {
                             panic_msg = Some(s);
                             break;
@@ -306,7 +311,7 @@ impl Fiber {
                             RefCell::new(ClosureObj::new_gos(
                                 func,
                                 &objs.functions,
-                                Some(val.copy_semantic(&mut objs.gcobjs)),
+                                Some(val.copy_semantic(gcv)),
                             )),
                             Cell::new(0),
                         ))));
@@ -325,7 +330,7 @@ impl Fiber {
                                 let cls = ClosureObj::new_gos(
                                     func,
                                     &objs.functions,
-                                    Some(val.copy_semantic(&mut objs.gcobjs)),
+                                    Some(val.copy_semantic(gcv)),
                                 );
                                 GosValue::Closure(Rc::new((RefCell::new(cls), Cell::new(0))))
                             }
@@ -365,7 +370,7 @@ impl Fiber {
                                     rhs_index,
                                     inst.t0(),
                                     &objs.metas,
-                                    &mut objs.gcobjs,
+                                    gcv,
                                 );
                             }
                             _ => vm_util::store_field(
@@ -375,7 +380,7 @@ impl Fiber {
                                 rhs_index,
                                 inst.t0(),
                                 &objs.metas,
-                                &mut objs.gcobjs,
+                                gcv,
                             ),
                         };
                     }
@@ -392,11 +397,11 @@ impl Fiber {
                             GosValue::Named(n) => {
                                 let field =
                                     &mut n.0.as_struct().0.borrow_mut().fields[imm as usize];
-                                stack.store_val(field, rhs_index, inst.t0(), &mut objs.gcobjs);
+                                stack.store_val(field, rhs_index, inst.t0(), gcv);
                             }
                             GosValue::Struct(s) => {
                                 let field = &mut s.0.borrow_mut().fields[imm as usize];
-                                stack.store_val(field, rhs_index, inst.t0(), &mut objs.gcobjs);
+                                stack.store_val(field, rhs_index, inst.t0(), gcv);
                             }
                             _ => {
                                 dbg!(&target);
@@ -412,13 +417,8 @@ impl Fiber {
                     }
                     Opcode::STORE_PKG_FIELD => {
                         let (rhs_index, imm) = inst.imm824();
-                        let pkg = &mut objs.packages[read_imm_pkg!(code, frame, objs)];
-                        stack.store_val(
-                            &mut pkg.member_mut(imm),
-                            rhs_index,
-                            inst.t0(),
-                            &mut objs.gcobjs,
-                        );
+                        let pkg = &objs.packages[read_imm_pkg!(code, frame, objs)];
+                        stack.store_val(&mut pkg.member_mut(imm), rhs_index, inst.t0(), gcv);
                     }
                     Opcode::STORE_DEREF => {
                         let (rhs_index, index) = inst.imm824();
@@ -435,7 +435,7 @@ impl Fiber {
                                             self.frames,
                                             rhs_index,
                                             inst.t0(),
-                                            &mut objs.gcobjs
+                                            gcv
                                         );
                                         frame = self.frames.last_mut().unwrap();
                                     }
@@ -466,32 +466,17 @@ impl Fiber {
                                         let target: &mut GosValue = &mut vborrow
                                             [s.0.begin() + *index as usize]
                                             .borrow_mut();
-                                        stack.store_val(
-                                            target,
-                                            rhs_index,
-                                            inst.t0(),
-                                            &mut objs.gcobjs,
-                                        );
+                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
                                     }
                                     PointerObj::StructField(s, index) => {
                                         let target: &mut GosValue =
                                             &mut s.0.borrow_mut().fields[*index as usize];
-                                        stack.store_val(
-                                            target,
-                                            rhs_index,
-                                            inst.t0(),
-                                            &mut objs.gcobjs,
-                                        );
+                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
                                     }
                                     PointerObj::PkgMember(p, index) => {
                                         let target: &mut GosValue =
                                             &mut objs.packages[*p].member_mut(*index);
-                                        stack.store_val(
-                                            target,
-                                            rhs_index,
-                                            inst.t0(),
-                                            &mut objs.gcobjs,
-                                        );
+                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
                                     }
                                     PointerObj::Released => unreachable!(),
                                 };
@@ -511,14 +496,14 @@ impl Fiber {
                                         GosValue::new_iface(
                                             *md,
                                             IfaceUnderlying::Gos(under, iface.1),
-                                            &mut objs.gcobjs,
+                                            gcv,
                                         ),
                                         iface.0,
                                     ))),
                                     MetadataType::Interface(_) => GosValue::new_iface(
                                         iface.0,
                                         IfaceUnderlying::Gos(under, iface.1),
-                                        &mut objs.gcobjs,
+                                        gcv,
                                     ),
                                     _ => unreachable!(),
                                 };
@@ -576,7 +561,7 @@ impl Fiber {
                                 };
                                 stack.set(
                                     rhs_s_index,
-                                    GosValue::slice_with_val(result.1, result.0, &mut objs.gcobjs),
+                                    GosValue::slice_with_val(result.1, result.0, gcv),
                                 )
                             }
                             ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
@@ -646,7 +631,7 @@ impl Fiber {
                         let mut slice = stack.pop_with_type(typ);
                         // create a slice if it's an array
                         if typ == ValueType::Array {
-                            slice = GosValue::slice_with_array(&slice, 0, -1, &mut objs.gcobjs);
+                            slice = GosValue::slice_with_array(&slice, 0, -1, gcv);
                         }
                         stack.push(GosValue::new_pointer(PointerObj::SliceMember(
                             slice.as_slice().clone(),
@@ -742,7 +727,7 @@ impl Fiber {
                                     if inst_op != Opcode::CALL_ELLIPSIS {
                                         let index =
                                             stack_base + func.param_count() + func.ret_count() - 1;
-                                        stack.pack_variadic(index, meta, vt, &mut objs.gcobjs);
+                                        stack.pack_variadic(index, meta, vt, gcv);
                                     }
                                 }
 
@@ -793,7 +778,7 @@ impl Fiber {
                             Opcode::RETURN_INIT_PKG => {
                                 let index = inst.imm() as usize;
                                 let pkey = pkgs[index];
-                                let pkg = &mut objs.packages[pkey];
+                                let pkg = &objs.packages[pkey];
                                 let count = pkg.var_count();
                                 // remove garbage first
                                 debug_assert!(stack.len() == stack_base + count);
@@ -938,7 +923,7 @@ impl Fiber {
 
                     Opcode::TYPE_ASSERT => {
                         let val = match stack.pop_interface().0.borrow().underlying() {
-                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(&mut objs.gcobjs),
+                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
                         let meta = GosValue::Metadata(val.get_meta(objs, stack));
@@ -956,7 +941,7 @@ impl Fiber {
                     }
                     Opcode::TYPE => {
                         let val = match stack.pop_interface().0.borrow().underlying() {
-                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(&mut objs.gcobjs),
+                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
                         stack.push(GosValue::Metadata(val.get_meta(objs, stack)));
@@ -986,7 +971,7 @@ impl Fiber {
                             ))),
                             GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                             GosValue::Array(_) => {
-                                GosValue::slice_with_array(&target, begin, end, &mut objs.gcobjs)
+                                GosValue::slice_with_array(&target, begin, end, gcv)
                             }
                             _ => unreachable!(),
                         };
@@ -1021,7 +1006,7 @@ impl Fiber {
                                     }
                                     frame = self.frames.last_mut().unwrap();
                                 }
-                                GosValue::new_runtime_closure(val, &mut objs.gcobjs)
+                                GosValue::new_runtime_closure(val, gcv)
                             }
                             GosValue::Metadata(md) => {
                                 let umd = md.get_underlying(&objs.metas);
@@ -1030,7 +1015,7 @@ impl Fiber {
                                 let val = match &objs.metas[key] {
                                     MetadataType::SliceOrArray(asm, _) => {
                                         let elem_type = asm.get_value_type(&objs.metas);
-                                        let zero_val = asm.zero_val(&objs.metas, &mut objs.gcobjs);
+                                        let zero_val = asm.zero_val(&objs.metas, gcv);
                                         let mut val = vec![];
                                         let mut cur_index = -1;
                                         for _ in 0..count {
@@ -1055,20 +1040,17 @@ impl Fiber {
                                         }
                                         match mc {
                                             MetaCategory::Default => {
-                                                GosValue::slice_with_val(val, *md, &mut objs.gcobjs)
+                                                GosValue::slice_with_val(val, *md, gcv)
                                             }
                                             MetaCategory::Array => {
-                                                GosValue::array_with_val(val, *md, &mut objs.gcobjs)
+                                                GosValue::array_with_val(val, *md, gcv)
                                             }
                                             _ => unreachable!(),
                                         }
                                     }
                                     MetadataType::Map(km, vm) => {
-                                        let gosv = GosValue::new_map(
-                                            *md,
-                                            zero_val!(vm, objs),
-                                            &mut objs.gcobjs,
-                                        );
+                                        let gosv =
+                                            GosValue::new_map(*md, zero_val!(vm, objs, gcv), gcv);
                                         let map = gosv.as_map();
                                         let tk = km.get_value_type(&objs.metas);
                                         let tv = vm.get_value_type(&objs.metas);
@@ -1080,7 +1062,7 @@ impl Fiber {
                                         gosv
                                     }
                                     MetadataType::Struct(f, zero) => {
-                                        let struct_val = zero.copy_semantic(&mut objs.gcobjs);
+                                        let struct_val = zero.copy_semantic(gcv);
                                         let mut sref = struct_val.as_struct().0.borrow_mut();
                                         for _ in 0..count {
                                             let index = stack.pop_uint();
@@ -1107,7 +1089,7 @@ impl Fiber {
                         let param = stack.pop_with_type(inst.t0());
                         let new_val = match param {
                             GosValue::Metadata(md) => {
-                                let v = md.default_val(&objs.metas, &mut objs.gcobjs);
+                                let v = md.default_val(&objs.metas, gcv);
                                 GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                             }
                             _ => unimplemented!(),
@@ -1134,13 +1116,13 @@ impl Fiber {
                                     len,
                                     cap,
                                     *meta,
-                                    Some(&zero_val!(vmeta, objs)),
-                                    &mut objs.gcobjs,
+                                    Some(&zero_val!(vmeta, objs, gcv)),
+                                    gcv,
                                 )
                             }
                             MetadataType::Map(_, v) => {
-                                let default = zero_val!(v, objs);
-                                GosValue::new_map(*meta, default, &mut objs.gcobjs)
+                                let default = zero_val!(v, objs, gcv);
+                                GosValue::new_map(*meta, default, gcv)
                             }
                             MetadataType::Channel => unimplemented!(),
                             _ => unreachable!(),
@@ -1170,7 +1152,7 @@ impl Fiber {
                         let index = Stack::offset(stack.len(), inst.imm());
                         let a = stack.get_with_type(index - 2, ValueType::Slice);
                         let vala = a.as_slice();
-                        stack.pack_variadic(index, vala.0.meta, inst.t1(), &mut objs.gcobjs);
+                        stack.pack_variadic(index, vala.0.meta, inst.t1(), gcv);
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();
                         vala.0
@@ -1203,7 +1185,7 @@ impl Fiber {
                                 GosValue::new_iface(
                                     meta,
                                     IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),
-                                    &mut objs.gcobjs,
+                                    gcv,
                                 )
                             }
                             Err(m) => {
@@ -1242,7 +1224,7 @@ impl Fiber {
         }
 
         stack.clear_rc_garbage();
-        gc::gc(&mut objs.gcobjs);
+        gc(gcv);
     }
 }
 
@@ -1267,7 +1249,8 @@ impl GosVM {
 
     pub fn run(&mut self, ffi: &FfiFactory, fs: Option<&FileSet>) {
         let mut fb = self.current_fiber.as_ref().unwrap().borrow_mut();
-        fb.run(&mut self.code, ffi, fs);
+        let mut gcv = GcoVec::new();
+        fb.run(&self.code, &mut gcv, ffi, fs);
     }
 }
 

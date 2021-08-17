@@ -1,6 +1,6 @@
 #![macro_use]
 use super::ffi::Ffi;
-use super::gc::GcObjs;
+use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
@@ -53,7 +53,6 @@ where
 
 #[derive(Debug)]
 pub struct VMObjects {
-    pub gcobjs: GcObjs,
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
@@ -65,7 +64,6 @@ impl VMObjects {
         let mut metas = DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
         let md = Metadata::new(&mut metas);
         VMObjects {
-            gcobjs: vec![],
             metas: metas,
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
@@ -199,7 +197,7 @@ impl MapObj {
     }
 
     /// deep_clone creates a new MapObj with duplicated content of 'self.map'
-    pub fn deep_clone(&self, gcos: &mut GcObjs) -> MapObj {
+    pub fn deep_clone(&self, gcos: &mut GcoVec) -> MapObj {
         let m = self.map.as_ref().map(|x| {
             Rc::new(RefCell::new(
                 x.borrow()
@@ -329,7 +327,7 @@ impl ArrayObj {
         size: usize,
         val: &GosValue,
         meta: GosMetadata,
-        gcos: &mut GcObjs,
+        gcos: &mut GcoVec,
     ) -> ArrayObj {
         let mut v = GosVec::with_capacity(size);
         for _ in 0..size {
@@ -350,7 +348,7 @@ impl ArrayObj {
         }
     }
 
-    pub fn deep_clone(&self, gcos: &mut GcObjs) -> ArrayObj {
+    pub fn deep_clone(&self, gcos: &mut GcoVec) -> ArrayObj {
         ArrayObj {
             meta: self.meta,
             vec: Rc::new(RefCell::new(
@@ -517,7 +515,7 @@ impl<'a> SliceObj {
     }
 
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
-    pub fn deep_clone(&self, gcos: &mut GcObjs) -> SliceObj {
+    pub fn deep_clone(&self, gcos: &mut GcoVec) -> SliceObj {
         SliceObj {
             meta: self.meta,
             is_nil: self.is_nil,
@@ -725,7 +723,7 @@ pub struct StructObj {
 }
 
 impl StructObj {
-    pub fn deep_clone(&self, gcos: &mut GcObjs) -> StructObj {
+    pub fn deep_clone(&self, gcos: &mut GcoVec) -> StructObj {
         StructObj {
             meta: self.meta,
             fields: Vec::from_iter(self.fields.iter().map(|x| x.deep_clone(gcos))),
@@ -961,7 +959,7 @@ impl PointerObj {
         }
     }
 
-    pub fn deep_clone(&self, gcos: &mut GcObjs) -> PointerObj {
+    pub fn deep_clone(&self, gcos: &mut GcoVec) -> PointerObj {
         match &self {
             PointerObj::Released => PointerObj::Released,
             PointerObj::Struct(s, m) => PointerObj::Struct(
@@ -1399,14 +1397,15 @@ impl FunctionVal {
     pub fn new(
         package: PackageKey,
         meta: GosMetadata,
-        objs: &mut VMObjects,
+        objs: &VMObjects,
+        gcv: &mut GcoVec,
         ctor: bool,
     ) -> FunctionVal {
         match &objs.metas[meta.as_non_ptr()] {
             MetadataType::Signature(s) => {
                 let mut returns = vec![];
                 for m in s.results.iter() {
-                    returns.push(zero_val!(m, objs));
+                    returns.push(zero_val!(m, objs, gcv));
                 }
                 let params = s.params.len() + s.recv.map_or(0, |_| 1);
                 let vtype = s.variadic.map(|(slice_type, elem_type)| {
