@@ -99,13 +99,16 @@ func break_cont_2() {
     assert(j == 3 * 4)
 
     j = 0
+    k := 0
     for i, r := range s {
+        k = i
         if i >= 2 {
             continue
         }
         j += r
     }
     assert(j == 3 * 2)
+    assert(k == 4)
 
 }
 

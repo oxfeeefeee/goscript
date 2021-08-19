@@ -42,17 +42,14 @@ impl BreakContinue {
     pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>, end: usize) {
         let points = self.points_vec.pop().unwrap();
         for (index, token) in points.data.iter() {
-            let offset = if *token == Token::BREAK {
-                (end - index) as OpIndex - 1
+            let current_pc = *index as OpIndex + 1;
+            let target = if *token == Token::BREAK {
+                end
             } else {
-                let begin = begin.unwrap();
-                if begin >= *index {
-                    (begin - index) as OpIndex - 1
-                } else {
-                    (index - begin) as OpIndex - 1
-                }
+                begin.unwrap()
             };
-            func.instruction_mut(*index).set_imm(offset);
+            func.instruction_mut(*index)
+                .set_imm(target as OpIndex - current_pc);
         }
     }
 }

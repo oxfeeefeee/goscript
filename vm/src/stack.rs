@@ -6,6 +6,7 @@ use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
+use std::mem;
 use std::rc::Rc;
 
 const DEFAULT_SIZE: usize = 10240;
@@ -528,6 +529,82 @@ impl Stack {
         let nil = GosValue::new_nil();
         for i in self.cursor..self.max {
             self.rc[i] = nil.clone();
+        }
+    }
+}
+
+/// store iterators for Opcode::RANGE
+pub struct RangeStack {
+    maps: Vec<std::collections::hash_map::Iter<'static, GosValue, RefCell<GosValue>>>,
+    slices: Vec<SliceEnumIter<'static>>,
+    strings: Vec<StringEnumIter<'static>>,
+}
+
+impl RangeStack {
+    pub fn new() -> RangeStack {
+        RangeStack {
+            maps: vec![],
+            slices: vec![],
+            strings: vec![],
+        }
+    }
+
+    pub fn range_init(&mut self, target: &GosValue) {
+        match target {
+            GosValue::Map(m) => {
+                let map = m.0.borrow_data();
+                let iter = unsafe { mem::transmute(map.iter()) };
+                self.maps.push(iter);
+            }
+            GosValue::Slice(sl) => {
+                let slice = sl.0.borrow_data();
+                let iter = unsafe { mem::transmute(slice.iter().enumerate()) };
+                self.slices.push(iter);
+            }
+            GosValue::Str(s) => {
+                let iter = unsafe { mem::transmute(s.iter().enumerate()) };
+                self.strings.push(iter);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn range_body(&mut self, typ: ValueType, stack: &mut Stack) -> bool {
+        match typ {
+            ValueType::Map => match self.maps.last_mut().unwrap().next() {
+                Some((k, v)) => {
+                    stack.push(k.clone());
+                    stack.push(v.clone().into_inner());
+                    false
+                }
+                None => {
+                    self.maps.pop();
+                    true
+                }
+            },
+            ValueType::Slice => match self.slices.last_mut().unwrap().next() {
+                Some((k, v)) => {
+                    stack.push_int(k as isize);
+                    stack.push(v.clone().into_inner());
+                    false
+                }
+                None => {
+                    self.slices.pop();
+                    true
+                }
+            },
+            ValueType::Str => match self.strings.last_mut().unwrap().next() {
+                Some((k, v)) => {
+                    stack.push_int(k as isize);
+                    stack.push_int(v as isize);
+                    false
+                }
+                None => {
+                    self.strings.pop();
+                    true
+                }
+            },
+            _ => unreachable!(),
         }
     }
 }
