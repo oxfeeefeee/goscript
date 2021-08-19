@@ -78,6 +78,7 @@ pub enum Opcode {
     JUMP_IF_NOT,
     SWITCH, // EQL + JUMP_IF + do not pop the first argument
     LOOP,
+    RANGE_INIT,
     RANGE, // for ... range statement
 
     // type
@@ -173,6 +174,7 @@ impl Opcode {
             Opcode::JUMP_IF => ("JUMP_IF", -1),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
             Opcode::SWITCH => ("SWITCH", -1),
+            Opcode::RANGE_INIT => ("RANGE_INIT", 0),
             Opcode::RANGE => ("RANGE", 1),
 
             Opcode::TYPE_ASSERT => ("TYPE_ASSERT", 0),

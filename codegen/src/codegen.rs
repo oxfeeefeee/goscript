@@ -439,21 +439,18 @@ impl<'a> CodeGen<'a> {
                 // the range statement
                 self.visit_expr(r);
                 let tkv = self.tlookup.get_range_tc_types(r);
+                let types = [
+                    Some(self.tlookup.value_type_from_tc(tkv[0])),
+                    Some(self.tlookup.value_type_from_tc(tkv[1])),
+                    Some(self.tlookup.value_type_from_tc(tkv[2])),
+                ];
                 let pos = Some(r.pos(&self.ast_objs));
                 current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, pos);
                 let func = current_func_mut!(self);
+                func.emit_inst(Opcode::RANGE_INIT, types, None, pos);
                 range_marker = Some(func.next_code_index());
                 // the block_end address to be set
-                func.emit_inst(
-                    Opcode::RANGE,
-                    [
-                        Some(self.tlookup.value_type_from_tc(tkv[0])),
-                        Some(self.tlookup.value_type_from_tc(tkv[1])),
-                        Some(self.tlookup.value_type_from_tc(tkv[2])),
-                    ],
-                    None,
-                    pos,
-                );
+                func.emit_inst(Opcode::RANGE, types, None, pos);
                 tkv[1..].to_vec()
             }
         };

@@ -903,76 +903,74 @@ impl<'a> Fiber<'a> {
                                 frame.pc = Stack::offset(frame.pc, inst.imm());
                             }
                         }
+                        Opcode::RANGE_INIT => {
+                            let len = stack.len();
+                            let t = stack.get_with_type(len - 2, inst.t0());
+                            let mut mark = *stack.get_with_type(len - 1, ValueType::Int).as_int();
+                            assert!(mark < 0);
+                            mark = range_slot;
+                            range_slot += 1;
+                            assert!(range_slot < 16);
+                            match mark {
+                                0 => range_init!(
+                                    objs, t, mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0
+                                ),
+                                1 => range_init!(
+                                    objs, t, mr1, mp1, mi1, lr1, lp1, li1, sr1, sp1, si1
+                                ),
+                                2 => range_init!(
+                                    objs, t, mr2, mp2, mi2, lr2, lp2, li2, sr2, sp2, si2
+                                ),
+                                3 => range_init!(
+                                    objs, t, mr3, mp3, mi3, lr3, lp3, li3, sr3, sp3, si3
+                                ),
+                                4 => range_init!(
+                                    objs, t, mr4, mp4, mi4, lr4, lp4, li4, sr4, sp4, si4
+                                ),
+                                5 => range_init!(
+                                    objs, t, mr5, mp5, mi5, lr5, lp5, li5, sr5, sp5, si5
+                                ),
+                                6 => range_init!(
+                                    objs, t, mr6, mp6, mi6, lr6, lp6, li6, sr6, sp6, si6
+                                ),
+                                7 => range_init!(
+                                    objs, t, mr7, mp7, mi7, lr7, lp7, li7, sr7, sp7, si7
+                                ),
+                                8 => range_init!(
+                                    objs, t, mr8, mp8, mi8, lr8, lp8, li8, sr8, sp8, si8
+                                ),
+                                9 => range_init!(
+                                    objs, t, mr9, mp9, mi9, lr9, lp9, li9, sr9, sp9, si9
+                                ),
+                                10 => range_init!(
+                                    objs, t, mr10, mp10, mi10, lr10, lp10, li10, sr10, sp10, si10
+                                ),
+                                11 => range_init!(
+                                    objs, t, mr11, mp11, mi11, lr11, lp11, li11, sr11, sp11, si11
+                                ),
+                                12 => range_init!(
+                                    objs, t, mr12, mp12, mi12, lr12, lp12, li12, sr12, sp12, si12
+                                ),
+                                13 => range_init!(
+                                    objs, t, mr13, mp13, mi13, lr13, lp13, li13, sr13, sp13, si13
+                                ),
+                                14 => range_init!(
+                                    objs, t, mr14, mp14, mi14, lr14, lp14, li14, sr14, sp14, si14
+                                ),
+                                15 => range_init!(
+                                    objs, t, mr15, mp15, mi15, lr15, lp15, li15, sr15, sp15, si15
+                                ),
+                                _ => unreachable!(),
+                            }
+                            stack.set(len - 1, GosValue::Int(mark));
+                        }
                         // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
-                        // and followed by a target jump address
                         Opcode::RANGE => {
                             let offset = inst.imm();
                             let len = stack.len();
                             let t = stack.get_with_type(len - 2, inst.t0());
-                            let mut mark = *stack.get_with_type(len - 1, ValueType::Int).as_int();
-                            if mark < 0 {
-                                mark = range_slot;
-                                range_slot += 1;
-                                assert!(range_slot < 16);
-                                match mark {
-                                    0 => range_init!(
-                                        objs, t, mr0, mp0, mi0, lr0, lp0, li0, sr0, sp0, si0
-                                    ),
-                                    1 => range_init!(
-                                        objs, t, mr1, mp1, mi1, lr1, lp1, li1, sr1, sp1, si1
-                                    ),
-                                    2 => range_init!(
-                                        objs, t, mr2, mp2, mi2, lr2, lp2, li2, sr2, sp2, si2
-                                    ),
-                                    3 => range_init!(
-                                        objs, t, mr3, mp3, mi3, lr3, lp3, li3, sr3, sp3, si3
-                                    ),
-                                    4 => range_init!(
-                                        objs, t, mr4, mp4, mi4, lr4, lp4, li4, sr4, sp4, si4
-                                    ),
-                                    5 => range_init!(
-                                        objs, t, mr5, mp5, mi5, lr5, lp5, li5, sr5, sp5, si5
-                                    ),
-                                    6 => range_init!(
-                                        objs, t, mr6, mp6, mi6, lr6, lp6, li6, sr6, sp6, si6
-                                    ),
-                                    7 => range_init!(
-                                        objs, t, mr7, mp7, mi7, lr7, lp7, li7, sr7, sp7, si7
-                                    ),
-                                    8 => range_init!(
-                                        objs, t, mr8, mp8, mi8, lr8, lp8, li8, sr8, sp8, si8
-                                    ),
-                                    9 => range_init!(
-                                        objs, t, mr9, mp9, mi9, lr9, lp9, li9, sr9, sp9, si9
-                                    ),
-                                    10 => range_init!(
-                                        objs, t, mr10, mp10, mi10, lr10, lp10, li10, sr10, sp10,
-                                        si10
-                                    ),
-                                    11 => range_init!(
-                                        objs, t, mr11, mp11, mi11, lr11, lp11, li11, sr11, sp11,
-                                        si11
-                                    ),
-                                    12 => range_init!(
-                                        objs, t, mr12, mp12, mi12, lr12, lp12, li12, sr12, sp12,
-                                        si12
-                                    ),
-                                    13 => range_init!(
-                                        objs, t, mr13, mp13, mi13, lr13, lp13, li13, sr13, sp13,
-                                        si13
-                                    ),
-                                    14 => range_init!(
-                                        objs, t, mr14, mp14, mi14, lr14, lp14, li14, sr14, sp14,
-                                        si14
-                                    ),
-                                    15 => range_init!(
-                                        objs, t, mr15, mp15, mi15, lr15, lp15, li15, sr15, sp15,
-                                        si15
-                                    ),
-                                    _ => unreachable!(),
-                                }
-                                stack.set(len - 1, GosValue::Int(mark));
-                            }
+                            let mark = *stack.get_with_type(len - 1, ValueType::Int).as_int();
+                            assert!(mark >= 0);
                             let end = match mark {
                                 0 => range_body!(t, stack, inst, mp0, mi0, lp0, li0, sp0, si0),
                                 1 => range_body!(t, stack, inst, mp1, mi1, lp1, li1, sp1, si1),
