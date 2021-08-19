@@ -43,8 +43,8 @@ impl Engine {
         let el = &mut fe::errors::ErrorList::new();
         let code = cg::entry::parse_check_gen(path, &config, &mut fs, el);
         if let Ok(bc) = code {
-            let mut vm = vm::vm::GosVM::new(bc);
-            vm.run(&self.ffi, Some(&fs));
+            let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
+            vm.run();
             0
         } else {
             if self.config.trace_vm {
