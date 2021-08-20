@@ -789,9 +789,6 @@ impl<'a> Fiber<'a> {
 
                         match inst_op {
                             Opcode::RETURN => {
-                                //for v in func.local_zeros.iter().skip(frame.ret_count(objs)).rev() {
-                                //    stack.pop_with_type(v.get_type());
-                                //}
                                 stack.truncate(stack_base + frame.ret_count(objs));
                             }
                             Opcode::RETURN_INIT_PKG => {
@@ -803,13 +800,6 @@ impl<'a> Fiber<'a> {
                                 debug_assert!(stack.len() == stack_base + count);
                                 // the var values left on the stack are for pkg members
                                 stack.init_pkg_vars(pkg, count);
-                                /*for i in 0..count {
-                                    let val = stack.pop();
-                                    let index = (count - 1 - i) as OpIndex;
-                                    pkg.init_var(&index, val);
-                                }*/
-                                // the one pushed by IMPORT was poped by LOAD_FIELD
-                                //stack.push(GosValue::Package(pkey));
                             }
                             _ => unreachable!(),
                         }
@@ -817,12 +807,14 @@ impl<'a> Fiber<'a> {
                         self.frames.pop();
                         if self.frames.is_empty() {
                             dbg!(total_inst);
-                            /*let mut s = stats
+                            /* dbg!
+                            let mut s = stats
                                 .iter()
                                 .map(|(&k, &v)| (k, v))
                                 .collect::<Vec<(Opcode, usize)>>();
                             s.sort_by(|a, b| b.1.cmp(&a.1));
-                            dbg!(s); */
+                            dbg!(s);
+                            */
                             result = Result::End;
                             break;
                         }
