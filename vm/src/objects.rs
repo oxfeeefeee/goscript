@@ -76,7 +76,7 @@ impl VMObjects {
 
 pub type StringIter<'a> = std::str::Chars<'a>;
 
-pub type StringEnumIter<'a> = std::iter::Enumerate<std::str::Chars<'a>>;
+pub type StringEnumIter<'a> = std::iter::Enumerate<StringIter<'a>>;
 
 #[derive(Debug)]
 pub struct StringObj {
@@ -170,6 +170,8 @@ impl Ord for StringObj {
 // MapObj
 
 pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
+
+pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, RefCell<GosValue>>;
 
 #[derive(Debug)]
 pub struct MapObj {
@@ -678,7 +680,7 @@ pub struct SliceRef<'a> {
 
 pub type SliceIter<'a> = std::slice::Iter<'a, RefCell<GosValue>>;
 
-pub type SliceEnumIter<'a> = std::iter::Enumerate<std::slice::Iter<'a, RefCell<GosValue>>>;
+pub type SliceEnumIter<'a> = std::iter::Enumerate<SliceIter<'a>>;
 
 impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceObj) -> SliceRef {

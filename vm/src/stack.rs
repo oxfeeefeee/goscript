@@ -535,7 +535,7 @@ impl Stack {
 
 /// store iterators for Opcode::RANGE
 pub struct RangeStack {
-    maps: Vec<std::collections::hash_map::Iter<'static, GosValue, RefCell<GosValue>>>,
+    maps: Vec<GosHashMapIter<'static>>,
     slices: Vec<SliceEnumIter<'static>>,
     strings: Vec<StringEnumIter<'static>>,
 }
