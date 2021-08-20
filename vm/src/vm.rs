@@ -128,11 +128,16 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn spawn_fiber(&self, entry: FunctionKey) {
-        let mut f = Fiber::new(self.clone());
+    fn new_entry_frame(&self, entry: FunctionKey) -> CallFrame {
+        let cls = GosValue::new_closure(entry, &self.code.objects.functions);
+        CallFrame::with_closure(cls.as_closure().clone(), 0)
+    }
+
+    fn spawn_fiber(&self, stack: Stack, first_frame: CallFrame) {
+        let mut f = Fiber::new(self.clone(), stack, first_frame);
         self.exec
             .spawn(async move {
-                f.run(entry).await;
+                f.main_loop().await;
             })
             .detach();
     }
@@ -147,21 +152,14 @@ pub struct Fiber<'a> {
 }
 
 impl<'a> Fiber<'a> {
-    fn new(c: Context<'a>) -> Fiber<'a> {
+    fn new(c: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
         Fiber {
-            stack: Stack::new(),
+            stack: stack,
             rstack: RangeStack::new(),
-            frames: Vec::new(),
+            frames: vec![first_frame],
             next_frames: Vec::new(),
             context: c,
         }
-    }
-
-    async fn run(&mut self, func: FunctionKey) {
-        let cls = GosValue::new_closure(func, &self.context.code.objects.functions);
-        let frame = CallFrame::with_closure(cls.as_closure().clone(), 0);
-        self.frames.push(frame);
-        self.main_loop().await;
     }
 
     async fn main_loop(&mut self) {
@@ -711,6 +709,7 @@ impl<'a> Fiber<'a> {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let ref_cls = nframe.closure().clone();
                         let cls: &ClosureObj = &ref_cls.0.borrow();
+                        let is_async = inst.t0() == ValueType::Flag;
 
                         let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
                         if let Some((meta, v_meta)) = sig.variadic {
@@ -724,36 +723,43 @@ impl<'a> Fiber<'a> {
                         }
                         match cls.func {
                             Some(key) => {
-                                if let Some(uvs) = &cls.uvs {
-                                    let frame_height = self.frames.len() as OpIndex;
-                                    let func = &objs.functions[key];
-                                    let mut local_ptrs: Vec<UpValue> =
-                                        Vec::with_capacity(func.up_ptrs.len());
-                                    for (i, p) in func.up_ptrs.iter().enumerate() {
-                                        local_ptrs.push(if p.is_up_value {
-                                            uvs[&i].clone()
-                                        } else {
-                                            // local pointers
-                                            let uv = UpValue::new(p.clone_with_frame(frame_height));
-                                            nframe.add_referred_by(p.index, p.typ, &uv);
-                                            uv
-                                        });
+                                let nfunc = &objs.functions[key];
+                                if !is_async {
+                                    if let Some(uvs) = &cls.uvs {
+                                        let frame_height = self.frames.len() as OpIndex;
+                                        let mut local_ptrs: Vec<UpValue> =
+                                            Vec::with_capacity(nfunc.up_ptrs.len());
+                                        for (i, p) in nfunc.up_ptrs.iter().enumerate() {
+                                            local_ptrs.push(if p.is_up_value {
+                                                uvs[&i].clone()
+                                            } else {
+                                                // local pointers
+                                                let uv =
+                                                    UpValue::new(p.clone_with_frame(frame_height));
+                                                nframe.add_referred_by(p.index, p.typ, &uv);
+                                                uv
+                                            });
+                                        }
+                                        nframe.local_ptrs = Some(local_ptrs);
                                     }
-                                    nframe.local_ptrs = Some(local_ptrs);
+                                    self.frames.push(nframe);
+                                    frame = self.frames.last_mut().unwrap();
+                                    func = nfunc;
+                                    stack_base = frame.stack_base;
+                                    consts = &func.consts;
+                                    code = func.code();
+                                    //dbg!(&consts);
+                                    //dbg!(&code);
+                                    //dbg!(&stack);
+                                    debug_assert!(func.local_count() == func.local_zeros.len());
+                                    // allocate local variables
+                                    stack.append(&mut func.local_zeros.clone());
+                                } else {
+                                    nframe.stack_base = 0;
+                                    let nstack = Stack::move_from(stack, nfunc.param_count());
+                                    self.context.spawn_fiber(nstack, nframe);
+                                    // todo: handle upvalue
                                 }
-
-                                self.frames.push(nframe);
-                                frame = self.frames.last_mut().unwrap();
-                                func = &objs.functions[frame.func()];
-                                stack_base = frame.stack_base;
-                                consts = &func.consts;
-                                code = func.code();
-                                //dbg!(&consts);
-                                //dbg!(&code);
-                                //dbg!(&stack);
-                                debug_assert!(func.local_count() == func.local_zeros.len());
-                                // allocate local variables
-                                stack.append(&mut func.local_zeros.clone());
                             }
                             None => {
                                 let call = cls.ffi.as_ref().unwrap();
@@ -801,6 +807,7 @@ impl<'a> Fiber<'a> {
                             stack.init_pkg_vars(pkg, count);
                         }
 
+                        drop(frame);
                         self.frames.pop();
                         if self.frames.is_empty() {
                             dbg!(total_inst);
@@ -1190,7 +1197,8 @@ impl<'a> GosVM<'a> {
     pub fn run(&self) {
         let exec = Rc::new(LocalExecutor::new());
         let ctx = Context::new(exec.clone(), &self.code, &self.gcv, self.ffi, self.fs);
-        ctx.spawn_fiber(self.code.entry);
+        let entry = ctx.new_entry_frame(self.code.entry);
+        ctx.spawn_fiber(Stack::new(), entry);
 
         future::block_on(async {
             loop {

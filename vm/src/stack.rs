@@ -64,6 +64,15 @@ impl Stack {
         }
     }
 
+    pub fn move_from(other: &mut Stack, count: usize) -> Stack {
+        let mut s = Stack::new();
+        let move_begin = other.cursor - count;
+        s.c[0..count].copy_from_slice(&other.c[move_begin..other.cursor]);
+        s.rc[0..count].clone_from_slice(&other.rc[move_begin..other.cursor]);
+        other.cursor -= count;
+        s
+    }
+
     #[inline]
     pub fn push(&mut self, val: GosValue) {
         let t = val.get_type();
