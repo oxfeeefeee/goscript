@@ -324,8 +324,8 @@ impl<'a> Emitter<'a> {
 
     pub fn emit_return_init_pkg(&mut self, index: OpIndex, pos: Option<usize>) {
         self.f.emit_inst(
-            Opcode::RETURN_INIT_PKG,
-            [None, None, None],
+            Opcode::RETURN,
+            [Some(ValueType::Flag), None, None],
             Some(index),
             pos,
         );
@@ -337,12 +337,13 @@ impl<'a> Emitter<'a> {
     }
 
     pub fn emit_call(&mut self, has_ellipsis: bool, pos: Option<usize>) {
-        let op = if has_ellipsis {
-            Opcode::CALL_ELLIPSIS
+        let elli_flag = if has_ellipsis {
+            Some(ValueType::Flag)
         } else {
-            Opcode::CALL
+            None
         };
-        self.f.emit_inst(op, [None, None, None], None, pos);
+        self.f
+            .emit_inst(Opcode::CALL, [None, elli_flag, None], None, pos);
     }
 
     pub fn emit_literal(&mut self, typ: ValueType, index: OpIndex, pos: Option<usize>) {

@@ -707,15 +707,16 @@ impl<'a> Fiber<'a> {
                         }
                         self.next_frames.push(next_frame);
                     }
-                    Opcode::CALL | Opcode::CALL_ELLIPSIS => {
+                    Opcode::CALL => {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let ref_cls = nframe.closure().clone();
                         let cls: &ClosureObj = &ref_cls.0.borrow();
 
                         let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
                         if let Some((meta, v_meta)) = sig.variadic {
-                            let vt = v_meta.get_value_type(&objs.metas);
-                            if inst_op != Opcode::CALL_ELLIPSIS {
+                            let has_ellipsis = inst.t1() == ValueType::Flag;
+                            if !has_ellipsis {
+                                let vt = v_meta.get_value_type(&objs.metas);
                                 let index =
                                     nframe.stack_base + sig.params.len() + sig.results.len() - 1;
                                 stack.pack_variadic(index, meta, vt, gcv);
@@ -765,7 +766,7 @@ impl<'a> Fiber<'a> {
                             }
                         }
                     }
-                    Opcode::RETURN | Opcode::RETURN_INIT_PKG => {
+                    Opcode::RETURN => {
                         // close any active upvalue this frame contains
                         if let Some(referred) = &frame.referred_by {
                             for (ind, referrers) in referred {
@@ -786,22 +787,18 @@ impl<'a> Fiber<'a> {
                         //for s in stack.iter() {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
-
-                        match inst_op {
-                            Opcode::RETURN => {
-                                stack.truncate(stack_base + frame.ret_count(objs));
-                            }
-                            Opcode::RETURN_INIT_PKG => {
-                                let index = inst.imm() as usize;
-                                let pkey = pkgs[index];
-                                let pkg = &objs.packages[pkey];
-                                let count = pkg.var_count();
-                                // remove garbage first
-                                debug_assert!(stack.len() == stack_base + count);
-                                // the var values left on the stack are for pkg members
-                                stack.init_pkg_vars(pkg, count);
-                            }
-                            _ => unreachable!(),
+                        let init_pkg = inst.t0() == ValueType::Flag;
+                        if !init_pkg {
+                            stack.truncate(stack_base + frame.ret_count(objs));
+                        } else {
+                            let index = inst.imm() as usize;
+                            let pkey = pkgs[index];
+                            let pkg = &objs.packages[pkey];
+                            let count = pkg.var_count();
+                            // remove garbage first
+                            debug_assert!(stack.len() == stack_base + count);
+                            // the var values left on the stack are for pkg members
+                            stack.init_pkg_vars(pkg, count);
                         }
 
                         self.frames.pop();

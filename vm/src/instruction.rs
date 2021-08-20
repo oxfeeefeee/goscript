@@ -68,9 +68,7 @@ pub enum Opcode {
     // call
     PRE_CALL,
     CALL,
-    CALL_ELLIPSIS, // call with the past parameter followed by ellipsis
     RETURN,
-    RETURN_INIT_PKG,
 
     // jump
     JUMP,
@@ -165,9 +163,7 @@ impl Opcode {
 
             Opcode::PRE_CALL => ("PRE_CALL", -128),
             Opcode::CALL => ("CALL", -128),
-            Opcode::CALL_ELLIPSIS => ("CALL_ELLIPSIS", -128),
             Opcode::RETURN => ("RETURN", -128),
-            Opcode::RETURN_INIT_PKG => ("RETURN_INIT_PKG", -128),
 
             Opcode::JUMP => ("JUMP", 0),
             Opcode::LOOP => ("LOOP", 0),
@@ -248,6 +244,8 @@ pub enum ValueType {
     Named,
 
     FfiClosure,
+
+    Flag, //not a type, works as a flag in instructions
 }
 
 impl ValueType {
