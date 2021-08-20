@@ -336,14 +336,19 @@ impl<'a> Emitter<'a> {
             .emit_inst(Opcode::PRE_CALL, [None, None, None], None, pos);
     }
 
-    pub fn emit_call(&mut self, has_ellipsis: bool, pos: Option<usize>) {
+    pub fn emit_call(&mut self, is_async: bool, has_ellipsis: bool, pos: Option<usize>) {
+        let async_flag = if is_async {
+            Some(ValueType::Flag)
+        } else {
+            None
+        };
         let elli_flag = if has_ellipsis {
             Some(ValueType::Flag)
         } else {
             None
         };
         self.f
-            .emit_inst(Opcode::CALL, [None, elli_flag, None], None, pos);
+            .emit_inst(Opcode::CALL, [async_flag, elli_flag, None], None, pos);
     }
 
     pub fn emit_literal(&mut self, typ: ValueType, index: OpIndex, pos: Option<usize>) {

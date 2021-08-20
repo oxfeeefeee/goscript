@@ -209,6 +209,12 @@ fn test_conversion() {
 }
 
 #[test]
+fn test_async() {
+    let err_cnt = run("./tests/group1/async.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);

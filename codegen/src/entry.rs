@@ -72,7 +72,7 @@ impl<'a> EntryGen<'a> {
             None,
         );
         emitter.emit_pre_call(None);
-        emitter.emit_call(false, None);
+        emitter.emit_call(false, false, None);
         emitter.emit_return(None);
         *f.as_function()
     }

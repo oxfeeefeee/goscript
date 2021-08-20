@@ -61,6 +61,7 @@ pub struct CodeGen<'a> {
     func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
     builtins: Builtins,
     blank_ident: IdentKey,
+    async_mark: Option<bool>,
 }
 
 impl<'a> CodeGen<'a> {
@@ -92,6 +93,7 @@ impl<'a> CodeGen<'a> {
             func_t_stack: Vec::new(),
             builtins: builtins,
             blank_ident: bk,
+            async_mark: None,
         }
     }
 
@@ -1171,13 +1173,14 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
             // normal goscript function
             _ => {
+                let is_async = self.async_mark.take().is_some();
                 self.visit_expr(func_expr);
                 current_func_emitter!(self).emit_pre_call(pos);
                 let _ = params.iter().map(|e| self.visit_expr(e)).count();
                 let t = self.tlookup.get_expr_tc_type(func_expr);
                 self.try_cast_params_to_iface(t, params, ellipsis);
                 // do not pack params if there is ellipsis
-                current_func_emitter!(self).emit_call(ellipsis, pos);
+                current_func_emitter!(self).emit_call(is_async, ellipsis, pos);
             }
         }
     }
@@ -1534,8 +1537,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         );
     }
 
-    fn visit_stmt_go(&mut self, _gostmt: &GoStmt) {
-        unimplemented!();
+    fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
+        self.async_mark = Some(true);
+        self.visit_expr(&gostmt.call);
     }
 
     fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {

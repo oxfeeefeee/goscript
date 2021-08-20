@@ -208,6 +208,7 @@ pub const COPYABLE_END: ValueType = ValueType::Package;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
+    Zero, //place holder
     Bool = 1,
     Int,
     Int8,
