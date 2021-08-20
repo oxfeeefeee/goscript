@@ -1195,6 +1195,8 @@ pub struct ClosureObj {
     pub recv: Option<GosValue>,
 
     pub ffi: Option<Box<FfiClosureObj>>,
+
+    pub meta: GosMetadata,
 }
 
 impl ClosureObj {
@@ -1217,24 +1219,19 @@ impl ClosureObj {
             uvs: uvs,
             recv: recv,
             ffi: None,
+            meta: func.meta,
         }
     }
 
     #[inline]
     pub fn new_ffi(ffi: FfiClosureObj) -> ClosureObj {
+        let m = ffi.meta;
         ClosureObj {
             func: None,
             uvs: None,
             recv: None,
             ffi: Some(Box::new(ffi)),
-        }
-    }
-
-    #[inline]
-    pub fn meta(&self, fobjs: &FunctionObjs) -> GosMetadata {
-        match &self.func {
-            Some(f) => fobjs[*f].meta,
-            None => self.ffi.as_ref().unwrap().meta,
+            meta: m,
         }
     }
 
@@ -1385,7 +1382,6 @@ pub struct FunctionVal {
     entities: HashMap<EntityKey, EntIndex>,
     uv_entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
-    variadic_type: Option<(GosMetadata, ValueType)>,
     is_ctor: bool,
 }
 
@@ -1404,9 +1400,6 @@ impl FunctionVal {
                     returns.push(zero_val!(m, objs, gcv));
                 }
                 let params = s.params.len() + s.recv.map_or(0, |_| 1);
-                let vtype = s.variadic.map(|(slice_type, elem_type)| {
-                    (slice_type, elem_type.get_value_type(&objs.metas))
-                });
                 FunctionVal {
                     package: package,
                     meta: meta,
@@ -1420,7 +1413,6 @@ impl FunctionVal {
                     entities: HashMap::new(),
                     uv_entities: HashMap::new(),
                     local_alloc: 0,
-                    variadic_type: vtype,
                     is_ctor: ctor,
                 }
             }
@@ -1456,11 +1448,6 @@ impl FunctionVal {
     #[inline]
     pub fn is_ctor(&self) -> bool {
         self.is_ctor
-    }
-
-    #[inline]
-    pub fn variadic(&self) -> Option<(GosMetadata, ValueType)> {
-        self.variadic_type
     }
 
     #[inline]

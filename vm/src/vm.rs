@@ -711,6 +711,16 @@ impl<'a> Fiber<'a> {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let ref_cls = nframe.closure().clone();
                         let cls: &ClosureObj = &ref_cls.0.borrow();
+
+                        let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
+                        if let Some((meta, v_meta)) = sig.variadic {
+                            let vt = v_meta.get_value_type(&objs.metas);
+                            if inst_op != Opcode::CALL_ELLIPSIS {
+                                let index =
+                                    nframe.stack_base + sig.params.len() + sig.results.len() - 1;
+                                stack.pack_variadic(index, meta, vt, gcv);
+                            }
+                        }
                         match cls.func {
                             Some(key) => {
                                 if let Some(uvs) = &cls.uvs {
@@ -733,7 +743,6 @@ impl<'a> Fiber<'a> {
 
                                 self.frames.push(nframe);
                                 frame = self.frames.last_mut().unwrap();
-
                                 func = &objs.functions[frame.func()];
                                 stack_base = frame.stack_base;
                                 consts = &func.consts;
@@ -741,15 +750,6 @@ impl<'a> Fiber<'a> {
                                 //dbg!(&consts);
                                 //dbg!(&code);
                                 //dbg!(&stack);
-
-                                if let Some((meta, vt)) = func.variadic() {
-                                    if inst_op != Opcode::CALL_ELLIPSIS {
-                                        let index =
-                                            stack_base + func.param_count() + func.ret_count() - 1;
-                                        stack.pack_variadic(index, meta, vt, gcv);
-                                    }
-                                }
-
                                 debug_assert!(func.local_count() == func.local_zeros.len());
                                 // allocate local variables
                                 stack.append(&mut func.local_zeros.clone());

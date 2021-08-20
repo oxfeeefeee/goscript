@@ -655,7 +655,7 @@ impl GosValue {
                 };
                 pointee.ptr_to()
             }
-            GosValue::Closure(c) => c.0.borrow().meta(&objs.functions),
+            GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,
             GosValue::Interface(i) => i.0.borrow().meta,
