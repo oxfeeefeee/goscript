@@ -176,6 +176,7 @@ impl<'a> Fiber<'a> {
         let mut consts = &func.consts;
         let mut code = func.code();
         let mut stack_base = frame.stack_base;
+        let mut frame_height = self.frames.len();
 
         let mut total_inst = 0;
         //let mut stats: HashMap<Opcode, usize> = HashMap::new();
@@ -724,25 +725,27 @@ impl<'a> Fiber<'a> {
                         match cls.func {
                             Some(key) => {
                                 let nfunc = &objs.functions[key];
-                                if !is_async {
-                                    if let Some(uvs) = &cls.uvs {
-                                        let frame_height = self.frames.len() as OpIndex;
-                                        let mut ptrs: Vec<UpValue> =
-                                            Vec::with_capacity(nfunc.up_ptrs.len());
-                                        for (i, p) in nfunc.up_ptrs.iter().enumerate() {
-                                            ptrs.push(if p.is_up_value {
-                                                uvs[&i].clone()
-                                            } else {
-                                                // local pointers
-                                                let uv =
-                                                    UpValue::new(p.clone_with_frame(frame_height));
-                                                nframe.add_referred_by(p.index, p.typ, &uv);
-                                                uv
-                                            });
-                                        }
-                                        nframe.var_ptrs = Some(ptrs);
+                                if let Some(uvs) = &cls.uvs {
+                                    // todo: make this work for goroutine
+                                    let mut ptrs: Vec<UpValue> =
+                                        Vec::with_capacity(nfunc.up_ptrs.len());
+                                    for (i, p) in nfunc.up_ptrs.iter().enumerate() {
+                                        ptrs.push(if p.is_up_value {
+                                            uvs[&i].clone()
+                                        } else {
+                                            // local pointers
+                                            let uv = UpValue::new(
+                                                p.clone_with_frame(frame_height as OpIndex),
+                                            );
+                                            nframe.add_referred_by(p.index, p.typ, &uv);
+                                            uv
+                                        });
                                     }
+                                    nframe.var_ptrs = Some(ptrs);
+                                }
+                                if !is_async {
                                     self.frames.push(nframe);
+                                    frame_height += 1;
                                     frame = self.frames.last_mut().unwrap();
                                     func = nfunc;
                                     stack_base = frame.stack_base;
@@ -758,7 +761,6 @@ impl<'a> Fiber<'a> {
                                     nframe.stack_base = 0;
                                     let nstack = Stack::move_from(stack, nfunc.param_count());
                                     self.context.spawn_fiber(nstack, nframe);
-                                    // todo: handle upvalue
                                 }
                             }
                             None => {
@@ -809,6 +811,7 @@ impl<'a> Fiber<'a> {
 
                         drop(frame);
                         self.frames.pop();
+                        frame_height -= 1;
                         if self.frames.is_empty() {
                             dbg!(total_inst);
                             /* dbg!
@@ -927,7 +930,6 @@ impl<'a> Fiber<'a> {
                                 let mut val = ClosureObj::new_gos(*fkey, &objs.functions, None);
                                 if let Some(uvs) = &mut val.uvs {
                                     drop(frame);
-                                    let frame_height = self.frames.len();
                                     for (_, uv) in uvs.iter_mut() {
                                         let r: &mut UpValueState = &mut uv.inner.borrow_mut();
                                         if let UpValueState::Open(d) = r {
