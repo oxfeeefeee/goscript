@@ -36,10 +36,10 @@ struct CallFrame {
     closure: Rc<(RefCell<ClosureObj>, RCount)>,
     pc: usize,
     stack_base: usize,
-    // local pointers are used in two cases
+    // var pointers are used in two cases
     // - a real "upvalue" of a real closure
     // - a local var that has pointer(s) point to it
-    local_ptrs: Option<Vec<UpValue>>,
+    var_ptrs: Option<Vec<UpValue>>,
     // closures that have upvalues pointing to this frame
     referred_by: Option<HashMap<OpIndex, Referers>>,
 }
@@ -50,7 +50,7 @@ impl CallFrame {
             closure: c,
             pc: 0,
             stack_base: sbase,
-            local_ptrs: None,
+            var_ptrs: None,
             referred_by: None,
         }
     }
@@ -217,14 +217,14 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
-                        let upvalue = frame.local_ptrs.as_ref().unwrap()[index as usize].clone();
+                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
                         let val = load_up_value!(upvalue, self, stack, self.frames);
                         stack.push(val);
                         frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::STORE_UPVALUE => {
                         let (rhs_index, index) = inst.imm824();
-                        let upvalue = frame.local_ptrs.as_ref().unwrap()[index as usize].clone();
+                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
                         store_up_value!(
                             upvalue,
                             self,
@@ -628,7 +628,7 @@ impl<'a> Fiber<'a> {
                     Opcode::ARROW => unimplemented!(),
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();
-                        let upvalue = frame.local_ptrs.as_ref().unwrap()[index as usize].clone();
+                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
                         stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
                     }
                     Opcode::REF_LOCAL => {
@@ -727,10 +727,10 @@ impl<'a> Fiber<'a> {
                                 if !is_async {
                                     if let Some(uvs) = &cls.uvs {
                                         let frame_height = self.frames.len() as OpIndex;
-                                        let mut local_ptrs: Vec<UpValue> =
+                                        let mut ptrs: Vec<UpValue> =
                                             Vec::with_capacity(nfunc.up_ptrs.len());
                                         for (i, p) in nfunc.up_ptrs.iter().enumerate() {
-                                            local_ptrs.push(if p.is_up_value {
+                                            ptrs.push(if p.is_up_value {
                                                 uvs[&i].clone()
                                             } else {
                                                 // local pointers
@@ -740,7 +740,7 @@ impl<'a> Fiber<'a> {
                                                 uv
                                             });
                                         }
-                                        nframe.local_ptrs = Some(local_ptrs);
+                                        nframe.var_ptrs = Some(ptrs);
                                     }
                                     self.frames.push(nframe);
                                     frame = self.frames.last_mut().unwrap();
