@@ -221,7 +221,7 @@ pub fn gc(objs: &GcoVec) {
         .iter()
         .filter_map(|o| o.to_gosv())
         .collect();
-    print!("objs before GC: {}\n", to_scan.len());
+    //print!("objs before GC: {}\n", to_scan.len());
     for v in to_scan.iter() {
         children_ref_sub_one(v);
     }
@@ -252,10 +252,10 @@ pub fn gc(objs: &GcoVec) {
         }
     }
 
-    let result: Vec<GosValue> = objs
+    let _result: Vec<GosValue> = objs
         .borrow_data()
         .iter()
         .filter_map(|o| o.to_gosv())
         .collect();
-    print!("objs left after GC: {}\n", result.len());
+    //print!("objs left after GC: {}\n", result.len());
 }

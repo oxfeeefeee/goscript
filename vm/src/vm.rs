@@ -14,6 +14,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::pin::Pin;
+use std::ptr;
 use std::rc::Rc;
 use std::str;
 
@@ -161,7 +162,7 @@ impl<'a> Context<'a> {
 }
 
 pub struct Fiber<'a> {
-    stack: Stack,
+    stack: Rc<RefCell<Stack>>,
     rstack: RangeStack,
     frames: Vec<CallFrame>,
     next_frames: Vec<CallFrame>,
@@ -171,7 +172,7 @@ pub struct Fiber<'a> {
 impl<'a> Fiber<'a> {
     fn new(c: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
         Fiber {
-            stack: stack,
+            stack: Rc::new(RefCell::new(stack)),
             rstack: RangeStack::new(),
             frames: vec![first_frame],
             next_frames: Vec::new(),
@@ -187,9 +188,12 @@ impl<'a> Fiber<'a> {
         let ifaces = &ctx.code.ifaces;
         let frame = self.frames.last_mut().unwrap();
         let mut func = &objs.functions[frame.func()];
-        let stack = &mut self.stack;
+
+        let mut stack_mut_ref = self.stack.borrow_mut();
+        let mut stack: &mut Stack = &mut stack_mut_ref;
         // allocate local variables
         stack.append(&mut func.local_zeros.clone());
+
         let mut consts = &func.consts;
         let mut code = func.code();
         let mut stack_base = frame.stack_base;
@@ -751,9 +755,10 @@ impl<'a> Fiber<'a> {
                                             uvs[&i].clone()
                                         } else {
                                             // local pointers
-                                            let uv = UpValue::new(
-                                                p.clone_with_frame(nframe.stack_base as OpIndex),
-                                            );
+                                            let uv = UpValue::new(p.clone_with_stack(
+                                                Rc::downgrade(&self.stack),
+                                                nframe.stack_base as OpIndex,
+                                            ));
                                             nframe.add_referred_by(p.index, p.typ, &uv);
                                             uv
                                         });
@@ -786,7 +791,10 @@ impl<'a> Fiber<'a> {
                                     .as_signature()
                                     .params_type;
                                 let params = stack.pop_with_type_n(ptypes);
+                                // release stack so that code in ffi can yield
+                                release_stack_ref!(stack, stack_mut_ref);
                                 let mut returns = call.ffi.borrow().call(&call.func_name, params);
+                                restore_stack_ref!(self, stack, stack_mut_ref);
                                 stack.append(&mut returns);
                             }
                         }
@@ -940,6 +948,7 @@ impl<'a> Fiber<'a> {
                                                 let index = frame_height - i;
                                                 if self.frames[index].func() == d.func {
                                                     let upframe = &mut self.frames[index];
+                                                    d.stack = Rc::downgrade(&self.stack);
                                                     d.stack_base = upframe.stack_base as OpIndex;
                                                     upframe.add_referred_by(d.index, d.typ, uv);
                                                     // if not found, the upvalue is already closed, nothing to be done
@@ -1171,7 +1180,9 @@ impl<'a> Fiber<'a> {
                     break;
                 }
                 Result::Continue => {
+                    release_stack_ref!(stack, stack_mut_ref);
                     future::yield_now().await;
+                    restore_stack_ref!(self, stack, stack_mut_ref);
                 }
             };
         } //loop

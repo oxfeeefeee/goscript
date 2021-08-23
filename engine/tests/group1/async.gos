@@ -13,7 +13,21 @@ func main() {
     go fmt.Println("hello world?")
     i := 1
     j := 2
+    n := 888
     go add(i, j, 3)
+
+    go func() {
+        n = 666
+        assert(n == 666)
+        fmt.Println("----- n = ", n);
+    }()
+
+    assert(n == 888)
+    fmt.Println("before waiting... n = ", n);
+    for i := 1; i <= 10000; i++ {
+    }
+    assert(n == 666)
+    fmt.Println("after waiting... n = ", n);
     
     k := i + j
     assert(k == 3)

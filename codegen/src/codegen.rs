@@ -126,13 +126,12 @@ impl<'a> CodeGen<'a> {
                 let f = &mut self.objects.functions[*ifunc];
                 let index = f.entity_index(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
-                    let desc = ValueDesc {
-                        func: *ifunc,
-                        index: ind.into(),
-                        stack_base: 0,
-                        typ: self.tlookup.get_use_value_type(*ident),
-                        is_up_value: true,
-                    };
+                    let desc = ValueDesc::new(
+                        *ifunc,
+                        ind.into(),
+                        self.tlookup.get_use_value_type(*ident),
+                        true,
+                    );
                     Some(desc)
                 } else {
                     None
@@ -1243,13 +1242,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                 let entity_key = ident.entity_key().unwrap();
                                 let func = current_func_mut!(self);
                                 let ind = *func.entity_index(&entity_key).unwrap();
-                                let desc = ValueDesc {
-                                    func: *self.func_stack.last().unwrap(),
-                                    index: ind.into(),
-                                    stack_base: 0,
-                                    typ: t,
-                                    is_up_value: false,
-                                };
+                                let desc = ValueDesc::new(
+                                    *self.func_stack.last().unwrap(),
+                                    ind.into(),
+                                    t,
+                                    false,
+                                );
                                 let index = func.try_add_upvalue(&entity_key, desc);
                                 func.emit_inst(
                                     Opcode::REF_UPVALUE,

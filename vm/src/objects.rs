@@ -3,6 +3,7 @@ use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
+use super::stack::Stack;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
@@ -1066,9 +1067,10 @@ impl Display for PointerObj {
 pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
-    pub stack_base: OpIndex,
     pub typ: ValueType,
     pub is_up_value: bool,
+    pub stack: Weak<RefCell<Stack>>,
+    pub stack_base: OpIndex,
 }
 
 impl Eq for ValueDesc {}
@@ -1081,13 +1083,25 @@ impl PartialEq for ValueDesc {
 }
 
 impl ValueDesc {
-    pub fn clone_with_frame(&self, stack_base: OpIndex) -> ValueDesc {
+    pub fn new(func: FunctionKey, index: OpIndex, typ: ValueType, is_up_value: bool) -> ValueDesc {
+        ValueDesc {
+            func: func,
+            index: index,
+            typ: typ,
+            is_up_value: is_up_value,
+            stack: Weak::new(),
+            stack_base: 0,
+        }
+    }
+
+    pub fn clone_with_stack(&self, stack: Weak<RefCell<Stack>>, stack_base: OpIndex) -> ValueDesc {
         ValueDesc {
             func: self.func,
-            stack_base: stack_base,
             index: self.index,
             typ: self.typ,
             is_up_value: self.is_up_value,
+            stack: stack,
+            stack_base: stack_base,
         }
     }
 }

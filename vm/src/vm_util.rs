@@ -6,6 +6,22 @@ use super::objects::MetadataObjs;
 use super::stack::Stack;
 use super::value::{GosValue, GosValue64, RtValueResult, RuntimeResult, VMObjects};
 
+// release stack so that code in block can call yield
+macro_rules! release_stack_ref {
+    ($stack:ident, $stack_ref:ident) => {{
+        drop($stack);
+        drop($stack_ref);
+    }};
+}
+
+// restore everything
+macro_rules! restore_stack_ref {
+    ($self_:ident, $stack:ident, $stack_ref:ident) => {{
+        $stack_ref = $self_.stack.borrow_mut();
+        $stack = &mut $stack_ref;
+    }};
+}
+
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];
@@ -14,8 +30,20 @@ macro_rules! read_imm_pkg {
     }};
 }
 
+macro_rules! store_local_to {
+    ($stack:expr, $to:expr, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
+        if $rhs_index < 0 {
+            let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
+            Stack::store_to_copy_semantic($stack, $to, $s_index, rhs_s_index, $typ, $gcos);
+        } else {
+            let op_ex = Instruction::index2code($rhs_index);
+            Stack::store_to_with_op($stack, $to, $s_index, $stack.len() - 1, op_ex, $typ);
+        }
+    }};
+}
+
 macro_rules! store_local {
-    ($stack:ident, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
+    ($stack:expr, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
         if $rhs_index < 0 {
             let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
             $stack.store_copy_semantic($s_index, rhs_s_index, $typ, $gcos);
@@ -32,7 +60,12 @@ macro_rules! load_up_value {
         match &uv {
             UpValueState::Open(desc) => {
                 let index = (desc.stack_base + desc.index) as usize;
-                $stack.get_with_type(index, desc.typ)
+                let uv_stack = desc.stack.upgrade().unwrap();
+                if ptr::eq(uv_stack.as_ptr(), $stack) {
+                    $stack.get_with_type(index, desc.typ)
+                } else {
+                    uv_stack.borrow().get_with_type(index, desc.typ)
+                }
             }
             UpValueState::Closed(val) => val.clone(),
         }
@@ -45,7 +78,19 @@ macro_rules! store_up_value {
         match uv {
             UpValueState::Open(desc) => {
                 let index = (desc.stack_base + desc.index) as usize;
-                store_local!($stack, index, $rhs_index, $typ, $gcos);
+                let uv_stack = desc.stack.upgrade().unwrap();
+                if ptr::eq(uv_stack.as_ptr(), $stack) {
+                    store_local!($stack, index, $rhs_index, $typ, $gcos);
+                } else {
+                    store_local_to!(
+                        $stack,
+                        &mut uv_stack.borrow_mut(),
+                        index,
+                        $rhs_index,
+                        $typ,
+                        $gcos
+                    );
+                }
             }
             UpValueState::Closed(v) => {
                 $stack.store_val(v, $rhs_index, $typ, $gcos);

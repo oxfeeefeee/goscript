@@ -31,6 +31,41 @@ macro_rules! stack_cmp_op {
     }};
 }
 
+macro_rules! store_to_copy_semantic {
+    ($from:expr,
+        $to:expr,
+        $li:expr,
+        $ri:expr,
+        $t:expr,
+        $gcos:expr) => {{
+        if $t.copyable() {
+            *$to.get_c_mut($li) = *$from.get_c($ri);
+        } else {
+            let v = $from.get_rc($ri).copy_semantic($gcos);
+            *$to.get_rc_mut($li) = v;
+        }
+    }};
+}
+
+macro_rules! store_to_with_op {
+    ($from:expr,
+        $to:expr,
+        $li:expr,
+        $ri:expr,
+        $op:expr,
+        $t:expr) => {{
+        if $t.copyable() {
+            let a = $from.get_c($li);
+            let b = $from.get_c($ri);
+            *$to.get_c_mut($li) = GosValue64::binary_op(a, b, $t, $op);
+        } else {
+            let a = $from.get_rc($li);
+            let b = $from.get_rc($ri);
+            *$to.get_rc_mut($li) = GosValue::add_str(a, b);
+        }
+    }};
+}
+
 pub struct Stack {
     c: Vec<GosValue64>,
     rc: Vec<GosValue>,
@@ -39,6 +74,12 @@ pub struct Stack {
 }
 
 impl Display for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[stack] cursor: {}\n", self.cursor)?;
         f.write_str("======c  top=======\n")?;
@@ -277,26 +318,37 @@ impl Stack {
     }
 
     #[inline]
+    pub fn store_to_copy_semantic(
+        from: &Stack,
+        to: &mut Stack,
+        li: usize,
+        ri: usize,
+        t: ValueType,
+        gcos: &GcoVec,
+    ) {
+        store_to_copy_semantic!(from, to, li, ri, t, gcos);
+    }
+
+    #[inline]
+    pub fn store_to_with_op(
+        from: &Stack,
+        to: &mut Stack,
+        li: usize,
+        ri: usize,
+        op: Opcode,
+        t: ValueType,
+    ) {
+        store_to_with_op!(from, to, li, ri, op, t);
+    }
+
+    #[inline]
     pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &GcoVec) {
-        if t.copyable() {
-            *self.get_c_mut(li) = *self.get_c(ri);
-        } else {
-            let v = self.get_rc(ri).copy_semantic(gcos);
-            *self.get_rc_mut(li) = v;
-        }
+        store_to_copy_semantic!(self, self, li, ri, t, gcos)
     }
 
     #[inline]
     pub fn store_with_op(&mut self, li: usize, ri: usize, op: Opcode, t: ValueType) {
-        if t.copyable() {
-            let a = self.get_c(li);
-            let b = self.get_c(ri);
-            *self.get_c_mut(li) = GosValue64::binary_op(a, b, t, op);
-        } else {
-            let a = self.get_rc(li);
-            let b = self.get_rc(ri);
-            *self.get_rc_mut(li) = GosValue::add_str(a, b);
-        }
+        store_to_with_op!(self, self, li, ri, op, t);
     }
 
     #[inline]
