@@ -1183,12 +1183,6 @@ pub struct FfiClosureObj {
 }
 
 #[derive(Clone, Debug)]
-pub struct Referers {
-    typ: ValueType,
-    weaks: Vec<WeakUpValue>,
-}
-
-#[derive(Clone, Debug)]
 pub struct ClosureObj {
     pub func: Option<FunctionKey>,
     pub uvs: Option<HashMap<usize, UpValue>>,

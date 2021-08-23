@@ -93,6 +93,23 @@ impl CallFrame {
         let fkey = self.func();
         objs.functions[fkey].ret_count()
     }
+
+    #[inline]
+    fn on_drop(&mut self, stack: &Stack) {
+        if let Some(referred) = &self.referred_by {
+            for (ind, referrers) in referred {
+                if referrers.weaks.len() == 0 {
+                    continue;
+                }
+                let val = stack.get_with_type(Stack::offset(self.stack_base, *ind), referrers.typ);
+                for weak in referrers.weaks.iter() {
+                    if let Some(uv) = weak.upgrade() {
+                        uv.close(val.clone());
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -775,22 +792,6 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::RETURN => {
-                        // close any active upvalue this frame contains
-                        if let Some(referred) = &frame.referred_by {
-                            for (ind, referrers) in referred {
-                                if referrers.weaks.len() == 0 {
-                                    continue;
-                                }
-                                let val = stack
-                                    .get_with_type(Stack::offset(stack_base, *ind), referrers.typ);
-                                for weak in referrers.weaks.iter() {
-                                    if let Some(uv) = weak.upgrade() {
-                                        uv.close(val.clone());
-                                    }
-                                }
-                            }
-                        }
-
                         //dbg!(stack.len());
                         //for s in stack.iter() {
                         //    dbg!(GosValueDebug::new(&s, &objs));
@@ -809,6 +810,7 @@ impl<'a> Fiber<'a> {
                             stack.init_pkg_vars(pkg, count);
                         }
 
+                        frame.on_drop(&stack);
                         drop(frame);
                         self.frames.pop();
                         frame_height -= 1;
