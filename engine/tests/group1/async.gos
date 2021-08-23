@@ -1,15 +1,16 @@
 package main
 
 import (
-	//"fmt"
+	"fmt"
 )
 
 func add(a int, b int, c int) {
     assert(a + b == c)
+    fmt.Println(a, "+", b, "=", c)
 }
 
 func main() {
-    //go fmt.Println("hello world?")
+    go fmt.Println("hello world?")
     i := 1
     j := 2
     go add(i, j, 3)

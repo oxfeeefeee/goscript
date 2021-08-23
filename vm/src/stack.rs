@@ -69,6 +69,7 @@ impl Stack {
         let move_begin = other.cursor - count;
         s.c[0..count].copy_from_slice(&other.c[move_begin..other.cursor]);
         s.rc[0..count].clone_from_slice(&other.rc[move_begin..other.cursor]);
+        s.cursor += count;
         other.cursor -= count;
         s
     }
