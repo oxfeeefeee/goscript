@@ -752,7 +752,7 @@ impl<'a> Fiber<'a> {
                                         } else {
                                             // local pointers
                                             let uv = UpValue::new(
-                                                p.clone_with_frame(frame_height as OpIndex),
+                                                p.clone_with_frame(nframe.stack_base as OpIndex),
                                             );
                                             nframe.add_referred_by(p.index, p.typ, &uv);
                                             uv
@@ -939,10 +939,10 @@ impl<'a> Fiber<'a> {
                                             for i in 1..frame_height {
                                                 let index = frame_height - i;
                                                 if self.frames[index].func() == d.func {
-                                                    d.frame = index as OpIndex;
                                                     let upframe = &mut self.frames[index];
+                                                    d.stack_base = upframe.stack_base as OpIndex;
                                                     upframe.add_referred_by(d.index, d.typ, uv);
-                                                    // if not found, the upvalue is already closed, nothing to do
+                                                    // if not found, the upvalue is already closed, nothing to be done
                                                     break;
                                                 }
                                             }

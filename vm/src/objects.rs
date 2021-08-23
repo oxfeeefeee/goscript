@@ -1065,8 +1065,8 @@ impl Display for PointerObj {
 #[derive(Clone, Debug)]
 pub struct ValueDesc {
     pub func: FunctionKey,
-    pub frame: OpIndex,
     pub index: OpIndex,
+    pub stack_base: OpIndex,
     pub typ: ValueType,
     pub is_up_value: bool,
 }
@@ -1081,10 +1081,10 @@ impl PartialEq for ValueDesc {
 }
 
 impl ValueDesc {
-    pub fn clone_with_frame(&self, frame: OpIndex) -> ValueDesc {
+    pub fn clone_with_frame(&self, stack_base: OpIndex) -> ValueDesc {
         ValueDesc {
             func: self.func,
-            frame: frame,
+            stack_base: stack_base,
             index: self.index,
             typ: self.typ,
             is_up_value: self.is_up_value,

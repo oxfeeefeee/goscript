@@ -9,7 +9,7 @@ type Node struct{
 
 var pkgVarA = 1
 
-func main() {
+func test() {
     a := 1
     b := &a
     *b = 2
@@ -95,4 +95,12 @@ func main() {
         *e = 2
         assert(math.V1 == 2)
     }
+}
+
+
+func main() {
+    a := 1
+    b := &a
+    assert(*b + 1 == 2)
+    test()
 }

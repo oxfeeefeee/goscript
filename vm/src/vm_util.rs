@@ -31,8 +31,7 @@ macro_rules! load_up_value {
         let uv: &UpValueState = &$upvalue.inner.borrow();
         match &uv {
             UpValueState::Open(desc) => {
-                let upframe = &$frames[desc.frame as usize];
-                let index = Stack::offset(upframe.stack_base, desc.index);
+                let index = (desc.stack_base + desc.index) as usize;
                 $stack.get_with_type(index, desc.typ)
             }
             UpValueState::Closed(val) => val.clone(),
@@ -45,8 +44,7 @@ macro_rules! store_up_value {
         let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
         match uv {
             UpValueState::Open(desc) => {
-                let upframe = &mut $frames[desc.frame as usize];
-                let index = Stack::offset(upframe.stack_base, desc.index);
+                let index = (desc.stack_base + desc.index) as usize;
                 store_local!($stack, index, $rhs_index, $typ, $gcos);
             }
             UpValueState::Closed(v) => {
