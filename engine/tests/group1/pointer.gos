@@ -98,9 +98,18 @@ func test() {
 }
 
 
+func ret() *int {
+    i := 666
+    return &i
+}
+
+
 func main() {
     a := 1
     b := &a
     assert(*b + 1 == 2)
+
+    assert(*ret() + 1 == 667)
+
     test()
 }

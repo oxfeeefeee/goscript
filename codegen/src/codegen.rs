@@ -1201,12 +1201,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let index = emitter.add_const(None, GosValue::Metadata(m));
                 emitter.emit_load(index, None, ValueType::Metadata, pos);
             }
-            OperandMode::Variable => {
+            _ => {
                 self.visit_expr(expr);
                 let t = self.tlookup.get_expr_value_type(expr);
                 current_func_mut!(self).emit_code_with_type(Opcode::DEREF, t, pos);
             }
-            _ => unreachable!(),
         }
     }
 
