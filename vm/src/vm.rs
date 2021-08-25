@@ -155,6 +155,8 @@ impl<'a> Context<'a> {
         let mut f = Fiber::new(self.clone(), stack, first_frame);
         self.exec
             .spawn(async move {
+                // let parent fiber go first
+                future::yield_now().await;
                 f.main_loop().await;
             })
             .detach();
@@ -1212,7 +1214,7 @@ impl<'a> Fiber<'a> {
         } //loop
 
         stack.clear_rc_garbage();
-        gc(gcv);
+        //gc(gcv);
     }
 }
 

@@ -895,8 +895,8 @@ impl Display for InterfaceObj {
  support zero cap buffer
  remove interface from gc
  recv comma_ok
- channel display
- fix range slice
+ real zero value RECV
+ fix gc
 */
 
 // ----------------------------------------------------------------------------
