@@ -647,7 +647,24 @@ impl<'a> Fiber<'a> {
                     Opcode::NEQ => stack.compare_neq(inst.t0()),
                     Opcode::LEQ => stack.compare_leq(inst.t0()),
                     Opcode::GEQ => stack.compare_geq(inst.t0()),
-                    Opcode::ARROW => unimplemented!(),
+                    Opcode::SEND => {
+                        let val = stack.pop_with_type(inst.t0());
+                        let chan = stack.pop_rc();
+                        release_stack_ref!(stack, stack_mut_ref);
+                        let re = chan.as_channel().send(val).await;
+                        restore_stack_ref!(self, stack, stack_mut_ref);
+                        if re.is_err() {
+                            result = Result::Error(re.unwrap_err());
+                            break;
+                        }
+                    }
+                    Opcode::RECV => {
+                        let chan = stack.pop_rc();
+                        release_stack_ref!(stack, stack_mut_ref);
+                        let val = chan.as_channel().recv().await;
+                        restore_stack_ref!(self, stack, stack_mut_ref);
+                        stack.push(val);
+                    }
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
@@ -1078,7 +1095,14 @@ impl<'a> Fiber<'a> {
                                 let default = zero_val!(v, objs, gcv);
                                 GosValue::new_map(*meta, default, gcv)
                             }
-                            MetadataType::Channel => unimplemented!(),
+                            MetadataType::Channel(_, _) => {
+                                let cap = match index {
+                                    -1 => stack.pop_int() as usize,
+                                    0 => 0,
+                                    _ => unreachable!(),
+                                };
+                                GosValue::new_channel(*meta, cap)
+                            }
                             _ => unreachable!(),
                         };
                         stack.pop_discard();

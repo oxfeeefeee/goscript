@@ -184,14 +184,20 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
+    pub fn pop_rc(&mut self) -> GosValue {
         self.cursor -= 1;
+        let mut ret = GosValue::new_nil();
+        std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
+        ret
+    }
+
+    #[inline]
+    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         if t.copyable() {
+            self.cursor -= 1;
             self.get_c(self.cursor).get_v128(t)
         } else {
-            let mut ret = GosValue::new_nil();
-            std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
-            ret
+            self.pop_rc()
         }
     }
 

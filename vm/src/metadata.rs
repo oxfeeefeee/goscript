@@ -13,6 +13,13 @@ macro_rules! zero_val {
     };
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum ChannelType {
+    Send,
+    Recv,
+    SendRecv,
+}
+
 #[derive(Debug)]
 pub struct Metadata {
     pub mbool: GosMetadata,
@@ -126,6 +133,15 @@ impl GosMetadata {
     #[inline]
     pub fn new_interface(fields: Fields, metas: &mut MetadataObjs) -> GosMetadata {
         GosMetadata::new(MetadataType::Interface(fields), metas)
+    }
+
+    #[inline]
+    pub fn new_channel(
+        typ: ChannelType,
+        val_meta: GosMetadata,
+        metas: &mut MetadataObjs,
+    ) -> GosMetadata {
+        GosMetadata::new(MetadataType::Channel(typ, val_meta), metas)
     }
 
     #[inline]
@@ -279,7 +295,7 @@ impl GosMetadata {
                     MetadataType::SliceOrArray(_, _) => ValueType::Slice,
                     MetadataType::Map(_, _) => ValueType::Map,
                     MetadataType::Interface(_) => ValueType::Interface,
-                    MetadataType::Channel => ValueType::Channel,
+                    MetadataType::Channel(_, _) => ValueType::Channel,
                     MetadataType::Named(_, _) => ValueType::Named,
                 },
                 MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
@@ -334,7 +350,7 @@ impl GosMetadata {
                     GosValue::new_map_nil(*self, v.default_val(mobjs, gcos), gcos)
                 }
                 MetadataType::Interface(_) => GosValue::Nil(*self),
-                MetadataType::Channel => GosValue::Nil(*self),
+                MetadataType::Channel(_, _) => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
                     GosValue::Named(Box::new((val, *gm)))
@@ -380,7 +396,7 @@ impl GosMetadata {
                     GosValue::new_map(*self, v.default_val(mobjs, gcos), gcos)
                 }
                 MetadataType::Interface(_) => GosValue::Nil(*self),
-                MetadataType::Channel => unimplemented!(),
+                MetadataType::Channel(_, _) => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.default_val(mobjs, gcos);
                     GosValue::Named(Box::new((val, *gm)))
@@ -693,7 +709,7 @@ pub enum MetadataType {
     Signature(SigMetadata),
     Map(GosMetadata, GosMetadata),
     Interface(Fields),
-    Channel, //todo
+    Channel(ChannelType, GosMetadata),
     Named(Methods, GosMetadata),
 }
 
@@ -748,7 +764,9 @@ impl MetadataType {
                 ak.semantic_eq(bk, metas) && av.semantic_eq(bv, metas)
             }
             (Self::Interface(a), Self::Interface(b)) => a.semantic_eq(b, metas),
-            (Self::Channel, Self::Channel) => unimplemented!(),
+            (Self::Channel(at, avt), Self::Channel(bt, bvt)) => {
+                at == bt && avt.semantic_eq(bvt, metas)
+            }
             (Self::Named(_, a), Self::Named(_, b)) => a.semantic_eq(b, metas),
             _ => false,
         }

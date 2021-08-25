@@ -407,7 +407,10 @@ impl<'a> CodeGen<'a> {
                         Expr::Index(ie) => {
                             self.gen_map_index(&ie.expr, &ie.index, comma_ok);
                         }
-                        _ => unreachable!(),
+                        _ => {
+                            dbg!(val0, val0_mode);
+                            unreachable!()
+                        }
                     }
                     if comma_ok {
                         self.tlookup.get_return_tc_types(val0)
@@ -1347,6 +1350,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Token::SUB => Opcode::UNARY_SUB,
             Token::XOR => Opcode::UNARY_XOR,
             Token::NOT => Opcode::NOT,
+            Token::ARROW => Opcode::RECV,
             _ => {
                 dbg!(op);
                 unreachable!()
@@ -1440,8 +1444,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.gen_type_meta(this)
     }
 
-    fn visit_chan_type(&mut self, _: &Expr, _chan: &Expr, _dir: &ChanDir) {
-        unimplemented!();
+    fn visit_chan_type(&mut self, this: &Expr, _chan: &Expr, _dir: &ChanDir) {
+        self.gen_type_meta(this)
     }
 
     fn visit_bad_expr(&mut self, _: &Expr, _e: &BadExpr) {
@@ -1516,8 +1520,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_stmt_send(&mut self, _sstmt: &SendStmt) {
-        unimplemented!();
+    fn visit_stmt_send(&mut self, sstmt: &SendStmt) {
+        self.visit_expr(&sstmt.chan);
+        self.visit_expr(&sstmt.val);
+        let t = self.tlookup.get_expr_value_type(&sstmt.val);
+        current_func_mut!(self).emit_code_with_type(Opcode::SEND, t, Some(sstmt.arrow));
     }
 
     fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {

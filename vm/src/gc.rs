@@ -40,7 +40,13 @@ pub enum GcWeak {
     Map(Weak<(MapObj, RCount)>),
     Interface(Weak<(RefCell<InterfaceObj>, RCount)>),
     Struct(Weak<(RefCell<StructObj>, RCount)>),
-    Channel(Weak<(RefCell<ChannelObj>, RCount)>),
+    // todo:
+    // GC doesn't support channel for now, because we can't access the
+    // underlying objects (unless we don't use smol::channel and write
+    // it ourself).
+    // but memory leaking circles that involve channels should be very
+    // rare, so in practice we may not need it at all.
+    //Channel(Weak<(RefCell<ChannelObj>, RCount)>),
 }
 
 impl GcWeak {
@@ -52,7 +58,6 @@ impl GcWeak {
             GosValue::Map(m) => GcWeak::Map(Rc::downgrade(m)),
             GosValue::Interface(i) => GcWeak::Interface(Rc::downgrade(i)),
             GosValue::Struct(s) => GcWeak::Struct(Rc::downgrade(s)),
-            GosValue::Channel(c) => GcWeak::Channel(Rc::downgrade(c)),
             _ => unreachable!(),
         }
     }
@@ -82,10 +87,6 @@ impl GcWeak {
             GcWeak::Struct(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Struct(v)
-            }),
-            GcWeak::Channel(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Channel(v)
             }),
         }
     }
@@ -119,7 +120,6 @@ fn children_ref_sub_one(val: &GosValue) {
         }
         GosValue::Interface(i) => i.0.borrow().ref_sub_one(),
         GosValue::Struct(s) => s.0.borrow().fields.iter().for_each(|obj| obj.ref_sub_one()),
-        GosValue::Channel(_) => unimplemented!(),
         _ => unreachable!(),
     };
 }
@@ -157,7 +157,6 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
                 .iter()
                 .for_each(|obj| obj.mark_dirty(queue))
         }
-        GosValue::Channel(_) => unimplemented!(),
         _ => unreachable!(),
     };
 }
@@ -187,7 +186,6 @@ fn release(obj: &mut GosValue) {
         }
         GosValue::Interface(i) => RefCell::borrow_mut(&i.0).set_underlying(IfaceUnderlying::None),
         GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
-        GosValue::Channel(_) => unimplemented!(),
         _ => unreachable!(),
     };
 }

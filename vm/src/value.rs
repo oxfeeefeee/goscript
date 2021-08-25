@@ -257,7 +257,7 @@ pub enum GosValue {
     Map(Rc<(MapObj, RCount)>),
     Interface(Rc<(RefCell<InterfaceObj>, RCount)>),
     Struct(Rc<(RefCell<StructObj>, RCount)>),
-    Channel(Rc<(RefCell<ChannelObj>, RCount)>),
+    Channel(Rc<ChannelObj>),
 
     Named(Box<(GosValue, GosMetadata)>),
 }
@@ -404,6 +404,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn new_channel(meta: GosMetadata, cap: usize) -> GosValue {
+        GosValue::Channel(Rc::new(ChannelObj::new(meta, cap)))
+    }
+
+    #[inline]
     pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
         GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t), MetaCategory::Default))
     }
@@ -464,7 +469,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_channel(&self) -> &Rc<(RefCell<ChannelObj>, RCount)> {
+    pub fn as_channel(&self) -> &Rc<ChannelObj> {
         unwrap_gos_val!(Channel, self)
     }
 
@@ -737,7 +742,6 @@ impl GosValue {
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Interface(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Channel(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Named(obj) => obj.0.ref_sub_one(),
             _ => {}
         };
@@ -753,7 +757,6 @@ impl GosValue {
             GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Interface(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Struct(obj) => rcount_mark_and_queue(&obj.1, queue),
-            GosValue::Channel(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Named(obj) => obj.0.mark_dirty(queue),
             _ => {}
         };
@@ -767,7 +770,6 @@ impl GosValue {
             GosValue::Map(obj) => obj.1.get(),
             GosValue::Interface(obj) => obj.1.get(),
             GosValue::Struct(obj) => obj.1.get(),
-            GosValue::Channel(obj) => obj.1.get(),
             _ => unreachable!(),
         }
     }
@@ -780,7 +782,6 @@ impl GosValue {
             GosValue::Map(obj) => obj.1.set(rc),
             GosValue::Interface(obj) => obj.1.set(rc),
             GosValue::Struct(obj) => obj.1.set(rc),
-            GosValue::Channel(obj) => obj.1.set(rc),
             _ => unreachable!(),
         }
     }

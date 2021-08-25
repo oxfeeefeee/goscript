@@ -3,8 +3,8 @@ use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
 use goscript_types::{
-    BasicType, ConstValue, EntityType, ObjKey, OperandMode, PackageKey as TCPackageKey, TCObjects,
-    Type, TypeInfo, TypeKey as TCTypeKey,
+    BasicType, ChanDir, ConstValue, EntityType, ObjKey, OperandMode, PackageKey as TCPackageKey,
+    TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::{OpIndex, ValueType};
@@ -342,6 +342,15 @@ impl<'a> TypeLookup<'a> {
                 let fields = self.get_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcv);
                 GosMetadata::new_interface(fields, &mut vm_objs.metas)
             }
+            Type::Chan(detail) => {
+                let typ = match detail.dir() {
+                    ChanDir::RecvOnly => ChannelType::Recv,
+                    ChanDir::SendOnly => ChannelType::Send,
+                    ChanDir::SendRecv => ChannelType::SendRecv,
+                };
+                let vmeta = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
+                GosMetadata::new_channel(typ, vmeta, &mut vm_objs.metas)
+            }
             Type::Signature(detail) => {
                 let mut convert = |tuple_key| -> Vec<GosMetadata> {
                     self.tc_objs.types[tuple_key]
@@ -451,6 +460,7 @@ impl<'a> TypeLookup<'a> {
             Type::Map(_) => ValueType::Map,
             Type::Struct(_) => ValueType::Struct,
             Type::Interface(_) => ValueType::Interface,
+            Type::Chan(_) => ValueType::Channel,
             Type::Signature(_) => ValueType::Closure,
             Type::Pointer(_) => ValueType::Pointer,
             Type::Named(_) => ValueType::Named,

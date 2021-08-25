@@ -4,9 +4,11 @@ use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
-use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
+use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RuntimeResult};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
+use smol::channel;
+use smol::future;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -889,11 +891,70 @@ impl Display for InterfaceObj {
     }
 }
 
+/* next todo:
+ support zero cap buffer
+ remove interface from gc
+ recv comma_ok
+ channel display
+ fix range slice
+*/
+
 // ----------------------------------------------------------------------------
 // ChannelObj
 
 #[derive(Clone, Debug)]
-pub struct ChannelObj {}
+pub struct ChannelObj {
+    pub meta: GosMetadata,
+    // we can use Option here for send_only/recv_only channels, but would it help?
+    pub sender: channel::Sender<GosValue>,
+    pub receiver: channel::Receiver<GosValue>,
+}
+
+impl ChannelObj {
+    pub fn new(meta: GosMetadata, cap: usize) -> ChannelObj {
+        let (s, r) = channel::bounded(cap);
+        ChannelObj {
+            meta: meta,
+            sender: s,
+            receiver: r,
+        }
+    }
+
+    pub async fn send(&self, v: GosValue) -> RuntimeResult {
+        loop {
+            let re = self.sender.try_send(v.clone());
+            if re.is_ok() {
+                return Ok(());
+            } else {
+                match re.unwrap_err() {
+                    channel::TrySendError::Full(_) => {
+                        future::yield_now().await;
+                    }
+                    channel::TrySendError::Closed(_) => {
+                        return Err("channel closed!".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn recv(&self) -> GosValue {
+        loop {
+            let re = self.receiver.try_recv();
+            if re.is_ok() {
+                return re.unwrap();
+            } else {
+                match re.unwrap_err() {
+                    channel::TryRecvError::Empty => {
+                        future::yield_now().await;
+                    }
+                    // todo: real zero value
+                    channel::TryRecvError::Closed => return GosValue::new_nil(),
+                }
+            }
+        }
+    }
+}
 
 // ----------------------------------------------------------------------------
 // PointerObj

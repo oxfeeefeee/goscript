@@ -56,7 +56,8 @@ pub enum Opcode {
     REF_PKG_MEMBER,
     REF_LITERAL,
     DEREF, // *
-    ARROW, // <-
+    SEND,  // <-
+    RECV,  // <-
     NOT,   // !
     EQL,   // ==
     LSS,   // <
@@ -152,7 +153,8 @@ impl Opcode {
             Opcode::REF_PKG_MEMBER => ("REF_PKG_MEMBER", 0),
             Opcode::REF_LITERAL => ("REF_LITERAL", 0),
             Opcode::DEREF => ("DEREF", 0),
-            Opcode::ARROW => ("ARROW", 0),
+            Opcode::SEND => ("SEND", -1),
+            Opcode::RECV => ("RECV", 1),
             Opcode::NOT => ("LNOT", 0),
             Opcode::EQL => ("EQL", -1),
             Opcode::LSS => ("LSS", -1),

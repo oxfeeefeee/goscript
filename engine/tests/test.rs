@@ -215,6 +215,12 @@ fn test_async() {
 }
 
 #[test]
+fn test_channel() {
+    let err_cnt = run("./tests/group1/channel.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);
