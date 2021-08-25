@@ -936,7 +936,7 @@ impl Display for GosValue {
             GosValue::Map(m) => write!(f, "{}", m.0),
             GosValue::Interface(i) => write!(f, "{}", i.0.borrow()),
             GosValue::Struct(s) => write!(f, "{}", s.0.borrow()),
-            GosValue::Channel(_) => unimplemented!(),
+            GosValue::Channel(_) => f.write_str("<channel>"),
             GosValue::Function(_) => f.write_str("<function>"),
             GosValue::Package(_) => f.write_str("<package>"),
             GosValue::Metadata(_) => f.write_str("<metadata>"),
