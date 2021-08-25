@@ -161,7 +161,7 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
     };
 }
 
-fn release(obj: &mut GosValue) {
+fn break_cycle(obj: &mut GosValue) {
     match obj {
         GosValue::Array(arr) => arr.0.borrow_data_mut().clear(),
         GosValue::Closure(c) => {
@@ -175,7 +175,7 @@ fn release(obj: &mut GosValue) {
         GosValue::Slice(s) => {
             let sdata = &s.0;
             if !sdata.is_nil() {
-                sdata.borrow_data_mut().clear();
+                // slices share data, we cannot clear the data here
             }
         }
         GosValue::Map(m) => {
@@ -246,7 +246,7 @@ pub fn gc(objs: &GcoVec) {
 
     for mut obj in to_scan.into_iter() {
         if obj.rc() <= 0 {
-            release(&mut obj);
+            break_cycle(&mut obj);
         }
     }
 

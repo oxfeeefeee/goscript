@@ -1214,7 +1214,7 @@ impl<'a> Fiber<'a> {
         } //loop
 
         stack.clear_rc_garbage();
-        //gc(gcv);
+        gc(gcv);
     }
 }
 
