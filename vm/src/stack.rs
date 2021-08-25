@@ -625,7 +625,7 @@ impl RangeStack {
                 self.maps.push(iter);
             }
             GosValue::Slice(sl) => {
-                let slice = sl.0.borrow_data();
+                let slice = sl.0.borrow();
                 let iter = unsafe { mem::transmute(slice.iter().enumerate()) };
                 self.slices.push(iter);
             }
