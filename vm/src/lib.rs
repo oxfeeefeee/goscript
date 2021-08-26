@@ -3,6 +3,8 @@ pub mod instruction;
 #[macro_use]
 pub mod metadata;
 
+mod channel;
+
 pub mod objects;
 
 pub mod ffi;

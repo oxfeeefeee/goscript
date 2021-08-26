@@ -10,10 +10,10 @@ func sum(s []int, c chan int) {
 	c <- sum // send sum to c
 }
 
-func main() {
+func testWithCap(cap int) {
 	s := []int{7, 2, 8, -9, 4, 0}
 
-	c := make(chan int, 1)
+	c := make(chan int, cap)
 	go sum(s[:len(s)/2], c)
 	go sum(s[len(s)/2:], c)
 	x, y := <-c, <-c // receive from c
@@ -37,4 +37,13 @@ func main() {
 	assert(!ok)
 
 	fmt.Println(m, n, nn)
+}
+
+
+func main() {
+	testWithCap(0)
+	testWithCap(1)
+	testWithCap(2)
+	testWithCap(3)
+	testWithCap(999)
 }

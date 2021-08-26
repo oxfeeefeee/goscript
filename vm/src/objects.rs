@@ -1,4 +1,5 @@
 #![macro_use]
+use super::channel::Channel;
 use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
@@ -7,8 +8,6 @@ use super::stack::Stack;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RuntimeResult};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
-use smol::channel;
-use smol::future;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -892,10 +891,7 @@ impl Display for InterfaceObj {
 }
 
 /* next todo:
- support zero cap buffer
  remove interface from gc
- recv comma_ok
- fix gc
 */
 
 // ----------------------------------------------------------------------------
@@ -904,55 +900,28 @@ impl Display for InterfaceObj {
 #[derive(Clone, Debug)]
 pub struct ChannelObj {
     pub meta: GosMetadata,
-    // we can use Option here for send_only/recv_only channels, but would it help?
-    pub sender: channel::Sender<GosValue>,
-    pub receiver: channel::Receiver<GosValue>,
+    pub chan: Channel,
 }
 
 impl ChannelObj {
     pub fn new(meta: GosMetadata, cap: usize) -> ChannelObj {
-        let (s, r) = channel::bounded(cap);
         ChannelObj {
             meta: meta,
-            sender: s,
-            receiver: r,
+            chan: Channel::new(cap),
         }
     }
 
     #[inline]
     pub fn close(&self) {
-        self.sender.close();
+        self.chan.close()
     }
 
     pub async fn send(&self, v: GosValue) -> RuntimeResult {
-        loop {
-            match self.sender.try_send(v.clone()) {
-                Ok(()) => return Ok(()),
-                Err(e) => match e {
-                    channel::TrySendError::Full(_) => {
-                        future::yield_now().await;
-                    }
-                    channel::TrySendError::Closed(_) => {
-                        return Err("channel closed!".to_string());
-                    }
-                },
-            }
-        }
+        self.chan.send(v).await
     }
 
     pub async fn recv(&self) -> Option<GosValue> {
-        loop {
-            match self.receiver.try_recv() {
-                Ok(v) => return Some(v),
-                Err(e) => match e {
-                    channel::TryRecvError::Empty => {
-                        future::yield_now().await;
-                    }
-                    // todo: real zero value
-                    channel::TryRecvError::Closed => return None,
-                },
-            }
-        }
+        self.chan.recv().await
     }
 }
 
