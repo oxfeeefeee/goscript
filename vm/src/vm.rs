@@ -661,11 +661,19 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::RECV => {
-                        let chan = stack.pop_rc();
+                        let chan_val = stack.pop_rc();
+                        let chan = chan_val.as_channel();
                         release_stack_ref!(stack, stack_mut_ref);
-                        let val = chan.as_channel().recv().await;
+                        let val = chan.recv().await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
-                        stack.push(val);
+                        let unwrapped = match val {
+                            Some(v) => v,
+                            None => {
+                                let val_meta = objs.metas[chan.meta.as_non_ptr()].as_channel().1;
+                                val_meta.zero_val(&objs.metas, gcv)
+                            }
+                        };
+                        stack.push(unwrapped);
                     }
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();

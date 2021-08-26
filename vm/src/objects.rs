@@ -895,7 +895,6 @@ impl Display for InterfaceObj {
  support zero cap buffer
  remove interface from gc
  recv comma_ok
- real zero value RECV
  fix gc
 */
 
@@ -938,18 +937,18 @@ impl ChannelObj {
         }
     }
 
-    pub async fn recv(&self) -> GosValue {
+    pub async fn recv(&self) -> Option<GosValue> {
         loop {
             let re = self.receiver.try_recv();
             if re.is_ok() {
-                return re.unwrap();
+                return re.ok();
             } else {
                 match re.unwrap_err() {
                     channel::TryRecvError::Empty => {
                         future::yield_now().await;
                     }
                     // todo: real zero value
-                    channel::TryRecvError::Closed => return GosValue::new_nil(),
+                    channel::TryRecvError::Closed => return None,
                 }
             }
         }

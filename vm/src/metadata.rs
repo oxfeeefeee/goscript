@@ -730,6 +730,14 @@ impl MetadataType {
         }
     }
 
+    #[inline]
+    pub fn as_channel(&self) -> (&ChannelType, &GosMetadata) {
+        match self {
+            Self::Channel(t, m) => (t, m),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn semantic_eq(&self, other: &Self, mc: MetaCategory, metas: &MetadataObjs) -> bool {
         match (self, other) {
             (Self::Bool, Self::Bool) => true,
