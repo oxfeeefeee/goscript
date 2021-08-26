@@ -1147,6 +1147,10 @@ impl<'a> Fiber<'a> {
                             .borrow_data_mut()
                             .append(&mut valb.0.borrow_data().clone());
                     }
+                    Opcode::CLOSE => {
+                        let chan = stack.pop_with_type(ValueType::Channel);
+                        chan.as_channel().close();
+                    }
                     Opcode::ASSERT => {
                         if !stack.pop_bool() {
                             let msg = "Opcode::ASSERT: not true!".to_string();

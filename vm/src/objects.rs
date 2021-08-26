@@ -919,6 +919,11 @@ impl ChannelObj {
         }
     }
 
+    #[inline]
+    pub fn close(&self) {
+        self.sender.close();
+    }
+
     pub async fn send(&self, v: GosValue) -> RuntimeResult {
         loop {
             let re = self.sender.try_send(v.clone());

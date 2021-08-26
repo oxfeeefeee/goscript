@@ -94,6 +94,7 @@ pub enum Opcode {
     LEN,        // for built-in function len
     CAP,        // for built-in function cap
     APPEND,     // for built-in function append
+    CLOSE,      // for built-in function close
     ASSERT,     // for built-in function assert
     FFI,        // for built-in function native
 }
@@ -187,6 +188,7 @@ impl Opcode {
             Opcode::LEN => ("LEN", 0),
             Opcode::CAP => ("CAP", 0),
             Opcode::APPEND => ("APPEND", -128),
+            Opcode::CLOSE => ("CLOSE", -1),
             Opcode::ASSERT => ("ASSERT", 0),
             Opcode::FFI => ("FFI", 0),
         }

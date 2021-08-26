@@ -18,5 +18,10 @@ func main() {
 	go sum(s[len(s)/2:], c)
 	x, y := <-c, <-c // receive from c
 
+	assert(x + y == 12)
 	fmt.Println(x, y, x+y)
+
+	close(c)
+	assert(<-c == 0)
+	fmt.Println(<-c)
 }
