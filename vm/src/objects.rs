@@ -926,35 +926,31 @@ impl ChannelObj {
 
     pub async fn send(&self, v: GosValue) -> RuntimeResult {
         loop {
-            let re = self.sender.try_send(v.clone());
-            if re.is_ok() {
-                return Ok(());
-            } else {
-                match re.unwrap_err() {
+            match self.sender.try_send(v.clone()) {
+                Ok(()) => return Ok(()),
+                Err(e) => match e {
                     channel::TrySendError::Full(_) => {
                         future::yield_now().await;
                     }
                     channel::TrySendError::Closed(_) => {
                         return Err("channel closed!".to_string());
                     }
-                }
+                },
             }
         }
     }
 
     pub async fn recv(&self) -> Option<GosValue> {
         loop {
-            let re = self.receiver.try_recv();
-            if re.is_ok() {
-                return re.ok();
-            } else {
-                match re.unwrap_err() {
+            match self.receiver.try_recv() {
+                Ok(v) => return Some(v),
+                Err(e) => match e {
                     channel::TryRecvError::Empty => {
                         future::yield_now().await;
                     }
                     // todo: real zero value
                     channel::TryRecvError::Closed => return None,
-                }
+                },
             }
         }
     }
