@@ -407,6 +407,19 @@ impl<'a> CodeGen<'a> {
                         Expr::Index(ie) => {
                             self.gen_map_index(&ie.expr, &ie.index, comma_ok);
                         }
+                        Expr::Unary(recv_expr) => {
+                            assert_eq!(recv_expr.op, Token::ARROW);
+                            self.visit_expr(&recv_expr.expr);
+                            let t = self.tlookup.get_expr_value_type(&recv_expr.expr);
+                            assert_eq!(t, ValueType::Channel);
+                            let comma_ok_flag = comma_ok.then(|| ValueType::Flag);
+                            current_func_mut!(self).emit_code_with_type2(
+                                Opcode::RECV,
+                                t,
+                                comma_ok_flag,
+                                Some(recv_expr.op_pos),
+                            );
+                        }
                         _ => {
                             dbg!(val0, val0_mode);
                             unreachable!()

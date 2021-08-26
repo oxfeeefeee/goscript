@@ -21,7 +21,20 @@ func main() {
 	assert(x + y == 12)
 	fmt.Println(x, y, x+y)
 
+	
+	go func() {c <- 888}()
+	nn, ok := <- c
+	assert(nn == 888)
+	assert(ok)
+
 	close(c)
 	assert(<-c == 0)
 	fmt.Println(<-c)
+	m := <- c
+	assert(m == 0)
+	n, ok := <- c
+	assert(n == 0)
+	assert(!ok)
+
+	fmt.Println(m, n, nn)
 }

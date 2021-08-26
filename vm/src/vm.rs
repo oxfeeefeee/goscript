@@ -666,14 +666,17 @@ impl<'a> Fiber<'a> {
                         release_stack_ref!(stack, stack_mut_ref);
                         let val = chan.recv().await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
-                        let unwrapped = match val {
-                            Some(v) => v,
+                        let (unwrapped, ok) = match val {
+                            Some(v) => (v, true),
                             None => {
                                 let val_meta = objs.metas[chan.meta.as_non_ptr()].as_channel().1;
-                                val_meta.zero_val(&objs.metas, gcv)
+                                (val_meta.zero_val(&objs.metas, gcv), false)
                             }
                         };
                         stack.push(unwrapped);
+                        if inst.t1() == ValueType::Flag {
+                            stack.push(GosValue::Bool(ok));
+                        }
                     }
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();
