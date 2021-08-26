@@ -652,7 +652,7 @@ impl<'a> Fiber<'a> {
                     Opcode::SEND => {
                         let val = stack.pop_with_type(inst.t0());
                         let chan = stack.pop_rc();
-                        release_stack_ref!(stack, stack_mut_ref);
+                        drop(stack_mut_ref);
                         let re = chan.as_channel().send(val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         if re.is_err() {
@@ -663,7 +663,7 @@ impl<'a> Fiber<'a> {
                     Opcode::RECV => {
                         let chan_val = stack.pop_rc();
                         let chan = chan_val.as_channel();
-                        release_stack_ref!(stack, stack_mut_ref);
+                        drop(stack_mut_ref);
                         let val = chan.recv().await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         let (unwrapped, ok) = match val {
@@ -822,7 +822,7 @@ impl<'a> Fiber<'a> {
                                     .params_type;
                                 let params = stack.pop_with_type_n(ptypes);
                                 // release stack so that code in ffi can yield
-                                release_stack_ref!(stack, stack_mut_ref);
+                                drop(stack_mut_ref);
                                 let mut returns = call.ffi.borrow().call(&call.func_name, params);
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 stack.append(&mut returns);
@@ -1221,7 +1221,7 @@ impl<'a> Fiber<'a> {
                     break;
                 }
                 Result::Continue => {
-                    release_stack_ref!(stack, stack_mut_ref);
+                    drop(stack_mut_ref);
                     future::yield_now().await;
                     restore_stack_ref!(self, stack, stack_mut_ref);
                 }

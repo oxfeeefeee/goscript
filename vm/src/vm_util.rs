@@ -6,15 +6,7 @@ use super::objects::MetadataObjs;
 use super::stack::Stack;
 use super::value::{GosValue, GosValue64, RtValueResult, RuntimeResult, VMObjects};
 
-// release stack so that code in block can call yield
-macro_rules! release_stack_ref {
-    ($stack:ident, $stack_ref:ident) => {{
-        drop($stack);
-        drop($stack_ref);
-    }};
-}
-
-// restore everything
+// restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
     ($self_:ident, $stack:ident, $stack_ref:ident) => {{
         $stack_ref = $self_.stack.borrow_mut();

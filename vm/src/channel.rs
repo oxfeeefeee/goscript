@@ -88,7 +88,6 @@ impl Rendezvous {
             match state {
                 RendezvousState::Empty => break Ok(()),
                 RendezvousState::Full(_) => {
-                    drop(state);
                     drop(state_ref);
                     future::yield_now().await;
                 }
@@ -107,7 +106,6 @@ impl Rendezvous {
             let state: &RendezvousState = &state_ref;
             match state {
                 RendezvousState::Empty => {
-                    drop(state);
                     drop(state_ref);
                     future::yield_now().await;
                 }
