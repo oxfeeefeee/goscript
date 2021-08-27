@@ -890,10 +890,6 @@ impl Display for InterfaceObj {
     }
 }
 
-/* next todo:
- remove interface from gc
-*/
-
 // ----------------------------------------------------------------------------
 // ChannelObj
 
@@ -909,6 +905,16 @@ impl ChannelObj {
             meta: meta,
             chan: Channel::new(cap),
         }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.chan.len()
+    }
+
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.chan.cap()
     }
 
     #[inline]

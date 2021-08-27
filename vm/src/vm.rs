@@ -1121,24 +1121,24 @@ impl<'a> Fiber<'a> {
                         stack.pop_discard();
                         stack.push(val);
                     }
-                    Opcode::LEN => match &stack.pop_with_type(inst.t0()) {
-                        GosValue::Slice(slice) => {
-                            stack.push(GosValue::Int(slice.0.len() as isize));
-                        }
-                        GosValue::Map(map) => {
-                            stack.push(GosValue::Int(map.0.len() as isize));
-                        }
-                        GosValue::Str(sval) => {
-                            stack.push(GosValue::Int(sval.len() as isize));
-                        }
-                        _ => unreachable!(),
-                    },
-                    Opcode::CAP => match &stack.pop_with_type(inst.t0()) {
-                        GosValue::Slice(slice) => {
-                            stack.push(GosValue::Int(slice.0.cap() as isize));
-                        }
-                        _ => unreachable!(),
-                    },
+                    Opcode::LEN => {
+                        let l = match &stack.pop_with_type(inst.t0()) {
+                            GosValue::Slice(slice) => slice.0.len(),
+                            GosValue::Map(map) => map.0.len(),
+                            GosValue::Str(sval) => sval.len(),
+                            GosValue::Channel(chan) => chan.len(),
+                            _ => unreachable!(),
+                        };
+                        stack.push(GosValue::Int(l as isize));
+                    }
+                    Opcode::CAP => {
+                        let l = match &stack.pop_with_type(inst.t0()) {
+                            GosValue::Slice(slice) => slice.0.cap(),
+                            GosValue::Channel(chan) => chan.cap(),
+                            _ => unreachable!(),
+                        };
+                        stack.push(GosValue::Int(l as isize));
+                    }
                     Opcode::APPEND => {
                         let index = Stack::offset(stack.len(), inst.imm());
                         let a = stack.get_with_type(index - 2, ValueType::Slice);

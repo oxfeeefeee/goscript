@@ -8,14 +8,16 @@ func sum(s []int, c chan int) {
 		sum += v
 	}
 	c <- sum // send sum to c
+	fmt.Println("c len: ", len(c))
 }
 
-func testWithCap(cap int) {
+func testWithCap(capacity int) {
 	s := []int{7, 2, 8, -9, 4, 0}
 
-	c := make(chan int, cap)
+	c := make(chan int, capacity)
 	go sum(s[:len(s)/2], c)
 	go sum(s[len(s)/2:], c)
+	
 	x, y := <-c, <-c // receive from c
 
 	assert(x + y == 12)
@@ -37,6 +39,8 @@ func testWithCap(cap int) {
 	assert(!ok)
 
 	fmt.Println(m, n, nn)
+
+	assert(cap(c) == capacity)
 }
 
 

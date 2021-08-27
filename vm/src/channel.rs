@@ -22,6 +22,16 @@ impl Bounded {
     }
 
     #[inline]
+    pub fn len(&self) -> usize {
+        self.sender.len()
+    }
+
+    #[inline]
+    pub fn cap(&self) -> usize {
+        self.sender.capacity().unwrap()
+    }
+
+    #[inline]
     pub fn close(&self) {
         self.sender.close();
     }
@@ -74,6 +84,16 @@ impl Rendezvous {
         Rendezvous {
             state: Rc::new(RefCell::new(RendezvousState::Empty)),
         }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    pub fn cap(&self) -> usize {
+        0
     }
 
     #[inline]
@@ -138,6 +158,22 @@ impl Channel {
             Channel::Rendezvous(Rendezvous::new())
         } else {
             Channel::Bounded(Bounded::new(cap))
+        }
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        match self {
+            Channel::Bounded(b) => b.len(),
+            Channel::Rendezvous(r) => r.len(),
+        }
+    }
+
+    #[inline]
+    pub fn cap(&self) -> usize {
+        match self {
+            Channel::Bounded(b) => b.cap(),
+            Channel::Rendezvous(r) => r.cap(),
         }
     }
 
