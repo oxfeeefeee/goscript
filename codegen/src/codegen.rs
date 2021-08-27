@@ -1194,8 +1194,15 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let _ = params.iter().map(|e| self.visit_expr(e)).count();
                 let t = self.tlookup.get_expr_tc_type(func_expr);
                 self.try_cast_params_to_iface(t, params, ellipsis);
+
                 // do not pack params if there is ellipsis
-                current_func_emitter!(self).emit_call(is_async, ellipsis, pos);
+                let ftc = self
+                    .tlookup
+                    .underlying_tc(self.tlookup.get_expr_tc_type(func_expr));
+                let func_detail = self.tc_objs.types[ftc].try_as_signature().unwrap();
+                let variadic = func_detail.variadic();
+                let pack = variadic && !ellipsis;
+                current_func_emitter!(self).emit_call(is_async, pack, pos);
             }
         }
     }

@@ -762,16 +762,14 @@ impl<'a> Fiber<'a> {
                         let ref_cls = nframe.closure().clone();
                         let cls: &ClosureObj = &ref_cls.0.borrow();
                         let is_async = inst.t0() == ValueType::Flag;
-
-                        let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
-                        if let Some((meta, v_meta)) = sig.variadic {
-                            let has_ellipsis = inst.t1() == ValueType::Flag;
-                            if !has_ellipsis {
-                                let vt = v_meta.get_value_type(&objs.metas);
-                                let index =
-                                    nframe.stack_base + sig.params.len() + sig.results.len() - 1;
-                                stack.pack_variadic(index, meta, vt, gcv);
-                            }
+                        let pack = inst.t1() == ValueType::Flag;
+                        if pack {
+                            let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
+                            let (meta, v_meta) = sig.variadic.unwrap();
+                            let vt = v_meta.get_value_type(&objs.metas);
+                            let index =
+                                nframe.stack_base + sig.params.len() + sig.results.len() - 1;
+                            stack.pack_variadic(index, meta, vt, gcv);
                         }
                         match cls.func {
                             Some(key) => {
