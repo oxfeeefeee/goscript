@@ -113,6 +113,12 @@ impl CallFrame {
     }
 }
 
+struct DeferredCall {
+    frame: CallFrame,
+    stack_c: Vec<GosValue64>,
+    stack_rc: Vec<GosValue>,
+}
+
 #[derive(Debug)]
 enum Result {
     Continue,
@@ -168,6 +174,7 @@ pub struct Fiber<'a> {
     rstack: RangeStack,
     frames: Vec<CallFrame>,
     next_frames: Vec<CallFrame>,
+    deferred_stack: Vec<DeferredCall>,
     context: Context<'a>,
 }
 
@@ -178,6 +185,7 @@ impl<'a> Fiber<'a> {
             rstack: RangeStack::new(),
             frames: vec![first_frame],
             next_frames: Vec::new(),
+            deferred_stack: Vec::new(),
             context: c,
         }
     }
@@ -674,7 +682,7 @@ impl<'a> Fiber<'a> {
                             }
                         };
                         stack.push(unwrapped);
-                        if inst.t1() == ValueType::Flag {
+                        if inst.t1() == ValueType::FlagA {
                             stack.push(GosValue::Bool(ok));
                         }
                     }
@@ -761,8 +769,8 @@ impl<'a> Fiber<'a> {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let ref_cls = nframe.closure().clone();
                         let cls: &ClosureObj = &ref_cls.0.borrow();
-                        let is_async = inst.t0() == ValueType::Flag;
-                        let pack = inst.t1() == ValueType::Flag;
+                        let call_style = inst.t0();
+                        let pack = inst.t1() == ValueType::FlagA;
                         if pack {
                             let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
                             let (meta, v_meta) = sig.variadic.unwrap();
@@ -792,24 +800,34 @@ impl<'a> Fiber<'a> {
                                     }
                                     nframe.var_ptrs = Some(ptrs);
                                 }
-                                if !is_async {
-                                    self.frames.push(nframe);
-                                    frame_height += 1;
-                                    frame = self.frames.last_mut().unwrap();
-                                    func = nfunc;
-                                    stack_base = frame.stack_base;
-                                    consts = &func.consts;
-                                    code = func.code();
-                                    //dbg!(&consts);
-                                    //dbg!(&code);
-                                    //dbg!(&stack);
-                                    debug_assert!(func.local_count() == func.local_zeros.len());
-                                    // allocate local variables
-                                    stack.append(&mut func.local_zeros.clone());
-                                } else {
-                                    nframe.stack_base = 0;
-                                    let nstack = Stack::move_from(stack, nfunc.param_count());
-                                    self.context.spawn_fiber(nstack, nframe);
+                                match call_style {
+                                    ValueType::Zero => {
+                                        // default call
+                                        self.frames.push(nframe);
+                                        frame_height += 1;
+                                        frame = self.frames.last_mut().unwrap();
+                                        func = nfunc;
+                                        stack_base = frame.stack_base;
+                                        consts = &func.consts;
+                                        code = func.code();
+                                        //dbg!(&consts);
+                                        //dbg!(&code);
+                                        //dbg!(&stack);
+                                        debug_assert!(func.local_count() == func.local_zeros.len());
+                                        // allocate local variables
+                                        stack.append(&mut func.local_zeros.clone());
+                                    }
+                                    ValueType::FlagA => {
+                                        // goroutine
+                                        nframe.stack_base = 0;
+                                        let nstack = Stack::move_from(stack, nfunc.param_count());
+                                        self.context.spawn_fiber(nstack, nframe);
+                                    }
+                                    ValueType::FlagB => {
+                                        // defer
+                                        dbg!("defer");
+                                    }
+                                    _ => unreachable!(),
                                 }
                             }
                             None => {
@@ -831,7 +849,7 @@ impl<'a> Fiber<'a> {
                         //for s in stack.iter() {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
-                        let init_pkg = inst.t0() == ValueType::Flag;
+                        let init_pkg = inst.t0() == ValueType::FlagA;
                         if !init_pkg {
                             stack.truncate(stack_base + frame.ret_count(objs));
                         } else {

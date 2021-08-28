@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::codegen::CodeGen;
-use super::emit::Emitter;
+use super::emit::{CallStyle, Emitter};
 use super::interface::IfaceMapping;
 use super::package::PkgVarPairs;
 use super::types::TypeCache;
@@ -72,7 +72,7 @@ impl<'a> EntryGen<'a> {
             None,
         );
         emitter.emit_pre_call(None);
-        emitter.emit_call(false, false, None);
+        emitter.emit_call(CallStyle::Default, false, None);
         emitter.emit_return(None);
         *f.as_function()
     }

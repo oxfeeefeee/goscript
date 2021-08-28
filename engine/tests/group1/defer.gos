@@ -1,0 +1,14 @@
+package main
+
+
+func f() (result int) {
+	defer func() {
+		// result is accessed after it was set to 6 by the return statement
+		result *= 7
+	}()
+	return 6
+}
+
+func main() {
+        f()
+} 

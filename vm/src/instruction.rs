@@ -250,7 +250,8 @@ pub enum ValueType {
 
     FfiClosure,
 
-    Flag, //not a type, works as a flag in instructions
+    FlagA, //not a type, works as a flag in instructions
+    FlagB,
 }
 
 impl ValueType {

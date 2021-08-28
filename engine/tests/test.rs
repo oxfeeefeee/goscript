@@ -221,6 +221,12 @@ fn test_channel() {
 }
 
 #[test]
+fn test_defer() {
+    let err_cnt = run("./tests/group1/defer.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);

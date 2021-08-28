@@ -61,7 +61,6 @@ pub struct CodeGen<'a> {
     func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
     builtins: Builtins,
     blank_ident: IdentKey,
-    async_mark: Option<bool>,
 }
 
 impl<'a> CodeGen<'a> {
@@ -93,7 +92,6 @@ impl<'a> CodeGen<'a> {
             func_t_stack: Vec::new(),
             builtins: builtins,
             blank_ident: bk,
-            async_mark: None,
         }
     }
 
@@ -412,7 +410,7 @@ impl<'a> CodeGen<'a> {
                             self.visit_expr(&recv_expr.expr);
                             let t = self.tlookup.get_expr_value_type(&recv_expr.expr);
                             assert_eq!(t, ValueType::Channel);
-                            let comma_ok_flag = comma_ok.then(|| ValueType::Flag);
+                            let comma_ok_flag = comma_ok.then(|| ValueType::FlagA);
                             current_func_mut!(self).emit_code_with_type2(
                                 Opcode::RECV,
                                 t,
@@ -683,6 +681,130 @@ impl<'a> CodeGen<'a> {
         self.func_stack.pop();
         self.func_t_stack.pop();
         fkey
+    }
+
+    fn gen_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool, style: CallStyle) {
+        let pos = Some(func_expr.pos(&self.ast_objs));
+        match self.tlookup.get_expr_mode(func_expr) {
+            // built in function
+            OperandMode::Builtin(_) => {
+                let ikey = func_expr.try_as_ident().unwrap();
+                let ident = self.ast_objs.idents[*ikey].clone();
+                assert!(ident.entity.into_key().is_none());
+
+                let i = self.builtins.func_index(&ident.name).unwrap();
+                let t = self.tlookup.get_expr_value_type(&params[0]);
+                let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
+                for e in params.iter() {
+                    self.visit_expr(e);
+                }
+                // some of the built in funcs are not recorded
+                if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
+                    self.try_cast_params_to_iface(t, params, ellipsis);
+                    if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
+                        // FFI needs the signature of the call
+                        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
+                        let mut emitter = current_func_emitter!(self);
+                        let i = emitter.add_const(None, GosValue::Metadata(meta));
+                        emitter.emit_load(i, None, ValueType::Metadata, pos);
+                    }
+                }
+                let bf = &self.builtins.get_func_by_index(i as usize);
+                let count = params.len();
+                let (t_variadic, count) = if bf.variadic {
+                    if ellipsis {
+                        (None, Some(0)) // do not pack params if there is ellipsis
+                    } else {
+                        (
+                            Some(t_last),
+                            Some((bf.params_count - 1 - count as isize) as OpIndex),
+                        )
+                    }
+                } else {
+                    (None, Some(count as OpIndex))
+                };
+                let func = current_func_mut!(self);
+                func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
+            }
+            // conversion
+            // from the specs:
+            /*
+            A non-constant value x can be converted to type T in any of these cases:
+                x is assignable to T.
+                ignoring struct tags (see below), x's type and T have identical underlying types.
+                ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
+                x's type and T are both integer or floating point types.
+                x's type and T are both complex types.
+                x is an integer or a slice of bytes or runes and T is a string type.
+                x is a string and T is a slice of bytes or runes.
+            A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
+                x's type is identical to T.
+                x's type V and T have identical underlying types and at least one of V or T is not a defined type.
+                T is an interface type and x implements T.
+                x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
+                x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
+                x is an untyped constant representable by a value of type T.
+            */
+            OperandMode::TypeExpr => {
+                assert!(params.len() == 1);
+                self.visit_expr(&params[0]);
+                let tct0 = self.tlookup.get_expr_tc_type(func_expr);
+                let utct0 = self.tlookup.underlying_tc(tct0);
+                let t0 = self.tlookup.value_type_from_tc(utct0);
+                let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
+                let utct1 = self.tlookup.underlying_tc(tct1);
+                let t1 = self.tlookup.value_type_from_tc(utct1);
+                // just ignore conversion if it's nil or types are identical
+                if t1 != ValueType::Nil && !identical(utct0, utct1, self.tc_objs) {
+                    let iface_index = match t0 {
+                        ValueType::Interface => {
+                            if t1 != ValueType::Nil {
+                                self.iface_mapping.get_index(
+                                    &(tct0, Some(tct1)),
+                                    &mut self.tlookup,
+                                    self.objects,
+                                    self.dummy_gcv,
+                                )
+                            } else {
+                                0
+                            }
+                        }
+                        _ => 0,
+                    };
+                    // get the type of slice element if we are converting to or from a slice
+                    let tct2 = if t0 == ValueType::Slice {
+                        Some(utct0)
+                    } else if t1 == ValueType::Slice {
+                        Some(utct1)
+                    } else {
+                        None
+                    };
+                    let t2 = tct2.map(|x| {
+                        self.tlookup.value_type_from_tc(
+                            self.tc_objs.types[x].try_as_slice().unwrap().elem(),
+                        )
+                    });
+                    current_func_emitter!(self).emit_cast(t0, t1, t2, -1, iface_index, pos);
+                }
+            }
+            // normal goscript function
+            _ => {
+                self.visit_expr(func_expr);
+                current_func_emitter!(self).emit_pre_call(pos);
+                let _ = params.iter().map(|e| self.visit_expr(e)).count();
+                let t = self.tlookup.get_expr_tc_type(func_expr);
+                self.try_cast_params_to_iface(t, params, ellipsis);
+
+                // do not pack params if there is ellipsis
+                let ftc = self
+                    .tlookup
+                    .underlying_tc(self.tlookup.get_expr_tc_type(func_expr));
+                let func_detail = self.tc_objs.types[ftc].try_as_signature().unwrap();
+                let variadic = func_detail.variadic();
+                let pack = variadic && !ellipsis;
+                current_func_emitter!(self).emit_call(style, pack, pos);
+            }
+        }
     }
 
     fn gen_map_index(&mut self, expr: &Expr, index: &Expr, comma_ok: bool) {
@@ -1083,128 +1205,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
-        let pos = Some(func_expr.pos(&self.ast_objs));
-        match self.tlookup.get_expr_mode(func_expr) {
-            // built in function
-            OperandMode::Builtin(_) => {
-                let ikey = func_expr.try_as_ident().unwrap();
-                let ident = self.ast_objs.idents[*ikey].clone();
-                assert!(ident.entity.into_key().is_none());
-
-                let i = self.builtins.func_index(&ident.name).unwrap();
-                let t = self.tlookup.get_expr_value_type(&params[0]);
-                let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
-                for e in params.iter() {
-                    self.visit_expr(e);
-                }
-                // some of the built in funcs are not recorded
-                if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
-                    self.try_cast_params_to_iface(t, params, ellipsis);
-                    if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
-                        // FFI needs the signature of the call
-                        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
-                        let mut emitter = current_func_emitter!(self);
-                        let i = emitter.add_const(None, GosValue::Metadata(meta));
-                        emitter.emit_load(i, None, ValueType::Metadata, pos);
-                    }
-                }
-                let bf = &self.builtins.get_func_by_index(i as usize);
-                let count = params.len();
-                let (t_variadic, count) = if bf.variadic {
-                    if ellipsis {
-                        (None, Some(0)) // do not pack params if there is ellipsis
-                    } else {
-                        (
-                            Some(t_last),
-                            Some((bf.params_count - 1 - count as isize) as OpIndex),
-                        )
-                    }
-                } else {
-                    (None, Some(count as OpIndex))
-                };
-                let func = current_func_mut!(self);
-                func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
-            }
-            // conversion
-            // from the specs:
-            /*
-            A non-constant value x can be converted to type T in any of these cases:
-                x is assignable to T.
-                ignoring struct tags (see below), x's type and T have identical underlying types.
-                ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
-                x's type and T are both integer or floating point types.
-                x's type and T are both complex types.
-                x is an integer or a slice of bytes or runes and T is a string type.
-                x is a string and T is a slice of bytes or runes.
-            A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
-                x's type is identical to T.
-                x's type V and T have identical underlying types and at least one of V or T is not a defined type.
-                T is an interface type and x implements T.
-                x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
-                x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
-                x is an untyped constant representable by a value of type T.
-            */
-            OperandMode::TypeExpr => {
-                assert!(params.len() == 1);
-                self.visit_expr(&params[0]);
-                let tct0 = self.tlookup.get_expr_tc_type(func_expr);
-                let utct0 = self.tlookup.underlying_tc(tct0);
-                let t0 = self.tlookup.value_type_from_tc(utct0);
-                let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
-                let utct1 = self.tlookup.underlying_tc(tct1);
-                let t1 = self.tlookup.value_type_from_tc(utct1);
-                // just ignore conversion if it's nil or types are identical
-                if t1 != ValueType::Nil && !identical(utct0, utct1, self.tc_objs) {
-                    let iface_index = match t0 {
-                        ValueType::Interface => {
-                            if t1 != ValueType::Nil {
-                                self.iface_mapping.get_index(
-                                    &(tct0, Some(tct1)),
-                                    &mut self.tlookup,
-                                    self.objects,
-                                    self.dummy_gcv,
-                                )
-                            } else {
-                                0
-                            }
-                        }
-                        _ => 0,
-                    };
-                    // get the type of slice element if we are converting to or from a slice
-                    let tct2 = if t0 == ValueType::Slice {
-                        Some(utct0)
-                    } else if t1 == ValueType::Slice {
-                        Some(utct1)
-                    } else {
-                        None
-                    };
-                    let t2 = tct2.map(|x| {
-                        self.tlookup.value_type_from_tc(
-                            self.tc_objs.types[x].try_as_slice().unwrap().elem(),
-                        )
-                    });
-                    current_func_emitter!(self).emit_cast(t0, t1, t2, -1, iface_index, pos);
-                }
-            }
-            // normal goscript function
-            _ => {
-                let is_async = self.async_mark.take().is_some();
-                self.visit_expr(func_expr);
-                current_func_emitter!(self).emit_pre_call(pos);
-                let _ = params.iter().map(|e| self.visit_expr(e)).count();
-                let t = self.tlookup.get_expr_tc_type(func_expr);
-                self.try_cast_params_to_iface(t, params, ellipsis);
-
-                // do not pack params if there is ellipsis
-                let ftc = self
-                    .tlookup
-                    .underlying_tc(self.tlookup.get_expr_tc_type(func_expr));
-                let func_detail = self.tc_objs.types[ftc].try_as_signature().unwrap();
-                let variadic = func_detail.variadic();
-                let pack = variadic && !ellipsis;
-                current_func_emitter!(self).emit_call(is_async, pack, pos);
-            }
-        }
+        self.gen_call(func_expr, params, ellipsis, CallStyle::Default);
     }
 
     fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) {
@@ -1562,12 +1563,31 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
-        self.async_mark = Some(true);
-        self.visit_expr(&gostmt.call);
+        match &gostmt.call {
+            Expr::Call(call) => {
+                self.gen_call(
+                    &call.func,
+                    &call.args,
+                    call.ellipsis.is_some(),
+                    CallStyle::Async,
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 
-    fn visit_stmt_defer(&mut self, _dstmt: &DeferStmt) {
-        unimplemented!();
+    fn visit_stmt_defer(&mut self, dstmt: &DeferStmt) {
+        match &dstmt.call {
+            Expr::Call(call) => {
+                self.gen_call(
+                    &call.func,
+                    &call.args,
+                    call.ellipsis.is_some(),
+                    CallStyle::Defer,
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
@@ -1603,8 +1623,14 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     bstmt.token_pos,
                 );
             }
-            Token::GOTO => {}
-            Token::FALLTHROUGH => {}
+            Token::GOTO => {
+                //todo
+                //unimplemented!()
+            }
+            Token::FALLTHROUGH => {
+                //todo
+                //unimplemented!()
+            }
             _ => unreachable!(),
         }
     }

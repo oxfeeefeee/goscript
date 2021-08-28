@@ -22,6 +22,11 @@ func funcc(x ...int) (int, int, int) {
     return m, n, i[2]
 }
 
+func named() (result int) {
+    result = 6 
+    return
+}
+
 
 func main() {
 
@@ -33,4 +38,5 @@ func main() {
     assert(i1 == 0)
     assert(i2 == 1072)
     assert(i3 == 2000)
+    assert(named() == 6)
 } 
