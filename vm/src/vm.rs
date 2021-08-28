@@ -775,7 +775,6 @@ impl<'a> Fiber<'a> {
                             Some(key) => {
                                 let nfunc = &objs.functions[key];
                                 if let Some(uvs) = &cls.uvs {
-                                    // todo: make this work for goroutine
                                     let mut ptrs: Vec<UpValue> =
                                         Vec::with_capacity(nfunc.up_ptrs.len());
                                     for (i, p) in nfunc.up_ptrs.iter().enumerate() {

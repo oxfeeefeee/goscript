@@ -105,14 +105,38 @@ impl Stack {
         }
     }
 
+    pub fn with_data(mut c: Vec<GosValue64>, mut rc: Vec<GosValue>) -> Stack {
+        let n = c.len();
+        debug_assert!(n == rc.len());
+        let size_to_go = DEFAULT_SIZE - n;
+        c.append(&mut vec![GosValue64::nil(); size_to_go]);
+        rc.append(&mut vec![GosValue::new_nil(); size_to_go]);
+        Stack {
+            c: c,
+            rc: rc,
+            cursor: n,
+            max: DEFAULT_SIZE - 1,
+        }
+    }
+
     pub fn move_from(other: &mut Stack, count: usize) -> Stack {
-        let mut s = Stack::new();
-        let move_begin = other.cursor - count;
-        s.c[0..count].copy_from_slice(&other.c[move_begin..other.cursor]);
-        s.rc[0..count].clone_from_slice(&other.rc[move_begin..other.cursor]);
-        s.cursor += count;
-        other.cursor -= count;
-        s
+        let (c, rc) = other.pop_n(count);
+        Stack::with_data(c, rc)
+    }
+
+    pub fn pop_n(&mut self, n: usize) -> (Vec<GosValue64>, Vec<GosValue>) {
+        let begin = self.cursor - n;
+        let end = self.cursor;
+        self.cursor -= n;
+        let mut c: Vec<GosValue64> = vec![GosValue64::nil(); n];
+        c.copy_from_slice(&self.c[begin..end]);
+        (
+            c,
+            self.rc[begin..end]
+                .iter_mut()
+                .map(|x| std::mem::replace(x, GosValue::new_nil()))
+                .collect(),
+        )
     }
 
     #[inline]
