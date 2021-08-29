@@ -1,6 +1,10 @@
 package main
 
 
+import (
+	"fmt"
+)
+
 func f() (result int) {
 	defer func() {
 		// result is accessed after it was set to 6 by the return statement
@@ -10,5 +14,11 @@ func f() (result int) {
 }
 
 func main() {
-        f()
+    assert(f() == 42)
+    fmt.Println(f())
+    
+    for i := 0; i <= 3; i++ {
+	    defer fmt.Println(i)
+    }
+    
 } 

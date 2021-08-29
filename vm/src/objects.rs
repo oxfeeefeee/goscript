@@ -1409,6 +1409,13 @@ impl From<EntIndex> for OpIndex {
     }
 }
 
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+pub enum FuncFlag {
+    Default,
+    PkgCtor,
+    HasDefer,
+}
+
 /// FunctionVal is the direct container of the Opcode.
 #[derive(Clone, Debug)]
 pub struct FunctionVal {
@@ -1421,12 +1428,12 @@ pub struct FunctionVal {
 
     pub ret_zeros: Vec<GosValue>,
     pub local_zeros: Vec<GosValue>,
+    pub flag: FuncFlag,
 
     param_count: usize,
     entities: HashMap<EntityKey, EntIndex>,
     uv_entities: HashMap<EntityKey, EntIndex>,
     local_alloc: u16,
-    is_ctor: bool,
 }
 
 impl FunctionVal {
@@ -1435,7 +1442,7 @@ impl FunctionVal {
         meta: GosMetadata,
         objs: &VMObjects,
         gcv: &GcoVec,
-        ctor: bool,
+        flag: FuncFlag,
     ) -> FunctionVal {
         match &objs.metas[meta.as_non_ptr()] {
             MetadataType::Signature(s) => {
@@ -1453,11 +1460,11 @@ impl FunctionVal {
                     up_ptrs: Vec::new(),
                     ret_zeros: returns,
                     local_zeros: Vec::new(),
+                    flag: flag,
                     param_count: params,
                     entities: HashMap::new(),
                     uv_entities: HashMap::new(),
                     local_alloc: 0,
-                    is_ctor: ctor,
                 }
             }
             _ => unreachable!(),
@@ -1491,7 +1498,7 @@ impl FunctionVal {
 
     #[inline]
     pub fn is_ctor(&self) -> bool {
-        self.is_ctor
+        self.flag == FuncFlag::PkgCtor
     }
 
     #[inline]

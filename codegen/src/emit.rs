@@ -324,16 +324,16 @@ impl<'a> Emitter<'a> {
         self.f.push_inst_pos(inst, pos);
     }
 
-    pub fn emit_return(&mut self, pos: Option<usize>) {
-        self.f
-            .emit_inst(Opcode::RETURN, [None, None, None], None, pos);
-    }
-
-    pub fn emit_return_init_pkg(&mut self, index: OpIndex, pos: Option<usize>) {
+    pub fn emit_return(&mut self, pkg_index: Option<OpIndex>, pos: Option<usize>) {
+        let inst_flag = match self.f.flag {
+            FuncFlag::Default => ValueType::Zero,
+            FuncFlag::PkgCtor => ValueType::FlagA,
+            FuncFlag::HasDefer => ValueType::FlagB,
+        };
         self.f.emit_inst(
             Opcode::RETURN,
-            [Some(ValueType::FlagA), None, None],
-            Some(index),
+            [Some(inst_flag), None, None],
+            pkg_index,
             pos,
         );
     }

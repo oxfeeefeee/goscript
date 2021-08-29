@@ -139,6 +139,18 @@ impl Stack {
         )
     }
 
+    pub fn push_n(&mut self, c: Vec<GosValue64>, rc: Vec<GosValue>) {
+        let n = c.len();
+        debug_assert!(n == rc.len());
+        let begin = self.cursor;
+        let end = begin + n;
+        self.c[begin..end].copy_from_slice(&c[0..n]);
+        for (i, v) in rc.into_iter().enumerate() {
+            self.rc[begin + i] = v;
+        }
+        self.cursor += n;
+    }
+
     #[inline]
     pub fn push(&mut self, val: GosValue) {
         let t = val.get_type();

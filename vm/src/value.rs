@@ -370,9 +370,9 @@ impl GosValue {
         meta: GosMetadata,
         objs: &mut VMObjects,
         gcv: &GcoVec,
-        ctor: bool,
+        flag: FuncFlag,
     ) -> GosValue {
-        let val = FunctionVal::new(package, meta, objs, gcv, ctor);
+        let val = FunctionVal::new(package, meta, objs, gcv, flag);
         GosValue::Function(objs.functions.insert(val))
     }
 

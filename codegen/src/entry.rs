@@ -59,7 +59,7 @@ impl<'a> EntryGen<'a> {
             fmeta.clone(),
             &mut self.objects,
             &self.dummy_gcv,
-            false,
+            FuncFlag::Default,
         );
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];
@@ -73,7 +73,7 @@ impl<'a> EntryGen<'a> {
         );
         emitter.emit_pre_call(None);
         emitter.emit_call(CallStyle::Default, false, None);
-        emitter.emit_return(None);
+        emitter.emit_return(None, None);
         *f.as_function()
     }
 

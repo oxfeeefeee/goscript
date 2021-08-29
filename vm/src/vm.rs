@@ -824,8 +824,13 @@ impl<'a> Fiber<'a> {
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagB => {
-                                        // defer
-                                        dbg!("defer");
+                                        let (c, rc) = stack.pop_n(nfunc.param_count());
+                                        let deferred = DeferredCall {
+                                            frame: nframe,
+                                            stack_c: c,
+                                            stack_rc: rc,
+                                        };
+                                        self.deferred_stack.push(deferred);
                                     }
                                     _ => unreachable!(),
                                 }
@@ -849,18 +854,45 @@ impl<'a> Fiber<'a> {
                         //for s in stack.iter() {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
-                        let init_pkg = inst.t0() == ValueType::FlagA;
-                        if !init_pkg {
-                            stack.truncate(stack_base + frame.ret_count(objs));
-                        } else {
-                            let index = inst.imm() as usize;
-                            let pkey = pkgs[index];
-                            let pkg = &objs.packages[pkey];
-                            let count = pkg.var_count();
-                            // remove garbage first
-                            debug_assert!(stack.len() == stack_base + count);
-                            // the var values left on the stack are for pkg members
-                            stack.init_pkg_vars(pkg, count);
+                        match inst.t0() {
+                            ValueType::Zero => {
+                                stack.truncate(stack_base + frame.ret_count(objs));
+                            }
+                            ValueType::FlagA => {
+                                let index = inst.imm() as usize;
+                                let pkey = pkgs[index];
+                                let pkg = &objs.packages[pkey];
+                                let count = pkg.var_count();
+                                // remove garbage first
+                                debug_assert!(stack.len() == stack_base + count);
+                                // the var values left on the stack are for pkg members
+                                stack.init_pkg_vars(pkg, count);
+                            }
+                            ValueType::FlagB => match self.deferred_stack.pop() {
+                                Some(call) => {
+                                    // run Opcode::RETURN to check if deferred_stack is empty
+                                    frame.pc -= 1;
+
+                                    stack.push_n(call.stack_c, call.stack_rc);
+                                    let nframe = call.frame;
+
+                                    self.frames.push(nframe);
+                                    frame_height += 1;
+                                    frame = self.frames.last_mut().unwrap();
+                                    let fkey = frame.closure.0.borrow().func.unwrap();
+                                    func = &objs.functions[fkey];
+                                    stack_base = frame.stack_base;
+                                    consts = &func.consts;
+                                    code = func.code();
+                                    debug_assert!(func.local_count() == func.local_zeros.len());
+                                    stack.append(&mut func.local_zeros.clone());
+                                    continue;
+                                }
+                                None => {
+                                    stack.truncate(stack_base + frame.ret_count(objs));
+                                }
+                            },
+                            _ => unreachable!(),
                         }
 
                         frame.on_drop(&stack);

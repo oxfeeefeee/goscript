@@ -657,7 +657,13 @@ impl<'a> CodeGen<'a> {
         let fmeta = self
             .tlookup
             .meta_from_tc(tc_type, &mut self.objects, self.dummy_gcv);
-        let f = GosValue::new_function(self.pkg_key, fmeta, self.objects, self.dummy_gcv, false);
+        let f = GosValue::new_function(
+            self.pkg_key,
+            fmeta,
+            self.objects,
+            self.dummy_gcv,
+            FuncFlag::Default,
+        );
         let fkey = *f.as_function();
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
         if let Some(fl) = &typ.results {
@@ -676,7 +682,7 @@ impl<'a> CodeGen<'a> {
         // process function body
         self.visit_stmt_block(body);
         // it will not be executed if it's redundant
-        Emitter::new(&mut self.objects.functions[fkey]).emit_return(Some(body.r_brace));
+        Emitter::new(&mut self.objects.functions[fkey]).emit_return(None, Some(body.r_brace));
 
         self.func_stack.pop();
         self.func_t_stack.pop();
@@ -1028,7 +1034,8 @@ impl<'a> CodeGen<'a> {
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.metadata.default_sig;
-        let f = GosValue::new_function(pkey, fmeta, self.objects, self.dummy_gcv, true);
+        let f =
+            GosValue::new_function(pkey, fmeta, self.objects, self.dummy_gcv, FuncFlag::PkgCtor);
         let fkey = *f.as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
@@ -1055,7 +1062,7 @@ impl<'a> CodeGen<'a> {
         }
 
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
-        emitter.emit_return_init_pkg(index, None);
+        emitter.emit_return(Some(index), None);
         self.func_stack.pop();
     }
 }
@@ -1577,6 +1584,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_defer(&mut self, dstmt: &DeferStmt) {
+        current_func_mut!(self).flag = FuncFlag::HasDefer;
         match &dstmt.call {
             Expr::Call(call) => {
                 self.gen_call(
@@ -1611,7 +1619,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             );
             emitter.emit_pop(1, pos);
         }
-        current_func_emitter!(self).emit_return(pos);
+        current_func_emitter!(self).emit_return(None, pos);
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
