@@ -101,10 +101,13 @@ impl<'a> Parser<'a> {
         match self.target_stack.pop() {
             Some(v) => {
                 for i in v {
-                    let ident = ident!(self, i);
-                    if scope.look_up(&ident.name).is_none() {
-                        let s = format!("label {} undefined", ident.name);
-                        self.error(self.pos, s);
+                    let ident = ident_mut!(self, i);
+                    match scope.look_up(&ident.name) {
+                        Some(e) => { ident.entity = IdentEntity::Entity(*e); },
+                        None => {
+                            let s = format!("label {} undefined", ident.name);
+                            self.error(self.pos, s);
+                        } 
                     }
                 }
             }
