@@ -7,42 +7,57 @@ use goscript_vm::value::*;
 use std::collections::HashMap;
 
 /// branch points of break and continue
-pub struct BranchPoints {
-    data: Vec<(usize, Token)>,
+pub struct BranchBlock {
+    points: Vec<(usize, Token, Option<EntityKey>)>,
+    label: Option<EntityKey>,
 }
 
-impl BranchPoints {
-    pub fn new() -> BranchPoints {
-        BranchPoints { data: vec![] }
+impl BranchBlock {
+    pub fn new(label: Option<EntityKey>) -> BranchBlock {
+        BranchBlock {
+            points: vec![],
+            label: label,
+        }
     }
 }
 
 /// helper for break, continue and goto
 pub struct BranchHelper {
-    points_vec: Vec<BranchPoints>,
+    block_stack: Vec<BranchBlock>,
+    next_block_label: Option<EntityKey>,
     labels: HashMap<EntityKey, usize>,
 }
 
 impl BranchHelper {
     pub fn new() -> BranchHelper {
         BranchHelper {
-            points_vec: vec![],
+            block_stack: vec![],
+            next_block_label: None,
             labels: HashMap::new(),
         }
     }
 
-    pub fn add_point(&mut self, func: &mut FunctionVal, token: Token, pos: usize) {
+    pub fn add_point(
+        &mut self,
+        func: &mut FunctionVal,
+        token: Token,
+        label: Option<EntityKey>,
+        pos: usize,
+    ) {
         let index = func.code().len();
         func.emit_code_with_imm(Opcode::JUMP, 0, Some(pos));
-        self.points_vec
+        self.block_stack
             .last_mut()
             .unwrap()
-            .data
-            .push((index, token));
+            .points
+            .push((index, token, label));
     }
 
-    pub fn add_label(&mut self, label: EntityKey, offset: usize) {
+    pub fn add_label(&mut self, label: EntityKey, offset: usize, is_breakable: bool) {
         self.labels.insert(label, offset);
+        if is_breakable {
+            self.next_block_label = Some(label);
+        }
     }
 
     pub fn go_to(&self, func: &mut FunctionVal, label: &EntityKey, pos: usize) {
@@ -53,20 +68,31 @@ impl BranchHelper {
     }
 
     pub fn enter_block(&mut self) {
-        self.points_vec.push(BranchPoints::new())
+        self.block_stack
+            .push(BranchBlock::new(self.next_block_label.take()))
     }
 
     pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>, end: usize) {
-        let points = self.points_vec.pop().unwrap();
-        for (index, token) in points.data.iter() {
-            let current_pc = *index as OpIndex + 1;
-            let target = if *token == Token::BREAK {
+        let block = self.block_stack.pop().unwrap();
+        for (index, token, label) in block.points.into_iter() {
+            let current_pc = index as OpIndex + 1;
+            let target = if token == Token::BREAK {
                 end
             } else {
                 begin.unwrap()
             };
-            func.instruction_mut(*index)
-                .set_imm(target as OpIndex - current_pc);
+            if label == block.label {
+                func.instruction_mut(index)
+                    .set_imm(target as OpIndex - current_pc);
+            } else {
+                // this break/continue tries to jump out of an outer loop
+                // so we add it to outer block's jump out points
+                self.block_stack
+                    .last_mut()
+                    .unwrap()
+                    .points
+                    .push((index, token, label));
+            }
         }
     }
 }

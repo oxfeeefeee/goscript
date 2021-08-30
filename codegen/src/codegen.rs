@@ -1548,7 +1548,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
         let entity = self.ast_objs.idents[stmt.label].entity_key().unwrap();
-        self.branch.add_label(entity, offset);
+        let is_breakable = match &stmt.stmt {
+            Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
+            _ => false,
+        };
+        self.branch.add_label(entity, offset, is_breakable);
         self.visit_stmt(&stmt.stmt);
     }
 
@@ -1629,9 +1633,13 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
         match bstmt.token {
             Token::BREAK | Token::CONTINUE => {
+                let entity = bstmt
+                    .label
+                    .map(|x| self.ast_objs.idents[x].entity_key().unwrap());
                 self.branch.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
+                    entity,
                     bstmt.token_pos,
                 );
             }

@@ -1,5 +1,9 @@
 package main
 
+
+import "fmt"
+
+
 func f1() {
     var j int
     var s = map[int]int{123:10, 258:20}
@@ -25,7 +29,7 @@ func f2() {
     assert(j == 1000)
 }
 
-/*
+
 func f3() {
     i := 0
     i += 'a'
@@ -49,7 +53,7 @@ func f3() {
     assert(j2 == j)
     assert(k2 == k)
 }
-*/
+
 
 func range_set() {
     s := []int{1, 2}
@@ -140,20 +144,71 @@ func break_cont_3() {
 }
 
 
+func break_label() {
+    total := 0
+OuterLoop:
+    for i := 0; i < 10; i++ {
+        for j := 0; j < 10; j++ {
+            total += 1
+            if j == 5 {
+                break OuterLoop
+            }
+        }
+    }
+    fmt.Println(total)
+    assert(total == 6)
+
+
+    total = 0
+OuterLoop2:
+    for i := 0; i < 10; i++ {
+        for j := 0; j < 10; j++ {
+            total += 1
+            if j == 5 {
+                continue OuterLoop2
+            }
+        }
+    }
+    fmt.Println(total)
+    assert(total == 60)
+
+    total = 0
+    for i := 0; i < 10; i++ {
+        for j := 0; j < 10; j++ {
+            total += 1
+            if j == 5 {
+                break
+            }
+        }
+    }
+    fmt.Println(total)
+    assert(total == 60)
+
+    total = 0
+    for i := 0; i < 10; i++ {
+        for j := 0; j < 10; j++ {
+            total += 1
+            if j == 5 {
+                continue
+            }
+        }
+    }
+    fmt.Println(total)
+    assert(total == 100)
+}
+
+
 func main() {
+    
    f1()
    f2()
-   //f3()
+   f3()
 
    range_set()
 
    break_cont()
    break_cont_2()
 
-/*
-    s := []int{1,2,3}
-    for _, i := range s {
-        j += i
-    }
-    */
+    break_label()
+    
 }
