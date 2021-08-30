@@ -1,0 +1,22 @@
+package main
+
+import "fmt"
+
+func main() {
+   var a int = 0
+   total := 0
+   skip := 6
+
+   LOOP: for a < 10 {
+      if a == skip {
+         a = a + 1
+         goto LOOP
+      }
+      total += a
+      fmt.Println("value of a: ", a)
+      a++     
+   }  
+
+   fmt.Println(total)
+   assert(total == 45 - skip)
+}

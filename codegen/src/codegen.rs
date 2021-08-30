@@ -55,7 +55,7 @@ pub struct CodeGen<'a> {
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     pkg_util: PkgUtil<'a>,
-    break_cont: BreakContinue,
+    branch: BranchHelper,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
@@ -86,7 +86,7 @@ impl<'a> CodeGen<'a> {
             tlookup: TypeLookup::new(tco, ti, type_cache),
             iface_mapping: mapping,
             pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
-            break_cont: BreakContinue::new(),
+            branch: BranchHelper::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
             func_t_stack: Vec::new(),
@@ -1544,8 +1544,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_stmt_labeled(&mut self, _lstmt: &LabeledStmtKey) {
-        unimplemented!();
+    fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
+        let stmt = &self.ast_objs.l_stmts[*lstmt];
+        let offset = current_func!(self).code().len();
+        let entity = self.ast_objs.idents[stmt.label].entity_key().unwrap();
+        self.branch.add_label(entity, offset);
+        self.visit_stmt(&stmt.stmt);
     }
 
     fn visit_stmt_send(&mut self, sstmt: &SendStmt) {
@@ -1625,19 +1629,20 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
         match bstmt.token {
             Token::BREAK | Token::CONTINUE => {
-                self.break_cont.add_point(
+                self.branch.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
                     bstmt.token_pos,
                 );
             }
             Token::GOTO => {
-                //todo
-                //unimplemented!()
+                let func = current_func_mut!(self);
+                let label = bstmt.label.unwrap();
+                let entity = self.ast_objs.idents[label].entity_key().unwrap();
+                self.branch.go_to(func, &entity, bstmt.token_pos);
             }
             Token::FALLTHROUGH => {
-                //todo
-                //unimplemented!()
+                // handled in gen_switch_body
             }
             _ => unreachable!(),
         }
@@ -1689,7 +1694,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
-        self.break_cont.enter_block();
+        self.branch.enter_block();
 
         if let Some(init) = &sstmt.init {
             self.visit_stmt(init);
@@ -1708,8 +1713,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         self.gen_switch_body(&*sstmt.body, tag_type);
 
         let end = current_func!(self).next_code_index();
-        self.break_cont
-            .leave_block(current_func_mut!(self), None, end);
+        self.branch.leave_block(current_func_mut!(self), None, end);
     }
 
     fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
@@ -1756,7 +1760,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
-        self.break_cont.enter_block();
+        self.branch.enter_block();
 
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init);
@@ -1794,12 +1798,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
 
         let end = current_func!(self).next_code_index();
-        self.break_cont
+        self.branch
             .leave_block(current_func_mut!(self), Some(continue_marker), end);
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        self.break_cont.enter_block();
+        self.branch.enter_block();
 
         let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
@@ -1820,7 +1824,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         func.emit_code_with_imm(Opcode::JUMP, offset, Some(rstmt.token_pos));
 
         let end = current_func!(self).next_code_index();
-        self.break_cont
+        self.branch
             .leave_block(current_func_mut!(self), Some(marker), end);
     }
 

@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 use goscript_parser::ast::*;
+use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_vm::instruction::*;
 use goscript_vm::value::*;
+use std::collections::HashMap;
 
 /// branch points of break and continue
 pub struct BranchPoints {
@@ -15,14 +17,18 @@ impl BranchPoints {
     }
 }
 
-/// helper for break & continue
-pub struct BreakContinue {
+/// helper for break, continue and goto
+pub struct BranchHelper {
     points_vec: Vec<BranchPoints>,
+    labels: HashMap<EntityKey, usize>,
 }
 
-impl BreakContinue {
-    pub fn new() -> BreakContinue {
-        BreakContinue { points_vec: vec![] }
+impl BranchHelper {
+    pub fn new() -> BranchHelper {
+        BranchHelper {
+            points_vec: vec![],
+            labels: HashMap::new(),
+        }
     }
 
     pub fn add_point(&mut self, func: &mut FunctionVal, token: Token, pos: usize) {
@@ -33,6 +39,17 @@ impl BreakContinue {
             .unwrap()
             .data
             .push((index, token));
+    }
+
+    pub fn add_label(&mut self, label: EntityKey, offset: usize) {
+        self.labels.insert(label, offset);
+    }
+
+    pub fn go_to(&self, func: &mut FunctionVal, label: &EntityKey, pos: usize) {
+        let current_offset = func.code().len();
+        let l_offset = self.labels.get(label).unwrap();
+        let offset = (*l_offset as OpIndex) - (current_offset as OpIndex) - 1;
+        func.emit_code_with_imm(Opcode::JUMP, offset, Some(pos));
     }
 
     pub fn enter_block(&mut self) {

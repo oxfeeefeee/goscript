@@ -227,6 +227,12 @@ fn test_defer() {
 }
 
 #[test]
+fn test_goto() {
+    let err_cnt = run("./tests/group1/goto.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);
