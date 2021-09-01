@@ -43,6 +43,8 @@ struct CallFrame {
     var_ptrs: Option<Vec<UpValue>>,
     // closures that have upvalues pointing to this frame
     referred_by: Option<HashMap<OpIndex, Referers>>,
+
+    defer_stack: Option<Vec<DeferredCall>>,
 }
 
 impl CallFrame {
@@ -53,6 +55,7 @@ impl CallFrame {
             stack_base: sbase,
             var_ptrs: None,
             referred_by: None,
+            defer_stack: None,
         }
     }
 
@@ -113,6 +116,7 @@ impl CallFrame {
     }
 }
 
+#[derive(Clone, Debug)]
 struct DeferredCall {
     frame: CallFrame,
     stack_c: Vec<GosValue64>,
@@ -188,7 +192,6 @@ pub struct Fiber<'a> {
     rstack: RangeStack,
     frames: Vec<CallFrame>,
     next_frames: Vec<CallFrame>,
-    deferred_stack: Vec<DeferredCall>,
     context: Context<'a>,
 }
 
@@ -199,7 +202,6 @@ impl<'a> Fiber<'a> {
             rstack: RangeStack::new(),
             frames: vec![first_frame],
             next_frames: Vec::new(),
-            deferred_stack: Vec::new(),
             context: c,
         }
     }
@@ -840,7 +842,7 @@ impl<'a> Fiber<'a> {
                                             stack_c: c,
                                             stack_rc: rc,
                                         };
-                                        self.deferred_stack.push(deferred);
+                                        frame.defer_stack.get_or_insert(vec![]).push(deferred);
                                     }
                                     _ => unreachable!(),
                                 }
@@ -865,9 +867,11 @@ impl<'a> Fiber<'a> {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
                         match inst.t0() {
+                            // default case
                             ValueType::Zero => {
                                 stack.truncate(stack_base + frame.ret_count(objs));
                             }
+                            // init_package func
                             ValueType::FlagA => {
                                 let index = inst.imm() as usize;
                                 let pkey = pkgs[index];
@@ -878,30 +882,33 @@ impl<'a> Fiber<'a> {
                                 // the var values left on the stack are for pkg members
                                 stack.init_pkg_vars(pkg, count);
                             }
-                            ValueType::FlagB => match self.deferred_stack.pop() {
-                                Some(call) => {
-                                    // run Opcode::RETURN to check if deferred_stack is empty
-                                    frame.pc -= 1;
+                            // func with deferred calls
+                            ValueType::FlagB => {
+                                match frame.defer_stack.as_mut().map(|x| x.pop()).flatten() {
+                                    Some(call) => {
+                                        // run Opcode::RETURN to check if deferred_stack is empty
+                                        frame.pc -= 1;
 
-                                    stack.push_n(call.stack_c, call.stack_rc);
-                                    let nframe = call.frame;
+                                        stack.push_n(call.stack_c, call.stack_rc);
+                                        let nframe = call.frame;
 
-                                    self.frames.push(nframe);
-                                    frame_height += 1;
-                                    frame = self.frames.last_mut().unwrap();
-                                    let fkey = frame.closure.0.borrow().func.unwrap();
-                                    func = &objs.functions[fkey];
-                                    stack_base = frame.stack_base;
-                                    consts = &func.consts;
-                                    code = func.code();
-                                    debug_assert!(func.local_count() == func.local_zeros.len());
-                                    stack.append(&mut func.local_zeros.clone());
-                                    continue;
+                                        self.frames.push(nframe);
+                                        frame_height += 1;
+                                        frame = self.frames.last_mut().unwrap();
+                                        let fkey = frame.closure.0.borrow().func.unwrap();
+                                        func = &objs.functions[fkey];
+                                        stack_base = frame.stack_base;
+                                        consts = &func.consts;
+                                        code = func.code();
+                                        debug_assert!(func.local_count() == func.local_zeros.len());
+                                        stack.append(&mut func.local_zeros.clone());
+                                        continue;
+                                    }
+                                    None => {
+                                        stack.truncate(stack_base + frame.ret_count(objs));
+                                    }
                                 }
-                                None => {
-                                    stack.truncate(stack_base + frame.ret_count(objs));
-                                }
-                            },
+                            }
                             _ => unreachable!(),
                         }
 

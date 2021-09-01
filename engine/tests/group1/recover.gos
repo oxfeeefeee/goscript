@@ -28,7 +28,7 @@ func g(i int) {
         panic("xxxxx")
     }
     
-    //defer fmt.Println("Defer in g", i)
+    defer fmt.Println("Defer in g", i)
     fmt.Println("Printing in g", i)
     g(i + 1)
 }

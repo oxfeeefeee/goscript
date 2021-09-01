@@ -971,10 +971,16 @@ pub union V64Union {
     package: PackageKey,
 }
 
+impl fmt::Debug for V64Union {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_fmt(format_args!("{:x}", unsafe { self.uint64 }))
+    }
+}
+
 /// GosValue64 is a 64bit struct for VM stack to get better performance, when converting
 /// to GosValue64, the type info is lost, Opcode is responsible for providing type info
 /// when converting back to GosValue
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct GosValue64 {
     data: V64Union,
     //pub debug_type: ValueType, // to be removed in release build
