@@ -39,6 +39,7 @@ pub struct Metadata {
     pub mcomplex128: GosMetadata,
     pub mstr: GosMetadata,
     pub default_sig: GosMetadata,
+    pub empty_iface: GosMetadata,
 }
 
 impl Metadata {
@@ -77,6 +78,10 @@ impl Metadata {
             ),
             default_sig: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Signature(SigMetadata::default())),
+                MetaCategory::Default,
+            ),
+            empty_iface: GosMetadata::NonPtr(
+                objs.insert(MetadataType::Interface(Fields::new(vec![], HashMap::new()))),
                 MetaCategory::Default,
             ),
         }

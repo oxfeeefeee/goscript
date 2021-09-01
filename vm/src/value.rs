@@ -399,6 +399,15 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn new_empty_iface(mdata: Metadata, underlying: GosValue) -> GosValue {
+        let val = Rc::new(RefCell::new(InterfaceObj::new(
+            mdata.empty_iface,
+            IfaceUnderlying::Gos(underlying, None),
+        )));
+        GosValue::Interface(val)
+    }
+
+    #[inline]
     pub fn new_channel(meta: GosMetadata, cap: usize) -> GosValue {
         GosValue::Channel(Rc::new(ChannelObj::new(meta, cap)))
     }
