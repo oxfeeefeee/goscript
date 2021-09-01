@@ -257,7 +257,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, RCount)> {
+    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
         self.cursor -= 1;
         let mut ret = GosValue::new_nil();
         std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);

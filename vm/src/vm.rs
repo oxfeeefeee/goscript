@@ -383,7 +383,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Interface(_) => val,
                             _ => unreachable!(),
                         };
-                        let borrowed = val.as_interface().0.borrow();
+                        let borrowed = val.as_interface().borrow();
                         let cls = match borrowed.underlying() {
                             IfaceUnderlying::Gos(val, funcs) => {
                                 let func = funcs[inst.imm() as usize];
@@ -557,14 +557,12 @@ impl<'a> Fiber<'a> {
                                         GosValue::new_iface(
                                             *md,
                                             IfaceUnderlying::Gos(under, iface.1),
-                                            gcv,
                                         ),
                                         iface.0,
                                     ))),
                                     MetadataType::Interface(_) => GosValue::new_iface(
                                         iface.0,
                                         IfaceUnderlying::Gos(under, iface.1),
-                                        gcv,
                                     ),
                                     _ => unreachable!(),
                                 };
@@ -969,7 +967,7 @@ impl<'a> Fiber<'a> {
                     }
 
                     Opcode::TYPE_ASSERT => {
-                        let val = match stack.pop_interface().0.borrow().underlying() {
+                        let val = match stack.pop_interface().borrow().underlying() {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
@@ -987,7 +985,7 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::TYPE => {
-                        let val = match stack.pop_interface().0.borrow().underlying() {
+                        let val = match stack.pop_interface().borrow().underlying() {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
@@ -1219,7 +1217,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::PANIC => {
                         let val_i = stack.pop_rc();
-                        let iobj = val_i.as_interface().0.borrow();
+                        let iobj = val_i.as_interface().borrow();
                         let val_s = iobj.underlying_value().unwrap();
                         let msg = val_s.as_str().as_str().to_string();
                         go_panic!(panic, msg, frame, code);
@@ -1253,7 +1251,6 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_iface(
                                     meta,
                                     IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),
-                                    gcv,
                                 )
                             }
                             Err(e) => {

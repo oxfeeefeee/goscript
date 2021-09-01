@@ -255,7 +255,7 @@ pub enum GosValue {
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
     Slice(Rc<(SliceObj, RCount)>),
     Map(Rc<(MapObj, RCount)>),
-    Interface(Rc<(RefCell<InterfaceObj>, RCount)>),
+    Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<(RefCell<StructObj>, RCount)>),
     Channel(Rc<ChannelObj>),
 
@@ -393,14 +393,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_iface(meta: GosMetadata, underlying: IfaceUnderlying, gcobjs: &GcoVec) -> GosValue {
-        let val = Rc::new((
-            RefCell::new(InterfaceObj::new(meta, underlying)),
-            Cell::new(0),
-        ));
-        let v = GosValue::Interface(val);
-        gcobjs.add(&v);
-        v
+    pub fn new_iface(meta: GosMetadata, underlying: IfaceUnderlying) -> GosValue {
+        let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
+        GosValue::Interface(val)
     }
 
     #[inline]
@@ -464,7 +459,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_interface(&self) -> &Rc<(RefCell<InterfaceObj>, RCount)> {
+    pub fn as_interface(&self) -> &Rc<RefCell<InterfaceObj>> {
         unwrap_gos_val!(Interface, self)
     }
 
@@ -536,11 +531,11 @@ impl GosValue {
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
             GosValue::Named(n) => {
-                let b = n.0.as_interface().0.borrow();
+                let b = n.0.as_interface().borrow();
                 b.underlying_value().map(|x| x.clone())
             }
             GosValue::Interface(v) => {
-                let b = v.0.borrow();
+                let b = v.borrow();
                 b.underlying_value().map(|x| x.clone())
             }
             _ => unreachable!(),
@@ -554,7 +549,7 @@ impl GosValue {
             GosValue::Named(n) => n.0.is_nil(),
             GosValue::Slice(s) => s.0.is_nil(),
             GosValue::Map(m) => m.0.is_nil(),
-            GosValue::Interface(iface) => iface.0.borrow().is_nil(),
+            GosValue::Interface(iface) => iface.borrow().is_nil(),
             _ => false,
         }
     }
@@ -663,7 +658,7 @@ impl GosValue {
             GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,
-            GosValue::Interface(i) => i.0.borrow().meta,
+            GosValue::Interface(i) => i.borrow().meta,
             GosValue::Struct(s) => s.0.borrow().meta,
             GosValue::Channel(_) => unimplemented!(),
             GosValue::Function(_) => unimplemented!(),
@@ -740,7 +735,7 @@ impl GosValue {
             GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Slice(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Interface(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Interface(obj) => obj.borrow().ref_sub_one(),
             GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Named(obj) => obj.0.ref_sub_one(),
             _ => {}
@@ -755,7 +750,7 @@ impl GosValue {
             GosValue::Closure(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Slice(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
-            GosValue::Interface(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Interface(obj) => obj.borrow().mark_dirty(queue),
             GosValue::Struct(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Named(obj) => obj.0.mark_dirty(queue),
             _ => {}
@@ -768,7 +763,6 @@ impl GosValue {
             GosValue::Closure(obj) => obj.1.get(),
             GosValue::Slice(obj) => obj.1.get(),
             GosValue::Map(obj) => obj.1.get(),
-            GosValue::Interface(obj) => obj.1.get(),
             GosValue::Struct(obj) => obj.1.get(),
             _ => unreachable!(),
         }
@@ -780,7 +774,6 @@ impl GosValue {
             GosValue::Closure(obj) => obj.1.set(rc),
             GosValue::Slice(obj) => obj.1.set(rc),
             GosValue::Map(obj) => obj.1.set(rc),
-            GosValue::Interface(obj) => obj.1.set(rc),
             GosValue::Struct(obj) => obj.1.set(rc),
             _ => unreachable!(),
         }
@@ -817,15 +810,13 @@ impl PartialEq for GosValue {
             (Self::Closure(x), Self::Closure(y)) => Rc::ptr_eq(x, y),
             (Self::Slice(x), Self::Slice(y)) => Rc::ptr_eq(x, y),
             (Self::Map(x), Self::Map(y)) => Rc::ptr_eq(x, y),
-            (Self::Interface(x), Self::Interface(y)) => {
-                InterfaceObj::eq(&x.0.borrow(), &y.0.borrow())
-            }
+            (Self::Interface(x), Self::Interface(y)) => InterfaceObj::eq(&x.borrow(), &y.borrow()),
             (Self::Struct(x), Self::Struct(y)) => StructObj::eq(&x.0.borrow(), &y.0.borrow()),
             (Self::Channel(x), Self::Channel(y)) => Rc::ptr_eq(x, y),
             (Self::Named(x), Self::Named(y)) => x.0 == y.0,
             (Self::Nil(_), nil) | (nil, Self::Nil(_)) => nil.equals_nil(),
             (Self::Interface(iface), val) | (val, Self::Interface(iface)) => {
-                match iface.0.borrow().underlying_value() {
+                match iface.borrow().underlying_value() {
                     Some(v) => v == val,
                     None => false,
                 }
@@ -872,7 +863,7 @@ impl Hash for GosValue {
                 s.0.borrow().hash(state);
             }
             GosValue::Interface(i) => {
-                i.0.borrow().hash(state);
+                i.borrow().hash(state);
             }
             GosValue::Pointer(p) => {
                 PointerObj::hash(&p, state);
@@ -934,7 +925,7 @@ impl Display for GosValue {
             GosValue::Closure(_) => f.write_str("<closure>"),
             GosValue::Slice(s) => write!(f, "{}", s.0),
             GosValue::Map(m) => write!(f, "{}", m.0),
-            GosValue::Interface(i) => write!(f, "{}", i.0.borrow()),
+            GosValue::Interface(i) => write!(f, "{}", i.borrow()),
             GosValue::Struct(s) => write!(f, "{}", s.0.borrow()),
             GosValue::Channel(_) => f.write_str("<channel>"),
             GosValue::Function(_) => f.write_str("<function>"),

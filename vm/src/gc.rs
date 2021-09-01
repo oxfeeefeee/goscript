@@ -38,7 +38,6 @@ pub enum GcWeak {
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
     Slice(Weak<(SliceObj, RCount)>),
     Map(Weak<(MapObj, RCount)>),
-    Interface(Weak<(RefCell<InterfaceObj>, RCount)>),
     Struct(Weak<(RefCell<StructObj>, RCount)>),
     // todo:
     // GC doesn't support channel for now, because we can't access the
@@ -56,7 +55,6 @@ impl GcWeak {
             GosValue::Closure(c) => GcWeak::Closure(Rc::downgrade(c)),
             GosValue::Slice(s) => GcWeak::Slice(Rc::downgrade(s)),
             GosValue::Map(m) => GcWeak::Map(Rc::downgrade(m)),
-            GosValue::Interface(i) => GcWeak::Interface(Rc::downgrade(i)),
             GosValue::Struct(s) => GcWeak::Struct(Rc::downgrade(s)),
             _ => unreachable!(),
         }
@@ -79,10 +77,6 @@ impl GcWeak {
             GcWeak::Map(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Map(v)
-            }),
-            GcWeak::Interface(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Interface(v)
             }),
             GcWeak::Struct(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
@@ -118,7 +112,6 @@ fn children_ref_sub_one(val: &GosValue) {
                 })
             }
         }
-        GosValue::Interface(i) => i.0.borrow().ref_sub_one(),
         GosValue::Struct(s) => s.0.borrow().fields.iter().for_each(|obj| obj.ref_sub_one()),
         _ => unreachable!(),
     };
@@ -150,7 +143,6 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
                 })
             }
         }
-        GosValue::Interface(i) => i.0.borrow().mark_dirty(queue),
         GosValue::Struct(s) => {
             s.0.borrow()
                 .fields
@@ -184,7 +176,6 @@ fn break_cycle(obj: &mut GosValue) {
                 mdata.borrow_data_mut().clear();
             }
         }
-        GosValue::Interface(i) => RefCell::borrow_mut(&i.0).set_underlying(IfaceUnderlying::None),
         GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
         _ => unreachable!(),
     };
