@@ -23,6 +23,17 @@ macro_rules! go_panic {
     };
 }
 
+macro_rules! go_panic_str {
+    ($panic:ident, $mdata:expr, $msg:expr, $frame:ident, $code:ident) => {
+        let str_val = GosValue::new_str($msg);
+        let iface = GosValue::new_empty_iface($mdata, str_val);
+        let mut data = PanicData::new(iface);
+        data.call_stack.push(($frame.func(), $frame.pc - 1));
+        $panic = Some(data);
+        $frame.pc = $code.len() - 1;
+    };
+}
+
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];

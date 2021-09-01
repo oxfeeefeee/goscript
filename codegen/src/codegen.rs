@@ -698,9 +698,16 @@ impl<'a> CodeGen<'a> {
                 let ident = self.ast_objs.idents[*ikey].clone();
                 assert!(ident.entity.into_key().is_none());
 
+                //todo: clean up
                 let i = self.builtins.func_index(&ident.name).unwrap();
-                let t = self.tlookup.get_expr_value_type(&params[0]);
-                let t_last = self.tlookup.get_expr_value_type(params.last().unwrap());
+                let (t, t_last) = if params.len() > 0 {
+                    (
+                        Some(self.tlookup.get_expr_value_type(&params[0])),
+                        Some(self.tlookup.get_expr_value_type(params.last().unwrap())),
+                    )
+                } else {
+                    (None, None)
+                };
                 for e in params.iter() {
                     self.visit_expr(e);
                 }
@@ -722,7 +729,7 @@ impl<'a> CodeGen<'a> {
                         (None, Some(0)) // do not pack params if there is ellipsis
                     } else {
                         (
-                            Some(t_last),
+                            t_last,
                             Some((bf.params_count - 1 - count as isize) as OpIndex),
                         )
                     }
@@ -730,7 +737,7 @@ impl<'a> CodeGen<'a> {
                     (None, Some(count as OpIndex))
                 };
                 let func = current_func_mut!(self);
-                func.emit_inst(bf.opcode, [Some(t), t_variadic, None], count, pos);
+                func.emit_inst(bf.opcode, [t, t_variadic, None], count, pos);
             }
             // conversion
             // from the specs:

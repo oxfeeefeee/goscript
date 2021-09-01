@@ -127,12 +127,12 @@ enum Result {
 
 #[derive(Debug)]
 struct PanicData {
-    msg: String,
+    msg: GosValue,
     call_stack: Vec<(FunctionKey, usize)>,
 }
 
 impl PanicData {
-    fn new(m: String) -> PanicData {
+    fn new(m: GosValue) -> PanicData {
         PanicData {
             msg: m,
             call_stack: vec![],
@@ -208,6 +208,7 @@ impl<'a> Fiber<'a> {
         let ctx = &self.context;
         let gcv = ctx.gcv;
         let objs: &VMObjects = &ctx.code.objects;
+        let metadata: &Metadata = &objs.metadata;
         let pkgs = &ctx.code.packages;
         let ifaces = &ctx.code.ifaces;
         let frame = self.frames.last_mut().unwrap();
@@ -290,7 +291,7 @@ impl<'a> Fiber<'a> {
                             match vm_util::load_index(val, &ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    go_panic!(panic, e, frame, code);
+                                    go_panic_str!(panic, &objs.metadata, e, frame, code);
                                 }
                             }
                         } else {
@@ -304,7 +305,7 @@ impl<'a> Fiber<'a> {
                             match vm_util::load_index_int(val, index) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    go_panic!(panic, e, frame, code);
+                                    go_panic_str!(panic, metadata, e, frame, code);
                                 }
                             }
                         } else {
@@ -336,7 +337,7 @@ impl<'a> Fiber<'a> {
                             inst.t0(),
                             gcv,
                         ) {
-                            go_panic!(panic, e, frame, code);
+                            go_panic_str!(panic, metadata, e, frame, code);
                         }
                     }
                     Opcode::LOAD_FIELD => {
@@ -408,7 +409,7 @@ impl<'a> Fiber<'a> {
                             }
                             IfaceUnderlying::None => {
                                 let msg = "access nil interface".to_string();
-                                go_panic!(panic, msg, frame, code);
+                                go_panic_str!(panic, metadata, msg, frame, code);
                                 continue;
                             }
                         };
@@ -674,7 +675,7 @@ impl<'a> Fiber<'a> {
                         let re = chan.as_channel().send(val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         if let Err(e) = re {
-                            go_panic!(panic, e, frame, code);
+                            go_panic_str!(panic, metadata, e, frame, code);
                         }
                     }
                     Opcode::RECV => {
@@ -1216,19 +1217,18 @@ impl<'a> Fiber<'a> {
                         chan.as_channel().close();
                     }
                     Opcode::PANIC => {
-                        let val_i = stack.pop_rc();
-                        let iobj = val_i.as_interface().borrow();
-                        let val_s = iobj.underlying_value().unwrap();
-                        let msg = val_s.as_str().as_str().to_string();
-                        go_panic!(panic, msg, frame, code);
+                        let val = stack.pop_rc();
+                        go_panic!(panic, val, frame, code);
                     }
                     Opcode::RECOVER => {
-                        unimplemented!()
+                        let p = panic.take();
+                        let val = p.map_or(GosValue::new_nil(), |x| x.msg);
+                        stack.push(val);
                     }
                     Opcode::ASSERT => {
                         if !stack.pop_bool() {
                             let msg = "Opcode::ASSERT: not true!".to_string();
-                            go_panic!(panic, msg, frame, code);
+                            go_panic_str!(panic, metadata, msg, frame, code);
                         }
                     }
                     Opcode::FFI => {
@@ -1254,7 +1254,7 @@ impl<'a> Fiber<'a> {
                                 )
                             }
                             Err(e) => {
-                                go_panic!(panic, e, frame, code);
+                                go_panic_str!(panic, metadata, e, frame, code);
                                 continue;
                             }
                         };
@@ -1283,8 +1283,12 @@ impl<'a> Fiber<'a> {
                         }
 
                         // a hack to make the test case fail
-                        if p.msg.starts_with("Opcode::ASSERT") {
-                            panic!("ASSERT");
+                        if let GosValue::Str(s) =
+                            p.msg.as_interface().borrow().underlying_value().unwrap()
+                        {
+                            if s.as_str().starts_with("Opcode::ASSERT") {
+                                panic!("ASSERT");
+                            }
                         }
                     }
                     break;

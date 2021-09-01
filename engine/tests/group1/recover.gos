@@ -1,14 +1,6 @@
 package main
 
-func a() {
-    panic("xxxxx")
-}
 
-func main() {
-    a()
-}
-
-/*
 import "fmt"
 
 func main() {
@@ -22,18 +14,22 @@ func f() {
             fmt.Println("Recovered in f", r)
         }
     }()
+
+    //panic("aaaaa")
     fmt.Println("Calling g.")
     g(0)
     fmt.Println("Returned normally from g.")
 }
+
 
 func g(i int) {
     if i > 3 {
         fmt.Println("Panicking!")
         panic("xxxxx")
     }
-    defer fmt.Println("Defer in g", i)
+    
+    //defer fmt.Println("Defer in g", i)
     fmt.Println("Printing in g", i)
     g(i + 1)
 }
-*/
+

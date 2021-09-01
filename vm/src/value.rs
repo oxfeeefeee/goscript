@@ -399,7 +399,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_empty_iface(mdata: Metadata, underlying: GosValue) -> GosValue {
+    pub fn new_empty_iface(mdata: &Metadata, underlying: GosValue) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(
             mdata.empty_iface,
             IfaceUnderlying::Gos(underlying, None),
