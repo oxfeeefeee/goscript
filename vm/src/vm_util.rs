@@ -14,6 +14,15 @@ macro_rules! restore_stack_ref {
     }};
 }
 
+macro_rules! go_panic {
+    ($panic:ident, $msg:expr, $frame:ident, $code:ident) => {
+        let mut data = PanicData::new($msg);
+        data.call_stack.push(($frame.func(), $frame.pc - 1));
+        $panic = Some(data);
+        $frame.pc = $code.len() - 1;
+    };
+}
+
 macro_rules! read_imm_pkg {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];

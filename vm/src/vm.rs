@@ -123,7 +123,21 @@ struct DeferredCall {
 enum Result {
     Continue,
     End,
-    Error(String),
+}
+
+#[derive(Debug)]
+struct PanicData {
+    msg: String,
+    call_stack: Vec<(FunctionKey, usize)>,
+}
+
+impl PanicData {
+    fn new(m: String) -> PanicData {
+        PanicData {
+            msg: m,
+            call_stack: vec![],
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -214,6 +228,7 @@ impl<'a> Fiber<'a> {
         loop {
             let mut frame = self.frames.last_mut().unwrap();
             let mut result: Result = Result::Continue;
+            let mut panic: Option<PanicData> = None;
             let yield_unit = 1024;
             for _ in 0..yield_unit {
                 let inst = code[frame.pc];
@@ -275,8 +290,7 @@ impl<'a> Fiber<'a> {
                             match vm_util::load_index(val, &ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    result = Result::Error(e);
-                                    break;
+                                    go_panic!(panic, e, frame, code);
                                 }
                             }
                         } else {
@@ -290,8 +304,7 @@ impl<'a> Fiber<'a> {
                             match vm_util::load_index_int(val, index) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    result = Result::Error(e);
-                                    break;
+                                    go_panic!(panic, e, frame, code);
                                 }
                             }
                         } else {
@@ -323,8 +336,7 @@ impl<'a> Fiber<'a> {
                             inst.t0(),
                             gcv,
                         ) {
-                            result = Result::Error(e);
-                            break;
+                            go_panic!(panic, e, frame, code);
                         }
                     }
                     Opcode::LOAD_FIELD => {
@@ -396,8 +408,8 @@ impl<'a> Fiber<'a> {
                             }
                             IfaceUnderlying::None => {
                                 let msg = "access nil interface".to_string();
-                                result = Result::Error(msg);
-                                break;
+                                go_panic!(panic, msg, frame, code);
+                                continue;
                             }
                         };
                         stack.push(cls);
@@ -663,9 +675,8 @@ impl<'a> Fiber<'a> {
                         drop(stack_mut_ref);
                         let re = chan.as_channel().send(val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
-                        if re.is_err() {
-                            result = Result::Error(re.unwrap_err());
-                            break;
+                        if let Err(e) = re {
+                            go_panic!(panic, e, frame, code);
                         }
                     }
                     Opcode::RECV => {
@@ -918,6 +929,11 @@ impl<'a> Fiber<'a> {
                         func = &objs.functions[frame.func()];
                         consts = &func.consts;
                         code = func.code();
+
+                        if let Some(p) = &mut panic {
+                            p.call_stack.push((frame.func(), frame.pc - 1));
+                            frame.pc = code.len() - 1;
+                        }
                     }
 
                     Opcode::JUMP => {
@@ -1201,11 +1217,20 @@ impl<'a> Fiber<'a> {
                         let chan = stack.pop_with_type(ValueType::Channel);
                         chan.as_channel().close();
                     }
+                    Opcode::PANIC => {
+                        let val_i = stack.pop_rc();
+                        let iobj = val_i.as_interface().0.borrow();
+                        let val_s = iobj.underlying_value().unwrap();
+                        let msg = val_s.as_str().as_str().to_string();
+                        go_panic!(panic, msg, frame, code);
+                    }
+                    Opcode::RECOVER => {
+                        unimplemented!()
+                    }
                     Opcode::ASSERT => {
                         if !stack.pop_bool() {
                             let msg = "Opcode::ASSERT: not true!".to_string();
-                            result = Result::Error(msg);
-                            break;
+                            go_panic!(panic, msg, frame, code);
                         }
                     }
                     Opcode::FFI => {
@@ -1231,9 +1256,9 @@ impl<'a> Fiber<'a> {
                                     gcv,
                                 )
                             }
-                            Err(m) => {
-                                result = Result::Error(m);
-                                break;
+                            Err(e) => {
+                                go_panic!(panic, e, frame, code);
+                                continue;
                             }
                         };
                         stack.push(v);
@@ -1246,25 +1271,25 @@ impl<'a> Fiber<'a> {
                 //dbg!(inst_op, stack.len());
             } //yield unit
             match result {
-                Result::Error(msg) => {
-                    println!("panic: {}", msg);
-                    if let Some(files) = self.context.fs {
-                        for frame in self.frames.iter().rev() {
-                            let func = &objs.functions[frame.func()];
-                            if let Some(p) = func.pos()[frame.pc - 1] {
-                                println!("{}", files.position(p));
-                            } else {
-                                println!("<no debug info available>");
+                Result::End => {
+                    if let Some(p) = panic {
+                        println!("panic: {}", p.msg);
+                        if let Some(files) = self.context.fs {
+                            for (fkey, pc) in p.call_stack.iter() {
+                                let func = &objs.functions[*fkey];
+                                if let Some(p) = func.pos()[*pc] {
+                                    println!("{}", files.position(p));
+                                } else {
+                                    println!("<no debug info available>");
+                                }
                             }
                         }
+
+                        // a hack to make the test case fail
+                        if p.msg.starts_with("Opcode::ASSERT") {
+                            panic!("ASSERT");
+                        }
                     }
-                    // a hack to make the test case fail
-                    if msg.starts_with("Opcode::ASSERT") {
-                        panic!("ASSERT");
-                    }
-                    break;
-                }
-                Result::End => {
                     break;
                 }
                 Result::Continue => {

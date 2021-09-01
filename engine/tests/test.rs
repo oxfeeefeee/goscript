@@ -233,6 +233,12 @@ fn test_goto() {
 }
 
 #[test]
+fn test_recover() {
+    let err_cnt = run("./tests/group1/recover.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);
