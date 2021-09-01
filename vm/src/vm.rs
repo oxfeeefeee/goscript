@@ -22,7 +22,7 @@ use std::str;
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
-    pub ifaces: Vec<(GosMetadata, Rc<Vec<FunctionKey>>)>,
+    pub ifaces: Vec<(GosMetadata, Option<Rc<Vec<FunctionKey>>>)>,
     pub entry: FunctionKey,
 }
 
@@ -386,7 +386,7 @@ impl<'a> Fiber<'a> {
                         let borrowed = val.as_interface().borrow();
                         let cls = match borrowed.underlying() {
                             IfaceUnderlying::Gos(val, funcs) => {
-                                let func = funcs[inst.imm() as usize];
+                                let func = funcs.as_ref().unwrap()[inst.imm() as usize];
                                 let cls = ClosureObj::new_gos(
                                     func,
                                     &objs.functions,

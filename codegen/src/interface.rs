@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct IfaceMapping {
-    ifaces: Vec<(GosMetadata, Vec<Rc<RefCell<MethodDesc>>>)>,
+    ifaces: Vec<(GosMetadata, Option<Vec<Rc<RefCell<MethodDesc>>>>)>,
     iface_indices: HashMap<(TCTypeKey, Option<TCTypeKey>), OpIndex>,
 }
 
@@ -23,13 +23,13 @@ impl IfaceMapping {
         }
     }
 
-    pub fn into_result(self) -> Vec<(GosMetadata, Rc<Vec<FunctionKey>>)> {
+    pub fn into_result(self) -> Vec<(GosMetadata, Option<Rc<Vec<FunctionKey>>>)> {
         self.ifaces
             .into_iter()
             .map(|(meta, method)| {
                 (
                     meta,
-                    Rc::new(method.iter().map(|x| x.borrow().func.unwrap()).collect()),
+                    method.map(|m| Rc::new(m.iter().map(|x| x.borrow().func.unwrap()).collect())),
                 )
             })
             .collect()
@@ -57,10 +57,10 @@ impl IfaceMapping {
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> (GosMetadata, Vec<Rc<RefCell<MethodDesc>>>) {
+    ) -> (GosMetadata, Option<Vec<Rc<RefCell<MethodDesc>>>>) {
         let i = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
         if i_s.1.is_none() {
-            return (i, vec![]);
+            return (i, None);
         }
         let s = lookup.meta_from_tc(i_s.1.unwrap(), objs, dummy_gcv);
         let ifields = match &objs.metas[i.as_non_ptr()] {
@@ -81,9 +81,6 @@ impl IfaceMapping {
             // primitive types
             _ => None,
         };
-        (
-            i,
-            methods.map_or(vec![], |x| ifields.iface_named_mapping(x)),
-        )
+        (i, methods.map(|x| ifields.iface_named_mapping(x)))
     }
 }

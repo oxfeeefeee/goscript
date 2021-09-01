@@ -786,7 +786,7 @@ impl UnderlyingFfi {
 #[derive(Clone, Debug)]
 pub enum IfaceUnderlying {
     None,
-    Gos(GosValue, Rc<Vec<FunctionKey>>),
+    Gos(GosValue, Option<Rc<Vec<FunctionKey>>>),
     Ffi(UnderlyingFfi),
 }
 
