@@ -1,5 +1,3 @@
-//#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::rc::Rc;
@@ -99,18 +97,33 @@ impl<'a> CodeGen<'a> {
         &mut self.pkg_util
     }
 
-    fn resolve_ident(&mut self, ident: &IdentKey) -> EntIndex {
+    fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
         let id = &self.ast_objs.idents[*ident];
-        // 0. try built-ins
-        if id.entity_key().is_none() {
-            return self.builtins.val_type_index(&*id.name);
+        match id.entity_key() {
+            None => match expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x)) {
+                OperandMode::TypeExpr => {
+                    let lookup = &self.tlookup;
+                    let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
+                    let meta = lookup.basic_type_from_tc(tctype, self.objects);
+                    EntIndex::BuiltInType(meta)
+                }
+                OperandMode::Value => match &*id.name {
+                    "true" => EntIndex::BuiltInVal(Opcode::PUSH_TRUE),
+                    "false" => EntIndex::BuiltInVal(Opcode::PUSH_FALSE),
+                    "nil" => EntIndex::BuiltInVal(Opcode::PUSH_NIL),
+                    _ => unreachable!(),
+                },
+                _ => unreachable!(),
+            },
+            Some(_) => self.resolve_var_ident(ident),
         }
+    }
 
+    fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
+        let entity_key = &self.ast_objs.idents[*ident].entity_key().unwrap();
         // 1. try local first
-        let entity_key = id.entity_key().unwrap();
-        let local = current_func!(self).entity_index(&entity_key).map(|x| *x);
-        if local.is_some() {
-            return local.unwrap();
+        if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
+            return index;
         }
         // 2. try upvalue
         let upvalue = self
@@ -171,7 +184,7 @@ impl<'a> CodeGen<'a> {
             let t = self.tlookup.get_def_tc_type(*ikey);
             (index, Some(t), pos)
         } else {
-            let index = self.resolve_ident(ikey);
+            let index = self.resolve_var_ident(ikey);
             let t = self.tlookup.get_use_tc_type(*ikey);
             (index, Some(t), pos)
         }
@@ -1087,8 +1100,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         walk_expr(self, expr);
     }
 
-    fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) {
-        let index = self.resolve_ident(ident);
+    fn visit_expr_ident(&mut self, expr: &Expr, ident: &IdentKey) {
+        let index = self.resolve_any_ident(ident, Some(expr));
         let t = self.tlookup.get_use_value_type(*ident);
         let fkey = self.func_stack.last().unwrap();
         let p = Some(self.ast_objs.idents[*ident].pos);
@@ -1251,7 +1264,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if op == &Token::AND {
             match expr {
                 Expr::Ident(ikey) => {
-                    let index = self.resolve_ident(ikey);
+                    let index = self.resolve_any_ident(ikey, None);
                     match index {
                         EntIndex::LocalVar(i) => {
                             let meta = self.tlookup.get_meta_by_node_id(

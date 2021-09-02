@@ -209,7 +209,7 @@ impl<'a> TypeLookup<'a> {
     }
 
     // returns vm_type(metadata) for the tc_type
-    fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
+    pub fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
         let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
         match typ {
             BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
