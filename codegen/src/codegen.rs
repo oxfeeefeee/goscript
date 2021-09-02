@@ -3,7 +3,6 @@ use std::convert::TryFrom;
 use std::rc::Rc;
 
 use super::branch::*;
-use super::builtins::Builtins;
 use super::emit::*;
 use super::interface::IfaceMapping;
 use super::package::PkgUtil;
@@ -23,7 +22,8 @@ use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
-    identical, OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo, TypeKey as TCTypeKey,
+    identical, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo,
+    TypeKey as TCTypeKey,
 };
 
 macro_rules! current_func_mut {
@@ -57,7 +57,6 @@ pub struct CodeGen<'a> {
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
-    builtins: Builtins,
     blank_ident: IdentKey,
 }
 
@@ -75,7 +74,6 @@ impl<'a> CodeGen<'a> {
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
-        let builtins = Builtins::new(&vmo.metadata);
         CodeGen {
             objects: vmo,
             ast_objs: asto,
@@ -88,7 +86,6 @@ impl<'a> CodeGen<'a> {
             pkg_key: pkg,
             func_stack: Vec::new(),
             func_t_stack: Vec::new(),
-            builtins: builtins,
             blank_ident: bk,
         }
     }
@@ -704,22 +701,21 @@ impl<'a> CodeGen<'a> {
 
     fn gen_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool, style: CallStyle) {
         let pos = Some(func_expr.pos(&self.ast_objs));
-        match self.tlookup.get_expr_mode(func_expr) {
+        match *self.tlookup.get_expr_mode(func_expr) {
             // built in function
-            OperandMode::Builtin(_) => {
-                let ikey = func_expr.try_as_ident().unwrap();
-                let ident = self.ast_objs.idents[*ikey].clone();
-                assert!(ident.entity.into_key().is_none());
-
-                //todo: clean up
-                let i = self.builtins.func_index(&ident.name).unwrap();
-                let (t, t_last) = if params.len() > 0 {
-                    (
-                        Some(self.tlookup.get_expr_value_type(&params[0])),
-                        Some(self.tlookup.get_expr_value_type(params.last().unwrap())),
-                    )
-                } else {
-                    (None, None)
+            OperandMode::Builtin(builtin) => {
+                let opcode = match builtin {
+                    Builtin::New => Opcode::NEW,
+                    Builtin::Make => Opcode::MAKE,
+                    Builtin::Len => Opcode::LEN,
+                    Builtin::Cap => Opcode::CAP,
+                    Builtin::Append => Opcode::APPEND,
+                    Builtin::Close => Opcode::CLOSE,
+                    Builtin::Panic => Opcode::PANIC,
+                    Builtin::Recover => Opcode::RECOVER,
+                    Builtin::Assert => Opcode::ASSERT,
+                    Builtin::Ffi => Opcode::FFI,
+                    _ => unimplemented!(),
                 };
                 for e in params.iter() {
                     self.visit_expr(e);
@@ -727,7 +723,7 @@ impl<'a> CodeGen<'a> {
                 // some of the built in funcs are not recorded
                 if let Some(t) = self.tlookup.try_get_expr_tc_type(func_expr) {
                     self.try_cast_params_to_iface(t, params, ellipsis);
-                    if self.builtins.get_func_by_index(i as usize).opcode == Opcode::FFI {
+                    if opcode == Opcode::FFI {
                         // FFI needs the signature of the call
                         let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
                         let mut emitter = current_func_emitter!(self);
@@ -735,22 +731,27 @@ impl<'a> CodeGen<'a> {
                         emitter.emit_load(i, None, ValueType::Metadata, pos);
                     }
                 }
-                let bf = &self.builtins.get_func_by_index(i as usize);
-                let count = params.len();
+                let (param0t, param_last_t) = if params.len() > 0 {
+                    (
+                        Some(self.tlookup.get_expr_value_type(&params[0])),
+                        Some(self.tlookup.get_expr_value_type(params.last().unwrap())),
+                    )
+                } else {
+                    (None, None)
+                };
+                let bf = self.tc_objs.universe().builtins()[&builtin];
+                let param_count = params.len() as OpIndex;
                 let (t_variadic, count) = if bf.variadic {
                     if ellipsis {
                         (None, Some(0)) // do not pack params if there is ellipsis
                     } else {
-                        (
-                            t_last,
-                            Some((bf.params_count - 1 - count as isize) as OpIndex),
-                        )
+                        (param_last_t, Some(bf.arg_count as OpIndex - param_count))
                     }
                 } else {
-                    (None, Some(count as OpIndex))
+                    (None, Some(param_count as OpIndex))
                 };
                 let func = current_func_mut!(self);
-                func.emit_inst(bf.opcode, [t, t_variadic, None], count, pos);
+                func.emit_inst(opcode, [param0t, t_variadic, None], count, pos);
             }
             // conversion
             // from the specs:

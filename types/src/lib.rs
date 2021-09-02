@@ -33,3 +33,4 @@ pub use obj::EntityType;
 pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 pub use operand::OperandMode;
 pub use typ::{identical, BasicType, ChanDir, Type};
+pub use universe::{Builtin, Universe};

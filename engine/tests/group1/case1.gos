@@ -17,9 +17,9 @@ func a() []int {
 
 func main() {
    
-   var n = ffi(geometry, "test", 1, 2, 3, "haha", 5)
-   var i = n.area()
-   assert(i == 666)
+   //var n = ffi(geometry, "test", 1, 2, 3, "haha", 5)
+   //var i = n.area()
+   //assert(i == 666)
 
   
 }
