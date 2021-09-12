@@ -922,7 +922,7 @@ impl ChannelObj {
         self.chan.close()
     }
 
-    pub async fn send(&self, v: GosValue) -> RuntimeResult {
+    pub async fn send(&self, v: &GosValue) -> RuntimeResult {
         self.chan.send(v).await
     }
 

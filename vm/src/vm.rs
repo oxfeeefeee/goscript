@@ -674,7 +674,7 @@ impl<'a> Fiber<'a> {
                         let val = stack.pop_with_type(inst.t0());
                         let chan = stack.pop_rc();
                         drop(stack_mut_ref);
-                        let re = chan.as_channel().send(val).await;
+                        let re = chan.as_channel().send(&val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         if let Err(e) = re {
                             go_panic_str!(panic, metadata, e, frame, code);
