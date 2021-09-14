@@ -5,7 +5,7 @@ use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
-use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RuntimeResult};
+use super::value::{rcount_mark_and_queue, EmptyResult, GosValue, RCQueue, RCount};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -922,7 +922,7 @@ impl ChannelObj {
         self.chan.close()
     }
 
-    pub async fn send(&self, v: &GosValue) -> RuntimeResult {
+    pub async fn send(&self, v: &GosValue) -> EmptyResult {
         self.chan.send(v).await
     }
 

@@ -218,9 +218,11 @@ macro_rules! convert_to_float {
     }};
 }
 
-pub type RuntimeResult = result::Result<(), String>;
+pub type RuntimeResult<T> = result::Result<T, String>;
 
-pub type RtValueResult = result::Result<GosValue, String>;
+pub type EmptyResult = RuntimeResult<()>;
+
+pub type RtValueResult = RuntimeResult<GosValue>;
 
 // ----------------------------------------------------------------------------
 // GosValue

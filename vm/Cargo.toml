@@ -9,6 +9,7 @@ slotmap = "0.4"
 ordered-float = "2.0"
 smol = "1.2.5"
 time-test = "0.2.2"
+rand = "0.8.4"
 
 [dependencies.goscript-parser]
 path = "../parser"

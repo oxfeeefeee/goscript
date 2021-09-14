@@ -1,4 +1,5 @@
-use super::value::{GosValue, RuntimeResult};
+use super::value::*;
+use rand::prelude::*;
 use smol::channel;
 use smol::future;
 use std::cell::RefCell;
@@ -97,7 +98,7 @@ impl Channel {
         }
     }
 
-    pub async fn send(&self, v: &GosValue) -> RuntimeResult {
+    pub async fn send(&self, v: &GosValue) -> EmptyResult {
         loop {
             match self.try_send(v.clone()) {
                 Ok(()) => return Ok(()),
@@ -124,6 +125,62 @@ impl Channel {
                     channel::TryRecvError::Closed => return None,
                 },
             }
+        }
+    }
+}
+
+enum SelectEntry {
+    Send(GosValue, GosValue),
+    Recv(GosValue, bool),
+}
+
+pub struct Selector {
+    entries: Vec<SelectEntry>,
+    has_default: bool,
+}
+
+impl Selector {
+    pub fn new(has_default: bool) -> Selector {
+        Selector {
+            entries: Vec::new(),
+            has_default: has_default,
+        }
+    }
+
+    async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
+        let count = self.entries.len();
+        let mut rng = rand::thread_rng();
+        loop {
+            for (i, entry) in self
+                .entries
+                .iter()
+                .enumerate()
+                .choose_multiple(&mut rng, count)
+            {
+                match entry {
+                    SelectEntry::Send(c, val) => match c.as_channel().chan.try_send(val.clone()) {
+                        Ok(_) => return Ok((i, None)),
+                        Err(e) => match e {
+                            channel::TrySendError::Full(_) => {}
+                            channel::TrySendError::Closed(_) => {
+                                return Err("channel closed!".to_string());
+                            }
+                        },
+                    },
+                    SelectEntry::Recv(c, _) => match c.as_channel().chan.try_recv() {
+                        Ok(v) => return Ok((i, Some(v))),
+                        Err(e) => match e {
+                            channel::TryRecvError::Empty => {}
+                            channel::TryRecvError::Closed => return Ok((i, None)),
+                        },
+                    },
+                }
+            }
+
+            if self.has_default {
+                return Ok((count, None));
+            }
+            future::yield_now().await;
         }
     }
 }
