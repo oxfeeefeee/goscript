@@ -76,6 +76,7 @@ pub enum Opcode {
     JUMP_IF,
     JUMP_IF_NOT,
     SWITCH, // EQL + JUMP_IF + do not pop the first argument
+    SELECT,
     LOOP,
     RANGE_INIT,
     RANGE, // for ... range statement
@@ -175,6 +176,7 @@ impl Opcode {
             Opcode::JUMP_IF => ("JUMP_IF", -1),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
             Opcode::SWITCH => ("SWITCH", -1),
+            Opcode::SELECT => ("SELECT", -128),
             Opcode::RANGE_INIT => ("RANGE_INIT", 0),
             Opcode::RANGE => ("RANGE", 1),
 
@@ -256,6 +258,9 @@ pub enum ValueType {
 
     FlagA, //not a type, works as a flag in instructions
     FlagB,
+    FlagC,
+    FlagD,
+    FlagE,
 }
 
 impl ValueType {

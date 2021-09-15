@@ -129,36 +129,36 @@ impl Channel {
     }
 }
 
-enum SelectEntry {
+enum SelectComm {
     Send(GosValue, GosValue),
     Recv(GosValue, bool),
 }
 
 pub struct Selector {
-    entries: Vec<SelectEntry>,
+    comms: Vec<SelectComm>,
     has_default: bool,
 }
 
 impl Selector {
     pub fn new(has_default: bool) -> Selector {
         Selector {
-            entries: Vec::new(),
+            comms: Vec::new(),
             has_default: has_default,
         }
     }
 
     async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
-        let count = self.entries.len();
+        let count = self.comms.len();
         let mut rng = rand::thread_rng();
         loop {
             for (i, entry) in self
-                .entries
+                .comms
                 .iter()
                 .enumerate()
                 .choose_multiple(&mut rng, count)
             {
                 match entry {
-                    SelectEntry::Send(c, val) => match c.as_channel().chan.try_send(val.clone()) {
+                    SelectComm::Send(c, val) => match c.as_channel().chan.try_send(val.clone()) {
                         Ok(_) => return Ok((i, None)),
                         Err(e) => match e {
                             channel::TrySendError::Full(_) => {}
@@ -167,7 +167,7 @@ impl Selector {
                             }
                         },
                     },
-                    SelectEntry::Recv(c, _) => match c.as_channel().chan.try_recv() {
+                    SelectComm::Recv(c, _) => match c.as_channel().chan.try_recv() {
                         Ok(v) => return Ok((i, Some(v))),
                         Err(e) => match e {
                             channel::TryRecvError::Empty => {}

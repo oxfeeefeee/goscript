@@ -1784,8 +1784,88 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         unimplemented!();
     }
 
-    fn visit_stmt_select(&mut self, _sstmt: &SelectStmt) {
-        unimplemented!();
+    fn visit_stmt_select(&mut self, sstmt: &SelectStmt) {
+        /*
+        Execution of a "select" statement proceeds in several steps:
+
+        1. For all the cases in the statement, the channel operands of receive operations
+        and the channel and right-hand-side expressions of send statements are evaluated
+        exactly once, in source order, upon entering the "select" statement. The result
+        is a set of channels to receive from or send to, and the corresponding values to
+        send. Any side effects in that evaluation will occur irrespective of which (if any)
+        communication operation is selected to proceed. Expressions on the left-hand side
+        of a RecvStmt with a short variable declaration or assignment are not yet evaluated.
+        2. If one or more of the communications can proceed, a single one that can proceed
+        is chosen via a uniform pseudo-random selection. Otherwise, if there is a default
+        case, that case is chosen. If there is no default case, the "select" statement
+        blocks until at least one of the communications can proceed.
+        3. Unless the selected case is the default case, the respective communication operation
+        is executed.
+        4. If the selected case is a RecvStmt with a short variable declaration or an assignment,
+        the left-hand side expressions are evaluated and the received value (or values)
+        are assigned.
+        5. The statement list of the selected case is executed.
+
+        Since communication on nil channels can never proceed, a select with only nil
+        channels and no default case blocks forever.
+        */
+
+        let mut helper = SelectHelper::new();
+        let comms: Vec<&CommClause> = sstmt
+            .body
+            .list
+            .iter()
+            .map(|s| SelectHelper::to_comm_clause(s))
+            .collect();
+        for c in comms.iter() {
+            let (typ, pos) = match &c.comm {
+                Some(comm) => match comm {
+                    Stmt::Send(send_stmt) => {
+                        self.visit_expr(&send_stmt.chan);
+                        self.visit_expr(&send_stmt.val);
+                        (CommType::Send, send_stmt.arrow)
+                    }
+                    Stmt::Assign(ass_key) => {
+                        let ass = &self.ast_objs.a_stmts[*ass_key];
+                        let (e, pos) = SelectHelper::unwrap_recv(&ass.rhs[0]);
+                        self.visit_expr(e);
+                        let t = match &ass.lhs.len() {
+                            1 => CommType::Recv,
+                            2 => CommType::RecvCommaOk,
+                            _ => unreachable!(),
+                        };
+                        (t, pos)
+                    }
+                    Stmt::Expr(expr_stmt) => {
+                        let (e, pos) = SelectHelper::unwrap_recv(expr_stmt);
+                        self.visit_expr(e);
+                        (CommType::RecvNoLhs, pos)
+                    }
+                    _ => unreachable!(),
+                },
+                None => (CommType::Default, c.colon),
+            };
+            helper.add_comm(typ, pos);
+        }
+
+        helper.emit_select(current_func_mut!(self));
+
+        let last_index = comms.len() - 1;
+        for (i, c) in comms.iter().enumerate() {
+            let begin = current_func!(self).next_code_index();
+            for stmt in c.body.iter() {
+                self.visit_stmt(stmt);
+            }
+            let func = current_func_mut!(self);
+            let end = func.next_code_index();
+            // the last block doesn't jump
+            if i < last_index {
+                func.emit_code(Opcode::JUMP, None);
+            }
+            helper.set_block_begin_end(i, begin, end);
+        }
+
+        helper.patch_select(current_func_mut!(self));
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {

@@ -138,7 +138,9 @@ impl SwitchJumpPoints {
 }
 
 pub struct SwitchHelper {
+    // the beginnings of the cases
     pub tags: SwitchJumpPoints,
+    // the ends of the cases
     pub ends: SwitchJumpPoints,
 }
 
@@ -175,5 +177,108 @@ impl SwitchHelper {
             Stmt::Branch(b) => b.token == Token::FALLTHROUGH,
             _ => false,
         })
+    }
+}
+
+pub enum CommType {
+    Send,
+    RecvNoLhs,
+    Recv,
+    RecvCommaOk,
+    Default,
+}
+
+pub struct SelectComm {
+    typ: CommType,
+    pos: usize,
+    begin: usize,
+    end: usize,
+}
+
+impl SelectComm {
+    pub fn new(typ: CommType, pos: usize) -> SelectComm {
+        SelectComm {
+            typ: typ,
+            pos: pos,
+            begin: 0,
+            end: 0,
+        }
+    }
+}
+
+pub struct SelectHelper {
+    comms: Vec<SelectComm>,
+    select_offset: usize,
+}
+
+impl SelectHelper {
+    pub fn new() -> SelectHelper {
+        SelectHelper {
+            comms: vec![],
+            select_offset: 0,
+        }
+    }
+
+    pub fn add_comm(&mut self, typ: CommType, pos: usize) {
+        self.comms.push(SelectComm::new(typ, pos));
+    }
+
+    pub fn set_block_begin_end(&mut self, i: usize, begin: usize, end: usize) {
+        let comm = &mut self.comms[i];
+        comm.begin = begin;
+        comm.end = end;
+    }
+
+    pub fn emit_select(&mut self, func: &mut FunctionVal) {
+        self.select_offset = func.next_code_index();
+        for comm in self.comms.iter() {
+            let flag = match &comm.typ {
+                CommType::Send => ValueType::FlagA,
+                CommType::RecvNoLhs => ValueType::FlagB,
+                CommType::Recv => ValueType::FlagC,
+                CommType::RecvCommaOk => ValueType::FlagD,
+                CommType::Default => ValueType::FlagE,
+            };
+            func.emit_code_with_type(Opcode::SELECT, flag, Some(comm.pos));
+        }
+    }
+
+    pub fn patch_select(&self, func: &mut FunctionVal) {
+        let count = self.comms.len();
+        let offset = self.select_offset;
+        let blocks_begin = self.comms.first().unwrap().begin as OpIndex;
+        let blocks_end = self.comms.last().unwrap().end as OpIndex;
+        // set the block offset for each branch.
+        // the first block's offset is known(0) so the space is used for
+        // the count of clauses.
+        func.instruction_mut(offset).set_imm(count as OpIndex);
+        for i in 1..count {
+            let diff = self.comms[i].begin as OpIndex - blocks_begin;
+            func.instruction_mut(offset + i).set_imm(diff);
+        }
+
+        // set where to jump when the block ends
+        for i in 0..count - 1 {
+            let block_end = self.comms[i].end;
+            let diff = blocks_end - block_end as OpIndex;
+            func.instruction_mut(block_end).set_imm(diff);
+        }
+    }
+
+    pub fn to_comm_clause(s: &Stmt) -> &CommClause {
+        match s {
+            Stmt::Comm(c) => c,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn unwrap_recv(e: &Expr) -> (&Expr, usize) {
+        match e {
+            Expr::Unary(ue) => {
+                assert_eq!(ue.op, Token::ARROW);
+                (&ue.expr, ue.op_pos)
+            }
+            _ => unreachable!(),
+        }
     }
 }
