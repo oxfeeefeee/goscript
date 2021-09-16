@@ -1,3 +1,4 @@
+use super::instruction::*;
 use super::value::*;
 use rand::prelude::*;
 use smol::channel;
@@ -129,25 +130,25 @@ impl Channel {
     }
 }
 
-enum SelectComm {
-    Send(GosValue, GosValue),
-    Recv(GosValue, bool),
+pub enum SelectComm {
+    Send(GosValue, GosValue, OpIndex),
+    Recv(GosValue, ValueType, OpIndex),
 }
 
 pub struct Selector {
-    comms: Vec<SelectComm>,
-    has_default: bool,
+    pub comms: Vec<SelectComm>,
+    pub default_offset: Option<OpIndex>,
 }
 
 impl Selector {
-    pub fn new(has_default: bool) -> Selector {
+    pub fn new(comms: Vec<SelectComm>, default_offset: Option<OpIndex>) -> Selector {
         Selector {
-            comms: Vec::new(),
-            has_default: has_default,
+            comms: comms,
+            default_offset: default_offset,
         }
     }
 
-    async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
+    pub async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
         let count = self.comms.len();
         let mut rng = rand::thread_rng();
         loop {
@@ -158,16 +159,18 @@ impl Selector {
                 .choose_multiple(&mut rng, count)
             {
                 match entry {
-                    SelectComm::Send(c, val) => match c.as_channel().chan.try_send(val.clone()) {
-                        Ok(_) => return Ok((i, None)),
-                        Err(e) => match e {
-                            channel::TrySendError::Full(_) => {}
-                            channel::TrySendError::Closed(_) => {
-                                return Err("channel closed!".to_string());
-                            }
-                        },
-                    },
-                    SelectComm::Recv(c, _) => match c.as_channel().chan.try_recv() {
+                    SelectComm::Send(c, val, _) => {
+                        match c.as_channel().chan.try_send(val.clone()) {
+                            Ok(_) => return Ok((i, None)),
+                            Err(e) => match e {
+                                channel::TrySendError::Full(_) => {}
+                                channel::TrySendError::Closed(_) => {
+                                    return Err("channel closed!".to_string());
+                                }
+                            },
+                        }
+                    }
+                    SelectComm::Recv(c, _, _) => match c.as_channel().chan.try_recv() {
                         Ok(v) => return Ok((i, Some(v))),
                         Err(e) => match e {
                             channel::TryRecvError::Empty => {}
@@ -177,8 +180,8 @@ impl Selector {
                 }
             }
 
-            if self.has_default {
-                return Ok((count, None));
+            if let Some(_) = self.default_offset {
+                return Ok((self.comms.len(), None));
             }
             future::yield_now().await;
         }

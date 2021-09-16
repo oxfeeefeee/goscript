@@ -219,6 +219,7 @@ impl<'a> CodeGen<'a> {
     /// x += 1
     /// x++
     /// for x := range xxx
+    /// recv clause of select stmt
     fn gen_assign(
         &mut self,
         token: &Token,
@@ -376,8 +377,7 @@ impl<'a> CodeGen<'a> {
                     self.gen_assign_def_var(&lhs, &None, &rhs)
                 }
             }
-            RightHandSide::Range(_) => self.gen_assign_def_var(&lhs, &None, &rhs),
-            RightHandSide::SelectRecv => unimplemented!(),
+            _ => self.gen_assign_def_var(&lhs, &None, &rhs),
         }
     }
 
@@ -445,7 +445,7 @@ impl<'a> CodeGen<'a> {
                         }
                     }
                     if comma_ok {
-                        self.tlookup.get_return_tc_types(val0)
+                        self.tlookup.get_tuple_tc_types(val0)
                     } else {
                         vec![self.tlookup.get_expr_tc_type(val0)]
                     }
@@ -466,7 +466,7 @@ impl<'a> CodeGen<'a> {
                     } else {
                         unreachable!()
                     }
-                    self.tlookup.get_return_tc_types(expr)
+                    self.tlookup.get_tuple_tc_types(expr)
                 } else {
                     unreachable!();
                 }
@@ -489,8 +489,12 @@ impl<'a> CodeGen<'a> {
                 func.emit_inst(Opcode::RANGE, types, None, pos);
                 tkv[1..].to_vec()
             }
-            RightHandSide::SelectRecv => {
-                unimplemented!()
+            RightHandSide::SelectRecv(rhs) => {
+                if self.tlookup.get_expr_mode(rhs) == &OperandMode::CommaOk {
+                    self.tlookup.get_tuple_tc_types(rhs)
+                } else {
+                    vec![self.tlookup.get_expr_tc_type(rhs)]
+                }
             }
         };
 
@@ -503,7 +507,7 @@ impl<'a> CodeGen<'a> {
         assert_eq!(lhs.len(), types.len());
         let total_rhs_val = types.len() as OpIndex;
         let total_val = (total_lhs_val + total_rhs_val) as OpIndex;
-        let mut current_indexing_index = -total_val;
+        let mut current_indexing_deref_index = -total_val;
         for (i, (l, _, p)) in lhs.iter().enumerate() {
             let val_index = i as OpIndex - total_rhs_val;
             let typ = self.try_cast_to_iface(lhs[i].1, Some(types[i]), val_index, *p);
@@ -514,7 +518,7 @@ impl<'a> CodeGen<'a> {
                 }
                 LeftHandSide::IndexSelExpr(info) => {
                     current_func_emitter!(self).emit_store(
-                        &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_index)),
+                        &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_deref_index)),
                         val_index,
                         None,
                         None,
@@ -522,18 +526,18 @@ impl<'a> CodeGen<'a> {
                         pos,
                     );
                     // the lhs of IndexSelExpr takes two spots
-                    current_indexing_index += 2;
+                    current_indexing_deref_index += 2;
                 }
                 LeftHandSide::Deref(_) => {
                     current_func_emitter!(self).emit_store(
-                        &LeftHandSide::Deref(current_indexing_index),
+                        &LeftHandSide::Deref(current_indexing_deref_index),
                         val_index,
                         None,
                         None,
                         typ,
                         pos,
                     );
-                    current_indexing_index += 1;
+                    current_indexing_deref_index += 1;
                 }
             }
         }
@@ -1836,15 +1840,16 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     Stmt::Send(send_stmt) => {
                         self.visit_expr(&send_stmt.chan);
                         self.visit_expr(&send_stmt.val);
-                        (CommType::Send, send_stmt.arrow)
+                        let t = self.tlookup.get_expr_value_type(&send_stmt.val);
+                        (CommType::Send(t), send_stmt.arrow)
                     }
                     Stmt::Assign(ass_key) => {
                         let ass = &self.ast_objs.a_stmts[*ass_key];
                         let (e, pos) = SelectHelper::unwrap_recv(&ass.rhs[0]);
                         self.visit_expr(e);
                         let t = match &ass.lhs.len() {
-                            1 => CommType::Recv,
-                            2 => CommType::RecvCommaOk,
+                            1 => CommType::Recv(&ass),
+                            2 => CommType::RecvCommaOk(&ass),
                             _ => unreachable!(),
                         };
                         (t, pos)
@@ -1866,15 +1871,30 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let last_index = comms.len() - 1;
         for (i, c) in comms.iter().enumerate() {
             let begin = current_func!(self).next_code_index();
+
+            match helper.comm_type(i) {
+                CommType::Recv(ass) | CommType::RecvCommaOk(ass) => {
+                    self.gen_assign(
+                        &ass.token,
+                        &ass.lhs.iter().map(|x| x).collect(),
+                        RightHandSide::SelectRecv(&ass.rhs[0]),
+                    );
+                }
+                _ => {}
+            }
+
             for stmt in c.body.iter() {
                 self.visit_stmt(stmt);
             }
             let func = current_func_mut!(self);
-            let end = func.next_code_index();
+            let mut end = func.next_code_index();
             // the last block doesn't jump
             if i < last_index {
                 func.emit_code(Opcode::JUMP, None);
+            } else {
+                end -= 1;
             }
+
             helper.set_block_begin_end(i, begin, end);
         }
 

@@ -180,22 +180,22 @@ impl SwitchHelper {
     }
 }
 
-pub enum CommType {
-    Send,
+pub enum CommType<'a> {
+    Send(ValueType),
     RecvNoLhs,
-    Recv,
-    RecvCommaOk,
+    Recv(&'a AssignStmt),
+    RecvCommaOk(&'a AssignStmt),
     Default,
 }
 
-pub struct SelectComm {
-    typ: CommType,
+pub struct SelectComm<'a> {
+    typ: CommType<'a>,
     pos: usize,
     begin: usize,
     end: usize,
 }
 
-impl SelectComm {
+impl<'a> SelectComm<'a> {
     pub fn new(typ: CommType, pos: usize) -> SelectComm {
         SelectComm {
             typ: typ,
@@ -206,20 +206,24 @@ impl SelectComm {
     }
 }
 
-pub struct SelectHelper {
-    comms: Vec<SelectComm>,
+pub struct SelectHelper<'a> {
+    comms: Vec<SelectComm<'a>>,
     select_offset: usize,
 }
 
-impl SelectHelper {
-    pub fn new() -> SelectHelper {
+impl<'a> SelectHelper<'a> {
+    pub fn new() -> SelectHelper<'a> {
         SelectHelper {
             comms: vec![],
             select_offset: 0,
         }
     }
 
-    pub fn add_comm(&mut self, typ: CommType, pos: usize) {
+    pub fn comm_type(&self, i: usize) -> &CommType {
+        &self.comms[i].typ
+    }
+
+    pub fn add_comm(&mut self, typ: CommType<'a>, pos: usize) {
         self.comms.push(SelectComm::new(typ, pos));
     }
 
@@ -232,14 +236,14 @@ impl SelectHelper {
     pub fn emit_select(&mut self, func: &mut FunctionVal) {
         self.select_offset = func.next_code_index();
         for comm in self.comms.iter() {
-            let flag = match &comm.typ {
-                CommType::Send => ValueType::FlagA,
-                CommType::RecvNoLhs => ValueType::FlagB,
-                CommType::Recv => ValueType::FlagC,
-                CommType::RecvCommaOk => ValueType::FlagD,
-                CommType::Default => ValueType::FlagE,
+            let (flag, t) = match &comm.typ {
+                CommType::Send(t) => (ValueType::FlagA, Some(*t)),
+                CommType::RecvNoLhs => (ValueType::FlagB, None),
+                CommType::Recv(_) => (ValueType::FlagC, None),
+                CommType::RecvCommaOk(_) => (ValueType::FlagD, None),
+                CommType::Default => (ValueType::FlagE, None),
             };
-            func.emit_code_with_type(Opcode::SELECT, flag, Some(comm.pos));
+            func.emit_code_with_type2(Opcode::SELECT, flag, t, Some(comm.pos));
         }
     }
 
@@ -248,9 +252,9 @@ impl SelectHelper {
         let offset = self.select_offset;
         let blocks_begin = self.comms.first().unwrap().begin as OpIndex;
         let blocks_end = self.comms.last().unwrap().end as OpIndex;
-        // set the block offset for each branch.
+        // set the block offset for each block.
         // the first block's offset is known(0) so the space is used for
-        // the count of clauses.
+        // the count of blocks.
         func.instruction_mut(offset).set_imm(count as OpIndex);
         for i in 1..count {
             let diff = self.comms[i].begin as OpIndex - blocks_begin;

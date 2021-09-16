@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::channel;
 use super::ffi::FfiFactory;
 use super::gc::{gc, GcoVec};
 use super::instruction::*;
@@ -958,6 +959,73 @@ impl<'a> Fiber<'a> {
                     Opcode::SWITCH => {
                         if stack.switch_cmp(inst.t0(), objs) {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
+                        }
+                    }
+                    Opcode::SELECT => {
+                        let blocks = inst.imm();
+                        let begin = frame.pc - 1;
+                        let mut end = begin + blocks as usize;
+                        let end_code = &code[end - 1];
+                        let default_offset = match end_code.t0() {
+                            ValueType::FlagE => {
+                                end -= 1;
+                                Some(end_code.imm())
+                            }
+                            _ => None,
+                        };
+                        let comms = code[begin..end]
+                            .iter()
+                            .enumerate()
+                            .rev()
+                            .map(|(i, sel_code)| {
+                                let offset = if i == 0 { 0 } else { sel_code.imm() };
+                                let flag = sel_code.t0();
+                                match &flag {
+                                    ValueType::FlagA => {
+                                        let val = stack.pop_with_type(sel_code.t1());
+                                        let chan = stack.pop_rc();
+                                        channel::SelectComm::Send(chan, val, offset)
+                                    }
+                                    ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
+                                        let chan = stack.pop_rc();
+                                        channel::SelectComm::Recv(chan, flag, offset)
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            })
+                            .collect();
+                        let selector = channel::Selector::new(comms, default_offset);
+
+                        drop(stack_mut_ref);
+                        let re = selector.select().await;
+                        restore_stack_ref!(self, stack, stack_mut_ref);
+
+                        match re {
+                            Ok((i, val)) => {
+                                let offset = match &selector.comms[i] {
+                                    channel::SelectComm::Send(_, _, offset) => offset,
+                                    channel::SelectComm::Recv(_, flag, offset) => {
+                                        match flag {
+                                            ValueType::FlagC => {
+                                                // todo
+                                                stack.push(val.unwrap());
+                                            }
+                                            ValueType::FlagD => {
+                                                // todo
+                                                stack.push(val.unwrap());
+                                                stack.push_bool(true);
+                                            }
+                                            _ => {}
+                                        }
+                                        offset
+                                    }
+                                };
+                                // jump to the block
+                                frame.pc = Stack::offset(frame.pc, (blocks - 1) + offset);
+                            }
+                            Err(e) => {
+                                go_panic_str!(panic, &objs.metadata, e, frame, code);
+                            }
                         }
                     }
                     Opcode::RANGE_INIT => {

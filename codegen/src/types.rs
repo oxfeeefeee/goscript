@@ -154,9 +154,9 @@ impl<'a> TypeLookup<'a> {
         self.range_tc_types(typ)
     }
 
-    pub fn get_return_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
+    pub fn get_tuple_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
-        self.return_tc_types(typ)
+        self.tuple_tc_types(typ)
     }
 
     pub fn get_selection_value_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
@@ -205,7 +205,7 @@ impl<'a> TypeLookup<'a> {
     pub fn get_sig_returns_tc_types(&mut self, func: TCTypeKey) -> Vec<TCTypeKey> {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
-        self.return_tc_types(sig.results())
+        self.tuple_tc_types(sig.results())
     }
 
     // returns vm_type(metadata) for the tc_type
@@ -487,7 +487,7 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn return_tc_types(&self, typ: TCTypeKey) -> Vec<TCTypeKey> {
+    fn tuple_tc_types(&self, typ: TCTypeKey) -> Vec<TCTypeKey> {
         match &self.tc_objs.types[typ] {
             Type::Tuple(detail) => detail
                 .vars()

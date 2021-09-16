@@ -239,6 +239,12 @@ fn test_recover() {
 }
 
 #[test]
+fn test_select() {
+    let err_cnt = run("./tests/group1/select.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);
