@@ -77,6 +77,7 @@ pub enum RightHandSide<'a> {
     Nothing,
     Values(&'a Vec<Expr>),
     Range(&'a Expr),
+    SelectRecv,
 }
 
 pub struct Emitter<'a> {

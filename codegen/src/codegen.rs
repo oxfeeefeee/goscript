@@ -223,8 +223,7 @@ impl<'a> CodeGen<'a> {
         &mut self,
         token: &Token,
         lhs_exprs: &Vec<&Expr>,
-        rhs_exprs: &Vec<Expr>,
-        range: Option<&Expr>,
+        rhs: RightHandSide,
     ) -> Option<usize> {
         let lhs = lhs_exprs
             .iter()
@@ -328,45 +327,57 @@ impl<'a> CodeGen<'a> {
             })
             .collect::<Vec<(LeftHandSide, Option<TCTypeKey>, usize)>>();
 
-        let simple_op = match token {
-            Token::ADD_ASSIGN | Token::INC => Some(Opcode::ADD), // +=
-            Token::SUB_ASSIGN | Token::DEC => Some(Opcode::SUB), // -=
-            Token::MUL_ASSIGN => Some(Opcode::MUL),              // *=
-            Token::QUO_ASSIGN => Some(Opcode::QUO),              // /=
-            Token::REM_ASSIGN => Some(Opcode::REM),              // %=
-            Token::AND_ASSIGN => Some(Opcode::AND),              // &=
-            Token::OR_ASSIGN => Some(Opcode::OR),                // |=
-            Token::XOR_ASSIGN => Some(Opcode::XOR),              // ^=
-            Token::SHL_ASSIGN => Some(Opcode::SHL),              // <<=
-            Token::SHR_ASSIGN => Some(Opcode::SHR),              // >>=
-            Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT),      // &^=
-
-            Token::ASSIGN | Token::DEFINE => None,
-            _ => unreachable!(),
-        };
-        if let Some(code) = simple_op {
-            if *token == Token::INC || *token == Token::DEC {
+        match rhs {
+            RightHandSide::Nothing => {
+                let code = match token {
+                    Token::INC => Opcode::ADD,
+                    Token::DEC => Opcode::SUB,
+                    _ => unreachable!(),
+                };
                 let typ = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
                 self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
-            } else {
-                assert_eq!(lhs_exprs.len(), 1);
-                assert_eq!(rhs_exprs.len(), 1);
-                let ltyp = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
-                let rtyp = match code {
-                    Opcode::SHL | Opcode::SHR => {
-                        Some(self.tlookup.get_expr_value_type(&rhs_exprs[0]))
-                    }
-                    _ => None,
-                };
-                self.gen_op_assign(&lhs[0].0, (code, rtyp), Some(&rhs_exprs[0]), ltyp, lhs[0].2);
+                None
             }
-            None
-        } else {
-            let rhs = match range {
-                Some(r) => RightHandSide::Range(r),
-                None => RightHandSide::Values(rhs_exprs),
-            };
-            self.gen_assign_def_var(&lhs, &None, &rhs)
+            RightHandSide::Values(rhs_exprs) => {
+                let simple_op = match token {
+                    Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
+                    Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
+                    Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
+                    Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
+                    Token::REM_ASSIGN => Some(Opcode::REM),         // %=
+                    Token::AND_ASSIGN => Some(Opcode::AND),         // &=
+                    Token::OR_ASSIGN => Some(Opcode::OR),           // |=
+                    Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
+                    Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
+                    Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
+                    Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
+                    Token::ASSIGN | Token::DEFINE => None,
+                    _ => unreachable!(),
+                };
+                if let Some(code) = simple_op {
+                    assert_eq!(lhs_exprs.len(), 1);
+                    assert_eq!(rhs_exprs.len(), 1);
+                    let ltyp = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
+                    let rtyp = match code {
+                        Opcode::SHL | Opcode::SHR => {
+                            Some(self.tlookup.get_expr_value_type(&rhs_exprs[0]))
+                        }
+                        _ => None,
+                    };
+                    self.gen_op_assign(
+                        &lhs[0].0,
+                        (code, rtyp),
+                        Some(&rhs_exprs[0]),
+                        ltyp,
+                        lhs[0].2,
+                    );
+                    None
+                } else {
+                    self.gen_assign_def_var(&lhs, &None, &rhs)
+                }
+            }
+            RightHandSide::Range(_) => self.gen_assign_def_var(&lhs, &None, &rhs),
+            RightHandSide::SelectRecv => unimplemented!(),
         }
     }
 
@@ -477,6 +488,9 @@ impl<'a> CodeGen<'a> {
                 // the block_end address to be set
                 func.emit_inst(Opcode::RANGE, types, None, pos);
                 tkv[1..].to_vec()
+            }
+            RightHandSide::SelectRecv => {
+                unimplemented!()
             }
         };
 
@@ -1585,7 +1599,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
-        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], &vec![], None);
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], RightHandSide::Nothing);
     }
 
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
@@ -1593,8 +1607,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         self.gen_assign(
             &stmt.token,
             &stmt.lhs.iter().map(|x| x).collect(),
-            &stmt.rhs,
-            None,
+            RightHandSide::Values(&stmt.rhs),
         );
     }
 
@@ -1920,7 +1933,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             rstmt.val.as_ref().unwrap_or(&blank),
         ];
         let marker = self
-            .gen_assign(&rstmt.token, &lhs, &vec![], Some(&rstmt.expr))
+            .gen_assign(&rstmt.token, &lhs, RightHandSide::Range(&rstmt.expr))
             .unwrap();
 
         self.visit_stmt_block(&rstmt.body);
