@@ -2016,6 +2016,7 @@ impl<'a> Parser<'a> {
         let comm = if self.token == Token::CASE {
             self.next();
             let mut lhs = self.parse_lhs_list();
+            let tk = self.token.clone();
             if self.token == Token::ARROW {
                 // SendStmt
                 if lhs.len() > 1 {
@@ -2029,7 +2030,7 @@ impl<'a> Parser<'a> {
                     chan: lhs.into_iter().nth(0).unwrap(), arrow: arrow, val: rhs})))
             } else {
                 // RecvStmt
-                if self.token == Token::ASSIGN || self.token == Token::DEFINE {
+                if tk == Token::ASSIGN || tk == Token::DEFINE {
                     // RecvStmt with assignment
                     if lhs.len() > 2 {
                         self.error_expected(lhs[0].pos(&self.objects),
@@ -2037,12 +2038,11 @@ impl<'a> Parser<'a> {
                         lhs.truncate(2);
                     }
                     let pos = self.pos;
-                    let token = self.token.clone();
                     self.next();
                     let rhs = self.parse_rhs();
                     let ass = Stmt::new_assign(
-                        &mut self.objects, lhs, pos, token, vec![rhs]);
-                    if self.token == Token::DEFINE {
+                        &mut self.objects, lhs, pos, tk.clone(), vec![rhs]);
+                    if tk == Token::DEFINE {
                         self.short_var_decl(&ass);
                     }
                     Some(ass)
