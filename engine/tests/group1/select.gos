@@ -4,12 +4,14 @@ import "fmt"
 
 func fibonacci(c, quit chan int) {
 	x, y := 0, 1
+	var s = make([]int, 2)
 	for {
 		select {
 		case c <- x:
 			x, y = y, x+y
-		case vv, okk := <-quit:
-			fmt.Println("quit 拉", vv, okk)
+		case s[0] = <-quit:
+			assert(s[0] == 999)
+			fmt.Println("quit 拉", s)
 			return
 		}
 	}
@@ -26,4 +28,35 @@ func main() {
 	}()
 	
 	fibonacci(c, quit)
+
+
+	var f = false
+
+	go func() {
+		quit <- 888
+	}()
+
+	select {
+	case v, ok := <- c:
+		assert(f)
+		fmt.Println("c recv:", v, ok)
+	case v, ok := <-quit:
+		assert(v == 888)
+		assert(ok)
+		fmt.Println("quit recv:", v, ok)
+	}	
+
+	go func() {
+		close(c)
+	}()
+
+	select {
+	case v, ok := <- c:
+		assert(v == 0)
+		assert(!ok)
+		fmt.Println("c recv:", v, ok)
+	case v, ok := <-quit:
+		assert(f)
+		fmt.Println("quit recv:", v, ok)
+	}	
 }

@@ -490,7 +490,9 @@ impl<'a> CodeGen<'a> {
                 tkv[1..].to_vec()
             }
             RightHandSide::SelectRecv(rhs) => {
-                if self.tlookup.get_expr_mode(rhs) == &OperandMode::CommaOk {
+                let comma_ok =
+                    lhs.len() == 2 && self.tlookup.get_expr_mode(rhs) == &OperandMode::CommaOk;
+                if comma_ok {
                     self.tlookup.get_tuple_tc_types(rhs)
                 } else {
                     vec![self.tlookup.get_expr_tc_type(rhs)]
@@ -499,27 +501,43 @@ impl<'a> CodeGen<'a> {
         };
 
         // now the values should be on stack, generate code to set them to the lhs
-        let total_lhs_val = lhs.iter().fold(0, |acc, (x, _, _)| match x {
+        let total_lhs_stack_space = lhs.iter().fold(0, |acc, (x, _, _)| match x {
             LeftHandSide::Primitive(_) => acc,
             LeftHandSide::IndexSelExpr(info) => acc + info.stack_space(),
             LeftHandSide::Deref(_) => acc + 1,
         });
+        // only when in select stmt, lhs in stack is on top of the rhs
+        let lhs_on_stack_top = if let RightHandSide::SelectRecv(_) = rhs {
+            true
+        } else {
+            false
+        };
+
         assert_eq!(lhs.len(), types.len());
-        let total_rhs_val = types.len() as OpIndex;
-        let total_val = (total_lhs_val + total_rhs_val) as OpIndex;
-        let mut current_indexing_deref_index = -total_val;
+        let total_val = types.len() as OpIndex;
+        let total_stack_space = (total_lhs_stack_space + total_val) as OpIndex;
+        let mut current_indexing_deref_index = -if lhs_on_stack_top {
+            total_lhs_stack_space
+        } else {
+            total_stack_space
+        };
         for (i, (l, _, p)) in lhs.iter().enumerate() {
-            let val_index = i as OpIndex - total_rhs_val;
-            let typ = self.try_cast_to_iface(lhs[i].1, Some(types[i]), val_index, *p);
+            let rhs_index = i as OpIndex
+                - if lhs_on_stack_top {
+                    total_stack_space
+                } else {
+                    total_val
+                };
+            let typ = self.try_cast_to_iface(lhs[i].1, Some(types[i]), rhs_index, *p);
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
-                    current_func_emitter!(self).emit_store(l, val_index, None, None, typ, pos);
+                    current_func_emitter!(self).emit_store(l, rhs_index, None, None, typ, pos);
                 }
                 LeftHandSide::IndexSelExpr(info) => {
                     current_func_emitter!(self).emit_store(
                         &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_deref_index)),
-                        val_index,
+                        rhs_index,
                         None,
                         None,
                         typ,
@@ -531,7 +549,7 @@ impl<'a> CodeGen<'a> {
                 LeftHandSide::Deref(_) => {
                     current_func_emitter!(self).emit_store(
                         &LeftHandSide::Deref(current_indexing_deref_index),
-                        val_index,
+                        rhs_index,
                         None,
                         None,
                         typ,
