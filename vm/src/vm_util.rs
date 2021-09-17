@@ -149,6 +149,18 @@ macro_rules! deref_value {
     }};
 }
 
+macro_rules! unwrap_recv_val {
+    ($chan:expr, $val:expr, $metas:expr, $gcv:expr) => {
+        match $val {
+            Some(v) => (v, true),
+            None => {
+                let val_meta = $metas[$chan.meta.as_non_ptr()].as_channel().1;
+                (val_meta.zero_val(&$metas, $gcv), false)
+            }
+        };
+    };
+}
+
 #[inline]
 pub fn char_from_u32(u: u32) -> char {
     unsafe { char::from_u32_unchecked(u) }

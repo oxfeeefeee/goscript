@@ -687,13 +687,7 @@ impl<'a> Fiber<'a> {
                         drop(stack_mut_ref);
                         let val = chan.recv().await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
-                        let (unwrapped, ok) = match val {
-                            Some(v) => (v, true),
-                            None => {
-                                let val_meta = objs.metas[chan.meta.as_non_ptr()].as_channel().1;
-                                (val_meta.zero_val(&objs.metas, gcv), false)
-                            }
-                        };
+                        let (unwrapped, ok) = unwrap_recv_val!(chan, val, objs.metas, gcv);
                         stack.push(unwrapped);
                         if inst.t1() == ValueType::FlagA {
                             stack.push(GosValue::Bool(ok));
@@ -1004,16 +998,16 @@ impl<'a> Fiber<'a> {
                             Ok((i, val)) => {
                                 let offset = match &selector.comms[i] {
                                     channel::SelectComm::Send(_, _, offset) => offset,
-                                    channel::SelectComm::Recv(_, flag, offset) => {
+                                    channel::SelectComm::Recv(c, flag, offset) => {
+                                        let (unwrapped, ok) =
+                                            unwrap_recv_val!(c.as_channel(), val, objs.metas, gcv);
                                         match flag {
                                             ValueType::FlagC => {
-                                                // todo
-                                                stack.push(val.unwrap());
+                                                stack.push(unwrapped);
                                             }
                                             ValueType::FlagD => {
-                                                // todo
-                                                stack.push(val.unwrap());
-                                                stack.push_bool(true);
+                                                stack.push(unwrapped);
+                                                stack.push_bool(ok);
                                             }
                                             _ => {}
                                         }

@@ -257,3 +257,11 @@ fn test_leetcode5() {
     let err_cnt = run("./tests/demo/leetcode5.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_fibonacci() {
+    time_test!();
+
+    let err_cnt = run("./tests/demo/fibonacci.gos", true);
+    assert!(err_cnt == 0);
+}

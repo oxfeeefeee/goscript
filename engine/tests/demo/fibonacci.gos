@@ -8,8 +8,8 @@ func fibonacci(c, quit chan int) {
 		select {
 		case c <- x:
 			x, y = y, x+y
-		case vv, okk := <-quit:
-			fmt.Println("quit 拉", vv, okk)
+		case <-quit:
+			fmt.Println("quit 拉")
 			return
 		}
 	}
@@ -22,7 +22,7 @@ func main() {
 		for i := 0; i < 12; i++ {
 			fmt.Println(<-c)
 		}
-		quit <- 999
+		quit <- 0
 	}()
 	
 	fibonacci(c, quit)
