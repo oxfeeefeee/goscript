@@ -29,10 +29,10 @@ func main() {
 }
 
 func fa () (int, int) {
-	assert(8 == fb())
-	return 6,7
+    assert(8 == fb())
+    return 6,7
 }
 
 func fb() int {
-	return 8
+    return 8
 }

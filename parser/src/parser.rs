@@ -174,7 +174,7 @@ impl<'a> Parser<'a> {
             unreachable!();
         };
         let list = &ass_stmt!(self, assign).lhs;
-	    let mut n = 0; // number of new variables
+        let mut n = 0; // number of new variables
         for expr in list {
             match expr { 
                 Expr::Ident(id) => {
@@ -597,7 +597,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("FieldDecl");
 
         // 1st FieldDecl
-	    // A type name used as an anonymous field looks like a field identifier.
+        // A type name used as an anonymous field looks like a field identifier.
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(false));
@@ -726,7 +726,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("ParameterList");
 
         // 1st ParameterDecl
-	    // A list of identifiers looks like a list of type names.
+        // A list of identifiers looks like a list of type names.
         let mut list = vec![];
         loop {
             list.push(self.parse_var_type(ellipsis_ok));
@@ -747,8 +747,8 @@ impl<'a> Parser<'a> {
             let field = new_field!(self, idents, t, None);
             params.push(field);
             // Go spec: The scope of an identifier denoting a function
-			// parameter or result variable is the function body.
-			self.declare(DeclObj::Field(field), EntityData::NoData,
+            // parameter or result variable is the function body.
+            self.declare(DeclObj::Field(field), EntityData::NoData,
                 EntityKind::Var, &scope);
             if let Some(ident) = to_resolve {
                 self.resolve(&ident);
@@ -1967,7 +1967,7 @@ impl<'a> Parser<'a> {
                     // to the variable declared in the initial SimpleStmt.
                     // Introduce extra scope to avoid redeclaration errors:
                     //
-                    //	switch t := 0; t := x.(T) { ... }
+                    //    switch t := 0; t := x.(T) { ... }
                     //
                     // (this code is not valid Go because the first t
                     // cannot be accessed and thus is never used, the extra
@@ -2021,7 +2021,7 @@ impl<'a> Parser<'a> {
                 // SendStmt
                 if lhs.len() > 1 {
                     self.error_expected(lhs[0].pos(&self.objects), "1 expression");
-				    // continue with first expression
+                    // continue with first expression
                 }
                 let arrow = self.pos;
                 self.next();
@@ -2150,7 +2150,7 @@ impl<'a> Parser<'a> {
                     }
                 };
                 // parseSimpleStmt returned a right-hand side that
-		        // is a single unary expression of the form "range x"
+                // is a single unary expression of the form "range x"
                 if let Expr::Unary(unary) = ass.rhs.remove(0) {
                     Stmt::Range(Rc::new(RangeStmt{
                         for_pos: pos,
@@ -2190,9 +2190,9 @@ impl<'a> Parser<'a> {
                 Stmt::Decl(Rc::new(self.parse_decl(Token::is_stmt_start))),
             Token::IDENT(_) | Token::INT(_) | Token::FLOAT(_) | Token::IMAG(_) |
             Token::CHAR(_) | Token::STRING(_) | Token::FUNC | Token::LPAREN | // operands
-		    Token::LBRACK | Token::STRUCT | 
+            Token::LBRACK | Token::STRUCT | 
             Token::MAP | Token::CHAN | Token::INTERFACE | // composite types
-		    Token::ADD | Token::SUB | Token::MUL | Token::AND |
+            Token::ADD | Token::SUB | Token::MUL | Token::AND |
             Token::XOR | Token::ARROW | Token::NOT => { // unary operators
                 let s = self.parse_simple_stmt(ParseSimpleMode::LabelOk).0;
                 if let Stmt::Labeled(_) = s {} else {self.expect_semi();}
@@ -2326,9 +2326,9 @@ impl<'a> Parser<'a> {
         }
 
         // Go spec: The scope of a constant or variable identifier declared inside
-	    // a function begins at the end of the ConstSpec or VarSpec and ends at
-	    // the end of the innermost containing block.
-	    // (Global identifiers are resolved in a separate phase after parsing.)
+        // a function begins at the end of the ConstSpec or VarSpec and ends at
+        // the end of the innermost containing block.
+        // (Global identifiers are resolved in a separate phase after parsing.)
         let spec =  specs_mut!(self_).insert(Spec::Value(Rc::new(ValueSpec{
             names: idents, typ: typ, values: values})));
         let kind = if let Token::VAR = keyword {
@@ -2349,9 +2349,9 @@ impl<'a> Parser<'a> {
 
         let ident = self.parse_ident();
         // Go spec: The scope of a type identifier declared inside a function begins
-	    // at the identifier in the TypeSpec and ends at the end of the innermost
-	    // containing block.
-	    // (Global identifiers are resolved in a separate phase after parsing.)
+        // at the identifier in the TypeSpec and ends at the end of the innermost
+        // containing block.
+        // (Global identifiers are resolved in a separate phase after parsing.)
         let placeholder = Expr::new_bad(0, 0);
         let spec_val = Spec::Type(Rc::new(TypeSpec{
             name: ident, assign: 0, typ: placeholder
@@ -2497,7 +2497,7 @@ impl<'a> Parser<'a> {
         let err_count = self.errors.len();
         let pos = self.expect(&Token::PACKAGE);
         // Go spec: The package clause is not a declaration;
-	    // the package name does not appear in any scope.
+        // the package name does not appear in any scope.
         let ident = self.parse_ident();
         if ident!(self, ident).name == "_" {
             self.error_str(self.pos, "invalid package name _");
@@ -2505,8 +2505,8 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         // Don't bother parsing the rest if we had errors parsing the package clause.
-	    // Likely not a Go source file at all.
-	    if self.errors.len() > err_count {
+        // Likely not a Go source file at all.
+        if self.errors.len() > err_count {
             self.trace_end();
             return None
         }
@@ -2555,10 +2555,10 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod test {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn test_parser () {
+    #[test]
+    fn test_parser () {
         let mut fs = position::FileSet::new();
         let f = fs.add_file("testfile1.gs".to_string(), None, 1000);
 

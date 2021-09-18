@@ -38,7 +38,7 @@ type Add func(a int, b int) int
 
 func main() {
     type S2 struct {i int}
-	var s1 S1
+    var s1 S1
     //var s2 S2
 
     s1.Inc()

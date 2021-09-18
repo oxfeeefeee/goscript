@@ -200,9 +200,9 @@ impl MethodSet {
 /// The last index entry is the field or method index in the (possibly embedded)
 /// type where the entry was found, either:
 ///
-///	1) the list of declared methods of a named type; or
-///	2) the list of all methods (method set) of an interface type; or
-///	3) the list of fields of a struct type.
+/// 1) the list of declared methods of a named type; or
+/// 2) the list of all methods (method set) of an interface type; or
+/// 3) the list of fields of a struct type.
 ///
 /// The earlier index entries are the indices of the embedded struct fields
 /// traversed to get to the found entry, starting at depth 0.
