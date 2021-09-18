@@ -17,8 +17,8 @@ The project "engine" is the entry/wrapper. there are test cases in [here](https:
 + As a glue language like Python.
 
 ### Rationale
-+ A scripting language that is Rust friendly is needed.
-+ Go is popular and easy(even as a scripting language).
++ A scripting language that can be embedded in Rust.
++ Go is popular and easy(even as a scripting language), why invent new grammars?
 + In some cases, when your project gets big:
     - If Go were an embedded language it would be better than Lua.
     - If Go were a glue language it would be better than Python, in terms of project maintainability.
@@ -33,7 +33,7 @@ The project "engine" is the entry/wrapper. there are test cases in [here](https:
     - engine -- the wrapper.
 
 ### Progress
-+ Language: the biggest missing part is goroutine/channel/defer, supports most features, some of them are, probably for the first time, implemented in a script language :), like Pointer/Interface/Struct.
++ Language: Feature complete (except the features that are so insignificant that I forgot -_-) Some of the features are, probably for the first time, implemented in a script language, like Select/Defer/Pointer/Interface/Struct.
 + Standard library: just got started.
 + Production readiness: far from. The parser and the type checker are probably ok because they were ported and passes
 the test cases comes with the original code. The backend has a lot of rough edges, and we need much more test cases.
