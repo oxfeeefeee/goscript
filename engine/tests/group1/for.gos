@@ -222,7 +222,6 @@ FOR1:
 
 
 func main() {
-    /*
    f1()
    f2()
    f3()
@@ -232,7 +231,7 @@ func main() {
    break_cont()
    break_cont_2()
 
-    break_label()  */
+    break_label() 
     
     break_select()
 }
