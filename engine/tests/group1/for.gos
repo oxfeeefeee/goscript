@@ -197,9 +197,32 @@ OuterLoop2:
     assert(total == 100)
 }
 
+func break_select() {
+    quit := make(chan int, 1)
+    total := 0
+
+    quit <- 888
+
+FOR1:
+    for i := 0; i < 10; i++ {
+        total += 3
+        select {
+        case v, ok := <-quit:
+            assert(v == 888)
+            assert(ok)
+            fmt.Println("quit recv:", v, ok)
+            break 
+        default:
+            fmt.Println("default")
+            break FOR1
+        }	
+    }
+    assert(total == 2 * 3)
+}
+
 
 func main() {
-    
+    /*
    f1()
    f2()
    f3()
@@ -209,6 +232,7 @@ func main() {
    break_cont()
    break_cont_2()
 
-    break_label()
+    break_label()  */
     
+    break_select()
 }

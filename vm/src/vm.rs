@@ -996,26 +996,34 @@ impl<'a> Fiber<'a> {
 
                         match re {
                             Ok((i, val)) => {
-                                let offset = match &selector.comms[i] {
-                                    channel::SelectComm::Send(_, _, offset) => offset,
-                                    channel::SelectComm::Recv(c, flag, offset) => {
-                                        let (unwrapped, ok) =
-                                            unwrap_recv_val!(c.as_channel(), val, objs.metas, gcv);
-                                        match flag {
-                                            ValueType::FlagC => {
-                                                stack.push(unwrapped);
+                                let block_offset = if i >= selector.comms.len() {
+                                    selector.default_offset.unwrap()
+                                } else {
+                                    match &selector.comms[i] {
+                                        channel::SelectComm::Send(_, _, offset) => *offset,
+                                        channel::SelectComm::Recv(c, flag, offset) => {
+                                            let (unwrapped, ok) = unwrap_recv_val!(
+                                                c.as_channel(),
+                                                val,
+                                                objs.metas,
+                                                gcv
+                                            );
+                                            match flag {
+                                                ValueType::FlagC => {
+                                                    stack.push(unwrapped);
+                                                }
+                                                ValueType::FlagD => {
+                                                    stack.push(unwrapped);
+                                                    stack.push_bool(ok);
+                                                }
+                                                _ => {}
                                             }
-                                            ValueType::FlagD => {
-                                                stack.push(unwrapped);
-                                                stack.push_bool(ok);
-                                            }
-                                            _ => {}
+                                            *offset
                                         }
-                                        offset
                                     }
                                 };
                                 // jump to the block
-                                frame.pc = Stack::offset(frame.pc, (blocks - 1) + offset);
+                                frame.pc = Stack::offset(frame.pc, (blocks - 1) + block_offset);
                             }
                             Err(e) => {
                                 go_panic_str!(panic, &objs.metadata, e, frame, code);
