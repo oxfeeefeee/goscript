@@ -1,5 +1,5 @@
 # Goscript
-Go specs implemented as a scripting language.
+A script language like Python or Lua written in Rust, with exactly the same syntax as Go's.
 
 ### The Goal
 + Runs most pure Go code, probably add some dynamic features if requested.
