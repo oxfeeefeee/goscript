@@ -72,7 +72,8 @@ impl BranchHelper {
             .push(BranchBlock::new(self.next_block_label.take()))
     }
 
-    pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>, end: usize) {
+    pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>) {
+        let end = func.next_code_index();
         let block = self.block_stack.pop().unwrap();
         for (index, token, label) in block.points.into_iter() {
             let current_pc = index as OpIndex + 1;

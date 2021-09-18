@@ -55,8 +55,11 @@ func main() {
 		assert(v == 0)
 		assert(!ok)
 		fmt.Println("c recv:", v, ok)
+		break
+		assert(f)
 	case v, ok := <-quit:
 		assert(f)
-		fmt.Println("quit recv:", v, ok)
+		fmt.Println("222 quit recv:", v, ok)
+
 	}	
 }

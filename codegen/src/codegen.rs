@@ -1776,8 +1776,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         self.gen_switch_body(&*sstmt.body, tag_type);
 
-        let end = current_func!(self).next_code_index();
-        self.branch.leave_block(current_func_mut!(self), None, end);
+        self.branch.leave_block(current_func_mut!(self), None);
     }
 
     fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
@@ -1844,6 +1843,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         Since communication on nil channels can never proceed, a select with only nil
         channels and no default case blocks forever.
         */
+        self.branch.enter_block();
 
         let mut helper = SelectHelper::new();
         let comms: Vec<&CommClause> = sstmt
@@ -1917,6 +1917,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         }
 
         helper.patch_select(current_func_mut!(self));
+
+        self.branch.leave_block(current_func_mut!(self), None);
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
@@ -1957,9 +1959,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             func.instruction_mut(m - 1).set_imm(offset);
         }
 
-        let end = current_func!(self).next_code_index();
         self.branch
-            .leave_block(current_func_mut!(self), Some(continue_marker), end);
+            .leave_block(current_func_mut!(self), Some(continue_marker));
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
@@ -1983,9 +1984,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         func.instruction_mut(marker).set_imm(end_offset);
         func.emit_code_with_imm(Opcode::JUMP, offset, Some(rstmt.token_pos));
 
-        let end = current_func!(self).next_code_index();
         self.branch
-            .leave_block(current_func_mut!(self), Some(marker), end);
+            .leave_block(current_func_mut!(self), Some(marker));
     }
 
     fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
