@@ -1,8 +1,7 @@
 use super::instruction::*;
 use super::value::*;
+use futures_lite::future;
 use rand::prelude::*;
-use smol::channel;
-use smol::future;
 use std::cell::RefCell;
 use std::mem;
 use std::rc::Rc;
@@ -16,7 +15,10 @@ pub enum RendezvousState {
 
 #[derive(Clone, Debug)]
 pub enum Channel {
-    Bounded(channel::Sender<GosValue>, channel::Receiver<GosValue>),
+    Bounded(
+        async_channel::Sender<GosValue>,
+        async_channel::Receiver<GosValue>,
+    ),
     Rendezvous(Rc<RefCell<RendezvousState>>),
 }
 
@@ -25,7 +27,7 @@ impl Channel {
         if cap == 0 {
             Channel::Rendezvous(Rc::new(RefCell::new(RendezvousState::Empty)))
         } else {
-            let (s, r) = channel::bounded(cap);
+            let (s, r) = async_channel::bounded(cap);
             Channel::Bounded(s, r)
         }
     }
@@ -56,7 +58,7 @@ impl Channel {
         }
     }
 
-    pub fn try_send(&self, v: GosValue) -> Result<(), channel::TrySendError<GosValue>> {
+    pub fn try_send(&self, v: GosValue) -> Result<(), async_channel::TrySendError<GosValue>> {
         match self {
             Channel::Bounded(s, _) => s.try_send(v),
             Channel::Rendezvous(state) => {
@@ -68,21 +70,21 @@ impl Channel {
                         *state.borrow_mut() = RendezvousState::Full(v);
                         Ok(())
                     }
-                    RendezvousState::Full(_) => Err(channel::TrySendError::Full(v)),
-                    RendezvousState::Closed => Err(channel::TrySendError::Closed(v)),
+                    RendezvousState::Full(_) => Err(async_channel::TrySendError::Full(v)),
+                    RendezvousState::Closed => Err(async_channel::TrySendError::Closed(v)),
                 }
             }
         }
     }
 
-    pub fn try_recv(&self) -> Result<GosValue, channel::TryRecvError> {
+    pub fn try_recv(&self) -> Result<GosValue, async_channel::TryRecvError> {
         match self {
             Channel::Bounded(_, r) => r.try_recv(),
             Channel::Rendezvous(state) => {
                 let state_ref = state.borrow();
                 let s: &RendezvousState = &state_ref;
                 match s {
-                    RendezvousState::Empty => Err(channel::TryRecvError::Empty),
+                    RendezvousState::Empty => Err(async_channel::TryRecvError::Empty),
                     RendezvousState::Full(_) => {
                         drop(state_ref);
                         let cur_state: &mut RendezvousState = &mut state.borrow_mut();
@@ -93,7 +95,7 @@ impl Channel {
                             unreachable!()
                         }
                     }
-                    RendezvousState::Closed => Err(channel::TryRecvError::Closed),
+                    RendezvousState::Closed => Err(async_channel::TryRecvError::Closed),
                 }
             }
         }
@@ -104,10 +106,10 @@ impl Channel {
             match self.try_send(v.clone()) {
                 Ok(()) => return Ok(()),
                 Err(e) => match e {
-                    channel::TrySendError::Full(_) => {
+                    async_channel::TrySendError::Full(_) => {
                         future::yield_now().await;
                     }
-                    channel::TrySendError::Closed(_) => {
+                    async_channel::TrySendError::Closed(_) => {
                         return Err("channel closed!".to_string());
                     }
                 },
@@ -120,10 +122,10 @@ impl Channel {
             match self.try_recv() {
                 Ok(v) => return Some(v),
                 Err(e) => match e {
-                    channel::TryRecvError::Empty => {
+                    async_channel::TryRecvError::Empty => {
                         future::yield_now().await;
                     }
-                    channel::TryRecvError::Closed => return None,
+                    async_channel::TryRecvError::Closed => return None,
                 },
             }
         }
@@ -163,8 +165,8 @@ impl Selector {
                         match c.as_channel().chan.try_send(val.clone()) {
                             Ok(_) => return Ok((i, None)),
                             Err(e) => match e {
-                                channel::TrySendError::Full(_) => {}
-                                channel::TrySendError::Closed(_) => {
+                                async_channel::TrySendError::Full(_) => {}
+                                async_channel::TrySendError::Closed(_) => {
                                     return Err("channel closed!".to_string());
                                 }
                             },
@@ -173,8 +175,8 @@ impl Selector {
                     SelectComm::Recv(c, _, _) => match c.as_channel().chan.try_recv() {
                         Ok(v) => return Ok((i, Some(v))),
                         Err(e) => match e {
-                            channel::TryRecvError::Empty => {}
-                            channel::TryRecvError::Closed => return Ok((i, None)),
+                            async_channel::TryRecvError::Empty => {}
+                            async_channel::TryRecvError::Closed => return Ok((i, None)),
                         },
                     },
                 }
