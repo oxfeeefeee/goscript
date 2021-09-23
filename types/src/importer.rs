@@ -145,6 +145,11 @@ impl<'a> Importer<'a> {
             self.error(format!("failed to locate path: {}", key.path));
             return Err(());
         }
+
+        #[cfg(target_os = "wasi")]
+        return Ok((path, import_path));
+
+        #[cfg(not(target_os = "wasi"))]
         match path.canonicalize() {
             Ok(p) => Ok((p, import_path)),
             Err(_) => {
@@ -159,7 +164,13 @@ impl<'a> Importer<'a> {
             .config
             .get_working_dir()
             .ok()
-            .map(|x| x.canonicalize().ok())
+            .map(|x| {
+                #[cfg(target_os = "wasi")]
+                return Some(x);
+
+                #[cfg(not(target_os = "wasi"))]
+                x.canonicalize().ok()
+            })
             .flatten();
         match read_content(path) {
             Ok(contents) => {
