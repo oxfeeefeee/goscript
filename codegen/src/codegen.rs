@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::iter::FromIterator;
 use std::rc::Rc;
 
 use super::branch::*;
@@ -1062,6 +1063,32 @@ impl<'a> CodeGen<'a> {
         emitter.emit_load(i, None, t, pos);
     }
 
+    fn gen_load_embedded_member(
+        &mut self,
+        indices: &[usize],
+        mdata: GosMetadata,
+        typ: ValueType,
+        pos: Option<usize>,
+    ) -> (GosMetadata, ValueType) {
+        let mut lhs_meta = mdata;
+        let mut lhs_type = typ;
+        for &i in indices.iter() {
+            let embed_index = i as OpIndex;
+            current_func_emitter!(self).emit_load_struct_field(embed_index, lhs_type, pos);
+            let (meta_key, _) = lhs_meta.unwrap_non_ptr_or_prt1();
+            lhs_meta = match &self.objects.metas[meta_key] {
+                MetadataType::Named(_, m) => {
+                    let (key2, _) = m.unwrap_non_ptr_or_prt1();
+                    self.objects.metas[key2].as_struct().0.fields[i]
+                }
+                MetadataType::Struct(f, _) => f.fields[i],
+                _ => unreachable!(),
+            };
+            lhs_type = lhs_meta.get_value_type(&self.objects.metas);
+        }
+        (lhs_meta, lhs_type)
+    }
+
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
         let entity = ident.entity.clone().into_key().unwrap();
@@ -1192,40 +1219,55 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             return;
         }
 
-        let (t0, t1, indices) = self.tlookup.get_selection_vtypes_indices(this.id());
-        let index = indices[0] as OpIndex;
-        let meta = self
+        let mut lhs_meta =
+            self.tlookup
+                .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
+        let (t0, t1, indices, p_recv) = self
             .tlookup
-            .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
+            .get_selection_vtypes_indices_ptr_recv(this.id());
+        let index_count = indices.len();
+        let index = indices[index_count - 1] as OpIndex; // the final index
+        let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
+        let mut lhs_type = t0;
+        let lhs_has_embedded = index_count > 1;
+        if !lhs_has_embedded && p_recv && lhs_type != ValueType::Pointer {
+            // desugar
+            self.visit_expr_unary(this, expr, &Token::AND);
+        } else {
+            self.visit_expr(expr);
+        }
+
+        // handle embedded struct members
+        if lhs_has_embedded {
+            let (m, t) = self.gen_load_embedded_member(&embedded_indices, lhs_meta, lhs_type, pos);
+            lhs_meta = m;
+            lhs_type = t;
+            if p_recv && lhs_type != ValueType::Pointer {
+                // todo: take address
+            }
+        }
+
         if t1 == ValueType::Closure {
-            if meta
+            if lhs_meta
                 .get_underlying(&self.objects.metas)
                 .get_value_type(&self.objects.metas)
                 == ValueType::Interface
             {
-                self.visit_expr(expr);
                 current_func_mut!(self).emit_code_with_type_imm(
                     Opcode::BIND_INTERFACE_METHOD,
-                    meta.get_value_type(&self.objects.metas),
+                    lhs_meta.get_value_type(&self.objects.metas),
                     index,
                     pos,
                 );
             } else {
-                let method = meta.get_method(index, &self.objects.metas);
-                if method.borrow().pointer_recv {
-                    // desugar
-                    self.visit_expr_unary(this, expr, &Token::AND);
-                } else {
-                    self.visit_expr(expr);
-                }
+                let method = lhs_meta.get_method(index, &self.objects.metas);
                 let func = current_func_mut!(self);
                 // todo: do we have a better way to do this?
                 let mi = func.add_const(None, GosValue::Function(method.borrow().func.unwrap()));
-                func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into(), pos);
+                func.emit_code_with_type_imm(Opcode::BIND_METHOD, lhs_type, mi.into(), pos);
             }
         } else {
-            self.visit_expr(expr);
-            current_func_emitter!(self).emit_load_struct_field(index, t0, pos);
+            current_func_emitter!(self).emit_load_struct_field(index, lhs_type, pos);
         }
     }
 
@@ -1393,17 +1435,24 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                     None => {
                         self.visit_expr(&sexpr.expr);
-                        let t0 = self.tlookup.get_meta_by_node_id(
+                        let lhs_meta = self.tlookup.get_meta_by_node_id(
                             sexpr.expr.id(),
-                            &mut self.objects,
+                            self.objects,
                             self.dummy_gcv,
                         );
-                        let name = &self.ast_objs.idents[sexpr.sel].name;
-                        let i = t0.field_index(name, &self.objects.metas);
+                        let (t0, _, indices, _) = self
+                            .tlookup
+                            .get_selection_vtypes_indices_ptr_recv(sexpr.id());
+                        let index_count = indices.len();
+                        let index = indices[index_count - 1] as OpIndex; // the final index
+                        let embedded_indices =
+                            Vec::from_iter(indices[..index_count - 1].iter().cloned());
+                        let (_, typ) =
+                            self.gen_load_embedded_member(&embedded_indices, lhs_meta, t0, pos);
                         current_func_mut!(self).emit_code_with_type_imm(
                             Opcode::REF_STRUCT_FIELD,
-                            t0.get_value_type(&self.objects.metas),
-                            i,
+                            typ,
+                            index,
                             pos,
                         );
                     }

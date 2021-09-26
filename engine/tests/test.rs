@@ -265,3 +265,11 @@ fn test_fibonacci() {
     let err_cnt = run("./tests/demo/fibonacci.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_issue8() {
+    time_test!();
+
+    let err_cnt = run("./tests/issues/issue8.gos", true);
+    assert!(err_cnt == 0);
+}

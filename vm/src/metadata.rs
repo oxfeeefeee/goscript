@@ -253,6 +253,15 @@ impl GosMetadata {
     }
 
     #[inline]
+    pub fn unwrap_non_ptr_or_prt1(&self) -> (MetadataKey, MetaCategory) {
+        match self {
+            GosMetadata::NonPtr(k, mc) => (*k, *mc),
+            GosMetadata::Ptr1(k, mc) => (*k, *mc),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn into_type_category(self) -> GosMetadata {
         let convert = |c| match c {
             MetaCategory::Default => MetaCategory::Type,
@@ -739,6 +748,14 @@ impl MetadataType {
     pub fn as_channel(&self) -> (&ChannelType, &GosMetadata) {
         match self {
             Self::Channel(t, m) => (t, m),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_struct(&self) -> (&Fields, &GosValue) {
+        match self {
+            Self::Struct(f, v) => (f, v),
             _ => unreachable!(),
         }
     }
