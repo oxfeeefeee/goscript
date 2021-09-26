@@ -9,7 +9,7 @@ use std::fmt::Write;
 
 macro_rules! lookup_on_found {
     ($indices:ident, $i:ident, $target:expr, $et:ident, $indirect:ident, $found:expr) => {
-        $indices = concat_vec($indices, $i);
+        $indices = concat_vec($et.indices.clone(), $i);
         if $target.is_some() || $et.multiples {
             return LookupResult::Ambiguous($indices.unwrap());
         }
@@ -445,7 +445,7 @@ fn lookup_field_or_method_impl(
                                 | typ::Type::Struct(_)
                                 | typ::Type::Interface(_) => next.push(EmbeddedType::new(
                                     tkey,
-                                    concat_vec(indices.clone(), i),
+                                    concat_vec(et.indices.clone(), i),
                                     et.indirect || is_ptr,
                                     et.multiples,
                                 )),
