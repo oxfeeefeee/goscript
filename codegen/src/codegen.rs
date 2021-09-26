@@ -1192,28 +1192,26 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             return;
         }
 
-        let (t0, t1) = self.tlookup.get_selection_value_types(this.id());
+        let (t0, t1, indices) = self.tlookup.get_selection_vtypes_indices(this.id());
+        let index = indices[0] as OpIndex;
         let meta = self
             .tlookup
             .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
-        let name = &self.ast_objs.idents[*ident].name;
         if t1 == ValueType::Closure {
             if meta
                 .get_underlying(&self.objects.metas)
                 .get_value_type(&self.objects.metas)
                 == ValueType::Interface
             {
-                let i = meta.iface_method_index(name, &self.objects.metas);
                 self.visit_expr(expr);
                 current_func_mut!(self).emit_code_with_type_imm(
                     Opcode::BIND_INTERFACE_METHOD,
                     meta.get_value_type(&self.objects.metas),
-                    i,
+                    index,
                     pos,
                 );
             } else {
-                let i = meta.method_index(name, &self.objects.metas);
-                let method = meta.get_method(i, &self.objects.metas);
+                let method = meta.get_method(index, &self.objects.metas);
                 if method.borrow().pointer_recv {
                     // desugar
                     self.visit_expr_unary(this, expr, &Token::AND);
@@ -1221,14 +1219,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     self.visit_expr(expr);
                 }
                 let func = current_func_mut!(self);
-                // todo: fix this!!!
+                // todo: do we have a better way to do this?
                 let mi = func.add_const(None, GosValue::Function(method.borrow().func.unwrap()));
                 func.emit_code_with_type_imm(Opcode::BIND_METHOD, t0, mi.into(), pos);
             }
         } else {
             self.visit_expr(expr);
-            let i = meta.field_index(name, &self.objects.metas);
-            current_func_emitter!(self).emit_load_struct_field(i, t0, pos);
+            current_func_emitter!(self).emit_load_struct_field(index, t0, pos);
         }
     }
 

@@ -159,11 +159,14 @@ impl<'a> TypeLookup<'a> {
         self.tuple_tc_types(typ)
     }
 
-    pub fn get_selection_value_types(&mut self, id: NodeId) -> (ValueType, ValueType) {
+    pub fn get_selection_vtypes_indices(
+        &mut self,
+        id: NodeId,
+    ) -> (ValueType, ValueType, &Vec<usize>) {
         let sel = &self.ti.selections[&id];
         let t0 = self.value_type_from_tc(sel.recv().unwrap());
         let t1 = self.value_type_from_tc(self.tc_objs.lobjs[sel.obj()].typ().unwrap());
-        (t0, t1)
+        (t0, t1, &sel.indices())
     }
 
     pub fn meta_from_tc(
