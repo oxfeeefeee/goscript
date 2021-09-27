@@ -860,10 +860,10 @@ pub struct BadDecl {
 //
 // Relationship between Tok value and Specs element type:
 //
-//	Token::IMPORT  ImportSpec
-//	Token::CONST   ValueSpec
-//	Token::TYPE    TypeSpec
-//	Token::VAR     ValueSpec
+// Token::IMPORT  ImportSpec
+// Token::CONST   ValueSpec
+// Token::TYPE    TypeSpec
+// Token::VAR     ValueSpec
 #[derive(Debug)]
 pub struct GenDecl {
     pub token_pos: position::Pos,

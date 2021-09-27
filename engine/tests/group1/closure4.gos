@@ -6,7 +6,7 @@ func tt() {
         c := 3
         return func()int {
             d := 2
-			return a + 1 + c + d
+            return a + 1 + c + d
         }
     }
     e := func() int {
@@ -26,7 +26,7 @@ func main() {
         c := 3
         return func()int {
             d := 2
-			return a + 1 + c + d
+            return a + 1 + c + d
         }
     }
     e := func() int {

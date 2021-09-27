@@ -8,16 +8,16 @@ type TestKey struct {
 }
 
 func ptr() (*int, *int) {
-	i := 100
-	return &i, &i
+    i := 100
+    return &i, &i
 }
 
 
 func main() {
 
     var errNil error
-	var mapNil map[int]string
-	//mapNil[1] = "aa"
+    var mapNil map[int]string
+    //mapNil[1] = "aa"
 
     m := make(map[int]string)
     m[1] = "bb"

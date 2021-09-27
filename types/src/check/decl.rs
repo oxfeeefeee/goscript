@@ -416,11 +416,11 @@ impl<'a> Checker<'a> {
             // The underlying type of named may be itself a named type that is
             // incomplete:
             //
-            //	type (
-            //		A B
-            //		B *C
-            //		C A
-            //	)
+            // type (
+            //     A B
+            //     B *C
+            //     C A
+            // )
             //
             // The type of C is the (named) type of A which is incomplete,
             // and which has as its underlying type the named type B.

@@ -422,7 +422,7 @@ func switches0() {
 	true := "false"
 	_ = true
 	// A tagless switch is equivalent to the bool
-        // constant true, not the identifier 'true'.
+	// constant true, not the identifier 'true'.
 	switch {
 	case "false" /* ERROR "cannot convert" */:
 	}

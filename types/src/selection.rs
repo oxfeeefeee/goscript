@@ -16,18 +16,18 @@ pub enum SelectionKind {
 /// A Selection describes a selector expression x.f.
 /// For the declarations:
 ///
-///	type T struct{ x int; E }
-///	type E struct{}
-///	func (e E) m() {}
-///	var p *T
+/// type T struct{ x int; E }
+/// type E struct{}
+/// func (e E) m() {}
+/// var p *T
 ///
 /// the following relations exist:
 ///
-///	Selector    Kind          Recv    Obj    Type               Index     Indirect
+/// Selector    Kind          Recv    Obj    Type               Index     Indirect
 ///
-///	p.x         FieldVal      T       x      int                {0}       true
-///	p.m         MethodVal     *T      m      func (e *T) m()    {1, 0}    true
-///	T.m         MethodExpr    T       m      func m(_ T)        {1, 0}    false
+/// p.x         FieldVal      T       x      int                {0}       true
+/// p.m         MethodVal     *T      m      func (e *T) m()    {1, 0}    true
+/// T.m         MethodExpr    T       m      func m(_ T)        {1, 0}    false
 ///
 #[derive(Clone, Debug)]
 pub struct Selection {
@@ -89,9 +89,9 @@ impl Selection {
     /// The last indices entry is the field or method indices of the type declaring f;
     /// either:
     ///
-    ///	1) the list of declared methods of a named type; or
-    ///	2) the list of methods of an interface type; or
-    ///	3) the list of fields of a struct type.
+    /// 1) the list of declared methods of a named type; or
+    /// 2) the list of methods of an interface type; or
+    /// 3) the list of fields of a struct type.
     ///
     /// The earlier indices entries are the indices of the embedded fields implicitly
     /// traversed to get from (the type of) x to f, starting at embedding depth 0.

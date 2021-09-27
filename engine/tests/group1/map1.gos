@@ -2,43 +2,43 @@ package main
 
 
 func a () (int, int) {
-	return 6,7
+    return 6,7
 }
 
 func b() int {
-	return 8
+    return 8
 }
 
 func commaOk() {
-   
-   var i interface{} = "hello"
+
+    var i interface{} = "hello"
 
 
-   s, ok := i.(string)
-   assert(ok)
-   assert(s == "hello")
-   
-   s1 := i.(string)
-   assert(s1 == "hello")
+    s, ok := i.(string)
+    assert(ok)
+    assert(s == "hello")
+    
+    s1 := i.(string)
+    assert(s1 == "hello")
 
 
-	
-   	m := map[int]int{1:10, 2:20}
-   	int1, ok := m[1]
-	assert(int1 == 10)
-	assert(ok)
-	int2 := m[2]
-	assert(int2 == 20)
 
-	t1, t2 := a()
-	assert(t1 == 6)
-	assert(t2 == 7)
-	t3 := b()
-	assert(t3 == 8)
+    m := map[int]int{1:10, 2:20}
+    int1, ok := m[1]
+    assert(int1 == 10)
+    assert(ok)
+    int2 := m[2]
+    assert(int2 == 20)
+
+    t1, t2 := a()
+    assert(t1 == 6)
+    assert(t2 == 7)
+    t3 := b()
+    assert(t3 == 8)
 
     t01, t02 := 33, m[2]
     assert(t01 == 33)
-	assert(t02 == 20)
+    assert(t02 == 20)
 }
 
 func main() {

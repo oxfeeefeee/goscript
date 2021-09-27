@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
+    "fmt"
 )
 
 
 
 func main() {
-	var v = new(int)
+    var v = new(int)
     var vv = 2
     *v = 8
     var vvv = *v
@@ -17,7 +17,7 @@ func main() {
 
     var sa = &A{}
     
-	fmt.Println("Hello, playground", v, vv, vvv, s, s1, s3, sa)
+    fmt.Println("Hello, playground", v, vv, vvv, s, s1, s3, sa)
 }
 
 type A []int
