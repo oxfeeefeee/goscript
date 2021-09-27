@@ -45,6 +45,12 @@ macro_rules! current_func_emitter {
     };
 }
 
+enum ReceiverPreprocess {
+    Default,
+    Ref,
+    Deref,
+}
+
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
@@ -1075,18 +1081,22 @@ impl<'a> CodeGen<'a> {
         for &i in indices.iter() {
             let embed_index = i as OpIndex;
             current_func_emitter!(self).emit_load_struct_field(embed_index, lhs_type, pos);
-            let (meta_key, _) = lhs_meta.unwrap_non_ptr_or_prt1();
-            lhs_meta = match &self.objects.metas[meta_key] {
-                MetadataType::Named(_, m) => {
-                    let (key2, _) = m.unwrap_non_ptr_or_prt1();
-                    self.objects.metas[key2].as_struct().0.fields[i]
-                }
-                MetadataType::Struct(f, _) => f.fields[i],
-                _ => unreachable!(),
-            };
+            lhs_meta = self.get_embedded_member_meta(&lhs_meta, i);
             lhs_type = lhs_meta.get_value_type(&self.objects.metas);
         }
         (lhs_meta, lhs_type)
+    }
+
+    fn get_embedded_member_meta(&self, parent: &GosMetadata, index: usize) -> GosMetadata {
+        let (meta_key, _) = parent.unwrap_non_ptr_or_prt1();
+        match &self.objects.metas[meta_key] {
+            MetadataType::Named(_, m) => {
+                let (key2, _) = m.unwrap_non_ptr_or_prt1();
+                self.objects.metas[key2].as_struct().0.fields[index]
+            }
+            MetadataType::Struct(f, _) => f.fields[index],
+            _ => unreachable!(),
+        }
     }
 
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
@@ -1228,25 +1238,68 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let index_count = indices.len();
         let index = indices[index_count - 1] as OpIndex; // the final index
         let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
-        let mut lhs_type = t0;
+        let lhs_type = t0;
         let lhs_has_embedded = index_count > 1;
-        if !lhs_has_embedded && p_recv && lhs_type != ValueType::Pointer {
-            // desugar
-            self.visit_expr_unary(this, expr, &Token::AND);
+        let get_recv_prep = |recv_is_ptr, typ: ValueType| -> ReceiverPreprocess {
+            if recv_is_ptr && typ != ValueType::Pointer {
+                ReceiverPreprocess::Ref
+            } else if !recv_is_ptr && typ == ValueType::Pointer {
+                ReceiverPreprocess::Deref
+            } else {
+                ReceiverPreprocess::Default
+            }
+        };
+
+        if !lhs_has_embedded {
+            let recv_prep = get_recv_prep(p_recv, lhs_type);
+            match &recv_prep {
+                ReceiverPreprocess::Default => self.visit_expr(expr),
+                ReceiverPreprocess::Ref => self.visit_expr_unary(this, expr, &Token::AND),
+                ReceiverPreprocess::Deref => {
+                    self.visit_expr(expr);
+                    current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
+                    lhs_meta = lhs_meta.unptr_to();
+                }
+            };
         } else {
             self.visit_expr(expr);
-        }
-
-        // handle embedded struct members
-        if lhs_has_embedded {
-            let (m, t) = self.gen_load_embedded_member(&embedded_indices, lhs_meta, lhs_type, pos);
-            lhs_meta = m;
-            lhs_type = t;
-            if p_recv && lhs_type != ValueType::Pointer {
-                // todo: take address
+            // when the receiver is a pointer, we need to
+            // a. not load the final embedded struct member
+            // b. emit a REF_STRUCT_FIELD
+            let index_count_m1 = embedded_indices.len() - 1;
+            let (m, t) = self.gen_load_embedded_member(
+                &embedded_indices[0..index_count_m1],
+                lhs_meta,
+                lhs_type,
+                pos,
+            );
+            let index = embedded_indices[index_count_m1];
+            let final_meta = self.get_embedded_member_meta(&m, index);
+            let final_typ = final_meta.get_value_type(&self.objects.metas);
+            let recv_prep = get_recv_prep(p_recv, final_typ);
+            match &recv_prep {
+                ReceiverPreprocess::Ref => {
+                    current_func_mut!(self).emit_code_with_type_imm(
+                        Opcode::REF_STRUCT_FIELD,
+                        t,
+                        index as OpIndex,
+                        pos,
+                    );
+                    lhs_meta = final_meta.ptr_to();
+                }
+                ReceiverPreprocess::Deref => {
+                    current_func_emitter!(self).emit_load_struct_field(index as OpIndex, t, pos);
+                    current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
+                    lhs_meta = final_meta.unptr_to();
+                }
+                ReceiverPreprocess::Default => {
+                    current_func_emitter!(self).emit_load_struct_field(index as OpIndex, t, pos);
+                    lhs_meta = final_meta;
+                }
             }
         }
 
+        let typ = lhs_meta.get_value_type(&self.objects.metas);
         if t1 == ValueType::Closure {
             if lhs_meta
                 .get_underlying(&self.objects.metas)
@@ -1255,7 +1308,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             {
                 current_func_mut!(self).emit_code_with_type_imm(
                     Opcode::BIND_INTERFACE_METHOD,
-                    lhs_meta.get_value_type(&self.objects.metas),
+                    typ,
                     index,
                     pos,
                 );
@@ -1264,10 +1317,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let func = current_func_mut!(self);
                 // todo: do we have a better way to do this?
                 let mi = func.add_const(None, GosValue::Function(method.borrow().func.unwrap()));
-                func.emit_code_with_type_imm(Opcode::BIND_METHOD, lhs_type, mi.into(), pos);
+                func.emit_code_with_type_imm(Opcode::BIND_METHOD, typ, mi.into(), pos);
             }
         } else {
-            current_func_emitter!(self).emit_load_struct_field(index, lhs_type, pos);
+            current_func_emitter!(self).emit_load_struct_field(index, typ, pos);
         }
     }
 

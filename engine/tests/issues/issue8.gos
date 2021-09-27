@@ -26,7 +26,7 @@ func (b *Base2) PrintField2() {
 }
 
 type Container struct {
-	Base
+	*Base
     Base2
 }
 
@@ -35,22 +35,28 @@ type Container2 struct {
 }
 
 func main() {
-	t := Container{Base{1, "go"}, Base2{1, 1, "go2"}}
+	t := Container{&Base{1, "go"}, Base2{1, 1, "go2"}}
     t.PrintField()
     t.PrintField2() 
-    fmt.Println(t.name)
-    fmt.Println(t.name2)
+    assert(t.name == "go")
+    assert(t.name2 == "not_go2")
     t.Base.PrintField() 
     t.Base2.PrintField2() 
 
     fmt.Println("-----")
    
+    
     t2 := Container2{t}
     t2.PrintField()
     t2.PrintField2() 
-    fmt.Println(t.name)
-    fmt.Println(t.name2)
+    assert(t.name == "go")
+    assert(t.name2 == "not_go2")
     t2.Base.PrintField() 
     t2.Base2.PrintField2() 
+    
+    fmt.Println("-----")
+
+    p := &t
+    p.PrintField()
    
 }

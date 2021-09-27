@@ -478,39 +478,13 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn get_named_metadate<'a>(
-        &self,
-        metas: &'a MetadataObjs,
-    ) -> (&'a Methods, &'a GosMetadata) {
-        let k = self.recv_meta_key();
-        match &metas[k] {
-            MetadataType::Named(methods, md) => (methods, md),
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
     pub fn get_method(&self, index: OpIndex, metas: &MetadataObjs) -> Rc<RefCell<MethodDesc>> {
-        let (m, _) = self.get_named_metadate(metas);
+        let k = self.recv_meta_key();
+        let m = match &metas[k] {
+            MetadataType::Named(methods, _) => methods,
+            _ => unreachable!(),
+        };
         m.members[index as usize].clone()
-    }
-
-    /// method_index returns the index of the method of a non-interface
-    #[inline]
-    pub fn method_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
-        let (m, _) = self.get_named_metadate(metas);
-        m.mapping[name] as OpIndex
-    }
-
-    /// iface_method_index returns the index of the method of an interface
-    #[inline]
-    pub fn iface_method_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
-        let (_, under) = self.get_named_metadate(metas);
-        if let MetadataType::Interface(m) = &metas[under.as_non_ptr()] {
-            m.mapping[name] as OpIndex
-        } else {
-            unreachable!()
-        }
     }
 
     pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
