@@ -47,8 +47,8 @@ macro_rules! current_func_emitter {
 
 enum ReceiverPreprocess {
     Default,
-    Ref,
-    Deref,
+    Ref,   // take ref of receiver before binding method
+    Deref, // deref receiver before binding method
 }
 
 /// CodeGen implements the code generation logic.
@@ -1263,9 +1263,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             };
         } else {
             self.visit_expr(expr);
-            // when the receiver is a pointer, we need to
-            // a. not load the final embedded struct member
-            // b. emit a REF_STRUCT_FIELD
             let index_count_m1 = embedded_indices.len() - 1;
             let (m, t) = self.gen_load_embedded_member(
                 &embedded_indices[0..index_count_m1],
