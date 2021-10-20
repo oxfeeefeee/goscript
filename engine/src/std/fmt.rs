@@ -1,4 +1,4 @@
-use goscript_vm::ffi::{Ffi, FfiResult};
+use goscript_vm::ffi::{Ffi, FfiCtorResult};
 use goscript_vm::value::GosValue;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -17,7 +17,7 @@ impl Ffi for Fmt {
 }
 
 impl Fmt {
-    pub fn new(_v: Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>> {
+    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
         Ok(Rc::new(RefCell::new(Fmt {})))
     }
 

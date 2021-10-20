@@ -3,18 +3,30 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type FfiResult<T> = std::result::Result<T, String>;
+pub type FfiCtorResult<T> = std::result::Result<T, String>;
 
-pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiResult<Rc<RefCell<dyn Ffi>>>;
+pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>>;
 
+/// A FFI function call
 pub trait Ffi {
     fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue>;
 }
 
 impl std::fmt::Debug for dyn Ffi {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", "ffi obj")
+        write!(f, "{}", "ffi")
     }
+}
+
+/// User data handle
+///
+pub trait UserData {
+    /// Returns true if the user data can make reference cycles, so that GC can
+    fn can_make_cycle() -> bool {
+        false
+    }
+    /// If can_make_cycle returns true, implement this to break cycle
+    fn break_cycle() {}
 }
 
 pub struct FfiFactory {
@@ -36,7 +48,7 @@ impl FfiFactory {
         &self,
         name: &str,
         params: Vec<GosValue>,
-    ) -> FfiResult<Rc<RefCell<dyn Ffi>>> {
+    ) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
         match self.registry.get(name) {
             Some(ctor) => (*ctor)(params),
             None => Err(format!("FFI named {} not found", name)),
