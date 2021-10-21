@@ -226,7 +226,7 @@ pub type RtValueResult = RuntimeResult<GosValue>;
 
 // ----------------------------------------------------------------------------
 // GosValue
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum GosValue {
     Nil(GosMetadata),
     Bool(bool),
@@ -703,6 +703,23 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_index(&self) -> usize {
+        match self {
+            GosValue::Int(i) => *i as usize,
+            GosValue::Int8(i) => *i as usize,
+            GosValue::Int16(i) => *i as usize,
+            GosValue::Int32(i) => *i as usize,
+            GosValue::Int64(i) => *i as usize,
+            GosValue::Uint(i) => *i as usize,
+            GosValue::Uint8(i) => *i as usize,
+            GosValue::Uint16(i) => *i as usize,
+            GosValue::Uint32(i) => *i as usize,
+            GosValue::Uint64(i) => *i as usize,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn deep_clone(&self, gcos: &GcoVec) -> GosValue {
         match self {
             GosValue::Slice(s) => {
@@ -791,9 +808,47 @@ impl GosValue {
     }
 }
 
+impl Clone for GosValue {
+    #[inline(always)]
+    fn clone(&self) -> Self {
+        match self {
+            GosValue::Nil(m) => GosValue::Nil(*m),
+            GosValue::Bool(v) => GosValue::Bool(*v),
+            GosValue::Int(v) => GosValue::Int(*v),
+            GosValue::Int8(v) => GosValue::Int8(*v),
+            GosValue::Int16(v) => GosValue::Int16(*v),
+            GosValue::Int32(v) => GosValue::Int32(*v),
+            GosValue::Int64(v) => GosValue::Int64(*v),
+            GosValue::Uint(v) => GosValue::Uint(*v),
+            GosValue::Uint8(v) => GosValue::Uint8(*v),
+            GosValue::Uint16(v) => GosValue::Uint16(*v),
+            GosValue::Uint32(v) => GosValue::Uint32(*v),
+            GosValue::Uint64(v) => GosValue::Uint64(*v),
+            GosValue::Float32(v) => GosValue::Float32(*v),
+            GosValue::Float64(v) => GosValue::Float64(*v),
+            GosValue::Complex64(r, i) => GosValue::Complex64(*r, *i),
+            GosValue::Complex128(v) => GosValue::Complex128(v.clone()),
+            GosValue::Str(v) => GosValue::Str(v.clone()),
+            GosValue::Array(v) => GosValue::Array(v.clone()),
+            GosValue::Pointer(v) => GosValue::Pointer(v.clone()),
+            GosValue::Closure(v) => GosValue::Closure(v.clone()),
+            GosValue::Slice(v) => GosValue::Slice(v.clone()),
+            GosValue::Map(v) => GosValue::Map(v.clone()),
+            GosValue::Interface(v) => GosValue::Interface(v.clone()),
+            GosValue::Struct(v) => GosValue::Struct(v.clone()),
+            GosValue::Channel(v) => GosValue::Channel(v.clone()),
+            GosValue::Function(v) => GosValue::Function(*v),
+            GosValue::Package(v) => GosValue::Package(*v),
+            GosValue::Metadata(v) => GosValue::Metadata(*v),
+            GosValue::Named(v) => GosValue::Named(v.clone()),
+        }
+    }
+}
+
 impl Eq for GosValue {}
 
 impl PartialEq for GosValue {
+    #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
             (Self::Nil(_), Self::Nil(_)) => true,

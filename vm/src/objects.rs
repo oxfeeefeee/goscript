@@ -626,12 +626,18 @@ impl<'a> SliceObj {
             .collect()
     }
 
+    #[inline]
     fn try_grow_vec(&mut self, len: usize) {
-        let mut cap = self.cap();
+        let cap = self.cap();
         assert!(cap >= self.len());
         if cap >= len {
             return;
         }
+        self.grow_vec(cap, len);
+    }
+
+    fn grow_vec(&mut self, cap: usize, len: usize) {
+        let mut cap = cap;
         while cap < len {
             if cap < 1024 {
                 cap *= 2

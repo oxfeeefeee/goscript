@@ -289,8 +289,11 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::LOAD_INDEX => {
                         let ind = stack.pop_with_type(inst.t1());
-                        let val = &stack.pop_with_type(inst.t0());
+                        let mut val = &stack.pop_with_type(inst.t0());
                         if inst.t2_as_index() == 0 {
+                            if inst.t0() == ValueType::Named {
+                                val = &val.as_named().0;
+                            }
                             match vm_util::load_index(val, &ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {

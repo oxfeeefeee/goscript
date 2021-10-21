@@ -1,0 +1,27 @@
+use criterion::{criterion_group, criterion_main, Criterion};
+
+extern crate goscript_engine as engine;
+
+fn run(path: &str, trace: bool) -> usize {
+    let cfg = engine::Config {
+        work_dir: Some("./".to_string()),
+        base_path: Some("./std/".to_string()),
+        trace_parser: trace,
+        trace_checker: trace,
+        trace_vm: true,
+    };
+    let engine = engine::Engine::new(cfg);
+    engine.run(path)
+}
+
+fn leetcode5() {
+    let err_cnt = run("./tests/demo/leetcode5.gos", false);
+    assert!(err_cnt == 0);
+}
+
+pub fn criterion_benchmark(c: &mut Criterion) {
+    c.bench_function("leet5", |b| b.iter(|| leetcode5()));
+}
+
+criterion_group!(benches, criterion_benchmark);
+criterion_main!(benches);

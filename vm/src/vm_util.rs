@@ -4,7 +4,7 @@ use super::gc::GcoVec;
 use super::instruction::*;
 use super::objects::MetadataObjs;
 use super::stack::Stack;
-use super::value::{EmptyResult, GosValue, GosValue64, RtValueResult, VMObjects};
+use super::value::{EmptyResult, GosValue, RtValueResult, VMObjects};
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -171,33 +171,35 @@ pub fn char_from_i32(i: i32) -> char {
     unsafe { char::from_u32_unchecked(i as u32) }
 }
 
+#[inline(always)]
 pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
     match val {
         GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
-        GosValue::Named(n) => load_index(&n.0, ind),
-        _ => {
-            let (mut ind64, t) = GosValue64::from_v128(ind);
-            ind64.to_uint(t);
-            let index = ind64.get_uint();
-            match val {
-                GosValue::Slice(slice) => slice
-                    .0
-                    .get(index)
-                    .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x)),
-                GosValue::Str(s) => s.get_byte(index).map_or_else(
-                    || Err(format!("index {} out of range", index)),
-                    |x| Ok(GosValue::Int((*x).into())),
-                ),
-                GosValue::Array(arr) => arr
-                    .0
-                    .get(index)
-                    .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x)),
-                _ => unreachable!(),
-            }
+        GosValue::Slice(slice) => {
+            let index = ind.as_index();
+            slice
+                .0
+                .get(index)
+                .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x))
         }
+        GosValue::Str(s) => {
+            let index = ind.as_index();
+            s.get_byte(index).map_or_else(
+                || Err(format!("index {} out of range", index)),
+                |x| Ok(GosValue::Int((*x).into())),
+            )
+        }
+        GosValue::Array(arr) => {
+            let index = ind.as_index();
+            arr.0
+                .get(index)
+                .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x))
+        }
+        _ => unreachable!(),
     }
 }
 
+#[inline]
 pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
     match val {
         GosValue::Slice(slice) => slice
