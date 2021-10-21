@@ -166,7 +166,7 @@ macro_rules! shift_int {
             ValueType::Uint32 => union_shift!($a, $b, uint32, $op),
             ValueType::Uint64 => union_shift!($a, $b, uint64, $op),
             _ => unreachable!(),
-        };
+        }
     };
 }
 

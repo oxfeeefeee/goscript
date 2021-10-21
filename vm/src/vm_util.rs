@@ -157,7 +157,7 @@ macro_rules! unwrap_recv_val {
                 let val_meta = $metas[$chan.meta.as_non_ptr()].as_channel().1;
                 (val_meta.zero_val(&$metas, $gcv), false)
             }
-        };
+        }
     };
 }
 
