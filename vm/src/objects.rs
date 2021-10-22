@@ -450,17 +450,17 @@ impl<'a> SliceObj {
         default_val: Option<&GosValue>,
     ) -> SliceObj {
         assert!(cap >= len);
-        let mut val = SliceObj {
+        let mut val: GosVec = Vec::with_capacity(cap);
+        for _ in 0..len {
+            val.push(RefCell::new(default_val.unwrap().clone()));
+        }
+        SliceObj {
             meta: meta,
             begin: Cell::from(0),
-            end: Cell::from(0),
+            end: Cell::from(len),
             soft_cap: Cell::from(cap),
-            vec: Some(Rc::new(RefCell::new(Vec::with_capacity(cap)))),
-        };
-        for _ in 0..len {
-            val.push(default_val.unwrap().clone());
+            vec: Some(Rc::new(RefCell::new(val))),
         }
-        val
     }
 
     pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> SliceObj {

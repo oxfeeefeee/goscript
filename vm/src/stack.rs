@@ -153,12 +153,13 @@ impl Stack {
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
-        let t = val.get_type();
-        if t.copyable() {
-            let (v, _) = GosValue64::from_v128(&val);
-            *self.get_c_mut(self.cursor) = v;
-        } else {
-            *self.get_rc_mut(self.cursor) = val;
+        match GosValue64::from_v128(&val) {
+            Some(v) => {
+                *self.get_c_mut(self.cursor) = v;
+            }
+            None => {
+                *self.get_rc_mut(self.cursor) = val;
+            }
         }
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
@@ -312,12 +313,13 @@ impl Stack {
 
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) {
-        let t = val.get_type();
-        if t.copyable() {
-            let (v, _) = GosValue64::from_v128(&val);
-            *self.get_c_mut(index) = v;
-        } else {
-            *self.get_rc_mut(index) = val;
+        match GosValue64::from_v128(&val) {
+            Some(v) => {
+                *self.get_c_mut(index) = v;
+            }
+            None => {
+                *self.get_rc_mut(index) = val;
+            }
         }
     }
 
@@ -406,7 +408,7 @@ impl Stack {
             let ri = Stack::offset(self.len(), -1);
             let op = Instruction::index2code(r_index);
             if t.copyable() {
-                let (a, _) = GosValue64::from_v128(target);
+                let a = GosValue64::from_v128(target).unwrap();
                 let b = self.get_c(ri);
                 let v = GosValue64::binary_op(&a, b, t, op);
                 v.get_v128(t)
