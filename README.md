@@ -41,4 +41,3 @@ the test cases comes with the original code. The backend has a lot of rough edge
 
 ### Get in touch
 + email: [`pb01005051` at Gmail](mailto:pb01005051@gmail).
-+ wechat: `oxfeeefeee`

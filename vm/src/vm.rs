@@ -220,7 +220,7 @@ impl<'a> Fiber<'a> {
         let mut stack_mut_ref = self.stack.borrow_mut();
         let mut stack: &mut Stack = &mut stack_mut_ref;
         // allocate local variables
-        stack.append(&mut func.local_zeros.clone());
+        stack.append(func.local_zeros.clone());
 
         let mut consts = &func.consts;
         let mut code = func.code();
@@ -764,7 +764,7 @@ impl<'a> Fiber<'a> {
                         match cls.func {
                             Some(key) => {
                                 let next_func = &objs.functions[key];
-                                stack.append(&mut next_func.ret_zeros.clone());
+                                stack.append(next_func.ret_zeros.clone());
                                 if let Some(r) = &cls.recv {
                                     // push receiver on stack as the first parameter
                                     // don't call copy_semantic because BIND_METHOD did it already
@@ -825,7 +825,7 @@ impl<'a> Fiber<'a> {
                                         //dbg!(&stack);
                                         debug_assert!(func.local_count() == func.local_zeros.len());
                                         // allocate local variables
-                                        stack.append(&mut func.local_zeros.clone());
+                                        stack.append(func.local_zeros.clone());
                                     }
                                     ValueType::FlagA => {
                                         // goroutine
@@ -853,9 +853,16 @@ impl<'a> Fiber<'a> {
                                 let params = stack.pop_with_type_n(ptypes);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
-                                let mut returns = call.ffi.borrow().call(&call.func_name, params);
+                                let ffi_ref = call.ffi.borrow();
+                                let fut = ffi_ref.call(&call.func_name, params);
+                                let returns = fut.await;
                                 restore_stack_ref!(self, stack, stack_mut_ref);
-                                stack.append(&mut returns);
+                                match returns {
+                                    Ok(result) => stack.append(result),
+                                    Err(e) => {
+                                        go_panic_str!(panic, &objs.metadata, e, frame, code);
+                                    }
+                                }
                             }
                         }
                     }
@@ -899,7 +906,7 @@ impl<'a> Fiber<'a> {
                                         consts = &func.consts;
                                         code = func.code();
                                         debug_assert!(func.local_count() == func.local_zeros.len());
-                                        stack.append(&mut func.local_zeros.clone());
+                                        stack.append(func.local_zeros.clone());
                                         continue;
                                     }
                                     None => {

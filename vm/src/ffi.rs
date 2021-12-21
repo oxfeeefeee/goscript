@@ -1,6 +1,8 @@
-use super::value::GosValue;
+use super::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 
 pub type FfiCtorResult<T> = std::result::Result<T, String>;
@@ -9,7 +11,11 @@ pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>>;
 
 /// A FFI function call
 pub trait Ffi {
-    fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue>;
+    fn call(
+        &self,
+        func_name: &str,
+        params: Vec<GosValue>,
+    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>>;
 }
 
 impl std::fmt::Debug for dyn Ffi {

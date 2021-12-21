@@ -4,7 +4,7 @@ use super::gc::GcoVec;
 use super::instruction::*;
 use super::objects::MetadataObjs;
 use super::stack::Stack;
-use super::value::{EmptyResult, GosValue, RtValueResult, VMObjects};
+use super::value::{GosValue, RtEmptyResult, RtValueResult, VMObjects};
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -277,7 +277,7 @@ pub fn store_index_int(
     r_index: OpIndex,
     t: ValueType,
     gcos: &GcoVec,
-) -> EmptyResult {
+) -> RtEmptyResult {
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
         GosValue::Array(arr) => {

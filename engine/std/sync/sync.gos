@@ -1,0 +1,41 @@
+package sync
+
+
+type ffiMutex interface {
+    lock(a ...interface{})
+    unlock(a ...interface{})
+}
+
+// A Locker represents an object that can be locked and unlocked.
+type Locker interface {
+	Lock()
+	Unlock()
+}
+
+// A Mutex is a mutual exclusion lock.
+// The zero value for a Mutex is an unlocked mutex.
+//
+// A Mutex must not be copied after first use.
+type Mutex struct {
+    ffi ffiMutex
+    handle uintptr
+}
+
+// Lock locks m.
+// If the lock is already in use, the calling goroutine
+// blocks until the mutex is available.
+func (m *Mutex) Lock() {
+    m.ffi = ffi(ffiMutex, "mutex")
+    m.handle = m.ffi.lock()
+}
+
+
+// Unlock unlocks m.
+// It is a run-time error if m is not locked on entry to Unlock.
+//
+// A locked Mutex is not associated with a particular goroutine.
+// It is allowed for one goroutine to lock a Mutex and then
+// arrange for another goroutine to unlock it.
+func (m *Mutex) Unlock() {
+    m.ffi.unlock()
+}

@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 slotmap = "0.4"
 time-test = "0.2.2"
+futures-lite = "1.12.0"
 
 [dependencies.goscript-parser]
 path = "../parser"

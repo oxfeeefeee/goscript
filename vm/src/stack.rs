@@ -344,7 +344,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn append(&mut self, vec: &mut Vec<GosValue>) {
+    pub fn append(&mut self, mut vec: Vec<GosValue>) {
         for v in vec.drain(..) {
             self.push(v);
         }

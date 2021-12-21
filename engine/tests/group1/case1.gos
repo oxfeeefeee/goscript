@@ -20,6 +20,8 @@ func main() {
    //var n = ffi(geometry, "test", 1, 2, 3, "haha", 5)
    //var i = n.area()
    //assert(i == 666)
-
+    var i uintptr
+    i = 1
+    assert(i == 1)
   
 }

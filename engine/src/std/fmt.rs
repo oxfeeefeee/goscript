@@ -1,18 +1,24 @@
 use goscript_vm::ffi::{Ffi, FfiCtorResult};
-use goscript_vm::value::GosValue;
+use goscript_vm::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
+use std::future::Future;
+use std::pin::Pin;
 use std::rc::Rc;
 
 pub struct Fmt {}
 
 impl Ffi for Fmt {
-    fn call(&self, func_name: &str, params: Vec<GosValue>) -> Vec<GosValue> {
+    fn call(
+        &self,
+        func_name: &str,
+        params: Vec<GosValue>,
+    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
         match func_name {
             "println" => self.println(params),
             "printf" => self.printf(params),
             _ => unreachable!(),
         }
-        vec![]
+        Box::pin(async move { Ok(vec![]) })
     }
 }
 

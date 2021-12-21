@@ -101,7 +101,7 @@ impl Channel {
         }
     }
 
-    pub async fn send(&self, v: &GosValue) -> EmptyResult {
+    pub async fn send(&self, v: &GosValue) -> RtEmptyResult {
         loop {
             match self.try_send(v.clone()) {
                 Ok(()) => return Ok(()),
