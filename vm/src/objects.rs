@@ -8,6 +8,7 @@ use super::stack::Stack;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RtEmptyResult};
 use goscript_parser::objects::{EntityKey, IdentKey};
 use slotmap::{new_key_type, DenseSlotMap};
+use std::any::Any;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -939,6 +940,34 @@ impl ChannelObj {
 
 // ----------------------------------------------------------------------------
 // PointerObj
+
+/// User data handle
+///
+pub trait UserData {
+    /// For downcasting
+    fn as_any(&self) -> &dyn Any;
+
+    /// Returns true if the user data can make reference cycles, so that GC can
+    fn can_make_cycle(&self) -> bool {
+        false
+    }
+
+    /// for gc
+    fn ref_sub_one(&self) {}
+
+    /// for gc
+    fn mark_dirty(&self, _: &mut RCQueue) {}
+
+    /// If can_make_cycle returns true, implement this to break cycle
+    fn break_cycle(&self) {}
+}
+
+impl std::fmt::Debug for dyn UserData {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", "user data")
+    }
+}
+
 /// Logically there are 4 types of pointers, they point to:
 /// - local
 /// - slice member
@@ -959,6 +988,7 @@ pub enum PointerObj {
     Map(Rc<(MapObj, RCount)>, GosMetadata),
     SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
+    UserData(Rc<dyn UserData>),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -1015,6 +1045,13 @@ impl PointerObj {
         }
     }
 
+    pub fn as_user_data(&self) -> &Rc<dyn UserData> {
+        match self {
+            Self::UserData(ud) => ud,
+            _ => unreachable!(),
+        }
+    }
+
     /// for gc
     pub fn ref_sub_one(&self) {
         match &self {
@@ -1024,6 +1061,7 @@ impl PointerObj {
             PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
             PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
             PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::UserData(ud) => ud.ref_sub_one(),
             _ => {}
         };
     }
@@ -1037,6 +1075,7 @@ impl PointerObj {
             PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::UserData(ud) => ud.mark_dirty(queue),
             _ => {}
         };
     }
@@ -1055,6 +1094,7 @@ impl PartialEq for PointerObj {
             (Self::Map(x, _), Self::Map(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
+            (Self::UserData(udx), Self::UserData(udy)) => Rc::ptr_eq(udx, udy),
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
             _ => false,
         }
@@ -1081,6 +1121,7 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
+            Self::UserData(ud) => Rc::as_ptr(ud).hash(state),
             Self::Released => unreachable!(),
         }
     }
@@ -1097,6 +1138,7 @@ impl Display for PointerObj {
             Self::SliceMember(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
             Self::StructField(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
             Self::PkgMember(p, i) => f.write_fmt(format_args!("{:x}i{}", key_to_u64(*p), i)),
+            Self::UserData(ud) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&ud))),
             Self::Released => f.write_str("released!!!"),
         }
     }

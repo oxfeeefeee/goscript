@@ -1,6 +1,10 @@
 package main
 
 
+import "fmt"
+import "unsafe"
+
+
 
 type geometry interface {
     area() int
@@ -20,8 +24,7 @@ func main() {
    //var n = ffi(geometry, "test", 1, 2, 3, "haha", 5)
    //var i = n.area()
    //assert(i == 666)
-    var i uintptr
-    i = 1
-    assert(i == 1)
+    var p unsafe.Pointer
+    fmt.Println(p, 666)
   
 }

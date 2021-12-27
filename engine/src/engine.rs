@@ -2,7 +2,7 @@ extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
-use super::std::fmt;
+use super::std::{fmt, sync};
 
 pub struct Config {
     // working directory
@@ -26,6 +26,7 @@ impl Engine {
     pub fn new(config: Config) -> Engine {
         let mut ffi = vm::ffi::FfiFactory::new();
         ffi.register("fmt", Box::new(fmt::Fmt::new));
+        ffi.register("sync", Box::new(sync::Mutex::new));
         Engine {
             config: config,
             ffi: ffi,

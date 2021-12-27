@@ -1,55 +1,66 @@
 use futures_lite::future;
 use goscript_vm::ffi::{Ffi, FfiCtorResult};
-use goscript_vm::value::{GosValue, RtMultiValResult};
-use std::cell::{Cell, RefCell};
+use goscript_vm::value::{GosValue, PointerObj, RtMultiValResult, UserData};
+use std::any::Any;
+use std::cell::Cell;
+use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
-struct MutexApi {}
+pub struct Mutex {}
 
-impl Ffi for MutexApi {
+impl Ffi for Mutex {
     fn call(
         &self,
         func_name: &str,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        let re = match func_name {
-            "new" => MutexApi::new(params),
-            "lock" => MutexApi::lock(params),
-            "unlock" => MutexApi::unlock(params),
+        match func_name {
+            "new" => {
+                let p = PointerObj::UserData(Rc::new(MutexInner::new()));
+                Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
+            }
+            "lock" => {
+                let ud = params[0].as_pointer().as_user_data();
+                let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
+                Box::pin(mutex.lock())
+            }
+            "unlock" => {
+                let ud = params[0].as_pointer().as_user_data();
+                let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
+                Box::pin(mutex.unlock())
+            }
             _ => unreachable!(),
-        };
-        Box::pin(async move { re })
+        }
     }
-}
-
-impl MutexApi {
-    fn new(params: Vec<GosValue>) -> RtMultiValResult {
-        Ok(vec![])
-    }
-
-    fn lock(params: Vec<GosValue>) -> RtMultiValResult {
-        Ok(vec![])
-    }
-
-    fn unlock(params: Vec<GosValue>) -> RtMultiValResult {
-        Ok(vec![])
-    }
-}
-
-struct Mutex {
-    locked: Cell<bool>,
 }
 
 impl Mutex {
-    fn new() -> Mutex {
-        Mutex {
-            locked: Cell::new(false),
+    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
+        Ok(Rc::new(RefCell::new(Mutex {})))
+    }
+}
+
+#[derive(Clone)]
+struct MutexInner {
+    locked: Rc<Cell<bool>>,
+}
+
+impl UserData for MutexInner {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl MutexInner {
+    fn new() -> MutexInner {
+        MutexInner {
+            locked: Rc::new(Cell::new(false)),
         }
     }
 
-    async fn lock(&self) -> RtMultiValResult {
+    async fn lock(self) -> RtMultiValResult {
         while self.locked.get() {
             future::yield_now().await;
         }
@@ -57,7 +68,7 @@ impl Mutex {
         Ok(vec![])
     }
 
-    async fn unlock(&self) -> RtMultiValResult {
+    async fn unlock(self) -> RtMultiValResult {
         if !self.locked.get() {
             Err("sync: unlock of unlocked mutex".to_string())
         } else {

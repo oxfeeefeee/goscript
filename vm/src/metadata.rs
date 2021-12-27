@@ -38,6 +38,7 @@ pub struct Metadata {
     pub mcomplex64: GosMetadata,
     pub mcomplex128: GosMetadata,
     pub mstr: GosMetadata,
+    pub unsafe_ptr: GosMetadata,
     pub default_sig: GosMetadata,
     pub empty_iface: GosMetadata,
 }
@@ -76,6 +77,8 @@ impl Metadata {
                 objs.insert(MetadataType::Str(GosValue::new_str("".to_string()))),
                 MetaCategory::Default,
             ),
+            // todo: do we need a dedicated MetadataType::udata for it?
+            unsafe_ptr: GosMetadata::Ptr1(objs.insert(MetadataType::Uint), MetaCategory::Default),
             default_sig: GosMetadata::NonPtr(
                 objs.insert(MetadataType::Signature(SigMetadata::default())),
                 MetaCategory::Default,

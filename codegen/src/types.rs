@@ -223,9 +223,7 @@ impl<'a> TypeLookup<'a> {
             BasicType::Int16 => vm_objs.metadata.mint16,
             BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => vm_objs.metadata.mint32,
             BasicType::Int64 => vm_objs.metadata.mint64,
-            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
-                vm_objs.metadata.muint
-            }
+            BasicType::Uint | BasicType::Uintptr => vm_objs.metadata.muint,
             BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
             BasicType::Uint16 => vm_objs.metadata.muint16,
             BasicType::Uint32 => vm_objs.metadata.muint32,
@@ -235,6 +233,7 @@ impl<'a> TypeLookup<'a> {
             BasicType::Complex64 => vm_objs.metadata.mcomplex64,
             BasicType::Complex128 => vm_objs.metadata.mcomplex128,
             BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
+            BasicType::UnsafePointer => vm_objs.metadata.unsafe_ptr,
             BasicType::UntypedNil => GosMetadata::Untyped,
             _ => {
                 dbg!(typ);

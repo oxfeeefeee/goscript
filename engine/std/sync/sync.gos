@@ -1,7 +1,9 @@
 package sync
 
+//import "unsafe"
 
 type ffiMutex interface {
+    //new(a ...interface{}) unsafe.Pointer
     lock(a ...interface{})
     unlock(a ...interface{})
 }
@@ -17,16 +19,19 @@ type Locker interface {
 //
 // A Mutex must not be copied after first use.
 type Mutex struct {
-    ffi ffiMutex
-    handle uintptr
+    //ffi ffiMutex
+    //handle unsafe.Pointer
 }
 
 // Lock locks m.
 // If the lock is already in use, the calling goroutine
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
-    m.ffi = ffi(ffiMutex, "mutex")
-    m.handle = m.ffi.lock()
+    //if m.handle == nil {
+        //m.ffi = ffi(ffiMutex, "mutex")
+        //m.handle = m.ffi.new()
+    //}
+    //m.ffi.lock(m.handle)
 }
 
 
@@ -37,5 +42,5 @@ func (m *Mutex) Lock() {
 // It is allowed for one goroutine to lock a Mutex and then
 // arrange for another goroutine to unlock it.
 func (m *Mutex) Unlock() {
-    m.ffi.unlock()
+   // m.ffi.unlock(m.handle)
 }

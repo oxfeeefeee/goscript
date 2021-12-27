@@ -59,7 +59,13 @@ fn test_unicode0() {
 }
 
 #[test]
-fn test_case1() {
+fn test_sync_mutex() {
+    let err_cnt = run("./tests/group2/sync_mutex.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
+fn test_g1case1() {
     let err_cnt = run("./tests/group1/case1.gos", true);
     assert!(err_cnt == 0);
 }

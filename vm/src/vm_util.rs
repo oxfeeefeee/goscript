@@ -141,6 +141,11 @@ macro_rules! deref_value {
                     PointerObj::PkgMember(pkg, index) => {
                         $objs.packages[*pkg].member(*index).clone()
                     }
+                    PointerObj::UserData(ud) => {
+                        let i = Rc::as_ptr(ud) as *const () as usize;
+                        GosValue::Uint(i)
+                    }
+                    // todo: report error instead of crash?
                     PointerObj::Released => unreachable!(),
                 }
             }

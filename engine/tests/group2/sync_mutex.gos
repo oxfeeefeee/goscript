@@ -1,0 +1,31 @@
+package main
+
+import (
+    //"fmt"
+    "sync"
+)
+
+type Container struct {
+    counters map[string]int
+    mu       sync.Mutex
+}
+
+
+func (c *Container) inc(name string) {
+
+    //c.mu.Lock()
+    //defer c.mu.Unlock()
+    c.counters[name]++
+}
+
+
+func main() {
+/*
+    c := Container{
+
+        counters: map[string]int{"a": 0, "b": 0},
+    }
+    c.inc("aaa")
+*/
+    //fmt.Println(c.counters)
+}

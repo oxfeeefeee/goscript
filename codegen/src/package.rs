@@ -91,9 +91,12 @@ impl<'a> PkgUtil<'a> {
 
     pub fn gen_imports(&mut self, tcpkg: TCPackageKey, func: &mut FunctionVal) {
         let pkg = &self.tc_objs.pkgs[tcpkg];
+        let unsafe_ = self.tc_objs.universe().unsafe_pkg();
         for key in pkg.imports().iter() {
-            let index = self.pkg_indices[key];
-            Emitter::new(func).emit_import(index, self.pkgs[index as usize], None);
+            if key != unsafe_ {
+                let index = self.pkg_indices[key];
+                Emitter::new(func).emit_import(index, self.pkgs[index as usize], None);
+            }
         }
     }
 

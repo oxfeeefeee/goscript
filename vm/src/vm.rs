@@ -546,6 +546,8 @@ impl<'a> Fiber<'a> {
                                             &mut objs.packages[*p].member_mut(*index);
                                         stack.store_val(target, rhs_index, inst.t0(), gcv);
                                     }
+                                    // todo: report error instead of crash
+                                    PointerObj::UserData(_) => unreachable!(),
                                     PointerObj::Released => unreachable!(),
                                 };
                             }

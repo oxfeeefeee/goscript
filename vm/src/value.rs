@@ -664,6 +664,7 @@ impl GosValue {
                     PointerObj::PkgMember(pkey, index) => {
                         objs.packages[*pkey].member(*index).get_meta(objs, stack)
                     }
+                    PointerObj::UserData(_) => objs.metadata.unsafe_ptr,
                     PointerObj::Released => unreachable!(),
                 };
                 pointee.ptr_to()

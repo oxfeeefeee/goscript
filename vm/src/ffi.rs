@@ -24,17 +24,6 @@ impl std::fmt::Debug for dyn Ffi {
     }
 }
 
-/// User data handle
-///
-pub trait UserData {
-    /// Returns true if the user data can make reference cycles, so that GC can
-    fn can_make_cycle() -> bool {
-        false
-    }
-    /// If can_make_cycle returns true, implement this to break cycle
-    fn break_cycle() {}
-}
-
 pub struct FfiFactory {
     registry: HashMap<&'static str, Box<Ctor>>,
 }
