@@ -1,4 +1,5 @@
 mod branch;
+mod call;
 mod emit;
 mod interface;
 mod package;

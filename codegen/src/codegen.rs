@@ -4,9 +4,10 @@ use std::iter::FromIterator;
 use std::rc::Rc;
 
 use super::branch::*;
+use super::call::CallHelper;
 use super::emit::*;
 use super::interface::IfaceMapping;
-use super::package::PkgUtil;
+use super::package::PkgHelper;
 use super::types::{TypeCache, TypeLookup};
 
 use goscript_vm::gc::GcoVec;
@@ -59,7 +60,8 @@ pub struct CodeGen<'a> {
     dummy_gcv: &'a mut GcoVec,
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
-    pkg_util: PkgUtil<'a>,
+    call_helper: &'a mut CallHelper,
+    pkg_helper: PkgHelper<'a>,
     branch: BranchHelper,
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
@@ -76,6 +78,7 @@ impl<'a> CodeGen<'a> {
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
         mapping: &'a mut IfaceMapping,
+        call_helper: &'a mut CallHelper,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
         pkg: PackageKey,
@@ -88,7 +91,8 @@ impl<'a> CodeGen<'a> {
             dummy_gcv: dummy_gcv,
             tlookup: TypeLookup::new(tco, ti, type_cache),
             iface_mapping: mapping,
-            pkg_util: PkgUtil::new(asto, tco, pkg_indices, pkgs, pkg),
+            call_helper: call_helper,
+            pkg_helper: PkgHelper::new(asto, tco, pkg_indices, pkgs),
             branch: BranchHelper::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
@@ -97,8 +101,8 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    pub fn pkg_util(&mut self) -> &mut PkgUtil<'a> {
-        &mut self.pkg_util
+    pub fn pkg_helper(&mut self) -> &mut PkgHelper<'a> {
+        &mut self.pkg_helper
     }
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
@@ -285,7 +289,7 @@ impl<'a> CodeGen<'a> {
                         let pos = self.ast_objs.idents[sexpr.sel].pos;
                         match self.tlookup.try_get_pkg_key(&sexpr.expr) {
                             Some(key) => {
-                                let pkg = self.pkg_util.get_vm_pkg(key);
+                                let pkg = self.pkg_helper.get_vm_pkg(key);
                                 //let t = self.tlookup.get_use_value_type(sexpr.sel);
                                 (
                                     // the true index will be calculated later
@@ -612,7 +616,7 @@ impl<'a> CodeGen<'a> {
                     left,
                     -1,
                     Some(op),
-                    Some((self.pkg_util.pairs_mut(), *fkey)),
+                    Some((self.pkg_helper.pairs_mut(), *fkey)),
                     typ,
                     pos,
                 );
@@ -1140,11 +1144,11 @@ impl<'a> CodeGen<'a> {
         self.func_stack.push(fkey);
 
         let vars = self
-            .pkg_util
+            .pkg_helper
             .sort_var_decls(files, self.tlookup.type_info());
         self.add_pkg_var_member(pkey, &vars);
 
-        self.pkg_util.gen_imports(tcpkg, current_func_mut!(self));
+        self.pkg_helper.gen_imports(tcpkg, current_func_mut!(self));
 
         for f in files.iter() {
             for d in f.decls.iter() {
@@ -1181,7 +1185,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let p = Some(self.ast_objs.idents[*ident].pos);
         current_func_emitter!(self).emit_load(
             index,
-            Some((self.pkg_util.pairs_mut(), *fkey)),
+            Some((self.pkg_helper.pairs_mut(), *fkey)),
             t,
             p,
         );
@@ -1217,12 +1221,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
         let pos = Some(expr.pos(&self.ast_objs));
         if let Some(key) = self.tlookup.try_get_pkg_key(expr) {
-            let pkg = self.pkg_util.get_vm_pkg(key);
+            let pkg = self.pkg_helper.get_vm_pkg(key);
             let t = self.tlookup.get_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
                 EntIndex::PackageMember(pkg, *ident),
-                Some((self.pkg_util.pairs_mut(), *fkey)),
+                Some((self.pkg_helper.pairs_mut(), *fkey)),
                 t,
                 pos,
             );
@@ -1310,11 +1314,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     pos,
                 );
             } else {
-                let method = lhs_meta.get_method(index, &self.objects.metas);
                 let func = current_func_mut!(self);
-                // todo: do we have a better way to do this?
-                let mi = func.add_const(None, GosValue::Function(method.borrow().func.unwrap()));
-                func.emit_code_with_type_imm(Opcode::BIND_METHOD, typ, mi.into(), pos);
+                func.emit_code_with_type(Opcode::BIND_METHOD, typ, pos);
+                let point = func.next_code_index();
+                func.emit_raw_inst(0, pos); // placeholder for FunctionKey
+                let fkey = *self.func_stack.last().unwrap();
+                self.call_helper.add_call(fkey, point, lhs_meta, index);
             }
         } else {
             current_func_emitter!(self).emit_load_struct_field(index, typ, pos);
@@ -1455,7 +1460,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             func.emit_raw_inst(key_to_u64(self.pkg_key), pos);
                             let fkey = self.func_stack.last().unwrap();
                             let i = current_func!(self).next_code_index() - 2;
-                            self.pkg_util.add_pair(pkg, ident, *fkey, i, false);
+                            self.pkg_helper.add_pair(pkg, ident, *fkey, i, false);
                         }
                         _ => unreachable!(),
                     }
@@ -1475,13 +1480,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 }
                 Expr::Selector(sexpr) => match self.tlookup.try_get_pkg_key(&sexpr.expr) {
                     Some(key) => {
-                        let pkey = self.pkg_util.get_vm_pkg(key);
+                        let pkey = self.pkg_helper.get_vm_pkg(key);
                         let func = current_func_mut!(self);
                         func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
                         func.emit_raw_inst(key_to_u64(pkey), pos);
                         let fkey = self.func_stack.last().unwrap();
                         let i = current_func!(self).next_code_index() - 2;
-                        self.pkg_util.add_pair(pkey, sexpr.sel, *fkey, i, false);
+                        self.pkg_helper.add_pair(pkey, sexpr.sel, *fkey, i, false);
                     }
                     None => {
                         self.visit_expr(&sexpr.expr);

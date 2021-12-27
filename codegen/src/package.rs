@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use super::emit::Emitter;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
@@ -35,7 +34,7 @@ impl PkgVarPairs {
         self.data.append(&mut other.data);
     }
 
-    pub fn append_from_util(&mut self, util: &mut PkgUtil) {
+    pub fn append_from_util(&mut self, util: &mut PkgHelper) {
         self.append(&mut util.pairs)
     }
 
@@ -58,29 +57,26 @@ impl PkgVarPairs {
     }
 }
 
-pub struct PkgUtil<'a> {
+pub struct PkgHelper<'a> {
     tc_objs: &'a TCObjects,
     ast_objs: &'a AstObjects,
     pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
     pkgs: &'a Vec<PackageKey>,
-    pkg: PackageKey,
     pairs: PkgVarPairs,
 }
 
-impl<'a> PkgUtil<'a> {
+impl<'a> PkgHelper<'a> {
     pub fn new(
         ast_objs: &'a AstObjects,
         tc_objs: &'a TCObjects,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
-        pkg: PackageKey,
-    ) -> PkgUtil<'a> {
-        PkgUtil {
+    ) -> PkgHelper<'a> {
+        PkgHelper {
             tc_objs: tc_objs,
             ast_objs: ast_objs,
             pkg_indices: pkg_indices,
             pkgs: pkgs,
-            pkg: pkg,
             pairs: PkgVarPairs::new(),
         }
     }

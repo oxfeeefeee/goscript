@@ -373,7 +373,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::BIND_METHOD => {
                         let val = stack.pop_with_type(inst.t0());
-                        let func = *consts[inst.imm() as usize].as_function();
+                        let func = read_imm_key!(code, frame, objs);
                         stack.push(GosValue::Closure(Rc::new((
                             RefCell::new(ClosureObj::new_gos(
                                 func,
@@ -479,13 +479,13 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::LOAD_PKG_FIELD => {
                         let index = inst.imm();
-                        let pkg_key = read_imm_pkg!(code, frame, objs);
+                        let pkg_key = read_imm_key!(code, frame, objs);
                         let pkg = &objs.packages[pkg_key];
                         stack.push(pkg.member(index).clone());
                     }
                     Opcode::STORE_PKG_FIELD => {
                         let (rhs_index, imm) = inst.imm824();
-                        let pkg = &objs.packages[read_imm_pkg!(code, frame, objs)];
+                        let pkg = &objs.packages[read_imm_key!(code, frame, objs)];
                         stack.store_val(&mut pkg.member_mut(imm), rhs_index, inst.t0(), gcv);
                     }
                     Opcode::STORE_DEREF => {
@@ -740,7 +740,7 @@ impl<'a> Fiber<'a> {
                         )));
                     }
                     Opcode::REF_PKG_MEMBER => {
-                        let pkg = read_imm_pkg!(code, frame, objs);
+                        let pkg = read_imm_key!(code, frame, objs);
                         stack.push(GosValue::new_pointer(PointerObj::PkgMember(
                             pkg,
                             inst.imm(),

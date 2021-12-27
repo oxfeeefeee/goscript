@@ -34,7 +34,7 @@ macro_rules! go_panic_str {
     };
 }
 
-macro_rules! read_imm_pkg {
+macro_rules! read_imm_key {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];
         $frame.pc += 1;

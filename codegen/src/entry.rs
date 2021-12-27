@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::call::CallHelper;
 use super::codegen::CodeGen;
 use super::emit::{CallStyle, Emitter};
 use super::interface::IfaceMapping;
@@ -96,7 +97,8 @@ impl<'a> EntryGen<'a> {
             }
         }
         let mut type_cache: TypeCache = HashMap::new();
-        let mut pairs = PkgVarPairs::new();
+        let mut pkg_pairs = PkgVarPairs::new();
+        let mut call_helper = CallHelper::new();
         for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
             let mut cgen = CodeGen::new(
                 &mut self.objects,
@@ -106,18 +108,24 @@ impl<'a> EntryGen<'a> {
                 &ti,
                 &mut type_cache,
                 &mut self.iface_mapping,
+                &mut call_helper,
                 &self.pkg_indices,
                 &self.packages,
                 self.packages[i],
                 self.blank_ident,
             );
             cgen.gen_with_files(&ti.ast_files, *tcpkg, i as OpIndex);
-            pairs.append_from_util(cgen.pkg_util());
+            pkg_pairs.append_from_util(cgen.pkg_helper());
         }
         let index = main_pkg_idx.unwrap();
-        let entry =
-            self.gen_entry_func(self.packages[index as usize], index, main_ident, &mut pairs);
-        pairs.patch_index(self.ast_objs, &mut self.objects);
+        let entry = self.gen_entry_func(
+            self.packages[index as usize],
+            index,
+            main_ident,
+            &mut pkg_pairs,
+        );
+        pkg_pairs.patch_index(self.ast_objs, &mut self.objects);
+        call_helper.patch_call(&mut self.objects);
         ByteCode {
             objects: self.objects,
             packages: self.packages,

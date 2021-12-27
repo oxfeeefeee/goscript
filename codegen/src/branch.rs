@@ -1,4 +1,6 @@
-#![allow(dead_code)]
+/// Helper for patching branch points
+///
+///
 use goscript_parser::ast::*;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
