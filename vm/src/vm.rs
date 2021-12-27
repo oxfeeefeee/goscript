@@ -728,7 +728,11 @@ impl<'a> Fiber<'a> {
                         )));
                     }
                     Opcode::REF_STRUCT_FIELD => {
-                        let struct_ = stack.pop_with_type(inst.t0());
+                        let mut struct_ = stack.pop_with_type(inst.t0());
+                        // todo: do this check in codegen
+                        if inst.t0() == ValueType::Pointer {
+                            struct_ = deref_value!(struct_, self, stack, self.frames, objs);
+                        }
                         let struct_ = match &struct_ {
                             GosValue::Named(n) => n.0.clone(),
                             GosValue::Struct(_) => struct_,
