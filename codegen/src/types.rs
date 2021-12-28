@@ -18,6 +18,7 @@ pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
     types_cache: &'a mut TypeCache,
+    unsafe_ptr_meta: GosMetadata,
 }
 
 impl<'a> TypeLookup<'a> {
@@ -25,11 +26,13 @@ impl<'a> TypeLookup<'a> {
         tc_objs: &'a TCObjects,
         ti: &'a TypeInfo,
         cache: &'a mut TypeCache,
+        u_p_meta: GosMetadata,
     ) -> TypeLookup<'a> {
         TypeLookup {
             tc_objs: tc_objs,
             ti: ti,
             types_cache: cache,
+            unsafe_ptr_meta: u_p_meta,
         }
     }
 
@@ -271,7 +274,7 @@ impl<'a> TypeLookup<'a> {
                 let (i, _) = val.to_int().int_as_i64();
                 GosValue::Int64(i)
             }
-            BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => {
+            BasicType::Uint | BasicType::Uintptr => {
                 let (i, _) = val.to_int().int_as_u64();
                 GosValue::Uint(i as usize)
             }
@@ -308,6 +311,7 @@ impl<'a> TypeLookup<'a> {
                 GosValue::Complex128(Box::new((cr, ci)))
             }
             BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
+            BasicType::UnsafePointer => GosValue::Nil(self.unsafe_ptr_meta.clone()),
             _ => {
                 dbg!(typ);
                 unreachable!();
@@ -443,7 +447,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Int16 => ValueType::Int16,
                 BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => ValueType::Int32,
                 BasicType::Int64 => ValueType::Int64,
-                BasicType::Uint | BasicType::Uintptr | BasicType::UnsafePointer => ValueType::Uint,
+                BasicType::Uint | BasicType::Uintptr => ValueType::Uint,
                 BasicType::Uint8 | BasicType::Byte => ValueType::Uint8,
                 BasicType::Uint16 => ValueType::Uint16,
                 BasicType::Uint32 => ValueType::Uint32,
@@ -453,6 +457,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Complex64 => ValueType::Complex64,
                 BasicType::Complex128 => ValueType::Complex128,
                 BasicType::Str | BasicType::UntypedString => ValueType::Str,
+                BasicType::UnsafePointer => ValueType::Pointer,
                 BasicType::UntypedNil => ValueType::Nil,
                 _ => {
                     dbg!(detail.typ());

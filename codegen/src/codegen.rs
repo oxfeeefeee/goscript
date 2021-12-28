@@ -84,12 +84,13 @@ impl<'a> CodeGen<'a> {
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
+        let unsafe_ptr_meta = vmo.metadata.unsafe_ptr.clone();
         CodeGen {
             objects: vmo,
             ast_objs: asto,
             tc_objs: tco,
             dummy_gcv: dummy_gcv,
-            tlookup: TypeLookup::new(tco, ti, type_cache),
+            tlookup: TypeLookup::new(tco, ti, type_cache, unsafe_ptr_meta),
             iface_mapping: mapping,
             call_helper: call_helper,
             pkg_helper: PkgHelper::new(asto, tco, pkg_indices, pkgs),
