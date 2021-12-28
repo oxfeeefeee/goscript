@@ -1351,6 +1351,7 @@ impl<'a> Fiber<'a> {
                                 continue;
                             }
                         };
+                        stack.pop_n(2);
                         stack.push(v);
                     }
                     _ => {
