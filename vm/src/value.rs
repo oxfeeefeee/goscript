@@ -543,10 +543,14 @@ impl GosValue {
     #[inline]
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
-            GosValue::Named(n) => {
-                let b = n.0.as_interface().borrow();
-                b.underlying_value().map(|x| x.clone())
-            }
+            GosValue::Named(n) => match &n.0 {
+                GosValue::Nil(_) => Some(n.0.clone()),
+                GosValue::Interface(i) => {
+                    let b = i.borrow();
+                    b.underlying_value().map(|x| x.clone())
+                }
+                _ => unreachable!(),
+            },
             GosValue::Interface(v) => {
                 let b = v.borrow();
                 b.underlying_value().map(|x| x.clone())
