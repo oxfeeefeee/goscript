@@ -35,7 +35,10 @@ impl Fmt {
                 if x.is_nil() {
                     "<nil>".to_string()
                 } else {
-                    x.iface_underlying().unwrap().to_string()
+                    match x.iface_underlying() {
+                        Some(v) => v.to_string(),
+                        None => "<ffi>".to_string(),
+                    }
                 }
             })
             .collect();
