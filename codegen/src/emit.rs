@@ -344,19 +344,15 @@ impl<'a> Emitter<'a> {
             .emit_inst(Opcode::PRE_CALL, [None, None, None], None, pos);
     }
 
-    pub fn emit_call(&mut self, style: CallStyle, has_ellipsis: bool, pos: Option<usize>) {
+    pub fn emit_call(&mut self, style: CallStyle, pack: bool, pos: Option<usize>) {
         let style_flag = match style {
             CallStyle::Default => ValueType::Zero,
             CallStyle::Async => ValueType::FlagA,
             CallStyle::Defer => ValueType::FlagB,
         };
-        let elli_flag = if has_ellipsis {
-            Some(ValueType::FlagA)
-        } else {
-            None
-        };
+        let pack_flag = if pack { Some(ValueType::FlagA) } else { None };
         self.f
-            .emit_inst(Opcode::CALL, [Some(style_flag), elli_flag, None], None, pos);
+            .emit_inst(Opcode::CALL, [Some(style_flag), pack_flag, None], None, pos);
     }
 
     pub fn emit_literal(&mut self, typ: ValueType, index: OpIndex, pos: Option<usize>) {
