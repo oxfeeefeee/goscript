@@ -421,7 +421,7 @@ impl Stack {
 
     #[inline]
     pub fn pack_variadic(&mut self, index: usize, meta: GosMetadata, t: ValueType, gcos: &GcoVec) {
-        if index < self.len() {
+        if index <= self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
             self.push(GosValue::slice_with_val(v, meta, gcos))
