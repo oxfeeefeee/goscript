@@ -14,7 +14,7 @@ type Container struct {
 func (c *Container) inc(name string) {
 
     c.mu.Lock()
-    //defer c.mu.Unlock()
+    defer c.mu.Unlock()
     c.counters[name] +=100
 }
 
@@ -27,8 +27,14 @@ func main() {
     }
     c.inc("aaa")
 
-    fmt.Println(c.counters)
+    go c.inc("aaa")
 
+
+    fmt.Println(c.counters)
+    for i := 0; i < 1000000; i++ {
+        
+    }
+    fmt.Println(c.counters)
 
     fmt.Println()
 }

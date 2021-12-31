@@ -1,7 +1,6 @@
 package sync
 
 import "unsafe"
-import "fmt"
 
 type ffiMutex interface {
     new() unsafe.Pointer
@@ -33,7 +32,6 @@ func (m *Mutex) Lock() {
         m.handle = m.f.new()
         
     }
-    fmt.Println(m.handle, 123321)
     m.f.lock(m.handle)
 }
 
@@ -45,5 +43,5 @@ func (m *Mutex) Lock() {
 // It is allowed for one goroutine to lock a Mutex and then
 // arrange for another goroutine to unlock it.
 func (m *Mutex) Unlock() {
-   // m.ffi.unlock(m.handle)
+   m.f.unlock(m.handle)
 }
