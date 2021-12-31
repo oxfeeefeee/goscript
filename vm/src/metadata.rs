@@ -562,7 +562,7 @@ impl Fields {
         result
     }
 
-    pub fn iface_ffi_info(&self) -> Vec<(String, GosMetadata)> {
+    pub fn iface_methods_info(&self) -> Vec<(String, GosMetadata)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
             ret.push((String::new(), *f));

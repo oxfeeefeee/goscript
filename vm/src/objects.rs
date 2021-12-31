@@ -1492,30 +1492,26 @@ impl FunctionVal {
         gcv: &GcoVec,
         flag: FuncFlag,
     ) -> FunctionVal {
-        match &objs.metas[meta.as_non_ptr()] {
-            MetadataType::Signature(s) => {
-                let mut returns = vec![];
-                for m in s.results.iter() {
-                    returns.push(zero_val!(m, objs, gcv));
-                }
-                let params = s.params.len() + s.recv.map_or(0, |_| 1);
-                FunctionVal {
-                    package: package,
-                    meta: meta,
-                    code: Vec::new(),
-                    pos: Vec::new(),
-                    consts: Vec::new(),
-                    up_ptrs: Vec::new(),
-                    ret_zeros: returns,
-                    local_zeros: Vec::new(),
-                    flag: flag,
-                    param_count: params,
-                    entities: HashMap::new(),
-                    uv_entities: HashMap::new(),
-                    local_alloc: 0,
-                }
-            }
-            _ => unreachable!(),
+        let s = &objs.metas[meta.as_non_ptr()].as_signature();
+        let mut returns = vec![];
+        for m in s.results.iter() {
+            returns.push(zero_val!(m, objs, gcv));
+        }
+        let params = s.params.len() + s.recv.map_or(0, |_| 1);
+        FunctionVal {
+            package: package,
+            meta: meta,
+            code: Vec::new(),
+            pos: Vec::new(),
+            consts: Vec::new(),
+            up_ptrs: Vec::new(),
+            ret_zeros: returns,
+            local_zeros: Vec::new(),
+            flag: flag,
+            param_count: params,
+            entities: HashMap::new(),
+            uv_entities: HashMap::new(),
+            local_alloc: 0,
         }
     }
 
