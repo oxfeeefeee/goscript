@@ -18,10 +18,12 @@ impl Ffi for Mutex {
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
         match func_name {
             "new" => {
+                dbg!(params, "nnnnew");
                 let p = PointerObj::UserData(Rc::new(MutexInner::new()));
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
             }
             "lock" => {
+                dbg!(&params, "lllock");
                 let ud = params[0].as_pointer().as_user_data();
                 let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
                 Box::pin(mutex.lock())
@@ -61,6 +63,7 @@ impl MutexInner {
     }
 
     async fn lock(self) -> RtMultiValResult {
+        dbg!("lock called");
         while self.locked.get() {
             future::yield_now().await;
         }

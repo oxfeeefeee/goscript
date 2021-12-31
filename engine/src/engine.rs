@@ -26,7 +26,7 @@ impl Engine {
     pub fn new(config: Config) -> Engine {
         let mut ffi = vm::ffi::FfiFactory::new();
         ffi.register("fmt", Box::new(fmt::Fmt::new));
-        ffi.register("sync", Box::new(sync::Mutex::new));
+        ffi.register("mutex", Box::new(sync::Mutex::new));
         Engine {
             config: config,
             ffi: ffi,
