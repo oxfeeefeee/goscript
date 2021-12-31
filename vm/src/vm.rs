@@ -1239,7 +1239,7 @@ impl<'a> Fiber<'a> {
                         stack.push(new_val);
                     }
                     Opcode::MAKE => {
-                        let index = inst.imm();
+                        let index = inst.imm() - 1;
                         let i = Stack::offset(stack.len(), index - 1);
                         let meta_val = stack.get_with_type(i, ValueType::Metadata);
                         let meta = meta_val.as_meta();
@@ -1298,10 +1298,12 @@ impl<'a> Fiber<'a> {
                         stack.push(GosValue::Int(l as isize));
                     }
                     Opcode::APPEND => {
-                        let index = Stack::offset(stack.len(), inst.imm());
-                        let a = stack.get_with_type(index - 2, ValueType::Slice);
+                        let index = Stack::offset(stack.len(), inst.imm() - 2);
+                        let a = stack.get_with_type(index, ValueType::Slice);
                         let vala = a.as_slice();
-                        stack.pack_variadic(index, vala.0.meta, inst.t1(), gcv);
+                        if inst.t1() != ValueType::Zero {
+                            stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
+                        }
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();
                         vala.0
@@ -1343,7 +1345,7 @@ impl<'a> Fiber<'a> {
                                 let meta = itype.as_meta().get_underlying(&objs.metas).clone();
                                 let info = objs.metas[meta.as_non_ptr()]
                                     .as_interface()
-                                    .iface_ffi_info();
+                                    .iface_methods_info();
                                 GosValue::new_iface(
                                     meta,
                                     IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),

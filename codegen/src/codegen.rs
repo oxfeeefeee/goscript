@@ -793,7 +793,10 @@ impl<'a> CodeGen<'a> {
                     if ellipsis {
                         (None, Some(0)) // do not pack params if there is ellipsis
                     } else {
-                        (param_last_t, Some(bf.arg_count as OpIndex - param_count))
+                        (
+                            param_last_t,
+                            Some(bf.arg_count as OpIndex - param_count + 1),
+                        )
                     }
                 } else {
                     (None, Some(param_count as OpIndex))
