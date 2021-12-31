@@ -791,8 +791,11 @@ impl<'a> Fiber<'a> {
                             let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
                             let (meta, v_meta) = sig.variadic.unwrap();
                             let vt = v_meta.get_value_type(&objs.metas);
-                            let index =
-                                nframe.stack_base + sig.params.len() + sig.results.len() - 1;
+                            let is_ffi = cls.func.is_none();
+                            let index = nframe.stack_base
+                                + sig.params.len()
+                                + if is_ffi { 0 } else { sig.results.len() }
+                                - 1;
                             stack.pack_variadic(index, meta, vt, gcv);
                         }
                         match cls.func {
