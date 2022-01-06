@@ -253,13 +253,13 @@ impl<'a> Scanner<'a> {
             self.advance_and_push(&mut literal, '0');
             match self.peek_char() {
                 // hexadecimal int
-                Some('x') | Some('X') => {
-                    self.prefixed_int(literal, 'x', "illegal hexadecimal number")
-                }
-                // octal int
-                Some('o') | Some('O') => self.prefixed_int(literal, 'o', "illegal octal number"),
-                // hexadecimal int
-                Some('b') | Some('B') => self.prefixed_int(literal, 'b', "illegal binary number"),
+                Some('x') | Some('X') => self.prefixed_int(literal, IntPrefix::Hex),
+                // octal int (explicit)
+                Some('o') | Some('O') => self.prefixed_int(literal, IntPrefix::Octal(false)),
+                // binary int
+                Some('b') | Some('B') => self.prefixed_int(literal, IntPrefix::Binary),
+                // octal int (bare)
+                Some(ch) if is_decimal(*ch) => self.prefixed_int(literal, IntPrefix::Octal(true)),
                 _ => self.decimal_int_or_float(literal),
             }
         } else {
@@ -267,19 +267,18 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn prefixed_int(&mut self, mut literal: String, ch: char, err: &str) -> Token {
-        self.advance_and_push(&mut literal, ch);
-        let valid = match ch {
-            'x' => is_hex,
-            'o' => is_octal,
-            'b' => is_binary,
-            _ => unreachable!(),
-        };
-        let result = self.scan_digits(&mut literal, valid, true);
+    fn prefixed_int(&mut self, mut literal: String, prefix: IntPrefix) -> Token {
+        if prefix.is_bare() {
+            literal.push(prefix.char());
+        } else {
+            self.advance_and_push(&mut literal, prefix.char());
+        }
+
+        let result = self.scan_digits(&mut literal, prefix.is_valid(), true);
         match result {
             Ok(count) => {
                 if count == 0 {
-                    self.error(err);
+                    self.error(prefix.err_msg());
                     return Token::ILLEGAL(literal.into());
                 }
             }
@@ -289,8 +288,8 @@ impl<'a> Scanner<'a> {
             }
         }
         if let Some(c) = self.peek_char() {
-            if (ch == 'o' || ch == 'b') && is_decimal(*c) {
-                self.error(err);
+            if matches!(prefix, IntPrefix::Binary | IntPrefix::Octal(_)) && is_decimal(*c) {
+                self.error(prefix.err_msg());
                 return Token::ILLEGAL(literal.into());
             }
         }
@@ -801,6 +800,42 @@ fn is_binary(ch: char) -> bool {
 
 fn is_hex(ch: char) -> bool {
     (ch >= '0' && ch <= '9') || (ch.to_ascii_lowercase() >= 'a' && ch.to_ascii_lowercase() <= 'f')
+}
+
+enum IntPrefix {
+    Binary,
+    Octal(bool),
+    Hex,
+}
+
+impl IntPrefix {
+    fn is_valid(&self) -> fn(char) -> bool {
+        match self {
+            Self::Binary => is_binary,
+            Self::Octal(_) => is_octal,
+            Self::Hex => is_hex,
+        }
+    }
+
+    fn char(&self) -> char {
+        match self {
+            Self::Binary => 'b',
+            Self::Octal(_) => 'o',
+            Self::Hex => 'x',
+        }
+    }
+
+    fn is_bare(&self) -> bool {
+        matches!(self, Self::Octal(true))
+    }
+
+    fn err_msg(&self) -> &str {
+        match self {
+            Self::Binary => "illegal binary number",
+            Self::Octal(_) => "illegal octal number",
+            Self::Hex => "illegal hexadecimal number",
+        }
+    }
 }
 
 #[cfg(test)]
