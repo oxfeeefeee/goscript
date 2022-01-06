@@ -782,7 +782,7 @@ pub fn int_from_literal(lit: &str) -> Value {
     let result = if lit.starts_with("0x") {
         BigInt::from_str_radix(&lit[2..], 16)
     } else if lit.starts_with("0o") {
-        BigInt::from_str_radix(&lit[2..], 10)
+        BigInt::from_str_radix(&lit[2..], 8)
     } else if lit.starts_with("0b") {
         BigInt::from_str_radix(&lit[2..], 2)
     } else {
