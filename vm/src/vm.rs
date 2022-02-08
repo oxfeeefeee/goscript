@@ -152,6 +152,7 @@ struct Context<'a> {
     gcv: &'a GcoVec,
     ffi_factory: &'a FfiFactory,
     fs: Option<&'a FileSet>,
+    next_id: Cell<usize>,
 }
 
 impl<'a> Context<'a> {
@@ -168,6 +169,7 @@ impl<'a> Context<'a> {
             gcv: gcv,
             ffi_factory: ffi_factory,
             fs: fs,
+            next_id: Cell::new(0),
         }
     }
 
@@ -194,16 +196,20 @@ pub struct Fiber<'a> {
     frames: Vec<CallFrame>,
     next_frames: Vec<CallFrame>,
     context: Context<'a>,
+    id: usize,
 }
 
 impl<'a> Fiber<'a> {
     fn new(c: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
+        let id = c.next_id.get();
+        c.next_id.set(id + 1);
         Fiber {
             stack: Rc::new(RefCell::new(stack)),
             rstack: RangeStack::new(),
             frames: vec![first_frame],
             next_frames: Vec::new(),
             context: c,
+            id: id,
         }
     }
 

@@ -8,6 +8,14 @@ type ffiMutex interface {
     unlock(unsafe.Pointer)
 }
 
+type ffiRWMutex interface {
+    new() unsafe.Pointer
+    r_lock(unsafe.Pointer)
+    r_unlock(unsafe.Pointer)
+    w_lock(unsafe.Pointer)
+    w_unlock(unsafe.Pointer)
+}
+
 // A Locker represents an object that can be locked and unlocked.
 type Locker interface {
 	Lock()
@@ -28,7 +36,7 @@ type Mutex struct {
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
     if m.handle == nil {
-        m.f = ffi(ffiMutex, "mutex")
+        m.f = ffi(ffiMutex, "sync.mutex")
         m.handle = m.f.new()
         
     }
@@ -44,4 +52,41 @@ func (m *Mutex) Lock() {
 // arrange for another goroutine to unlock it.
 func (m *Mutex) Unlock() {
    m.f.unlock(m.handle)
+}
+
+
+// A RWMutex is a reader/writer mutual exclusion lock.
+// The lock can be held by an arbitrary number of readers or a single writer.
+// The zero value for a RWMutex is an unlocked mutex.
+//
+// A RWMutex must not be copied after first use.
+type RWMutex struct {
+    f ffiRWMutex
+    handle unsafe.Pointer
+}
+
+func (rw *RWMutex) RLock() {
+    if rw.handle == nil {
+        rw.f = ffi(ffiRWMutex, "sync.rw_mutex")
+        rw.handle = rw.f.new()
+        
+    }
+    rw.f.r_lock(rw.handle)
+}
+
+func (rw *RWMutex) RUnlock() {
+    rw.f.r_unlock(rw.handle)
+}
+
+func (rw *RWMutex) Lock() {
+    if rw.handle == nil {
+        rw.f = ffi(ffiRWMutex, "sync.rw_mutex")
+        rw.handle = rw.f.new()
+        
+    }
+    rw.f.w_lock(rw.handle)
+}
+
+func (rw *RWMutex) Unlock() {
+    rw.f.w_unlock(rw.handle)
 }

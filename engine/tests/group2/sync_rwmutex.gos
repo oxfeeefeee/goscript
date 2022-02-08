@@ -1,0 +1,50 @@
+package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+type Container struct {
+    counters map[string]int
+    mu       sync.RWMutex
+}
+
+
+func (c *Container) inc(name string) {
+
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.counters[name] +=1
+}
+
+func (c *Container) read(name string) {
+
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+    fmt.Println(c.counters[name])
+}
+
+
+func main() {
+
+    c := Container{
+
+        counters: map[string]int{"a": 0, "b": 0},
+    }
+
+
+    go func() {
+		for i := 0; i < 12; i++ {
+			c.inc("aaa")
+            for i := 0; i < 100; i++ {
+            }
+		}
+	}()
+
+    go func() {
+        for i := 0; i < 1000; i++{
+            go c.read("aaa")
+        }
+    }()
+}
