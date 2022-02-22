@@ -285,3 +285,11 @@ fn test_issue8() {
     let err_cnt = run("./tests/issues/issue8.gos", true);
     assert!(err_cnt == 0);
 }
+
+#[test]
+fn test_std_math() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/math.gos", true);
+    assert!(err_cnt == 0);
+}

@@ -1,6 +1,6 @@
 package main
 
-import "math"
+//import "math"
 
 type Node struct{
     i int
@@ -90,10 +90,12 @@ func test() {
         *d = 2
         assert(pkgVarA == 2)
 
-        var e = &math.V1
+        /*
+        var e = &math.PI
         assert(math.V1 == 1)
         *e = 2
         assert(math.V1 == 2)
+        */
     }
 }
 
