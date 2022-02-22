@@ -129,8 +129,8 @@ impl<'a> Checker<'a> {
         let map: HashMap<ObjKey, GraphEdges> = self.obj_map.iter().fold(
             HashMap::new(),
             |mut init: HashMap<ObjKey, GraphEdges>, (&x, &decl_key)| {
-                let decl = &self.tc_objs.decls[decl_key];
-                if decl.has_initializer(self.ast_objs) {
+                if self.lobj(x).entity_type().is_dependency() {
+                    let decl = &self.tc_objs.decls[decl_key];
                     let deps: HashSet<ObjKey> = decl.deps().iter().map(|z| *z).collect();
                     init.insert(x, GraphEdges::new(Rc::new(RefCell::new(deps))));
                 }
@@ -141,10 +141,7 @@ impl<'a> Checker<'a> {
         // add the edges for the other direction
         for (o, node) in map.iter() {
             for s in node.succ.borrow().iter() {
-                let decl = &self.tc_objs.decls[self.obj_map[s]];
-                if decl.has_initializer(self.ast_objs) {
-                    map[s].pred.borrow_mut().insert(*o);
-                }
+                map[s].pred.borrow_mut().insert(*o);
             }
         }
 
@@ -161,6 +158,7 @@ impl<'a> Checker<'a> {
                         if p != o {
                             for s in node.succ.borrow().iter() {
                                 if s != o {
+                                    dbg!(&self.lobj(*s));
                                     map[p].succ.borrow_mut().insert(*s);
                                     map[s].pred.borrow_mut().insert(*p);
                                     map[s].pred.borrow_mut().remove(o);

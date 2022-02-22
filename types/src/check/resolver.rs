@@ -5,8 +5,7 @@ use super::super::obj::EntityType;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey};
 use super::check::{Checker, FilesContext};
 use goscript_parser::ast::{self, Expr, Node};
-use goscript_parser::objects::IdentKey;
-use goscript_parser::objects::{FuncDeclKey, Objects as AstObjects};
+use goscript_parser::objects::{FuncDeclKey, IdentKey};
 use goscript_parser::{Pos, Token};
 use std::collections::HashSet;
 
@@ -125,15 +124,6 @@ impl DeclInfo {
             DeclInfo::Var(v) => &v.file_scope,
             DeclInfo::Type(t) => &t.file_scope,
             DeclInfo::Func(f) => &f.file_scope,
-        }
-    }
-
-    pub fn has_initializer(&self, objs: &AstObjects) -> bool {
-        match self {
-            DeclInfo::Const(c) => c.init.is_some(),
-            DeclInfo::Var(v) => v.init.is_some(),
-            DeclInfo::Func(f) => objs.fdecls[f.fdecl].body.is_some(),
-            _ => false,
         }
     }
 

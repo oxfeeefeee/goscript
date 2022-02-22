@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
-use std::rc::Rc;
 
 use super::branch::*;
 use super::call::CallHelper;
@@ -108,22 +107,32 @@ impl<'a> CodeGen<'a> {
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
         let id = &self.ast_objs.idents[*ident];
+        dbg!(id);
         match id.entity_key() {
-            None => match expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x)) {
-                OperandMode::TypeExpr => {
-                    let lookup = &self.tlookup;
-                    let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
-                    let meta = lookup.basic_type_from_tc(tctype, self.objects);
-                    EntIndex::BuiltInType(meta)
+            None => {
+                let mode = expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x));
+                match mode {
+                    OperandMode::TypeExpr => {
+                        let lookup = &self.tlookup;
+                        let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
+                        let meta = lookup.basic_type_from_tc(tctype, self.objects);
+                        EntIndex::BuiltInType(meta)
+                    }
+                    OperandMode::Value => match &*id.name {
+                        "true" => EntIndex::BuiltInVal(Opcode::PUSH_TRUE),
+                        "false" => EntIndex::BuiltInVal(Opcode::PUSH_FALSE),
+                        "nil" => EntIndex::BuiltInVal(Opcode::PUSH_NIL),
+                        _ => {
+                            dbg!(&id.name);
+                            unreachable!()
+                        }
+                    },
+                    _ => {
+                        dbg!(mode, &id.name);
+                        unreachable!()
+                    }
                 }
-                OperandMode::Value => match &*id.name {
-                    "true" => EntIndex::BuiltInVal(Opcode::PUSH_TRUE),
-                    "false" => EntIndex::BuiltInVal(Opcode::PUSH_FALSE),
-                    "nil" => EntIndex::BuiltInVal(Opcode::PUSH_NIL),
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
-            },
+            }
             Some(_) => self.resolve_var_ident(ident),
         }
     }
@@ -1120,16 +1129,14 @@ impl<'a> CodeGen<'a> {
         index
     }
 
-    fn add_pkg_var_member(&mut self, pkey: PackageKey, vars: &Vec<Rc<ValueSpec>>) {
-        for v in vars.iter() {
-            for n in v.names.iter() {
-                let ident = &self.ast_objs.idents[*n];
-                let meta = self
-                    .tlookup
-                    .gen_def_type_meta(*n, self.objects, self.dummy_gcv);
-                let val = zero_val!(meta, self.objects, self.dummy_gcv);
-                self.objects.packages[pkey].add_member(ident.name.clone(), val);
-            }
+    fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
+        for n in names.iter() {
+            let ident = &self.ast_objs.idents[*n];
+            let meta = self
+                .tlookup
+                .gen_def_type_meta(*n, self.objects, self.dummy_gcv);
+            let val = zero_val!(meta, self.objects, self.dummy_gcv);
+            self.objects.packages[pkey].add_member(ident.name.clone(), val);
         }
     }
 
@@ -1147,10 +1154,10 @@ impl<'a> CodeGen<'a> {
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
 
-        let vars = self
+        let (names, vars) = self
             .pkg_helper
             .sort_var_decls(files, self.tlookup.type_info());
-        self.add_pkg_var_member(pkey, &vars);
+        self.add_pkg_var_member(pkey, &names);
 
         self.pkg_helper.gen_imports(tcpkg, current_func_mut!(self));
 

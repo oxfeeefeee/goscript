@@ -113,8 +113,12 @@ impl<'a> PkgHelper<'a> {
         self.pairs.add_pair(pkg, var, func, i, is824);
     }
 
-    // sort_var_decls returns a vec of sorted var decl statments
-    pub fn sort_var_decls(&self, files: &Vec<File>, ti: &TypeInfo) -> Vec<Rc<ValueSpec>> {
+    // sort_var_decls returns all var names and sorted var decl statments
+    pub fn sort_var_decls(
+        &self,
+        files: &Vec<File>,
+        ti: &TypeInfo,
+    ) -> (Vec<IdentKey>, Vec<Rc<ValueSpec>>) {
         let mut orders = HashMap::new();
         for (i, init) in ti.init_order.iter().enumerate() {
             for okey in init.lhs.iter() {
@@ -123,6 +127,7 @@ impl<'a> PkgHelper<'a> {
             }
         }
 
+        let mut names = vec![];
         let mut decls = vec![];
         for f in files.iter() {
             for d in f.decls.iter() {
@@ -133,9 +138,11 @@ impl<'a> PkgHelper<'a> {
                                 let spec = &self.ast_objs.specs[*spec_key];
                                 match spec {
                                     Spec::Value(v) => {
+                                        names.extend(v.names.iter());
                                         let name = &self.ast_objs.idents[v.names[0]].name;
-                                        let order = orders[name];
-                                        decls.push((v.clone(), order));
+                                        if let Some(order) = orders.get(name) {
+                                            decls.push((v.clone(), order));
+                                        }
                                     }
                                     _ => unimplemented!(),
                                 }
@@ -147,6 +154,6 @@ impl<'a> PkgHelper<'a> {
             }
         }
         decls.sort_by(|a, b| a.1.cmp(&b.1));
-        decls.into_iter().map(|x| x.0).collect()
+        (names, decls.into_iter().map(|x| x.0).collect())
     }
 }
