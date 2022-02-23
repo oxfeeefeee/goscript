@@ -2,10 +2,11 @@
 
 use super::package::PkgVarPairs;
 use goscript_parser::ast::*;
-use goscript_parser::objects::{EntityKey, Objects as AstObjects};
+use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
+use slotmap::KeyData;
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug)]
@@ -89,7 +90,7 @@ impl<'a> Emitter<'a> {
         Emitter { f }
     }
 
-    pub fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
+    pub fn add_const(&mut self, entity: Option<KeyData>, cst: GosValue) -> EntIndex {
         self.f.add_const(entity, cst)
     }
 
@@ -106,7 +107,7 @@ impl<'a> Emitter<'a> {
                         .iter()
                         .map(|n| {
                             let ident = &o.idents[*n];
-                            self.f.add_local(ident.entity.clone().into_key());
+                            self.f.add_local(ident.entity.clone().into_key_data());
                         })
                         .count()
                 }
@@ -152,7 +153,7 @@ impl<'a> Emitter<'a> {
                 );
                 self.f.emit_raw_inst(key_to_u64(pkg), pos);
                 let (pairs, func) = patch_info.unwrap();
-                pairs.add_pair(pkg, ident, func, self.f.code().len() - 2, false);
+                pairs.add_pair(pkg, ident.into(), func, self.f.code().len() - 2, false);
             }
             EntIndex::BuiltInVal(op) => self.f.emit_code(op, pos),
             EntIndex::BuiltInType(m) => {
@@ -245,7 +246,7 @@ impl<'a> Emitter<'a> {
         if let Some((pkg, ident)) = pkg_info {
             self.f.emit_raw_inst(key_to_u64(pkg), pos);
             let (pairs, func) = patch_info.unwrap();
-            pairs.add_pair(pkg, ident, func, self.f.code().len() - 2, true);
+            pairs.add_pair(pkg, ident.into(), func, self.f.code().len() - 2, true);
         }
     }
 

@@ -2,20 +2,20 @@
 ///
 ///
 use goscript_parser::ast::*;
-use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_vm::instruction::*;
 use goscript_vm::value::*;
+use slotmap::KeyData;
 use std::collections::HashMap;
 
 /// branch points of break and continue
 pub struct BranchBlock {
-    points: Vec<(usize, Token, Option<EntityKey>)>,
-    label: Option<EntityKey>,
+    points: Vec<(usize, Token, Option<KeyData>)>,
+    label: Option<KeyData>,
 }
 
 impl BranchBlock {
-    pub fn new(label: Option<EntityKey>) -> BranchBlock {
+    pub fn new(label: Option<KeyData>) -> BranchBlock {
         BranchBlock {
             points: vec![],
             label: label,
@@ -26,8 +26,8 @@ impl BranchBlock {
 /// helper for break, continue and goto
 pub struct BranchHelper {
     block_stack: Vec<BranchBlock>,
-    next_block_label: Option<EntityKey>,
-    labels: HashMap<EntityKey, usize>,
+    next_block_label: Option<KeyData>,
+    labels: HashMap<KeyData, usize>,
 }
 
 impl BranchHelper {
@@ -43,7 +43,7 @@ impl BranchHelper {
         &mut self,
         func: &mut FunctionVal,
         token: Token,
-        label: Option<EntityKey>,
+        label: Option<KeyData>,
         pos: usize,
     ) {
         let index = func.code().len();
@@ -55,14 +55,14 @@ impl BranchHelper {
             .push((index, token, label));
     }
 
-    pub fn add_label(&mut self, label: EntityKey, offset: usize, is_breakable: bool) {
+    pub fn add_label(&mut self, label: KeyData, offset: usize, is_breakable: bool) {
         self.labels.insert(label, offset);
         if is_breakable {
             self.next_block_label = Some(label);
         }
     }
 
-    pub fn go_to(&self, func: &mut FunctionVal, label: &EntityKey, pos: usize) {
+    pub fn go_to(&self, func: &mut FunctionVal, label: &KeyData, pos: usize) {
         let current_offset = func.code().len();
         let l_offset = self.labels.get(label).unwrap();
         let offset = (*l_offset as OpIndex) - (current_offset as OpIndex) - 1;

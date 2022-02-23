@@ -1,3 +1,5 @@
+use slotmap::KeyData;
+
 use super::objects::*;
 use super::position;
 use super::scope;
@@ -534,9 +536,9 @@ impl IdentEntity {
         }
     }
 
-    pub fn into_key(self) -> Option<EntityKey> {
+    pub fn into_key_data(self) -> Option<KeyData> {
         match self {
-            IdentEntity::Entity(key) => Some(key),
+            IdentEntity::Entity(key) => Some(key.into()),
             _ => None,
         }
     }
@@ -575,8 +577,8 @@ impl Ident {
         self.pos + self.name.len()
     }
 
-    pub fn entity_key(&self) -> Option<EntityKey> {
-        self.entity.clone().into_key()
+    pub fn entity_key_data(&self) -> Option<KeyData> {
+        self.entity.clone().into_key_data()
     }
 
     pub fn entity_obj<'a>(&self, arena: &'a Objects) -> Option<&'a scope::Entity> {

@@ -67,7 +67,7 @@ impl<'a> EntryGen<'a> {
         let mut emitter = Emitter::new(func);
         emitter.emit_import(index, pkg, None);
         emitter.emit_load(
-            EntIndex::PackageMember(pkg, main_ident),
+            EntIndex::PackageMember(pkg, main_ident.into()),
             Some((pairs, fkey)),
             ValueType::Function,
             None,

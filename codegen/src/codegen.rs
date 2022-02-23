@@ -107,8 +107,7 @@ impl<'a> CodeGen<'a> {
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
         let id = &self.ast_objs.idents[*ident];
-        dbg!(id);
-        match id.entity_key() {
+        match id.entity_key_data() {
             None => {
                 let mode = expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x));
                 match mode {
@@ -138,7 +137,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        let entity_key = &self.ast_objs.idents[*ident].entity_key().unwrap();
+        let entity_key = &self.ast_objs.idents[*ident].entity_key_data().unwrap();
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
             return index;
@@ -172,7 +171,7 @@ impl<'a> CodeGen<'a> {
             return index;
         }
         // 3. must be package member
-        EntIndex::PackageMember(self.pkg_key, *ident)
+        EntIndex::PackageMember(self.pkg_key, (*ident).into())
     }
 
     fn add_local_or_resolve_ident(
@@ -191,7 +190,7 @@ impl<'a> CodeGen<'a> {
                 .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
             let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
             let func = current_func_mut!(self);
-            let ident_key = ident.entity.clone().into_key();
+            let ident_key = ident.entity.clone().into_key_data();
             let index = func.add_local(ident_key);
             func.add_local_zero(zero_val);
             if func.is_ctor() {
@@ -255,7 +254,7 @@ impl<'a> CodeGen<'a> {
                         // cannot only determined by token, because it could be a mixture
                         let mut is_def = *token == Token::DEFINE;
                         if is_def {
-                            let entity = &self.ast_objs.idents[*ident].entity_key();
+                            let entity = &self.ast_objs.idents[*ident].entity_key_data();
                             is_def = entity.is_some()
                                 && current_func!(self)
                                     .entity_index(entity.as_ref().unwrap())
@@ -304,7 +303,8 @@ impl<'a> CodeGen<'a> {
                                 (
                                     // the true index will be calculated later
                                     LeftHandSide::Primitive(EntIndex::PackageMember(
-                                        pkg, sexpr.sel,
+                                        pkg,
+                                        sexpr.sel.into(),
                                     )),
                                     Some(self.tlookup.get_expr_tc_type(expr)),
                                     pos,
@@ -1118,7 +1118,7 @@ impl<'a> CodeGen<'a> {
 
     fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
-        let entity = ident.entity.clone().into_key().unwrap();
+        let entity = ident.entity.clone().into_key_data().unwrap();
         let index = func.add_const(Some(entity), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
@@ -1236,7 +1236,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let t = self.tlookup.get_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
-                EntIndex::PackageMember(pkg, *ident),
+                EntIndex::PackageMember(pkg, (*ident).into()),
                 Some((self.pkg_helper.pairs_mut(), *fkey)),
                 t,
                 pos,
@@ -1432,7 +1432,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                 );
                             } else {
                                 let ident = &self.ast_objs.idents[*ikey];
-                                let entity_key = ident.entity_key().unwrap();
+                                let entity_key = ident.entity_key_data().unwrap();
                                 let func = current_func_mut!(self);
                                 let ind = *func.entity_index(&entity_key).unwrap();
                                 let desc = ValueDesc::new(
@@ -1471,7 +1471,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             func.emit_raw_inst(key_to_u64(self.pkg_key), pos);
                             let fkey = self.func_stack.last().unwrap();
                             let i = current_func!(self).next_code_index() - 2;
-                            self.pkg_helper.add_pair(pkg, ident, *fkey, i, false);
+                            self.pkg_helper.add_pair(pkg, ident.into(), *fkey, i, false);
                         }
                         _ => unreachable!(),
                     }
@@ -1716,7 +1716,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = self.ast_objs.idents[stmt.label].entity_key().unwrap();
+        let entity = self.ast_objs.idents[stmt.label].entity_key_data().unwrap();
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
@@ -1803,7 +1803,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             Token::BREAK | Token::CONTINUE => {
                 let entity = bstmt
                     .label
-                    .map(|x| self.ast_objs.idents[x].entity_key().unwrap());
+                    .map(|x| self.ast_objs.idents[x].entity_key_data().unwrap());
                 self.branch.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
@@ -1814,7 +1814,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             Token::GOTO => {
                 let func = current_func_mut!(self);
                 let label = bstmt.label.unwrap();
-                let entity = self.ast_objs.idents[label].entity_key().unwrap();
+                let entity = self.ast_objs.idents[label].entity_key_data().unwrap();
                 self.branch.go_to(func, &entity, bstmt.token_pos);
             }
             Token::FALLTHROUGH => {
@@ -1911,7 +1911,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         if let Some(iexpr) = ident_expr {
             let ident = &self.ast_objs.idents[*iexpr.try_as_ident().unwrap()];
-            let ident_key = ident.entity.clone().into_key();
+            let ident_key = ident.entity.clone().into_key_data();
             let func = current_func_mut!(self);
             let index = func.add_local(ident_key);
             func.add_local_zero(GosValue::new_nil());

@@ -6,8 +6,7 @@ use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
 use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RtEmptyResult};
-use goscript_parser::objects::{EntityKey, IdentKey};
-use slotmap::{new_key_type, DenseSlotMap};
+use slotmap::{new_key_type, DenseSlotMap, KeyData};
 use std::any::Any;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::cmp::Ordering;
@@ -1437,7 +1436,7 @@ pub enum EntIndex {
     Const(OpIndex),
     LocalVar(OpIndex),
     UpValue(OpIndex),
-    PackageMember(PackageKey, IdentKey),
+    PackageMember(PackageKey, KeyData),
     BuiltInVal(Opcode), // built-in identifiers
     BuiltInType(GosMetadata),
     Blank,
@@ -1479,8 +1478,8 @@ pub struct FunctionVal {
     pub flag: FuncFlag,
 
     param_count: usize,
-    entities: HashMap<EntityKey, EntIndex>,
-    uv_entities: HashMap<EntityKey, EntIndex>,
+    entities: HashMap<KeyData, EntIndex>,
+    uv_entities: HashMap<KeyData, EntIndex>,
     local_alloc: u16,
 }
 
@@ -1551,7 +1550,7 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn entity_index(&self, entity: &EntityKey) -> Option<&EntIndex> {
+    pub fn entity_index(&self, entity: &KeyData) -> Option<&EntIndex> {
         self.entities.get(entity)
     }
 
@@ -1653,7 +1652,7 @@ impl FunctionVal {
         })
     }
 
-    pub fn add_local(&mut self, entity: Option<EntityKey>) -> EntIndex {
+    pub fn add_local(&mut self, entity: Option<KeyData>) -> EntIndex {
         let result = self.local_alloc as OpIndex;
         if let Some(key) = entity {
             let old = self.entities.insert(key, EntIndex::LocalVar(result));
@@ -1670,7 +1669,7 @@ impl FunctionVal {
     /// add a const or get the index of a const.
     /// when 'entity' is no none, it's a const define, so it should not be called with the
     /// same 'entity' more than once
-    pub fn add_const(&mut self, entity: Option<EntityKey>, cst: GosValue) -> EntIndex {
+    pub fn add_const(&mut self, entity: Option<KeyData>, cst: GosValue) -> EntIndex {
         if let Some(index) = self.get_const_index(&cst) {
             index
         } else {
@@ -1684,14 +1683,14 @@ impl FunctionVal {
         }
     }
 
-    pub fn try_add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
+    pub fn try_add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
         match self.uv_entities.get(entity) {
             Some(i) => *i,
             None => self.add_upvalue(entity, uv),
         }
     }
 
-    fn add_upvalue(&mut self, entity: &EntityKey, uv: ValueDesc) -> EntIndex {
+    fn add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
         self.up_ptrs.push(uv);
         let i = (self.up_ptrs.len() - 1).try_into().unwrap();
         let et = EntIndex::UpValue(i);
