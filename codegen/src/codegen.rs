@@ -53,7 +53,8 @@ macro_rules! label_ident_unique_key {
 
 macro_rules! var_ident_unique_key {
     ($owner:ident, $var:expr) => {
-        $owner.tlookup.get_use_object($var).into()
+        //$owner.tlookup.get_use_object($var).into()
+        $owner.ast_objs.idents[$var].entity_key_data().unwrap()
     };
 }
 
@@ -142,7 +143,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        let entity_key = &self.ast_objs.idents[*ident].entity_key_data().unwrap();
+        let entity_key = var_ident_unique_key!(self, *ident);
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
             return index;
@@ -195,7 +196,7 @@ impl<'a> CodeGen<'a> {
                 .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
             let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
             let func = current_func_mut!(self);
-            let ident_key = ident.entity.clone().into_key_data();
+            let ident_key = Some(var_ident_unique_key!(self, *ikey));
             let index = func.add_local(ident_key);
             func.add_local_zero(zero_val);
             if func.is_ctor() {
@@ -232,9 +233,8 @@ impl<'a> CodeGen<'a> {
     fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) {
         assert!(names.len() == values.len());
         for i in 0..names.len() {
-            let ident = self.ast_objs.idents[names[i]].clone();
             let val = self.tlookup.get_const_value(values[i].id());
-            self.current_func_add_const_def(&ident, val);
+            self.current_func_add_const_def(&names[i], val);
         }
     }
 
@@ -256,15 +256,7 @@ impl<'a> CodeGen<'a> {
             .map(|expr| {
                 match expr {
                     Expr::Ident(ident) => {
-                        // cannot only determined by token, because it could be a mixture
-                        let mut is_def = *token == Token::DEFINE;
-                        if is_def {
-                            let entity = &self.ast_objs.idents[*ident].entity_key_data();
-                            is_def = entity.is_some()
-                                && current_func!(self)
-                                    .entity_index(entity.as_ref().unwrap())
-                                    .is_none();
-                        }
+                        let is_def = self.tlookup.ident_is_def(ident);
                         let (idx, t, p) = self.add_local_or_resolve_ident(ident, is_def);
                         (LeftHandSide::Primitive(idx), t, p)
                     }
@@ -1121,14 +1113,15 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn current_func_add_const_def(&mut self, ident: &Ident, cst: GosValue) -> EntIndex {
+    fn current_func_add_const_def(&mut self, ikey: &IdentKey, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
-        let entity = ident.entity.clone().into_key_data().unwrap();
+        let entity = var_ident_unique_key!(self, *ikey);
         let index = func.add_const(Some(entity), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
             let pkg = &mut self.objects.packages[pkg_key];
+            let ident = &self.ast_objs.idents[*ikey];
             pkg.add_member(ident.name.clone(), cst);
         }
         index
@@ -1436,8 +1429,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                     pos,
                                 );
                             } else {
-                                let ident = &self.ast_objs.idents[*ikey];
-                                let entity_key = ident.entity_key_data().unwrap();
+                                let entity_key = var_ident_unique_key!(self, *ikey);
                                 let func = current_func_mut!(self);
                                 let ind = *func.entity_index(&entity_key).unwrap();
                                 let desc = ValueDesc::new(
@@ -1674,11 +1666,10 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     //handled elsewhere
                 }
                 Spec::Type(ts) => {
-                    let ident = self.ast_objs.idents[ts.name].clone();
                     let m = self
                         .tlookup
                         .gen_def_type_meta(ts.name, self.objects, self.dummy_gcv);
-                    self.current_func_add_const_def(&ident, GosValue::Metadata(m));
+                    self.current_func_add_const_def(&ts.name, GosValue::Metadata(m));
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
@@ -1913,10 +1904,9 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         };
 
         if let Some(iexpr) = ident_expr {
-            let ident = &self.ast_objs.idents[*iexpr.try_as_ident().unwrap()];
-            let ident_key = ident.entity.clone().into_key_data();
+            let ident_key = var_ident_unique_key!(self, *iexpr.try_as_ident().unwrap());
             let func = current_func_mut!(self);
-            let index = func.add_local(ident_key);
+            let index = func.add_local(Some(ident_key));
             func.add_local_zero(GosValue::new_nil());
             self.visit_expr(v);
             let func = current_func_mut!(self);

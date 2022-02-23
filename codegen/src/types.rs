@@ -147,6 +147,10 @@ impl<'a> TypeLookup<'a> {
         self.value_type_from_tc(self.get_def_tc_type(ikey))
     }
 
+    pub fn ident_is_def(&self, ikey: &IdentKey) -> bool {
+        self.ti.defs.contains_key(ikey)
+    }
+
     pub fn gen_def_type_meta(
         &mut self,
         ikey: IdentKey,
