@@ -36,33 +36,40 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    #[inline]
     pub fn type_info(&self) -> &TypeInfo {
         self.ti
     }
 
+    #[inline]
     pub fn get_tc_const_value(&mut self, id: NodeId) -> Option<&ConstValue> {
         let typ_val = self.ti.types.get(&id).unwrap();
         typ_val.get_const_val()
     }
 
+    #[inline]
     pub fn get_const_value(&mut self, id: NodeId) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
         self.const_value(typ_val.typ, const_val)
     }
 
+    #[inline]
     pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
         self.get_node_tc_type(e.id())
     }
 
+    #[inline]
     pub fn get_node_tc_type(&self, id: NodeId) -> TCTypeKey {
         self.ti.types.get(&id).unwrap().typ
     }
 
+    #[inline]
     pub fn try_get_expr_mode(&self, e: &Expr) -> Option<&OperandMode> {
         self.ti.types.get(&e.id()).map(|x| &x.mode)
     }
 
+    #[inline]
     pub fn get_expr_mode(&self, e: &Expr) -> &OperandMode {
         &self.ti.types.get(&e.id()).unwrap().mode
     }
@@ -125,32 +132,44 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    #[inline]
     pub fn get_use_object(&self, ikey: IdentKey) -> TCObjKey {
         self.ti.uses[&ikey]
     }
 
+    #[inline]
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
         let obj = &self.tc_objs.lobjs[self.get_use_object(ikey)];
         obj.typ().unwrap()
     }
 
+    #[inline]
     pub fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
         self.value_type_from_tc(self.get_use_tc_type(ikey))
     }
 
+    #[inline]
+    pub fn get_def_object(&self, ikey: IdentKey) -> TCObjKey {
+        self.ti.defs[&ikey].unwrap()
+    }
+
+    #[inline]
     pub fn get_def_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        let obj = &self.tc_objs.lobjs[self.ti.defs[&ikey].unwrap()];
+        let obj = &self.tc_objs.lobjs[self.get_def_object(ikey)];
         obj.typ().unwrap()
     }
 
+    #[inline]
     pub fn get_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
         self.value_type_from_tc(self.get_def_tc_type(ikey))
     }
 
+    #[inline]
     pub fn ident_is_def(&self, ikey: &IdentKey) -> bool {
         self.ti.defs.contains_key(ikey)
     }
 
+    #[inline]
     pub fn gen_def_type_meta(
         &mut self,
         ikey: IdentKey,
@@ -160,11 +179,13 @@ impl<'a> TypeLookup<'a> {
         self.meta_from_tc(self.get_def_tc_type(ikey), objects, dummy_gcv)
     }
 
+    #[inline]
     pub fn get_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.range_tc_types(typ)
     }
 
+    #[inline]
     pub fn get_tuple_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.tuple_tc_types(typ)

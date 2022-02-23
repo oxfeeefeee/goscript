@@ -45,16 +45,15 @@ macro_rules! current_func_emitter {
     };
 }
 
-macro_rules! label_ident_unique_key {
-    ($owner:ident, $label:expr) => {
-        $owner.ast_objs.idents[$label].entity_key_data().unwrap()
+macro_rules! use_ident_unique_key {
+    ($owner:ident, $var:expr) => {
+        $owner.tlookup.get_use_object($var).into()
     };
 }
 
-macro_rules! var_ident_unique_key {
+macro_rules! def_ident_unique_key {
     ($owner:ident, $var:expr) => {
-        //$owner.tlookup.get_use_object($var).into()
-        $owner.ast_objs.idents[$var].entity_key_data().unwrap()
+        $owner.tlookup.get_def_object($var).into()
     };
 }
 
@@ -143,7 +142,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        let entity_key = var_ident_unique_key!(self, *ident);
+        let entity_key = use_ident_unique_key!(self, *ident);
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
             return index;
@@ -196,7 +195,7 @@ impl<'a> CodeGen<'a> {
                 .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
             let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
             let func = current_func_mut!(self);
-            let ident_key = Some(var_ident_unique_key!(self, *ikey));
+            let ident_key = Some(def_ident_unique_key!(self, *ikey));
             let index = func.add_local(ident_key);
             func.add_local_zero(zero_val);
             if func.is_ctor() {
@@ -731,15 +730,15 @@ impl<'a> CodeGen<'a> {
         let fkey = *f.as_function();
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
         if let Some(fl) = &typ.results {
-            emitter.add_params(&fl, self.ast_objs);
+            emitter.add_params(&fl, self.ast_objs, &self.tlookup);
         }
         match recv {
             Some(recv) => {
                 let mut fields = recv;
                 fields.list.append(&mut typ.params.list.clone());
-                emitter.add_params(&fields, self.ast_objs)
+                emitter.add_params(&fields, self.ast_objs, &self.tlookup)
             }
-            None => emitter.add_params(&typ.params, self.ast_objs),
+            None => emitter.add_params(&typ.params, self.ast_objs, &self.tlookup),
         };
         self.func_stack.push(fkey);
         self.func_t_stack.push(tc_type);
@@ -1115,7 +1114,7 @@ impl<'a> CodeGen<'a> {
 
     fn current_func_add_const_def(&mut self, ikey: &IdentKey, cst: GosValue) -> EntIndex {
         let func = current_func_mut!(self);
-        let entity = var_ident_unique_key!(self, *ikey);
+        let entity = def_ident_unique_key!(self, *ikey);
         let index = func.add_const(Some(entity), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
@@ -1429,7 +1428,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                     pos,
                                 );
                             } else {
-                                let entity_key = var_ident_unique_key!(self, *ikey);
+                                let entity_key = use_ident_unique_key!(self, *ikey);
                                 let func = current_func_mut!(self);
                                 let ind = *func.entity_index(&entity_key).unwrap();
                                 let desc = ValueDesc::new(
@@ -1688,7 +1687,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
         let decl = &self.ast_objs.fdecls[*fdecl];
         if decl.body.is_none() {
-            unimplemented!()
+            return;
+            // unimplemented!()
         }
         let tc_type = self.tlookup.get_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
@@ -1712,7 +1712,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = label_ident_unique_key!(self, stmt.label);
+        let entity = def_ident_unique_key!(self, stmt.label);
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
@@ -1797,7 +1797,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
         match bstmt.token {
             Token::BREAK | Token::CONTINUE => {
-                let entity = bstmt.label.map(|x| label_ident_unique_key!(self, x));
+                let entity = bstmt.label.map(|x| use_ident_unique_key!(self, x));
                 self.branch.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
@@ -1808,7 +1808,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             Token::GOTO => {
                 let func = current_func_mut!(self);
                 let label = bstmt.label.unwrap();
-                let entity = label_ident_unique_key!(self, label);
+                let entity = use_ident_unique_key!(self, label);
                 self.branch.go_to(func, &entity, bstmt.token_pos);
             }
             Token::FALLTHROUGH => {
@@ -1904,7 +1904,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         };
 
         if let Some(iexpr) = ident_expr {
-            let ident_key = var_ident_unique_key!(self, *iexpr.try_as_ident().unwrap());
+            //todo: fix this
+            let ident_key = def_ident_unique_key!(self, *iexpr.try_as_ident().unwrap());
             let func = current_func_mut!(self);
             let index = func.add_local(Some(ident_key));
             func.add_local_zero(GosValue::new_nil());

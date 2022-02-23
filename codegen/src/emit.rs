@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use super::package::PkgVarPairs;
+use super::types::TypeLookup;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
@@ -94,7 +95,7 @@ impl<'a> Emitter<'a> {
         self.f.add_const(entity, cst)
     }
 
-    pub fn add_params(&mut self, fl: &FieldList, o: &AstObjects) -> usize {
+    pub fn add_params(&mut self, fl: &FieldList, o: &AstObjects, t_lookup: &TypeLookup) -> usize {
         fl.list
             .iter()
             .map(|f| {
@@ -106,8 +107,8 @@ impl<'a> Emitter<'a> {
                     names
                         .iter()
                         .map(|n| {
-                            let ident = &o.idents[*n];
-                            self.f.add_local(ident.entity.clone().into_key_data());
+                            let key = t_lookup.get_def_object(*n);
+                            self.f.add_local(Some(key.into()));
                         })
                         .count()
                 }
