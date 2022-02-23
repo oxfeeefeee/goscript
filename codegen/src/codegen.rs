@@ -45,6 +45,18 @@ macro_rules! current_func_emitter {
     };
 }
 
+macro_rules! label_ident_unique_key {
+    ($owner:ident, $label:expr) => {
+        $owner.ast_objs.idents[$label].entity_key_data().unwrap()
+    };
+}
+
+macro_rules! var_ident_unique_key {
+    ($owner:ident, $var:expr) => {
+        $owner.tlookup.get_use_object($var).into()
+    };
+}
+
 enum ReceiverPreprocess {
     Default,
     Ref,   // take ref of receiver before binding method
@@ -1709,7 +1721,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = self.ast_objs.idents[stmt.label].entity_key_data().unwrap();
+        let entity = label_ident_unique_key!(self, stmt.label);
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
@@ -1794,9 +1806,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
         match bstmt.token {
             Token::BREAK | Token::CONTINUE => {
-                let entity = bstmt
-                    .label
-                    .map(|x| self.ast_objs.idents[x].entity_key_data().unwrap());
+                let entity = bstmt.label.map(|x| label_ident_unique_key!(self, x));
                 self.branch.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
@@ -1807,7 +1817,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             Token::GOTO => {
                 let func = current_func_mut!(self);
                 let label = bstmt.label.unwrap();
-                let entity = self.ast_objs.idents[label].entity_key_data().unwrap();
+                let entity = label_ident_unique_key!(self, label);
                 self.branch.go_to(func, &entity, bstmt.token_pos);
             }
             Token::FALLTHROUGH => {
