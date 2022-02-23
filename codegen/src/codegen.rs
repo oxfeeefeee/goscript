@@ -106,33 +106,26 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
-        let id = &self.ast_objs.idents[*ident];
-        match id.entity_key_data() {
-            None => {
-                let mode = expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x));
-                match mode {
-                    OperandMode::TypeExpr => {
-                        let lookup = &self.tlookup;
-                        let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
-                        let meta = lookup.basic_type_from_tc(tctype, self.objects);
-                        EntIndex::BuiltInType(meta)
-                    }
-                    OperandMode::Value => match &*id.name {
-                        "true" => EntIndex::BuiltInVal(Opcode::PUSH_TRUE),
-                        "false" => EntIndex::BuiltInVal(Opcode::PUSH_FALSE),
-                        "nil" => EntIndex::BuiltInVal(Opcode::PUSH_NIL),
-                        _ => {
-                            dbg!(&id.name);
-                            unreachable!()
-                        }
-                    },
-                    _ => {
-                        dbg!(mode, &id.name);
-                        unreachable!()
-                    }
+        let mode = expr.map_or(&OperandMode::Value, |x| self.tlookup.get_expr_mode(x));
+        match mode {
+            OperandMode::TypeExpr => {
+                let lookup = &self.tlookup;
+                let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
+                match lookup.basic_type_from_tc(tctype, self.objects) {
+                    Some(meta) => EntIndex::BuiltInType(meta),
+                    None => self.resolve_var_ident(ident),
                 }
             }
-            Some(_) => self.resolve_var_ident(ident),
+            OperandMode::Value => {
+                let id = &self.ast_objs.idents[*ident];
+                match &*id.name {
+                    "true" => EntIndex::BuiltInVal(Opcode::PUSH_TRUE),
+                    "false" => EntIndex::BuiltInVal(Opcode::PUSH_FALSE),
+                    "nil" => EntIndex::BuiltInVal(Opcode::PUSH_NIL),
+                    _ => self.resolve_var_ident(ident),
+                }
+            }
+            _ => self.resolve_var_ident(ident),
         }
     }
 

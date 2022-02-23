@@ -3,8 +3,8 @@ use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
 use goscript_types::{
-    BasicType, ChanDir, ConstValue, EntityType, ObjKey, OperandMode, PackageKey as TCPackageKey,
-    TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
+    BasicType, ChanDir, ConstValue, EntityType, ObjKey as TCObjKey, OperandMode,
+    PackageKey as TCPackageKey, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::{OpIndex, ValueType};
@@ -125,8 +125,12 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn get_use_object(&self, ikey: IdentKey) -> TCObjKey {
+        self.ti.uses[&ikey]
+    }
+
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        let obj = &self.tc_objs.lobjs[self.ti.uses[&ikey]];
+        let obj = &self.tc_objs.lobjs[self.get_use_object(ikey)];
         obj.typ().unwrap()
     }
 
@@ -217,32 +221,40 @@ impl<'a> TypeLookup<'a> {
     }
 
     // returns vm_type(metadata) for the tc_type
-    pub fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> GosMetadata {
-        let typ = self.tc_objs.types[tkey].try_as_basic().unwrap().typ();
-        match typ {
-            BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
-            BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint,
-            BasicType::Int8 => vm_objs.metadata.mint8,
-            BasicType::Int16 => vm_objs.metadata.mint16,
-            BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => vm_objs.metadata.mint32,
-            BasicType::Int64 => vm_objs.metadata.mint64,
-            BasicType::Uint | BasicType::Uintptr => vm_objs.metadata.muint,
-            BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
-            BasicType::Uint16 => vm_objs.metadata.muint16,
-            BasicType::Uint32 => vm_objs.metadata.muint32,
-            BasicType::Uint64 => vm_objs.metadata.muint64,
-            BasicType::Float32 => vm_objs.metadata.mfloat32,
-            BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64,
-            BasicType::Complex64 => vm_objs.metadata.mcomplex64,
-            BasicType::Complex128 => vm_objs.metadata.mcomplex128,
-            BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
-            BasicType::UnsafePointer => vm_objs.metadata.unsafe_ptr,
-            BasicType::UntypedNil => GosMetadata::Untyped,
-            _ => {
-                dbg!(typ);
-                unreachable!()
+    pub fn basic_type_from_tc(
+        &self,
+        tkey: TCTypeKey,
+        vm_objs: &mut VMObjects,
+    ) -> Option<GosMetadata> {
+        self.tc_objs.types[tkey].try_as_basic().map(|x| {
+            let typ = x.typ();
+            match typ {
+                BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
+                BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint,
+                BasicType::Int8 => vm_objs.metadata.mint8,
+                BasicType::Int16 => vm_objs.metadata.mint16,
+                BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
+                    vm_objs.metadata.mint32
+                }
+                BasicType::Int64 => vm_objs.metadata.mint64,
+                BasicType::Uint | BasicType::Uintptr => vm_objs.metadata.muint,
+                BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
+                BasicType::Uint16 => vm_objs.metadata.muint16,
+                BasicType::Uint32 => vm_objs.metadata.muint32,
+                BasicType::Uint64 => vm_objs.metadata.muint64,
+                BasicType::Float32 => vm_objs.metadata.mfloat32,
+                BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64,
+                BasicType::Complex64 => vm_objs.metadata.mcomplex64,
+                BasicType::Complex128 => vm_objs.metadata.mcomplex128,
+                BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
+                BasicType::UnsafePointer => vm_objs.metadata.unsafe_ptr,
+                BasicType::UntypedNil => GosMetadata::Untyped,
+                _ => {
+                    dbg!(typ);
+                    unreachable!()
+                }
             }
-        }
+        })
     }
 
     // get GosValue from type checker's Obj
@@ -327,7 +339,7 @@ impl<'a> TypeLookup<'a> {
         dummy_gcv: &mut GcoVec,
     ) -> GosMetadata {
         match &self.tc_objs.types[typ] {
-            Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs),
+            Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs).unwrap(),
             Type::Array(detail) => {
                 let elem = self.meta_from_tc_impl(detail.elem(), vm_objs, dummy_gcv);
                 GosMetadata::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
@@ -509,7 +521,7 @@ impl<'a> TypeLookup<'a> {
 
     fn get_fields(
         &mut self,
-        fields: &Vec<ObjKey>,
+        fields: &Vec<TCObjKey>,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Fields {
