@@ -1,3 +1,4 @@
+use slotmap::KeyData;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
@@ -1903,11 +1904,18 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             _ => unreachable!(),
         };
 
-        if let Some(iexpr) = ident_expr {
-            //todo: fix this
-            let ident_key = def_ident_unique_key!(self, *iexpr.try_as_ident().unwrap());
+        if let Some(_) = ident_expr {
+            let implicit_entities = tstmt
+                .body
+                .list
+                .iter()
+                .map(|stmt| {
+                    let obj = self.tlookup.get_implicit_object(&stmt.id());
+                    KeyData::from(obj)
+                })
+                .collect();
             let func = current_func_mut!(self);
-            let index = func.add_local(Some(ident_key));
+            let index = func.add_implicit_local(implicit_entities);
             func.add_local_zero(GosValue::new_nil());
             self.visit_expr(v);
             let func = current_func_mut!(self);

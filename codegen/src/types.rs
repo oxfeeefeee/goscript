@@ -138,6 +138,16 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
+    pub fn get_def_object(&self, ikey: IdentKey) -> TCObjKey {
+        self.ti.defs[&ikey].unwrap()
+    }
+
+    #[inline]
+    pub fn get_implicit_object(&self, id: &NodeId) -> TCObjKey {
+        self.ti.implicits[id]
+    }
+
+    #[inline]
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
         let obj = &self.tc_objs.lobjs[self.get_use_object(ikey)];
         obj.typ().unwrap()
@@ -146,11 +156,6 @@ impl<'a> TypeLookup<'a> {
     #[inline]
     pub fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
         self.value_type_from_tc(self.get_use_tc_type(ikey))
-    }
-
-    #[inline]
-    pub fn get_def_object(&self, ikey: IdentKey) -> TCObjKey {
-        self.ti.defs[&ikey].unwrap()
     }
 
     #[inline]
