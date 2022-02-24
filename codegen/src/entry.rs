@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::branch::BranchHelper;
 use super::call::CallHelper;
 use super::codegen::CodeGen;
 use super::emit::{CallStyle, Emitter};
@@ -99,6 +100,7 @@ impl<'a> EntryGen<'a> {
         let mut type_cache: TypeCache = HashMap::new();
         let mut pkg_pairs = PkgVarPairs::new();
         let mut call_helper = CallHelper::new();
+        let mut branch_helper = BranchHelper::new();
         for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
             let mut cgen = CodeGen::new(
                 &mut self.objects,
@@ -109,6 +111,7 @@ impl<'a> EntryGen<'a> {
                 &mut type_cache,
                 &mut self.iface_mapping,
                 &mut call_helper,
+                &mut branch_helper,
                 &self.pkg_indices,
                 &self.packages,
                 self.packages[i],
@@ -126,6 +129,7 @@ impl<'a> EntryGen<'a> {
         );
         pkg_pairs.patch_index(self.ast_objs, &mut self.objects);
         call_helper.patch_call(&mut self.objects);
+        branch_helper.patch_go_tos(&mut self.objects.functions);
         ByteCode {
             objects: self.objects,
             packages: self.packages,

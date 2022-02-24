@@ -28,6 +28,7 @@ pub struct BranchHelper {
     block_stack: Vec<BranchBlock>,
     next_block_label: Option<KeyData>,
     labels: HashMap<KeyData, usize>,
+    go_tos: HashMap<(FunctionKey, usize), KeyData>,
 }
 
 impl BranchHelper {
@@ -36,6 +37,7 @@ impl BranchHelper {
             block_stack: vec![],
             next_block_label: None,
             labels: HashMap::new(),
+            go_tos: HashMap::new(),
         }
     }
 
@@ -62,11 +64,32 @@ impl BranchHelper {
         }
     }
 
-    pub fn go_to(&self, func: &mut FunctionVal, label: &KeyData, pos: usize) {
+    pub fn go_to(
+        &mut self,
+        funcs: &mut FunctionObjs,
+        fkey: FunctionKey,
+        label: KeyData,
+        pos: usize,
+    ) {
+        let func = &mut funcs[fkey];
         let current_offset = func.code().len();
-        let l_offset = self.labels.get(label).unwrap();
-        let offset = (*l_offset as OpIndex) - (current_offset as OpIndex) - 1;
-        func.emit_code_with_imm(Opcode::JUMP, offset, Some(pos));
+        let jump_to = match self.labels.get(&label) {
+            Some(l_offset) => (*l_offset as OpIndex) - (current_offset as OpIndex) - 1,
+            None => {
+                self.go_tos.insert((fkey, current_offset), label);
+                0
+            }
+        };
+        func.emit_code_with_imm(Opcode::JUMP, jump_to, Some(pos));
+    }
+
+    pub fn patch_go_tos(&self, funcs: &mut FunctionObjs) {
+        for ((fkey, patch_offset), label) in self.go_tos.iter() {
+            let func = &mut funcs[*fkey];
+            let l_offset = self.labels[label];
+            let offset = (l_offset as OpIndex) - (*patch_offset as OpIndex) - 1;
+            func.instruction_mut(*patch_offset).set_imm(offset);
+        }
     }
 
     pub fn enter_block(&mut self) {

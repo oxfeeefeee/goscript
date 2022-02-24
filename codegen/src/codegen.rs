@@ -73,8 +73,9 @@ pub struct CodeGen<'a> {
     tlookup: TypeLookup<'a>,
     iface_mapping: &'a mut IfaceMapping,
     call_helper: &'a mut CallHelper,
+    branch_helper: &'a mut BranchHelper,
     pkg_helper: PkgHelper<'a>,
-    branch: BranchHelper,
+
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
     func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
@@ -91,6 +92,7 @@ impl<'a> CodeGen<'a> {
         type_cache: &'a mut TypeCache,
         mapping: &'a mut IfaceMapping,
         call_helper: &'a mut CallHelper,
+        branch_helper: &'a mut BranchHelper,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
         pkg: PackageKey,
@@ -105,8 +107,8 @@ impl<'a> CodeGen<'a> {
             tlookup: TypeLookup::new(tco, ti, type_cache, unsafe_ptr_meta),
             iface_mapping: mapping,
             call_helper: call_helper,
+            branch_helper: branch_helper,
             pkg_helper: PkgHelper::new(asto, tco, pkg_indices, pkgs),
-            branch: BranchHelper::new(),
             pkg_key: pkg,
             func_stack: Vec::new(),
             func_t_stack: Vec::new(),
@@ -745,8 +747,10 @@ impl<'a> CodeGen<'a> {
         self.func_t_stack.push(tc_type);
         // process function body
         self.visit_stmt_block(body);
+
+        let func = &mut self.objects.functions[fkey];
         // it will not be executed if it's redundant
-        Emitter::new(&mut self.objects.functions[fkey]).emit_return(None, Some(body.r_brace));
+        Emitter::new(func).emit_return(None, Some(body.r_brace));
 
         self.func_stack.pop();
         self.func_t_stack.pop();
@@ -1718,7 +1722,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
         };
-        self.branch.add_label(entity, offset, is_breakable);
+        self.branch_helper.add_label(entity, offset, is_breakable);
         self.visit_stmt(&stmt.stmt);
     }
 
@@ -1799,7 +1803,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         match bstmt.token {
             Token::BREAK | Token::CONTINUE => {
                 let entity = bstmt.label.map(|x| use_ident_unique_key!(self, x));
-                self.branch.add_point(
+                self.branch_helper.add_point(
                     current_func_mut!(self),
                     bstmt.token.clone(),
                     entity,
@@ -1807,10 +1811,15 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 );
             }
             Token::GOTO => {
-                let func = current_func_mut!(self);
+                let fkey = self.func_stack.last().unwrap();
                 let label = bstmt.label.unwrap();
                 let entity = use_ident_unique_key!(self, label);
-                self.branch.go_to(func, &entity, bstmt.token_pos);
+                self.branch_helper.go_to(
+                    &mut self.objects.functions,
+                    *fkey,
+                    entity,
+                    bstmt.token_pos,
+                );
             }
             Token::FALLTHROUGH => {
                 // handled in gen_switch_body
@@ -1865,7 +1874,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
-        self.branch.enter_block();
+        self.branch_helper.enter_block();
 
         if let Some(init) = &sstmt.init {
             self.visit_stmt(init);
@@ -1883,7 +1892,8 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         self.gen_switch_body(&*sstmt.body, tag_type);
 
-        self.branch.leave_block(current_func_mut!(self), None);
+        self.branch_helper
+            .leave_block(current_func_mut!(self), None);
     }
 
     fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
@@ -1957,7 +1967,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         Since communication on nil channels can never proceed, a select with only nil
         channels and no default case blocks forever.
         */
-        self.branch.enter_block();
+        self.branch_helper.enter_block();
 
         let mut helper = SelectHelper::new();
         let comms: Vec<&CommClause> = sstmt
@@ -2032,11 +2042,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         helper.patch_select(current_func_mut!(self));
 
-        self.branch.leave_block(current_func_mut!(self), None);
+        self.branch_helper
+            .leave_block(current_func_mut!(self), None);
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
-        self.branch.enter_block();
+        self.branch_helper.enter_block();
 
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init);
@@ -2073,12 +2084,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             func.instruction_mut(m - 1).set_imm(offset);
         }
 
-        self.branch
+        self.branch_helper
             .leave_block(current_func_mut!(self), Some(continue_marker));
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        self.branch.enter_block();
+        self.branch_helper.enter_block();
 
         let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
@@ -2098,7 +2109,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         func.instruction_mut(marker).set_imm(end_offset);
         func.emit_code_with_imm(Opcode::JUMP, offset, Some(rstmt.token_pos));
 
-        self.branch
+        self.branch_helper
             .leave_block(current_func_mut!(self), Some(marker));
     }
 
