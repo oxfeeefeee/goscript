@@ -677,11 +677,10 @@ impl<'a> CodeGen<'a> {
                 None => has_default = true,
             }
         }
-        if has_default {
-            let func = current_func_mut!(self);
-            helper.tags.add_default(func.next_code_index());
-            func.emit_code(Opcode::JUMP, None);
-        }
+
+        let func = current_func_mut!(self);
+        helper.tags.add_default(func.next_code_index());
+        func.emit_code(Opcode::JUMP, None);
 
         for (i, stmt) in body.list.iter().enumerate() {
             let cc = SwitchHelper::to_case_clause(stmt);
@@ -707,6 +706,11 @@ impl<'a> CodeGen<'a> {
         }
         let end = current_func!(self).next_code_index();
         helper.patch_ends(current_func_mut!(self), end);
+        // jump to the end if there is no default code
+        if !has_default {
+            let func = current_func_mut!(self);
+            helper.tags.patch_default(func, end);
+        }
 
         // pop the tag
         current_func_emitter!(self).emit_pop(1, None);
