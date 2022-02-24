@@ -158,7 +158,6 @@ impl<'a> Checker<'a> {
                         if p != o {
                             for s in node.succ.borrow().iter() {
                                 if s != o {
-                                    dbg!(&self.lobj(*s));
                                     map[p].succ.borrow_mut().insert(*s);
                                     map[s].pred.borrow_mut().insert(*p);
                                     map[s].pred.borrow_mut().remove(o);
