@@ -1160,6 +1160,12 @@ impl GosValue64 {
             ValueType::Uint16 => V64Union { uint16: i as u16 },
             ValueType::Uint32 => V64Union { uint32: i as u32 },
             ValueType::Uint64 => V64Union { uint64: i as u64 },
+            ValueType::Float32 => V64Union {
+                float32: F32::from(i as f32),
+            },
+            ValueType::Float64 => V64Union {
+                float64: F64::from(i as f64),
+            },
             _ => unreachable!(),
         };
         GosValue64 { data: u }

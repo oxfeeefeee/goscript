@@ -16,5 +16,5 @@ var a = 8
 func main() {
     p := math.Pi
 
-    fmt.Println(p,  math.Log10(1000), math.Sin(p), math.Sin(p/2))
+    fmt.Println(p,  math.Log10(1000), math.Sin(p), math.Sin(p/2), math.Sin(1))
 }
