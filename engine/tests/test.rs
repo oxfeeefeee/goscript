@@ -290,6 +290,14 @@ fn test_issue8() {
 fn test_std_math() {
     time_test!();
 
-    let err_cnt = run("./tests/std/math.gos", true);
+    let err_cnt = run("./tests/std/math.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
+fn test_std_temp() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/temp.gos", false);
     assert!(err_cnt == 0);
 }

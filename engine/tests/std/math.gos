@@ -5,7 +5,16 @@ import (
     "fmt"
 )
 
+const k = i + 1
+
+const i = 7
+
+var b = a + k
+var a = 8
+
+
 func main() {
     p := math.Pi
-    fmt.Println(p)
+
+    fmt.Println(p,  math.Log10(1000), math.Sin(p), math.Sin(p/2))
 }

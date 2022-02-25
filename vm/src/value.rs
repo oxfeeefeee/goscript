@@ -437,6 +437,16 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_uint32(&self) -> &u32 {
+        unwrap_gos_val!(Uint32, self)
+    }
+
+    #[inline]
+    pub fn as_uint64(&self) -> &u64 {
+        unwrap_gos_val!(Uint64, self)
+    }
+
+    #[inline]
     pub fn as_int32(&self) -> &i32 {
         unwrap_gos_val!(Int32, self)
     }
@@ -444,6 +454,11 @@ impl GosValue {
     #[inline]
     pub fn as_int_mut(&mut self) -> &mut isize {
         unwrap_gos_val!(Int, self)
+    }
+
+    #[inline]
+    pub fn as_float32(&self) -> &f32 {
+        unwrap_gos_val!(Float32, self)
     }
 
     #[inline]
