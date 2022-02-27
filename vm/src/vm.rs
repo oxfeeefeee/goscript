@@ -1310,11 +1310,13 @@ impl<'a> Fiber<'a> {
                         if inst.t1() != ValueType::Zero {
                             stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
                         }
+
+                        let mut result = vala.0.deep_clone(gcv);
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();
-                        vala.0
-                            .borrow_data_mut()
-                            .append(&mut valb.0.borrow_data().clone());
+                        result.append(&valb.0.borrow_data());
+
+                        stack.set(index, GosValue::slice_with_obj(result, gcv));
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);

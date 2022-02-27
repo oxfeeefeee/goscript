@@ -438,7 +438,7 @@ pub struct SliceObj {
     pub meta: GosMetadata,
     begin: Cell<usize>,
     end: Cell<usize>,
-    soft_cap: Cell<usize>, // <= self.vec.capacity()
+    cap_end: Cell<usize>,
     pub vec: Option<Rc<RefCell<GosVec>>>,
 }
 
@@ -451,14 +451,14 @@ impl<'a> SliceObj {
     ) -> SliceObj {
         assert!(cap >= len);
         let mut val: GosVec = Vec::with_capacity(cap);
-        for _ in 0..len {
+        for _ in 0..cap {
             val.push(RefCell::new(default_val.unwrap().clone()));
         }
         SliceObj {
             meta: meta,
             begin: Cell::from(0),
             end: Cell::from(len),
-            soft_cap: Cell::from(cap),
+            cap_end: Cell::from(cap),
             vec: Some(Rc::new(RefCell::new(val))),
         }
     }
@@ -468,7 +468,7 @@ impl<'a> SliceObj {
             meta: meta,
             begin: Cell::from(0),
             end: Cell::from(val.len()),
-            soft_cap: Cell::from(val.len()),
+            cap_end: Cell::from(val.len()),
             vec: Some(Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
             ))),
@@ -485,7 +485,7 @@ impl<'a> SliceObj {
             meta: elem_meta,
             begin: Cell::from(bi),
             end: Cell::from(ei),
-            soft_cap: Cell::from(len),
+            cap_end: Cell::from(bi + len),
             vec: Some(arr.vec.clone()),
         }
     }
@@ -495,7 +495,7 @@ impl<'a> SliceObj {
             meta: meta,
             begin: Cell::from(0),
             end: Cell::from(0),
-            soft_cap: Cell::from(0),
+            cap_end: Cell::from(0),
             vec: None,
         }
     }
@@ -503,7 +503,6 @@ impl<'a> SliceObj {
     pub fn set_from(&self, other: &SliceObj) {
         self.begin.set(other.begin());
         self.end.set(other.end());
-        self.soft_cap.set(other.soft_cap());
         *self.borrow_data_mut() = other.borrow_data().clone()
     }
 
@@ -512,11 +511,11 @@ impl<'a> SliceObj {
         SliceObj {
             meta: self.meta,
             begin: Cell::from(0),
-            end: Cell::from(self.cap()),
-            soft_cap: Cell::from(self.cap()),
+            end: Cell::from(self.end() - self.begin()),
+            cap_end: Cell::from(self.cap()),
             vec: self.vec.clone().map(|vec| {
                 Rc::new(RefCell::new(Vec::from_iter(
-                    vec.borrow()[self.begin()..self.end()]
+                    vec.borrow()[self.begin()..self.cap_end.get()]
                         .iter()
                         .map(|x| RefCell::new(x.borrow().deep_clone(gcos))),
                 )))
@@ -540,18 +539,13 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn soft_cap(&self) -> usize {
-        self.soft_cap.get()
-    }
-
-    #[inline]
     pub fn len(&self) -> usize {
         self.end() - self.begin()
     }
 
     #[inline]
     pub fn cap(&self) -> usize {
-        self.soft_cap() - self.begin()
+        self.cap_end.get() - self.begin()
     }
 
     #[inline]
@@ -577,17 +571,35 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
-        self.try_grow_vec(self.len() + 1);
-        self.borrow_data_mut().push(RefCell::new(val));
+        let mut data = self.borrow_data_mut();
+        if data.len() == self.len() {
+            data.push(RefCell::new(val))
+        } else {
+            data[self.end()] = RefCell::new(val);
+        }
+        drop(data);
         *self.end.get_mut() += 1;
+        if self.cap_end.get() < self.end.get() {
+            *self.cap_end.get_mut() += 1;
+        }
     }
 
     #[inline]
-    pub fn append(&mut self, vals: &mut GosVec) {
-        let new_len = self.len() + vals.len();
-        self.try_grow_vec(new_len);
-        self.borrow_data_mut().append(vals);
-        *self.end.get_mut() = self.begin() + new_len;
+    pub fn append(&mut self, vals: &GosVec) {
+        let mut data = self.borrow_data_mut();
+        let new_end = self.end() + vals.len();
+        let after_end_len = data.len() - self.end();
+        if after_end_len <= vals.len() {
+            data.truncate(self.end());
+            data.append(&mut vals.clone());
+        } else {
+            data[self.end()..new_end].clone_from_slice(&vals);
+        }
+        drop(data);
+        *self.end.get_mut() = new_end;
+        if self.cap_end.get() < self.end.get() {
+            *self.cap_end.get_mut() = self.end.get();
+        }
     }
 
     #[inline]
@@ -605,15 +617,23 @@ impl<'a> SliceObj {
     #[inline]
     pub fn slice(&self, begin: isize, end: isize, max: isize) -> SliceObj {
         let self_len = self.len() as isize + 1;
-        let self_cap = self.cap() as isize + 1;
-        let bi = begin as usize;
-        let ei = ((self_len + end) % self_len) as usize;
-        let mi = ((self_cap + max) % self_cap) as usize;
+        let bi = self.begin() + begin as usize;
+        let ei = self.begin() + ((self_len + end) % self_len) as usize;
+        let cap = if max < 0 {
+            self.cap_end.get()
+        } else {
+            max as usize
+        };
+        let mut data = self.borrow_data_mut();
+        let more_cap = cap as isize - data.len() as isize;
+        for _ in 0..more_cap {
+            data.push(RefCell::new(GosValue::new_nil())); // todo: is nil ok?
+        }
         SliceObj {
             meta: self.meta,
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
-            soft_cap: Cell::from(self.begin() + mi),
+            cap_end: Cell::from(cap),
             vec: self.vec.clone(),
         }
     }
@@ -625,34 +645,6 @@ impl<'a> SliceObj {
             .map(|x| x.borrow().clone())
             .collect()
     }
-
-    #[inline]
-    fn try_grow_vec(&mut self, len: usize) {
-        let cap = self.cap();
-        assert!(cap >= self.len());
-        if cap >= len {
-            return;
-        }
-        self.grow_vec(cap, len);
-    }
-
-    fn grow_vec(&mut self, cap: usize, len: usize) {
-        let mut cap = cap;
-        while cap < len {
-            if cap < 1024 {
-                cap *= 2
-            } else {
-                cap = (cap as f32 * 1.25) as usize
-            }
-        }
-        let data_len = self.len();
-        let mut vec = Vec::from_iter(self.borrow_data()[self.begin()..self.end()].iter().cloned());
-        vec.reserve_exact(cap - vec.len());
-        self.vec = Some(Rc::new(RefCell::new(vec)));
-        self.begin.set(0);
-        self.end.set(data_len);
-        self.soft_cap.set(cap);
-    }
 }
 
 impl Clone for SliceObj {
@@ -661,7 +653,7 @@ impl Clone for SliceObj {
             meta: self.meta,
             begin: self.begin.clone(),
             end: self.end.clone(),
-            soft_cap: self.soft_cap.clone(),
+            cap_end: self.cap_end.clone(),
             vec: self.vec.clone(),
         }
     }

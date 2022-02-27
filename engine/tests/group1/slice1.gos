@@ -39,6 +39,9 @@ func slice_slice() {
     assert(s3[0] == 2)
     assert(len(s3) == 1)
     assert(cap(s3) == 1)
+
+    s4 := s[1:2:11]
+    assert(cap(s4) == 10)
 }
 
 

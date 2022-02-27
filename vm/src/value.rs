@@ -326,6 +326,14 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn slice_with_obj(obj: SliceObj, gcobjs: &GcoVec) -> GosValue {
+        let s = Rc::new((obj, Cell::new(0)));
+        let v = GosValue::Slice(s);
+        gcobjs.add(&v);
+        v
+    }
+
+    #[inline]
     pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((SliceObj::with_data(val, meta), Cell::new(0)));
         let v = GosValue::Slice(s);
