@@ -102,7 +102,7 @@ impl BranchHelper {
         let block = self.block_stack.pop().unwrap();
         for (index, token, label) in block.points.into_iter() {
             let current_pc = index as OpIndex + 1;
-            let target = if token == Token::BREAK {
+            let target = if token == Token::BREAK || begin.is_none() {
                 end
             } else {
                 begin.unwrap()
