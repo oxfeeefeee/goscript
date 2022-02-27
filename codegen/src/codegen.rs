@@ -968,7 +968,7 @@ impl<'a> CodeGen<'a> {
             self.try_cast_to_iface(Some(*v), rhs, rhs_index, pos);
         }
         if !ellipsis {
-            if let Some((_, t)) = variadic {
+            if let Some(t) = variadic {
                 if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
                     for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
                         let rhs_index = i as OpIndex - params.len() as OpIndex;

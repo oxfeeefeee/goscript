@@ -224,7 +224,7 @@ impl<'a> TypeLookup<'a> {
     pub fn get_sig_params_tc_types(
         &mut self,
         func: TCTypeKey,
-    ) -> (Vec<TCTypeKey>, Option<(TCTypeKey, TCTypeKey)>) {
+    ) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         let params: Vec<TCTypeKey> = self.tc_objs.types[sig.params()]
@@ -236,8 +236,14 @@ impl<'a> TypeLookup<'a> {
             .collect();
         let variadic = if sig.variadic() {
             let slice_key = *params.last().unwrap();
-            let slice = &self.tc_objs.types[slice_key].try_as_slice().unwrap();
-            Some((slice_key, slice.elem()))
+            match &self.tc_objs.types[slice_key] {
+                Type::Slice(s) => Some(s.elem()),
+                // spec: "As a special case, append also accepts a first argument assignable
+                // to type []byte with a second argument of string type followed by ... .
+                // This form appends the bytes of the string.
+                Type::Basic(_) => Some(*self.tc_objs.universe().byte()),
+                _ => unreachable!(),
+            }
         } else {
             None
         };
