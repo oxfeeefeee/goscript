@@ -431,17 +431,7 @@ impl<'a> CodeGen<'a> {
                     let comma_ok = lhs.len() == 2;
                     match val0 {
                         Expr::TypeAssert(tae) => {
-                            self.visit_expr(&tae.expr);
-                            let t = self.tlookup.get_expr_tc_type(tae.typ.as_ref().unwrap());
-                            let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
-                            let func = current_func_mut!(self);
-                            let index = func.add_const(None, GosValue::Metadata(meta));
-                            func.emit_code_with_flag_imm(
-                                Opcode::TYPE_ASSERT,
-                                comma_ok,
-                                index.into(),
-                                Some(tae.l_paren),
-                            );
+                            self.gen_type_assert(&tae.expr, &tae.typ, comma_ok);
                         }
                         Expr::Index(ie) => {
                             self.gen_map_index(&ie.expr, &ie.index, comma_ok);
@@ -897,6 +887,16 @@ impl<'a> CodeGen<'a> {
                 current_func_emitter!(self).emit_call(style, pack, pos);
             }
         }
+    }
+
+    fn gen_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>, comma_ok: bool) {
+        self.visit_expr(expr);
+        let t = self.tlookup.get_expr_tc_type(typ.as_ref().unwrap());
+        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
+        let func = current_func_mut!(self);
+        let index = func.add_const(None, GosValue::Metadata(meta));
+        let pos = expr.pos(self.ast_objs);
+        func.emit_code_with_flag_imm(Opcode::TYPE_ASSERT, comma_ok, index.into(), Some(pos));
     }
 
     fn gen_map_index(&mut self, expr: &Expr, index: &Expr, comma_ok: bool) {
@@ -1398,8 +1398,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_type_assert(&mut self, _: &Expr, _expr: &Expr, _typ: &Option<Expr>) {
-        unimplemented!();
+    fn visit_expr_type_assert(&mut self, _: &Expr, expr: &Expr, typ: &Option<Expr>) {
+        self.gen_type_assert(expr, typ, false);
     }
 
     fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
