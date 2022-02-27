@@ -24,7 +24,7 @@ use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
-    identical, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, TypeInfo,
+    identical, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, Type, TypeInfo,
     TypeKey as TCTypeKey,
 };
 
@@ -956,29 +956,52 @@ impl<'a> CodeGen<'a> {
 
     fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
         let (sig_params, variadic) = self.tlookup.get_sig_params_tc_types(func);
-        let non_variadic_params = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
-        for (i, v) in sig_params[..non_variadic_params].iter().enumerate() {
+        let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
+        let param_types = self.get_exprs_final_types(params);
+
+        for (i, v) in sig_params[..non_variadic_count].iter().enumerate() {
             let rhs_index = i as OpIndex - params.len() as OpIndex;
             let rhs = if i == params.len() - 1 && ellipsis {
                 None
             } else {
-                Some(self.tlookup.get_expr_tc_type(&params[i]))
+                Some(param_types[i].0)
             };
-            let pos = params[i].pos(&self.ast_objs);
-            self.try_cast_to_iface(Some(*v), rhs, rhs_index, pos);
+            self.try_cast_to_iface(Some(*v), rhs, rhs_index, param_types[i].1);
         }
         if !ellipsis {
             if let Some(t) = variadic {
                 if self.tlookup.underlying_value_type_from_tc(t) == ValueType::Interface {
-                    for (i, p) in params.iter().enumerate().skip(non_variadic_params) {
+                    for (i, p) in param_types.iter().enumerate().skip(non_variadic_count) {
                         let rhs_index = i as OpIndex - params.len() as OpIndex;
-                        let rhs = self.tlookup.get_expr_tc_type(p);
-                        let pos = p.pos(&self.ast_objs);
-                        self.try_cast_to_iface(Some(t), Some(rhs), rhs_index, pos);
+                        self.try_cast_to_iface(Some(t), Some(p.0), rhs_index, p.1);
                     }
                 }
             }
         }
+    }
+
+    fn get_exprs_final_types(&self, params: &Vec<Expr>) -> Vec<(TCTypeKey, usize)> {
+        params.iter().fold(vec![], |mut init, e| {
+            let pos = e.pos(&self.ast_objs);
+            match e {
+                Expr::Call(call) => {
+                    let typ = self.tlookup.get_node_tc_type(call.id());
+                    match &self.tc_objs.types[typ] {
+                        Type::Tuple(tuple) => init.extend(
+                            tuple
+                                .vars()
+                                .iter()
+                                .map(|o| (self.tc_objs.lobjs[*o].typ().unwrap(), pos))
+                                .collect::<Vec<(TCTypeKey, usize)>>()
+                                .iter(),
+                        ),
+                        _ => init.push((typ, pos)),
+                    }
+                }
+                _ => init.push((self.tlookup.get_expr_tc_type(e), pos)),
+            };
+            init
+        })
     }
 
     fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
@@ -1780,27 +1803,35 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
-        let pos = Some(rstmt.ret);
-        let types = self
-            .tlookup
-            .get_sig_returns_tc_types(*self.func_t_stack.last().unwrap());
-        for (i, expr) in rstmt.results.iter().enumerate() {
-            self.visit_expr(expr);
-            let tc_type = self.tlookup.get_expr_tc_type(expr);
-            let t =
-                self.try_cast_to_iface(Some(types[i]), Some(tc_type), -1, expr.pos(&self.ast_objs));
-            let mut emitter = current_func_emitter!(self);
-            emitter.emit_store(
-                &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
-                -1,
-                None,
-                None,
-                t,
-                pos,
-            );
-            emitter.emit_pop(1, pos);
+        if !rstmt.results.is_empty() {
+            for expr in rstmt.results.iter() {
+                self.visit_expr(expr);
+            }
+
+            let return_types = self.get_exprs_final_types(&rstmt.results);
+            let types = self
+                .tlookup
+                .get_sig_returns_tc_types(*self.func_t_stack.last().unwrap());
+            assert_eq!(return_types.len(), types.len());
+            let count: OpIndex = return_types.len() as OpIndex;
+            for (i, typ) in return_types.iter().enumerate() {
+                let index = i as i32 - count;
+                let pos = typ.1;
+                let t = self.try_cast_to_iface(Some(types[i]), Some(typ.0), index, pos);
+                let mut emitter = current_func_emitter!(self);
+                emitter.emit_store(
+                    &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
+                    index,
+                    None,
+                    None,
+                    t,
+                    Some(pos),
+                );
+            }
+            current_func_emitter!(self).emit_pop(count, Some(rstmt.ret));
         }
-        current_func_emitter!(self).emit_return(None, pos);
+
+        current_func_emitter!(self).emit_return(None, Some(rstmt.ret));
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
