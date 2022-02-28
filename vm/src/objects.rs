@@ -571,21 +571,39 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn append(&mut self, vals: &SliceObj) {
+    pub fn append(&mut self, other: &SliceObj) {
         let mut data = self.borrow_all_data_mut();
-        let new_end = self.end() + vals.len();
+        let new_end = self.end() + other.len();
         let after_end_len = data.len() - self.end();
-        if after_end_len <= vals.len() {
+        if after_end_len <= other.len() {
             data.truncate(self.end());
-            data.extend_from_slice(vals.borrow().as_slice());
+            data.extend_from_slice(other.borrow().as_slice());
         } else {
-            data[self.end()..new_end].clone_from_slice(vals.borrow().as_slice());
+            data[self.end()..new_end].clone_from_slice(other.borrow().as_slice());
         }
         drop(data);
         *self.end.get_mut() = new_end;
         if self.cap_end.get() < self.end.get() {
             *self.cap_end.get_mut() = self.end.get();
         }
+    }
+
+    #[inline]
+    pub fn copy_from(&self, other: &SliceObj) {
+        let mut data = self.borrow_all_data_mut();
+        let ref_other = other.borrow();
+        let data_other = ref_other.as_slice();
+        let (left, right) = match self.len() >= other.len() {
+            true => (
+                &mut data[self.begin()..self.begin() + other.len()],
+                data_other,
+            ),
+            false => (
+                &mut data[self.begin()..self.end()],
+                &data_other[..self.len()],
+            ),
+        };
+        left.clone_from_slice(right);
     }
 
     #[inline]

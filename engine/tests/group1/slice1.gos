@@ -63,6 +63,26 @@ func append_slice() {
     assert(s1[5] == 't')
 }
 
+func copy_slice() {
+    m := []byte{1,2,3,4}
+    n := []byte{66,77}
+    t := m[1:4]
+    copy(t, n)
+    assert(t[0] == 66)
+    assert(t[1] == 77)
+    assert(t[2] == 4)
+
+    t2 := m[:1]
+    copy(t2, n)
+     assert(t2[0] == 66)
+    assert(t2[1] == 66)
+    assert(t2[2] == 77)
+
+    copy(t2, "what")
+    assert(t2[0] == 'w')
+    assert(t2[1] == 66)
+}
+
 
 
 func main() {
@@ -80,4 +100,6 @@ func main() {
     slice_slice()
 
     append_slice()
+
+    copy_slice()
 }

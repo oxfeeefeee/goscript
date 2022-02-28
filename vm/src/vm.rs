@@ -1333,7 +1333,7 @@ impl<'a> Fiber<'a> {
                                 stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
                             }
                         };
-                        let mut result = vala.0.deep_clone(gcv);
+                        let mut result = vala.0.clone();
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();
                         result.append(&valb.0);
@@ -1341,14 +1341,26 @@ impl<'a> Fiber<'a> {
                         stack.set(index, GosValue::slice_with_obj(result, gcv));
                     }
                     Opcode::COPY => {
-                        /*
                         let t1 = match inst.t1() {
                             ValueType::FlagC => ValueType::Str,
                             _ => ValueType::Slice,
                         };
+                        let index = Stack::offset(stack.len(), -2);
+                        let a = stack.get_with_type(index, ValueType::Slice);
                         let b = stack.pop_with_type(t1);
-                        let a = stack.pop_with_type(ValueType::Slice);
-                        */
+                        let vala = a.as_slice();
+                        if t1 == ValueType::Str {
+                            let bytes: Vec<GosValue> = b
+                                .as_str()
+                                .as_bytes()
+                                .iter()
+                                .map(|x| GosValue::Uint8(*x))
+                                .collect();
+                            let b_slice = SliceObj::with_data(bytes, vala.0.meta);
+                            vala.0.copy_from(&b_slice);
+                        } else {
+                            vala.0.copy_from(&b.as_slice().0);
+                        }
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);
