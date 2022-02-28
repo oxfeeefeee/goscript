@@ -295,6 +295,14 @@ fn test_std_math() {
 }
 
 #[test]
+fn test_std_strconv() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/strconv.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 

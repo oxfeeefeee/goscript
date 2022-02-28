@@ -17,4 +17,6 @@ func main() {
     p := math.Pi
 
     fmt.Println(p,  math.Log10(1000), math.Sin(p), math.Sin(p/2), math.Sin(1))
+
+    fmt.Println(math.Pow(3,20.2), math.Pow(3,-20.2))
 }

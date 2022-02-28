@@ -1,35 +1,16 @@
 package main
 
+
 import (
+	"math"
     "fmt"
 )
 
-
-
-func ttt1() int {
-    i := 1
-    switch {
-        case i < 0 :
-            return 6
-        case i > 2:
-            return 7
-    }
-    return 8
-}
-
-func ttt2() int {
-    i := 1
-    switch {
-        case i < 0 :
-            fmt.Println("666")
-            return 6
-        case i > 0:
-            fmt.Println("777")
-            return 7
-    }
-    return 8
-}
-
 func main() {
-    fmt.Println("xxx", ttt1(), ttt2())
+    math.Sin(1)
+
+    m := []byte{1,3}
+    n := []byte{2,4}
+    t := append(m, n...)
+    fmt.Println(t, m, n)
 }
