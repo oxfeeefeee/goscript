@@ -1113,10 +1113,16 @@ impl<'a> Fiber<'a> {
                         let begin = stack.pop_int();
                         let target = stack.pop_with_type(inst.t0());
                         let result = match &target {
-                            GosValue::Slice(sl) => GosValue::Slice(Rc::new((
-                                sl.0.slice(begin, end, max),
-                                Cell::new(0),
-                            ))),
+                            GosValue::Slice(sl) => {
+                                if max > sl.0.cap() as isize {
+                                    let msg = format!("index {} out of range", max).to_string();
+                                    go_panic_str!(panic, metadata, msg, frame, code);
+                                }
+                                GosValue::Slice(Rc::new((
+                                    sl.0.slice(begin, end, max),
+                                    Cell::new(0),
+                                )))
+                            }
                             GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                             GosValue::Array(_) => {
                                 GosValue::slice_with_array(&target, begin, end, gcv)
@@ -1307,10 +1313,26 @@ impl<'a> Fiber<'a> {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
                         let a = stack.get_with_type(index, ValueType::Slice);
                         let vala = a.as_slice();
-                        if inst.t1() != ValueType::Zero {
-                            stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
-                        }
-
+                        match inst.t1() {
+                            ValueType::FlagA => unreachable!(),
+                            ValueType::FlagB => {} // default case, nothing to do
+                            ValueType::FlagC => {
+                                // special case, appending string as bytes
+                                let b = stack.pop_with_type(ValueType::Str);
+                                let bytes: Vec<GosValue> = b
+                                    .as_str()
+                                    .as_bytes()
+                                    .iter()
+                                    .map(|x| GosValue::Uint8(*x))
+                                    .collect();
+                                let b_slice = GosValue::slice_with_val(bytes, vala.0.meta, gcv);
+                                stack.push(b_slice);
+                            }
+                            _ => {
+                                // pack args into a slice
+                                stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
+                            }
+                        };
                         let mut result = vala.0.deep_clone(gcv);
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();

@@ -104,8 +104,8 @@ impl StringObj {
     }
 
     #[inline]
-    pub fn into_string(self) -> String {
-        Rc::try_unwrap(self.data).unwrap()
+    pub fn as_bytes(&self) -> &[u8] {
+        self.as_str().as_bytes()
     }
 
     #[inline]

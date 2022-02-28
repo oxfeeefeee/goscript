@@ -40,8 +40,27 @@ func slice_slice() {
     assert(len(s3) == 1)
     assert(cap(s3) == 1)
 
-    s4 := s[1:2:11]
-    assert(cap(s4) == 10)
+    s4 := s[1:2:3]
+    assert(cap(s4) == 2)
+
+    // index out of range
+    //s4 = s[1:2:11]
+    //assert(cap(s4) == 10)
+}
+
+func append_slice() {
+    m := []byte{1,3}
+    n := []byte{2,4}
+    t := append(m, n...)
+    assert(t[0] == 1)
+    assert(t[2] == 2)
+
+    s := "what"
+    s1 := append(m, s...)
+    assert(s1[2] == 'w')
+    assert(s1[3] == 'h')
+    assert(s1[4] == 'a')
+    assert(s1[5] == 't')
 }
 
 
@@ -59,4 +78,6 @@ func main() {
     f2()
 
     slice_slice()
+
+    append_slice()
 }

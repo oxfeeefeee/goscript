@@ -793,17 +793,18 @@ impl<'a> CodeGen<'a> {
                 };
                 let bf = self.tc_objs.universe().builtins()[&builtin];
                 let param_count = params.len() as OpIndex;
-                let (t_variadic, count) = if bf.variadic {
-                    if ellipsis {
-                        (None, Some(0)) // do not pack params if there is ellipsis
-                    } else {
-                        (
+                let (t_variadic, count) = match bf.variadic {
+                    true => match ellipsis {
+                        true => match param_last_t.unwrap() {
+                            ValueType::Str => (Some(ValueType::FlagC), Some(0)), // special case
+                            _ => (Some(ValueType::FlagB), Some(0)), // do not pack params if there is ellipsis
+                        },
+                        false => (
                             param_last_t,
                             Some(bf.arg_count as OpIndex - param_count + 1),
-                        )
-                    }
-                } else {
-                    (None, Some(param_count as OpIndex))
+                        ),
+                    },
+                    false => (Some(ValueType::FlagA), Some(param_count as OpIndex)),
                 };
                 let func = current_func_mut!(self);
                 func.emit_inst(opcode, [param0t, t_variadic, None], count, pos);
