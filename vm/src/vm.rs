@@ -536,7 +536,7 @@ impl<'a> Fiber<'a> {
                                         *mref = val.try_get_map().unwrap().0.borrow_data().clone();
                                     }
                                     PointerObj::SliceMember(s, index) => {
-                                        let vborrow = s.0.borrow_data();
+                                        let vborrow = s.0.borrow();
                                         let target: &mut GosValue = &mut vborrow
                                             [s.0.begin() + *index as usize]
                                             .borrow_mut();
@@ -590,7 +590,7 @@ impl<'a> Fiber<'a> {
                                         match inst.t2() {
                                             ValueType::Int32 => slice
                                                 .0
-                                                .borrow_data()
+                                                .borrow()
                                                 .iter()
                                                 .map(|x| {
                                                     vm_util::char_from_i32(*(x.borrow().as_int32()))
@@ -599,7 +599,7 @@ impl<'a> Fiber<'a> {
                                             ValueType::Uint8 => {
                                                 let buf: Vec<u8> = slice
                                                     .0
-                                                    .borrow_data()
+                                                    .borrow()
                                                     .iter()
                                                     .map(|x| *(x.borrow().as_uint8()))
                                                     .collect();
@@ -1336,9 +1336,19 @@ impl<'a> Fiber<'a> {
                         let mut result = vala.0.deep_clone(gcv);
                         let b = stack.pop_with_type(ValueType::Slice);
                         let valb = b.as_slice();
-                        result.append(&valb.0.borrow_data());
+                        result.append(&valb.0);
 
                         stack.set(index, GosValue::slice_with_obj(result, gcv));
+                    }
+                    Opcode::COPY => {
+                        /*
+                        let t1 = match inst.t1() {
+                            ValueType::FlagC => ValueType::Str,
+                            _ => ValueType::Slice,
+                        };
+                        let b = stack.pop_with_type(t1);
+                        let a = stack.pop_with_type(ValueType::Slice);
+                        */
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);

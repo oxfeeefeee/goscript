@@ -95,10 +95,11 @@ fn children_ref_sub_one(val: &GosValue) {
             .for_each(|obj| obj.borrow().ref_sub_one()),
         GosValue::Closure(c) => c.0.borrow().ref_sub_one(),
         GosValue::Slice(s) => {
+            // todo: slice shares data, could use some optimization
             let sdata = &s.0;
             if !sdata.is_nil() {
                 sdata
-                    .borrow_data()
+                    .borrow()
                     .iter()
                     .for_each(|obj| obj.borrow().ref_sub_one())
             }
@@ -127,9 +128,10 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
         GosValue::Closure(c) => c.0.borrow().mark_dirty(queue),
         GosValue::Slice(s) => {
             let sdata = &s.0;
+            // todo: slice shares data, could use some optimization
             if !sdata.is_nil() {
                 sdata
-                    .borrow_data()
+                    .borrow()
                     .iter()
                     .for_each(|obj| obj.borrow().mark_dirty(queue))
             }

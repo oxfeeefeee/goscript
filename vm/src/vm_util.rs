@@ -261,7 +261,7 @@ pub fn store_index(
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
         }
         GosValue::Slice(s) => {
-            let target_cell = &s.0.borrow_data()[*key.as_int() as usize];
+            let target_cell = &s.0.borrow()[*key.as_int() as usize];
             stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
         }
         GosValue::Map(map) => {
@@ -294,7 +294,7 @@ pub fn store_index_int(
             if s.0.is_nil() {
                 err
             } else {
-                let target_cell = &s.0.borrow_data()[i];
+                let target_cell = &s.0.borrow()[i];
                 stack.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
                 Ok(())
             }

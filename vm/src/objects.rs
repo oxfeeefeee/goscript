@@ -17,6 +17,7 @@ use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::iter::FromIterator;
+use std::ops::Index;
 use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 128;
@@ -503,7 +504,8 @@ impl<'a> SliceObj {
     pub fn set_from(&self, other: &SliceObj) {
         self.begin.set(other.begin());
         self.end.set(other.end());
-        *self.borrow_data_mut() = other.borrow_data().clone()
+        self.cap_end.set(other.cap_end.get());
+        *self.borrow_all_data_mut() = other.borrow_all_data().clone()
     }
 
     /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
@@ -554,24 +556,8 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
-        match &self.vec {
-            Some(v) => v.borrow_mut(),
-            None => unreachable!(), //todo: error handling
-        }
-    }
-
-    #[inline]
-    pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
-        match &self.vec {
-            Some(v) => v.borrow(),
-            None => unreachable!(), //todo: error handling
-        }
-    }
-
-    #[inline]
     pub fn push(&mut self, val: GosValue) {
-        let mut data = self.borrow_data_mut();
+        let mut data = self.borrow_all_data_mut();
         if data.len() == self.len() {
             data.push(RefCell::new(val))
         } else {
@@ -585,15 +571,15 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn append(&mut self, vals: &GosVec) {
-        let mut data = self.borrow_data_mut();
+    pub fn append(&mut self, vals: &SliceObj) {
+        let mut data = self.borrow_all_data_mut();
         let new_end = self.end() + vals.len();
         let after_end_len = data.len() - self.end();
         if after_end_len <= vals.len() {
             data.truncate(self.end());
-            data.append(&mut vals.clone());
+            data.extend_from_slice(vals.borrow().as_slice());
         } else {
-            data[self.end()..new_end].clone_from_slice(&vals);
+            data[self.end()..new_end].clone_from_slice(vals.borrow().as_slice());
         }
         drop(data);
         *self.end.get_mut() = new_end;
@@ -604,14 +590,14 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn get(&self, i: usize) -> Option<GosValue> {
-        self.borrow_data()
+        self.borrow_all_data()
             .get(self.begin() + i)
             .map(|x| x.clone().into_inner())
     }
 
     #[inline]
     pub fn set(&self, i: usize, val: GosValue) {
-        self.borrow_data()[self.begin() + i].replace(val);
+        self.borrow_all_data()[self.begin() + i].replace(val);
     }
 
     #[inline]
@@ -624,7 +610,7 @@ impl<'a> SliceObj {
         } else {
             max as usize
         };
-        let mut data = self.borrow_data_mut();
+        let mut data = self.borrow_all_data_mut();
         let more_cap = cap as isize - data.len() as isize;
         for _ in 0..more_cap {
             data.push(RefCell::new(GosValue::new_nil())); // todo: is nil ok?
@@ -640,10 +626,17 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn get_vec(&self) -> Vec<GosValue> {
-        self.borrow_data()
-            .iter()
-            .map(|x| x.borrow().clone())
-            .collect()
+        self.borrow().iter().map(|x| x.borrow().clone()).collect()
+    }
+
+    #[inline]
+    fn borrow_all_data_mut(&self) -> std::cell::RefMut<GosVec> {
+        self.vec.as_ref().unwrap().borrow_mut()
+    }
+
+    #[inline]
+    fn borrow_all_data(&self) -> std::cell::Ref<GosVec> {
+        self.vec.as_ref().unwrap().borrow()
     }
 }
 
@@ -672,6 +665,14 @@ impl Display for SliceObj {
     }
 }
 
+impl PartialEq for SliceObj {
+    fn eq(&self, _other: &SliceObj) -> bool {
+        unreachable!() //false
+    }
+}
+
+impl Eq for SliceObj {}
+
 pub struct SliceRef<'a> {
     vec_ref: Ref<'a, GosVec>,
     begin: usize,
@@ -685,12 +686,13 @@ pub type SliceEnumIter<'a> = std::iter::Enumerate<SliceIter<'a>>;
 impl<'a> SliceRef<'a> {
     pub fn new(s: &SliceObj) -> SliceRef {
         SliceRef {
-            vec_ref: s.borrow_data(),
+            vec_ref: s.borrow_all_data(),
             begin: s.begin(),
             end: s.end(),
         }
     }
 
+    #[inline]
     pub fn iter(&self) -> SliceIter {
         self.vec_ref[self.begin..self.end].iter()
     }
@@ -699,15 +701,19 @@ impl<'a> SliceRef<'a> {
     pub fn get(&self, i: usize) -> Option<&RefCell<GosValue>> {
         self.vec_ref.get(self.begin + i)
     }
-}
 
-impl PartialEq for SliceObj {
-    fn eq(&self, _other: &SliceObj) -> bool {
-        unreachable!() //false
+    pub fn as_slice(&self) -> &[RefCell<GosValue>] {
+        &self.vec_ref[self.begin..self.end]
     }
 }
 
-impl Eq for SliceObj {}
+impl<'a> Index<usize> for SliceRef<'a> {
+    type Output = RefCell<GosValue>;
+
+    fn index(&self, i: usize) -> &RefCell<GosValue> {
+        self.get(i).as_ref().unwrap()
+    }
+}
 
 // ----------------------------------------------------------------------------
 // StructObj

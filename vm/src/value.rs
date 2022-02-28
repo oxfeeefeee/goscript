@@ -685,7 +685,7 @@ impl GosValue {
                     PointerObj::StructField(sobj, index) => {
                         sobj.0.borrow().fields[*index as usize].get_meta(objs, stack)
                     }
-                    PointerObj::SliceMember(sobj, index) => sobj.0.borrow_data()[*index as usize]
+                    PointerObj::SliceMember(sobj, index) => sobj.0.borrow()[*index as usize]
                         .borrow()
                         .get_meta(objs, stack),
                     PointerObj::PkgMember(pkey, index) => {
