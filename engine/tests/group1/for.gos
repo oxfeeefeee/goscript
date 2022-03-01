@@ -220,6 +220,30 @@ FOR1:
     assert(total == 2 * 3)
 }
 
+func break_switch() {
+    total := 0
+
+FOR1:
+    for i := 0; i < 10; i++ {
+        total += 3
+        switch total {
+        case 3:
+            assert(total == 3)
+            fmt.Println("case 3")
+            break 
+        case 106:
+            assert(total == 106)
+            fmt.Println("case 106")
+            continue
+        default:
+            fmt.Println("default")
+            break FOR1
+        }	
+        total += 100
+    }
+    assert(total == 109)
+}
+
 
 func main() {
    f1()
@@ -234,4 +258,6 @@ func main() {
     break_label() 
     
     break_select()
+
+    break_switch()
 }
