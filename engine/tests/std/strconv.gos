@@ -7,6 +7,6 @@ import (
 
 
 func main() {
-    r, _ := strconv.ParseFloat("1.000000000000000111022302462515654042363166809082031251", 64)
-    fmt.Println(r)
+    r, err := strconv.ParseFloat("1.000000000000000111022302462515654042363166809082031251", 64)
+    fmt.Println(r, err)
 }

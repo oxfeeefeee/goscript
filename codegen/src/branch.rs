@@ -12,13 +12,15 @@ use std::collections::HashMap;
 pub struct BranchBlock {
     points: Vec<(usize, Token, Option<KeyData>)>,
     label: Option<KeyData>,
+    is_loop: bool,
 }
 
 impl BranchBlock {
-    pub fn new(label: Option<KeyData>) -> BranchBlock {
+    pub fn new(label: Option<KeyData>, is_loop: bool) -> BranchBlock {
         BranchBlock {
             points: vec![],
             label: label,
+            is_loop: is_loop,
         }
     }
 }
@@ -92,26 +94,29 @@ impl BranchHelper {
         }
     }
 
-    pub fn enter_block(&mut self) {
+    pub fn enter_block(&mut self, is_loop: bool) {
         self.block_stack
-            .push(BranchBlock::new(self.next_block_label.take()))
+            .push(BranchBlock::new(self.next_block_label.take(), is_loop))
     }
 
     pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>) {
         let end = func.next_code_index();
         let block = self.block_stack.pop().unwrap();
         for (index, token, label) in block.points.into_iter() {
-            let current_pc = index as OpIndex + 1;
-            let target = if token == Token::BREAK || begin.is_none() {
-                end
-            } else {
-                begin.unwrap()
+            let label_match = label.is_none() || label == block.label;
+            // for select&switch, 'break' breaks current block
+            // for 'continue' breaks outer looping block
+            let (break_this, target) = match token {
+                Token::BREAK => (true, Some(end)),
+                Token::CONTINUE => (block.is_loop, begin),
+                _ => unreachable!(),
             };
-            if label == block.label {
+            if label_match && break_this {
+                let current_pc = index as OpIndex + 1;
                 func.instruction_mut(index)
-                    .set_imm(target as OpIndex - current_pc);
+                    .set_imm(target.unwrap() as OpIndex - current_pc);
             } else {
-                // this break/continue tries to jump out of an outer loop
+                // this break/continue tries to jump out of an outer block
                 // so we add it to outer block's jump out points
                 self.block_stack
                     .last_mut()

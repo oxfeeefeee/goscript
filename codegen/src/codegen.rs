@@ -1913,7 +1913,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
-        self.branch_helper.enter_block();
+        self.branch_helper.enter_block(false);
 
         if let Some(init) = &sstmt.init {
             self.visit_stmt(init);
@@ -2006,7 +2006,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         Since communication on nil channels can never proceed, a select with only nil
         channels and no default case blocks forever.
         */
-        self.branch_helper.enter_block();
+        self.branch_helper.enter_block(false);
 
         let mut helper = SelectHelper::new();
         let comms: Vec<&CommClause> = sstmt
@@ -2086,7 +2086,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
-        self.branch_helper.enter_block();
+        self.branch_helper.enter_block(true);
 
         if let Some(init) = &fstmt.init {
             self.visit_stmt(init);
@@ -2128,7 +2128,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        self.branch_helper.enter_block();
+        self.branch_helper.enter_block(true);
 
         let blank = Expr::Ident(self.blank_ident);
         let lhs = vec![
