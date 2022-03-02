@@ -1382,6 +1382,7 @@ pub struct PackageVal {
     name: String,
     members: Vec<Rc<RefCell<GosValue>>>, // imports, const, var, func are all stored here
     member_indices: HashMap<String, OpIndex>,
+    init_funcs: Vec<GosValue>,
     // maps func_member_index of the constructor to pkg_member_index
     var_mapping: Option<HashMap<OpIndex, OpIndex>>,
 }
@@ -1392,6 +1393,7 @@ impl PackageVal {
             name: name,
             members: Vec::new(),
             member_indices: HashMap::new(),
+            init_funcs: Vec::new(),
             var_mapping: Some(HashMap::new()),
         }
     }
@@ -1410,6 +1412,10 @@ impl PackageVal {
             .unwrap()
             .insert(fn_index.into(), index);
         index
+    }
+
+    pub fn add_init_func(&mut self, func: GosValue) {
+        self.init_funcs.push(func);
     }
 
     pub fn var_mut(&self, fn_member_index: OpIndex) -> RefMut<GosValue> {
@@ -1441,6 +1447,11 @@ impl PackageVal {
     #[inline]
     pub fn member_mut(&self, i: OpIndex) -> RefMut<GosValue> {
         self.members[i as usize].borrow_mut()
+    }
+
+    #[inline]
+    pub fn init_func(&self, i: OpIndex) -> Option<&GosValue> {
+        self.init_funcs.get(i as usize)
     }
 }
 

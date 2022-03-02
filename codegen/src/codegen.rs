@@ -1739,9 +1739,14 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     .get_meta_by_node_id(field.typ.id(), self.objects, self.dummy_gcv);
             meta.set_method_code(name, fkey, &mut self.objects.metas);
         } else {
-            let ident = &self.ast_objs.idents[decl.name];
+            let name = &self.ast_objs.idents[decl.name].name;
             let pkg = &mut self.objects.packages[self.pkg_key];
-            pkg.add_member(ident.name.clone(), cls);
+            match name.as_str() {
+                "init" => pkg.add_init_func(cls),
+                _ => {
+                    pkg.add_member(name.clone(), cls);
+                }
+            };
         }
     }
 

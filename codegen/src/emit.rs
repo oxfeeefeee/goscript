@@ -269,6 +269,7 @@ impl<'a> Emitter<'a> {
         self.f
             .emit_inst(Opcode::IMPORT, [None, None, None], Some(index), pos);
         let cd = vec![
+            // init package vars
             Instruction::new(
                 Opcode::LOAD_PKG_FIELD,
                 Some(ValueType::Int),
@@ -279,6 +280,14 @@ impl<'a> Emitter<'a> {
             Instruction::from_u64(key_to_u64(pkg)),
             Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
             Instruction::new(Opcode::CALL, None, None, None, None),
+            // call init functions
+            Instruction::new(Opcode::PUSH_IMM, Some(ValueType::Uint), None, None, Some(0)),
+            Instruction::new(Opcode::LOAD_PKG_INIT, None, None, None, Some(0)),
+            Instruction::from_u64(key_to_u64(pkg)),
+            Instruction::new(Opcode::JUMP_IF_NOT, None, None, None, Some(3)),
+            Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
+            Instruction::new(Opcode::CALL, None, None, None, None),
+            Instruction::new(Opcode::JUMP, None, None, None, Some(-6)),
         ];
         let offset = cd.len() as OpIndex;
         self.f

@@ -257,6 +257,12 @@ fn test_select() {
 }
 
 #[test]
+fn test_init_func() {
+    let err_cnt = run("./tests/group1/init_func.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);

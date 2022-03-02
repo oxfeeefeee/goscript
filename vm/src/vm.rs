@@ -489,6 +489,19 @@ impl<'a> Fiber<'a> {
                         let pkg = &objs.packages[pkg_key];
                         stack.push(pkg.member(index).clone());
                     }
+                    Opcode::LOAD_PKG_INIT => {
+                        let index = stack.pop_int32();
+                        let pkg_key = read_imm_key!(code, frame, objs);
+                        let pkg = &objs.packages[pkg_key];
+                        match pkg.init_func(index) {
+                            Some(f) => {
+                                stack.push(GosValue::Int32(index + 1));
+                                stack.push(f.clone());
+                                stack.push(GosValue::Bool(true));
+                            }
+                            None => stack.push(GosValue::Bool(false)),
+                        }
+                    }
                     Opcode::STORE_PKG_FIELD => {
                         let (rhs_index, imm) = inst.imm824();
                         let pkg = &objs.packages[read_imm_key!(code, frame, objs)];
