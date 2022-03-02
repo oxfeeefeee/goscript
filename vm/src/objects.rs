@@ -589,7 +589,7 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn copy_from(&self, other: &SliceObj) {
+    pub fn copy_from(&self, other: &SliceObj) -> usize {
         let mut data = self.borrow_all_data_mut();
         let ref_other = other.borrow();
         let data_other = ref_other.as_slice();
@@ -604,6 +604,7 @@ impl<'a> SliceObj {
             ),
         };
         left.clone_from_slice(right);
+        right.len()
     }
 
     #[inline]

@@ -1349,7 +1349,7 @@ impl<'a> Fiber<'a> {
                         let a = stack.get_with_type(index, ValueType::Slice);
                         let b = stack.pop_with_type(t1);
                         let vala = a.as_slice();
-                        if t1 == ValueType::Str {
+                        let count = if t1 == ValueType::Str {
                             let bytes: Vec<GosValue> = b
                                 .as_str()
                                 .as_bytes()
@@ -1357,10 +1357,11 @@ impl<'a> Fiber<'a> {
                                 .map(|x| GosValue::Uint8(*x))
                                 .collect();
                             let b_slice = SliceObj::with_data(bytes, vala.0.meta);
-                            vala.0.copy_from(&b_slice);
+                            vala.0.copy_from(&b_slice)
                         } else {
-                            vala.0.copy_from(&b.as_slice().0);
-                        }
+                            vala.0.copy_from(&b.as_slice().0)
+                        };
+                        stack.push_int(count as isize);
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);
