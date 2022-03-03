@@ -542,7 +542,15 @@ impl<'a> CodeGen<'a> {
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
-                    current_func_emitter!(self).emit_store(l, rhs_index, None, None, typ, pos);
+                    let fkey = self.func_stack.last().unwrap();
+                    current_func_emitter!(self).emit_store(
+                        l,
+                        rhs_index,
+                        None,
+                        Some((self.pkg_helper.pairs_mut(), *fkey)),
+                        typ,
+                        pos,
+                    );
                 }
                 LeftHandSide::IndexSelExpr(info) => {
                     current_func_emitter!(self).emit_store(
