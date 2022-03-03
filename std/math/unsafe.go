@@ -30,6 +30,12 @@ func Float64bits(f float64) uint64 { return *(*uint64)(unsafe.Pointer(&f)) }
 func Float64frombits(b uint64) float64 { return *(*float64)(unsafe.Pointer(&b)) }
 */
 
+var ffiHandle ffiBits
+
+func init() {
+	ffiHandle = ffi(ffiBits, "bits")
+}
+
 type ffiBits interface {
 	f32_to_bits(f float32) uint32
 	f32_from_bits(b uint32) float32
@@ -41,8 +47,6 @@ type ffiBits interface {
 // with the sign bit of f and the result in the same bit position.
 // Float32bits(Float32frombits(x)) == x.
 func Float32bits(f float32) uint32 {
-	// todo: init once
-	var ffiHandle = ffi(ffiBits, "bits")
 	return ffiHandle.f32_to_bits(f)
 }
 
@@ -51,8 +55,6 @@ func Float32bits(f float32) uint32 {
 // and the result in the same bit position.
 // Float32frombits(Float32bits(x)) == x.
 func Float32frombits(b uint32) float32 {
-	// todo: init once
-	var ffiHandle = ffi(ffiBits, "bits")
 	return ffiHandle.f32_from_bits(b)
 }
 
@@ -60,8 +62,6 @@ func Float32frombits(b uint32) float32 {
 // with the sign bit of f and the result in the same bit position,
 // and Float64bits(Float64frombits(x)) == x.
 func Float64bits(f float64) uint64 {
-	// todo: init once
-	var ffiHandle = ffi(ffiBits, "bits")
 	return ffiHandle.f64_to_bits(f)
 }
 
@@ -70,7 +70,5 @@ func Float64bits(f float64) uint64 {
 // and the result in the same bit position.
 // Float64frombits(Float64bits(x)) == x.
 func Float64frombits(b uint64) float64 {
-	// todo: init once
-	var ffiHandle = ffi(ffiBits, "bits")
 	return ffiHandle.f64_from_bits(b)
 }
