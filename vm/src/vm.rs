@@ -296,10 +296,10 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_INDEX => {
                         let ind = stack.pop_with_type(inst.t1());
                         let mut val = &stack.pop_with_type(inst.t0());
+                        if inst.t0() == ValueType::Named {
+                            val = &val.as_named().0;
+                        }
                         if inst.t2_as_index() == 0 {
-                            if inst.t0() == ValueType::Named {
-                                val = &val.as_named().0;
-                            }
                             match vm_util::load_index(val, &ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
@@ -311,7 +311,10 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::LOAD_INDEX_IMM => {
-                        let val = &stack.pop_with_type(inst.t0());
+                        let mut val = &stack.pop_with_type(inst.t0());
+                        if inst.t0() == ValueType::Named {
+                            val = &val.as_named().0;
+                        }
                         let index = inst.imm() as usize;
                         if inst.t2_as_index() == 0 {
                             match vm_util::load_index_int(val, index) {
@@ -332,7 +335,10 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
                         let key = stack.get_with_type(s_index + 1, inst.t2());
-                        let target = &stack.get_with_type(s_index, inst.t1());
+                        let mut target = &stack.get_with_type(s_index, inst.t1());
+                        if inst.t1() == ValueType::Named {
+                            target = &target.as_named().0;
+                        }
                         vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::STORE_INDEX_IMM => {
@@ -340,7 +346,10 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, imm) = inst.imm824();
                         let index = inst.t2_as_index();
                         let s_index = Stack::offset(stack.len(), index);
-                        let target = &stack.get_with_type(s_index, inst.t1());
+                        let mut target = &stack.get_with_type(s_index, inst.t1());
+                        if inst.t1() == ValueType::Named {
+                            target = &target.as_named().0;
+                        }
                         if let Err(e) = vm_util::store_index_int(
                             stack,
                             target,
