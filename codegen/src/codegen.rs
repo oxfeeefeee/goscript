@@ -8,7 +8,7 @@ use super::call::CallHelper;
 use super::emit::*;
 use super::interface::IfaceMapping;
 use super::package::PkgHelper;
-use super::types::{TypeCache, TypeLookup};
+use super::types::{SelectionType, TypeCache, TypeLookup};
 
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
@@ -1292,18 +1292,16 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let mut lhs_meta =
             self.tlookup
                 .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
-        let (t0, t1, indices, p_recv) = self
-            .tlookup
-            .get_selection_vtypes_indices_ptr_recv(this.id());
+        let (t0, _, indices, stype) = self.tlookup.get_selection_vtypes_indices_sel_typ(this.id());
         let index_count = indices.len();
         let index = indices[index_count - 1] as OpIndex; // the final index
         let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
         let lhs_type = t0;
         let lhs_has_embedded = index_count > 1;
-        let get_recv_prep = |recv_is_ptr, typ: ValueType| -> ReceiverPreprocess {
-            if recv_is_ptr && typ != ValueType::Pointer {
+        let get_recv_prep = |stype, typ: ValueType| -> ReceiverPreprocess {
+            if stype == &SelectionType::MethodPtrRecv && typ != ValueType::Pointer {
                 ReceiverPreprocess::Ref
-            } else if !recv_is_ptr && typ == ValueType::Pointer {
+            } else if stype == &SelectionType::MethodNonPtrRecv && typ == ValueType::Pointer {
                 ReceiverPreprocess::Deref
             } else {
                 ReceiverPreprocess::Default
@@ -1311,7 +1309,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         };
 
         if !lhs_has_embedded {
-            let recv_prep = get_recv_prep(p_recv, lhs_type);
+            let recv_prep = get_recv_prep(&stype, lhs_type);
             match &recv_prep {
                 ReceiverPreprocess::Default => self.visit_expr(expr),
                 ReceiverPreprocess::Ref => self.visit_expr_unary(this, expr, &Token::AND),
@@ -1333,7 +1331,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let index = embedded_indices[index_count_m1];
             let final_meta = self.get_embedded_member_meta(&m, index);
             let final_typ = final_meta.get_value_type(&self.objects.metas);
-            let recv_prep = get_recv_prep(p_recv, final_typ);
+            let recv_prep = get_recv_prep(&stype, final_typ);
             match &recv_prep {
                 ReceiverPreprocess::Ref => {
                     current_func_mut!(self).emit_code_with_type_imm(
@@ -1357,28 +1355,31 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         let typ = lhs_meta.get_value_type(&self.objects.metas);
-        if t1 == ValueType::Closure {
-            if lhs_meta
-                .get_underlying(&self.objects.metas)
-                .get_value_type(&self.objects.metas)
-                == ValueType::Interface
-            {
-                current_func_mut!(self).emit_code_with_type_imm(
-                    Opcode::BIND_INTERFACE_METHOD,
-                    typ,
-                    index,
-                    pos,
-                );
-            } else {
-                let func = current_func_mut!(self);
-                func.emit_code_with_type(Opcode::BIND_METHOD, typ, pos);
-                let point = func.next_code_index();
-                func.emit_raw_inst(0, pos); // placeholder for FunctionKey
-                let fkey = *self.func_stack.last().unwrap();
-                self.call_helper.add_call(fkey, point, lhs_meta, index);
+        match &stype {
+            SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
+                if lhs_meta
+                    .get_underlying(&self.objects.metas)
+                    .get_value_type(&self.objects.metas)
+                    == ValueType::Interface
+                {
+                    current_func_mut!(self).emit_code_with_type_imm(
+                        Opcode::BIND_INTERFACE_METHOD,
+                        typ,
+                        index,
+                        pos,
+                    );
+                } else {
+                    let func = current_func_mut!(self);
+                    func.emit_code_with_type(Opcode::BIND_METHOD, typ, pos);
+                    let point = func.next_code_index();
+                    func.emit_raw_inst(0, pos); // placeholder for FunctionKey
+                    let fkey = *self.func_stack.last().unwrap();
+                    self.call_helper.add_call(fkey, point, lhs_meta, index);
+                }
             }
-        } else {
-            current_func_emitter!(self).emit_load_struct_field(index, typ, pos);
+            SelectionType::NonMethod => {
+                current_func_emitter!(self).emit_load_struct_field(index, typ, pos);
+            }
         }
     }
 
@@ -1552,7 +1553,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         );
                         let (t0, _, indices, _) = self
                             .tlookup
-                            .get_selection_vtypes_indices_ptr_recv(sexpr.id());
+                            .get_selection_vtypes_indices_sel_typ(sexpr.id());
                         let index_count = indices.len();
                         let index = indices[index_count - 1] as OpIndex; // the final index
                         let embedded_indices =

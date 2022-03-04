@@ -14,6 +14,13 @@ use std::collections::HashMap;
 
 pub type TypeCache = HashMap<TCTypeKey, GosMetadata>;
 
+#[derive(PartialEq)]
+pub enum SelectionType {
+    NonMethod,
+    MethodNonPtrRecv,
+    MethodPtrRecv,
+}
+
 pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
@@ -196,16 +203,25 @@ impl<'a> TypeLookup<'a> {
         self.tuple_tc_types(typ)
     }
 
-    pub fn get_selection_vtypes_indices_ptr_recv(
+    pub fn get_selection_vtypes_indices_sel_typ(
         &mut self,
         id: NodeId,
-    ) -> (ValueType, ValueType, &Vec<usize>, bool) {
+    ) -> (ValueType, ValueType, &Vec<usize>, SelectionType) {
         let sel = &self.ti.selections[&id];
         let t0 = self.value_type_from_tc(sel.recv().unwrap());
         let obj = &self.tc_objs.lobjs[sel.obj()];
         let t1 = self.value_type_from_tc(obj.typ().unwrap());
-        let has_ptr_recv = t1 == ValueType::Closure && obj.entity_type().func_has_ptr_recv();
-        (t0, t1, &sel.indices(), has_ptr_recv)
+        let sel_typ = match t1 {
+            ValueType::Closure => match obj.entity_type() {
+                EntityType::Func(ptr_recv) => match ptr_recv {
+                    true => SelectionType::MethodPtrRecv,
+                    false => SelectionType::MethodNonPtrRecv,
+                },
+                _ => SelectionType::NonMethod,
+            },
+            _ => SelectionType::NonMethod,
+        };
+        (t0, t1, &sel.indices(), sel_typ)
     }
 
     pub fn meta_from_tc(
