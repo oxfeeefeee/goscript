@@ -19,7 +19,28 @@ func (c *Container) inc(name string) {
 }
 
 
+func sync_map() {
+    var m sync.Map
+
+    m.Store(2, "b")
+    v, ok := m.LoadOrStore(1, "a")
+    v2, ok2 := m.Load(1)
+    assert(v == "a")
+    assert(!ok)
+    assert(v2 == "a")
+    assert(ok2)
+    fmt.Println(v, ok, v2, ok2)
+    fmt.Println(m)
+    m.Delete(2)
+    assert(m[2] == nil)
+    fmt.Println(m, m[2])
+
+}
+
+
 func main() {
+
+    sync_map()
 
     c := Container{
 
