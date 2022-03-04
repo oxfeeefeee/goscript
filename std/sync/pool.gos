@@ -1,0 +1,33 @@
+package sync
+
+// todo: a more sophisticated version
+
+
+type Pool struct {
+    shared []interface{}
+    // New optionally specifies a function to generate
+	// a value when Get would otherwise return nil.
+	// It may not be changed concurrently with calls to Get.
+	New func() interface{}
+}
+
+func (p *Pool) Put(x interface{}) {
+    p.shared = append(p.shared, x)
+}
+
+
+func (p *Pool) Get() interface{} {
+    l := len(p.shared)
+    var x interface{}
+    if l > 0 {
+        x = p.shared[l-1]
+        p.shared = p.shared[:l-1]
+    } else if p.New != nil {
+        x = p.New()
+    }
+    return x
+}
+
+
+
+
