@@ -97,20 +97,25 @@ impl<'a> Importer<'a> {
         let pb = self.validate_path(key)?;
         let path = pb.0.as_path();
         let import_path = pb.1;
-        let pkg = self.tc_objs.new_package(import_path.clone());
-        self.pkgs.insert(import_path, pkg);
-        let files = self.parse_dir(path)?;
-        Checker::new(
-            self.tc_objs,
-            self.ast_objs,
-            self.fset,
-            self.errors,
-            self.pkgs,
-            self.all_results,
-            pkg,
-            self.config,
-        )
-        .check(files)
+        match self.pkgs.get(&import_path) {
+            Some(key) => Ok(*key),
+            None => {
+                let pkg = self.tc_objs.new_package(import_path.clone());
+                self.pkgs.insert(import_path, pkg);
+                let files = self.parse_dir(path)?;
+                Checker::new(
+                    self.tc_objs,
+                    self.ast_objs,
+                    self.fset,
+                    self.errors,
+                    self.pkgs,
+                    self.all_results,
+                    pkg,
+                    self.config,
+                )
+                .check(files)
+            }
+        }
     }
 
     fn validate_path(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {
