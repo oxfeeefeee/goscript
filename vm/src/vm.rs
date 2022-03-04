@@ -1335,7 +1335,7 @@ impl<'a> Fiber<'a> {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
                         let a = stack.get_with_type(index, ValueType::Slice);
                         let vala = a.as_slice();
-                        match inst.t1() {
+                        match inst.t2() {
                             ValueType::FlagA => unreachable!(),
                             ValueType::FlagB => {} // default case, nothing to do
                             ValueType::FlagC => {
@@ -1352,7 +1352,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => {
                                 // pack args into a slice
-                                stack.pack_variadic(index + 1, vala.0.meta, inst.t1(), gcv);
+                                stack.pack_variadic(index + 1, vala.0.meta, inst.t2(), gcv);
                             }
                         };
                         let mut result = vala.0.clone();
@@ -1363,15 +1363,15 @@ impl<'a> Fiber<'a> {
                         stack.set(index, GosValue::slice_with_obj(result, gcv));
                     }
                     Opcode::COPY => {
-                        let t1 = match inst.t1() {
+                        let t2 = match inst.t2() {
                             ValueType::FlagC => ValueType::Str,
                             _ => ValueType::Slice,
                         };
                         let index = Stack::offset(stack.len(), -2);
                         let a = stack.get_with_type(index, ValueType::Slice);
-                        let b = stack.pop_with_type(t1);
+                        let b = stack.pop_with_type(t2);
                         let vala = a.as_slice();
-                        let count = if t1 == ValueType::Str {
+                        let count = if t2 == ValueType::Str {
                             let bytes: Vec<GosValue> = b
                                 .as_str()
                                 .as_bytes()
@@ -1384,6 +1384,14 @@ impl<'a> Fiber<'a> {
                             vala.0.copy_from(&b.as_slice().0)
                         };
                         stack.push_int(count as isize);
+                    }
+                    Opcode::DELETE => {
+                        let key = &stack.pop_with_type(inst.t1());
+                        let mut map = &stack.pop_with_type(inst.t0());
+                        if inst.t0() == ValueType::Named {
+                            map = &map.as_named().0;
+                        }
+                        map.as_map().0.delete(key);
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);

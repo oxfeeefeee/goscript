@@ -771,6 +771,7 @@ impl<'a> CodeGen<'a> {
                     Builtin::Cap => Opcode::CAP,
                     Builtin::Append => Opcode::APPEND,
                     Builtin::Copy => Opcode::COPY,
+                    Builtin::Delete => Opcode::DELETE,
                     Builtin::Close => Opcode::CLOSE,
                     Builtin::Panic => Opcode::PANIC,
                     Builtin::Recover => Opcode::RECOVER,
@@ -792,13 +793,12 @@ impl<'a> CodeGen<'a> {
                         emitter.emit_load(i, None, ValueType::Metadata, pos);
                     }
                 }
-                let (param0t, param_last_t) = if params.len() > 0 {
-                    (
+                let (param0t, param_last_t) = match params.len() > 0 {
+                    true => (
                         Some(self.tlookup.get_expr_value_type(&params[0])),
                         Some(self.tlookup.get_expr_value_type(params.last().unwrap())),
-                    )
-                } else {
-                    (None, None)
+                    ),
+                    false => (None, None),
                 };
                 let bf = self.tc_objs.universe().builtins()[&builtin];
                 let param_count = params.len() as OpIndex;
@@ -817,8 +817,12 @@ impl<'a> CodeGen<'a> {
                         false => (Some(ValueType::FlagA), Some(param_count as OpIndex)),
                     },
                 };
+                let param1t = match opcode {
+                    Opcode::DELETE => param_last_t,
+                    _ => None,
+                };
                 let func = current_func_mut!(self);
-                func.emit_inst(opcode, [param0t, t_variadic, None], count, pos);
+                func.emit_inst(opcode, [param0t, param1t, t_variadic], count, pos);
             }
             // conversion
             // from the specs:

@@ -96,6 +96,7 @@ pub enum Opcode {
     LEN,        // for built-in function len
     CAP,        // for built-in function cap
     APPEND,     // for built-in function append
+    DELETE,     // for built-in function delete
     COPY,       // for built-in function copy
     CLOSE,      // for built-in function close
     PANIC,      // for built-in function panic
@@ -195,6 +196,7 @@ impl Opcode {
             Opcode::LEN => ("LEN", 0),
             Opcode::CAP => ("CAP", 0),
             Opcode::APPEND => ("APPEND", -128),
+            Opcode::DELETE => ("DELETE", -2),
             Opcode::COPY => ("COPY", -1),
             Opcode::CLOSE => ("CLOSE", -1),
             Opcode::PANIC => ("PANIC", -1),

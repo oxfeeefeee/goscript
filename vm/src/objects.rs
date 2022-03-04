@@ -250,6 +250,12 @@ impl MapObj {
         mref.get(key).map(|x| x.clone().into_inner())
     }
 
+    #[inline]
+    pub fn delete(&self, key: &GosValue) {
+        let mut mref = self.borrow_data_mut();
+        mref.remove(key);
+    }
+
     /// touch_key makes sure there is a value for the 'key', a default value is set if
     /// the value is empty
     #[inline]
