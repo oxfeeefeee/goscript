@@ -191,7 +191,7 @@ impl GosMetadata {
     }
 
     pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        debug_assert!(underlying.get_value_type(metas) != ValueType::Named);
+        //debug_assert!(underlying.get_value_type(metas) != ValueType::Named);
         GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
@@ -419,7 +419,10 @@ impl GosMetadata {
                     GosValue::Named(Box::new((val, *gm)))
                 }
             },
-            _ => unreachable!(),
+            _ => {
+                dbg!(self);
+                unreachable!();
+            }
         }
     }
 
@@ -733,6 +736,14 @@ impl MetadataType {
     pub fn as_struct(&self) -> (&Fields, &GosValue) {
         match self {
             Self::Struct(f, v) => (f, v),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_named_mut(&mut self) -> (&mut Methods, &mut GosMetadata) {
+        match self {
+            Self::Named(meth, meta) => (meth, meta),
             _ => unreachable!(),
         }
     }

@@ -465,15 +465,8 @@ impl<'a> TypeLookup<'a> {
                 inner.ptr_to()
             }
             Type::Named(detail) => {
-                // put a place holder there to avoid recursion
-                let mdph = GosMetadata::new(
-                    MetadataType::Named(Methods::new(), GosMetadata::Untyped),
-                    &mut vm_objs.metas,
-                );
-                self.types_cache.insert(typ, mdph);
-                let underlying = self.meta_from_tc(detail.underlying(), vm_objs, dummy_gcv);
-                self.types_cache.remove(&typ);
-                let md = GosMetadata::new_named(underlying, &mut vm_objs.metas);
+                // generate a Named with dummy underlying to avoid recursion
+                let md = GosMetadata::new_named(vm_objs.metadata.mint, &mut vm_objs.metas);
                 for key in detail.methods().iter() {
                     let mobj = &self.tc_objs.lobjs[*key];
                     md.add_method(
@@ -482,6 +475,10 @@ impl<'a> TypeLookup<'a> {
                         &mut vm_objs.metas,
                     )
                 }
+                self.types_cache.insert(typ, md);
+                let underlying = self.meta_from_tc(detail.underlying(), vm_objs, dummy_gcv);
+                let (_, underlying_mut) = vm_objs.metas[md.as_non_ptr()].as_named_mut();
+                *underlying_mut = underlying;
                 md
             }
             _ => {
