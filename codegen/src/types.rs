@@ -62,6 +62,13 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
+    pub fn get_const_value_by_ident(&mut self, id: &IdentKey) -> GosValue {
+        let lobj_key = self.ti.defs[id].unwrap();
+        let lobj = &self.tc_objs.lobjs[lobj_key];
+        self.const_value(lobj.typ().unwrap(), lobj.const_val())
+    }
+
+    #[inline]
     pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
         self.get_node_tc_type(e.id())
     }

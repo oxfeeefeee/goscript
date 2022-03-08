@@ -232,11 +232,10 @@ impl<'a> CodeGen<'a> {
         self.gen_assign_def_var(&lhs, &vs.typ, &rhs);
     }
 
-    fn gen_def_const(&mut self, names: &Vec<IdentKey>, values: &Vec<Expr>) {
-        assert!(names.len() == values.len());
-        for i in 0..names.len() {
-            let val = self.tlookup.get_const_value(values[i].id());
-            self.current_func_add_const_def(&names[i], val);
+    fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
+        for name in names.iter() {
+            let val = self.tlookup.get_const_value_by_ident(name);
+            self.current_func_add_const_def(name, val);
         }
     }
 
@@ -1726,7 +1725,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                             self.gen_def_var(vs);
                         }
                     }
-                    Token::CONST => self.gen_def_const(&vs.names, &vs.values),
+                    Token::CONST => self.gen_def_const(&vs.names),
                     _ => unreachable!(),
                 },
             }
