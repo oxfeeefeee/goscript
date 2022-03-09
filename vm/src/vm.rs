@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::channel;
-use super::ffi::FfiFactory;
+use super::ffi::{FfiCallCtx, FfiFactory};
 use super::gc::{gc, GcoVec};
 use super::instruction::*;
 use super::metadata::*;
@@ -890,9 +890,16 @@ impl<'a> Fiber<'a> {
                                 let params = stack.pop_with_type_n(ptypes);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
-                                let ffi_ref = call.ffi.borrow();
-                                let fut = ffi_ref.call(&call.func_name, params);
-                                let returns = fut.await;
+                                let returns = {
+                                    let ffi_ref = call.ffi.borrow();
+                                    let ctx = FfiCallCtx {
+                                        func_name: &call.func_name,
+                                        vm_objs: objs,
+                                        stack: &self.stack.borrow(),
+                                    };
+                                    let fut = ffi_ref.call(&ctx, params);
+                                    fut.await
+                                };
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 match returns {
                                     Ok(result) => stack.append(result),

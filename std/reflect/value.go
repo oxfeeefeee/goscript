@@ -8,7 +8,16 @@ import (
 	"unsafe"
 )
 
-const ptrSize = 4 << (^uintptr(0) >> 63) // unsafe.Sizeof(uintptr(0)) but an ideal const
+var reflect_rt ffiReflect
+
+func init() {
+	reflect_rt = ffi(ffiReflect, "reflect")
+}
+
+type ffiReflect interface {
+	value_of(i interface{}) unsafe.Pointer
+	type_of(i interface{}) unsafe.Pointer
+}
 
 // Value is the reflection interface to a Go value.
 //
@@ -631,7 +640,7 @@ func Indirect(v Value) Value {
 // ValueOf returns a new Value initialized to the concrete value
 // stored in the interface i. ValueOf(nil) returns the zero Value.
 func ValueOf(i interface{}) Value {
-	panic("not implemented")
+	return Value{ptr: reflect_rt.value_of(i)}
 }
 
 // Zero returns a Value representing the zero value for the specified type.

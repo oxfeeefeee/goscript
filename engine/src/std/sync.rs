@@ -1,6 +1,6 @@
 ///https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock
 use futures_lite::future;
-use goscript_vm::ffi::{Ffi, FfiCtorResult};
+use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
 use goscript_vm::value::{GosValue, PointerObj, RtMultiValResult, UserData};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
@@ -13,10 +13,10 @@ pub struct Mutex {}
 impl Ffi for Mutex {
     fn call(
         &self,
-        func_name: &str,
+        ctx: &FfiCallCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        match func_name {
+        match ctx.func_name {
             "new" => {
                 let p = PointerObj::UserData(Rc::new(MutexInner::new()));
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
@@ -85,10 +85,10 @@ pub struct RWMutex {}
 impl Ffi for RWMutex {
     fn call(
         &self,
-        func_name: &str,
+        ctx: &FfiCallCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        match func_name {
+        match ctx.func_name {
             "new" => {
                 let p = PointerObj::UserData(Rc::new(RWMutexInner::new()));
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })

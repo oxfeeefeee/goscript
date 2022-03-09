@@ -1,4 +1,4 @@
-use goscript_vm::ffi::{Ffi, FfiCtorResult};
+use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
 use goscript_vm::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
 use std::future::Future;
@@ -10,10 +10,10 @@ pub struct Bits {}
 impl Ffi for Bits {
     fn call(
         &self,
-        func_name: &str,
+        ctx: &FfiCallCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        let v = match func_name {
+        let v = match ctx.func_name {
             "f32_to_bits" => self.f32_to_bits(params),
             "f32_from_bits" => self.f32_from_bits(params),
             "f64_to_bits" => self.f64_to_bits(params),

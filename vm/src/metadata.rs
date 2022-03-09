@@ -419,10 +419,7 @@ impl GosMetadata {
                     GosValue::Named(Box::new((val, *gm)))
                 }
             },
-            _ => {
-                dbg!(self);
-                unreachable!();
-            }
+            _ => GosValue::Nil(*self),
         }
     }
 

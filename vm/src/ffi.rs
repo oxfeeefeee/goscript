@@ -1,3 +1,5 @@
+use super::objects::VMObjects;
+use super::stack::Stack;
 use super::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -9,11 +11,17 @@ pub type FfiCtorResult<T> = std::result::Result<T, String>;
 
 pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>>;
 
+pub struct FfiCallCtx<'a> {
+    pub func_name: &'a str,
+    pub vm_objs: &'a VMObjects,
+    pub stack: &'a Stack,
+}
+
 /// A FFI function call
 pub trait Ffi {
     fn call(
         &self,
-        func_name: &str,
+        ctx: &FfiCallCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>>;
 }

@@ -17,6 +17,7 @@ package reflect
 
 import (
 	"strconv"
+	"unsafe"
 )
 
 // Type is the representation of a Go type.
@@ -200,20 +201,6 @@ type Type interface {
 	Out(i int) Type
 }
 
-// BUG(rsc): FieldByName and related functions consider struct field names to be equal
-// if the names are equal, even if they are unexported names originating
-// in different packages. The practical effect of this is that the result of
-// t.FieldByName("x") is not well defined if the struct type t contains
-// multiple fields named x (embedded from different packages).
-// FieldByName may return one of the fields named x or may report that there are none.
-// See https://golang.org/issue/4876 for more details.
-
-/*
- * These data structures are known to the compiler (../../cmd/internal/gc/reflect.go).
- * A few are known to ../runtime/type.go to convey to debuggers.
- * They are also known to ../runtime/type.go.
- */
-
 // A Kind represents the specific kind of type that a Type represents.
 // The zero Kind is not a valid kind.
 type Kind uint
@@ -356,10 +343,12 @@ func (tag StructTag) Lookup(key string) (value string, ok bool) {
 	panic("not implemented")
 }
 
+type reflectType unsafe.Pointer
+
 // TypeOf returns the reflection Type that represents the dynamic type of i.
 // If i is a nil interface value, TypeOf returns nil.
-func TypeOf(i interface{}) Type {
-	panic("not implemented")
+func TypeOf(i interface{}) reflectType {
+	return reflectType(reflect_rt.type_of(i))
 }
 
 // PtrTo returns the pointer type with element t.
