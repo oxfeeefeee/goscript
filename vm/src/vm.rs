@@ -676,6 +676,18 @@ impl<'a> Fiber<'a> {
                             ValueType::Float64 => {
                                 stack.get_c_mut(rhs_s_index).to_float64(inst.t1())
                             }
+                            ValueType::FlagA => {
+                                let meta_key = read_imm_key!(code, frame, objs);
+                                let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                                *stack.get_rc_mut(rhs_s_index) = GosValue::Named(Box::new((
+                                    stack.get_with_type(rhs_s_index, inst.t2()),
+                                    meta,
+                                )));
+                            }
+                            ValueType::FlagB => {
+                                let val = &stack.get_rc(rhs_s_index).as_named().0;
+                                *stack.get_c_mut(rhs_s_index) = GosValue64::from_v128(val).unwrap();
+                            }
                             _ => {
                                 // we do not support tags yet, is there anything to implement?
                                 dbg!(inst.t0());

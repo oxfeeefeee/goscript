@@ -55,17 +55,48 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn get_const_value(&mut self, id: NodeId) -> GosValue {
+    pub fn get_const_value(
+        &mut self,
+        id: NodeId,
+        vm_objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+    ) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
-        self.const_value(typ_val.typ, const_val)
+        let v = self.const_value(typ_val.typ, const_val);
+        self.try_as_named_const(v, typ_val.typ, vm_objs, dummy_gcv)
     }
 
     #[inline]
-    pub fn get_const_value_by_ident(&mut self, id: &IdentKey) -> GosValue {
+    pub fn get_const_value_by_ident(
+        &mut self,
+        id: &IdentKey,
+        vm_objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+    ) -> GosValue {
         let lobj_key = self.ti.defs[id].unwrap();
         let lobj = &self.tc_objs.lobjs[lobj_key];
-        self.const_value(lobj.typ().unwrap(), lobj.const_val())
+        let tkey = lobj.typ().unwrap();
+        let v = self.const_value(tkey, lobj.const_val());
+        self.try_as_named_const(v, tkey, vm_objs, dummy_gcv)
+    }
+
+    #[inline]
+    fn try_as_named_const(
+        &mut self,
+        val: GosValue,
+        tkey: TCTypeKey,
+        vm_objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+    ) -> GosValue {
+        let typ = &self.tc_objs.types[tkey];
+        match typ.try_as_named() {
+            Some(_) => {
+                let meta = self.meta_from_tc(tkey, vm_objs, dummy_gcv);
+                GosValue::Named(Box::new((val, meta)))
+            }
+            None => val,
+        }
     }
 
     #[inline]

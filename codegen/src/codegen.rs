@@ -234,7 +234,9 @@ impl<'a> CodeGen<'a> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let val = self.tlookup.get_const_value_by_ident(name);
+            let val = self
+                .tlookup
+                .get_const_value_by_ident(name, self.objects, self.dummy_gcv);
             self.current_func_add_const_def(name, val);
         }
     }
@@ -847,15 +849,16 @@ impl<'a> CodeGen<'a> {
                 self.visit_expr(&params[0]);
                 let tct0 = self.tlookup.get_expr_tc_type(func_expr);
                 let utct0 = self.tlookup.underlying_tc(tct0);
-                let t0 = self.tlookup.value_type_from_tc(utct0);
+                let ut0 = self.tlookup.value_type_from_tc(utct0);
                 let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
                 let utct1 = self.tlookup.underlying_tc(tct1);
-                let t1 = self.tlookup.value_type_from_tc(utct1);
+                let ut1 = self.tlookup.value_type_from_tc(utct1);
                 // just ignore conversion if it's nil or types are identical
-                if t1 != ValueType::Nil && !identical(utct0, utct1, self.tc_objs) {
-                    let iface_index = match t0 {
+                if ut1 == ValueType::Nil || identical(tct0, tct1, self.tc_objs) {
+                } else if !identical(utct0, utct1, self.tc_objs) {
+                    let iface_index = match ut0 {
                         ValueType::Interface => {
-                            if t1 != ValueType::Nil {
+                            if ut1 != ValueType::Nil {
                                 self.iface_mapping.get_index(
                                     &(tct0, Some(tct1)),
                                     &mut self.tlookup,
@@ -869,9 +872,9 @@ impl<'a> CodeGen<'a> {
                         _ => 0,
                     };
                     // get the type of slice element if we are converting to or from a slice
-                    let tct2 = if t0 == ValueType::Slice {
+                    let tct2 = if ut0 == ValueType::Slice {
                         Some(utct0)
-                    } else if t1 == ValueType::Slice {
+                    } else if ut1 == ValueType::Slice {
                         Some(utct1)
                     } else {
                         None
@@ -881,7 +884,27 @@ impl<'a> CodeGen<'a> {
                             self.tc_objs.types[x].try_as_slice().unwrap().elem(),
                         )
                     });
-                    current_func_emitter!(self).emit_cast(t0, t1, t2, -1, iface_index, pos);
+                    current_func_emitter!(self).emit_cast(ut0, ut1, t2, -1, iface_index, pos);
+                } else {
+                    // convert between Named type and underlying type
+                    let t0 = self.tlookup.value_type_from_tc(tct0);
+                    let t1 = self.tlookup.value_type_from_tc(tct1);
+                    let flag = if t0 == ValueType::Named {
+                        ValueType::FlagA
+                    } else if t1 == ValueType::Named {
+                        ValueType::FlagB
+                    } else {
+                        unreachable!();
+                    };
+                    current_func_emitter!(self).emit_cast(flag, t0, Some(t1), -1, 0, pos);
+                    if flag == ValueType::FlagA {
+                        // when converting from underlying type to Named, we need type info
+                        let meta = self
+                            .tlookup
+                            .meta_from_tc(tct0, self.objects, self.dummy_gcv);
+                        current_func_emitter!(self)
+                            .emit_raw_inst(key_to_u64(meta.as_non_ptr()), pos);
+                    }
                 }
             }
             // normal goscript function
@@ -1122,7 +1145,9 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
-        let val = self.tlookup.get_const_value(node);
+        let val = self
+            .tlookup
+            .get_const_value(node, self.objects, self.dummy_gcv);
         let mut emitter = current_func_emitter!(self);
         let t = val.get_type();
         let i = emitter.add_const(None, val);

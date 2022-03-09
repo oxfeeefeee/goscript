@@ -375,4 +375,8 @@ impl<'a> Emitter<'a> {
         self.f
             .emit_inst(Opcode::PUSH_IMM, [Some(typ), None, None], Some(imm), pos);
     }
+
+    pub fn emit_raw_inst(&mut self, u: u64, pos: Option<usize>) {
+        self.f.emit_raw_inst(u, pos);
+    }
 }

@@ -44,7 +44,7 @@ const (
 	Struct
 	UnsafePointer
 )
-
+/*
 var kindNames = []string{
 	Invalid:       "invalid",
 	Bool:          "bool",
@@ -73,7 +73,7 @@ var kindNames = []string{
 	String:        "string",
 	Struct:        "struct",
 	UnsafePointer: "unsafe.Pointer",
-}
+}*/
 
 func main() {
     /*
@@ -91,7 +91,7 @@ func main() {
     _, j := fa()
     assert(j == 7)
 
-    assert(kindNames[2] == "int")
+    //assert(kindNames[2] == "int")
 }
 
 func fa () (int, int) {
