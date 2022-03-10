@@ -750,35 +750,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn deep_clone(&self, gcos: &GcoVec) -> GosValue {
-        match self {
-            GosValue::Slice(s) => {
-                let rc = Rc::new((s.0.deep_clone(gcos), Cell::new(0)));
-                gcos.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
-                GosValue::Slice(rc)
-            }
-            GosValue::Map(m) => {
-                let rc = Rc::new((m.0.deep_clone(gcos), Cell::new(0)));
-                gcos.add_weak(GcWeak::Map(Rc::downgrade(&rc)));
-                GosValue::Map(rc)
-            }
-            GosValue::Array(arr) => {
-                let rc = Rc::new((arr.0.deep_clone(gcos), Cell::new(0)));
-                gcos.add_weak(GcWeak::Array(Rc::downgrade(&rc)));
-                GosValue::Array(rc)
-            }
-            GosValue::Struct(s) => {
-                let rc = Rc::new((RefCell::new(s.0.borrow().deep_clone(gcos)), Cell::new(0)));
-                gcos.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
-                GosValue::Struct(rc)
-            }
-            GosValue::Pointer(p) => GosValue::Pointer(Box::new(p.deep_clone(gcos))),
-            GosValue::Named(v) => GosValue::Named(Box::new((v.0.deep_clone(gcos), v.1))),
-            _ => self.clone(),
-        }
-    }
-
-    #[inline]
     pub fn add_str(a: &GosValue, b: &GosValue) -> GosValue {
         let mut s = a.as_str().as_str().to_string();
         s.push_str(b.as_str().as_str());

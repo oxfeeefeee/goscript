@@ -14,6 +14,7 @@ pub enum Opcode {
     PUSH_FALSE,
     PUSH_TRUE,
     PUSH_IMM,
+    PUSH_ZERO_VALUE,
     POP,
     LOAD_LOCAL,
     STORE_LOCAL, // stores the value on the top of the stack to local
@@ -119,6 +120,7 @@ impl Opcode {
             Opcode::PUSH_FALSE => ("PUSH_FALSE", 1),
             Opcode::PUSH_TRUE => ("PUSH_TRUE", 1),
             Opcode::PUSH_IMM => ("PUSH_IMM", 1),
+            Opcode::PUSH_ZERO_VALUE => ("PUSH_ZERO_VALUE", 1),
             Opcode::POP => ("POP", -1),
             Opcode::LOAD_LOCAL => ("LOAD_LOCAL", 1),
             Opcode::STORE_LOCAL => ("STORE_LOCAL", 0),

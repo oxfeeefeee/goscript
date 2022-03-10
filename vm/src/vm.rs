@@ -250,16 +250,16 @@ impl<'a> Fiber<'a> {
                 match inst_op {
                     Opcode::PUSH_CONST => {
                         let index = inst.imm();
-                        let gos_val = &consts[index as usize];
-                        // Slice/Map/Array are special cases here because, they are stored literal,
-                        // and when it gets cloned, the underlying rust vec is not copied
-                        // which leads to all function calls shares the same vec instance
-                        stack.push(gos_val.deep_clone(gcv));
+                        stack.push(consts[index as usize].clone());
                     }
                     Opcode::PUSH_NIL => stack.push_nil(),
                     Opcode::PUSH_FALSE => stack.push_bool(false),
                     Opcode::PUSH_TRUE => stack.push_bool(true),
                     Opcode::PUSH_IMM => stack.push_int32_as(inst.imm(), inst.t0()),
+                    Opcode::PUSH_ZERO_VALUE => {
+                        let meta = consts[inst.imm() as usize].as_meta();
+                        stack.push(zero_val!(meta, objs, gcv));
+                    }
                     Opcode::POP => {
                         stack.pop_discard_n(inst.imm() as usize);
                     }

@@ -413,12 +413,13 @@ impl<'a> CodeGen<'a> {
         let types = match rhs {
             RightHandSide::Nothing => {
                 // define without values
-                let (val, t) = self.get_type_default(&typ.as_ref().unwrap());
+                let t = self.tlookup.get_expr_tc_type(&typ.as_ref().unwrap());
+                let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
                 let mut types = Vec::with_capacity(lhs.len());
                 for (_, _, pos) in lhs.iter() {
                     let mut emitter = current_func_emitter!(self);
-                    let i = emitter.add_const(None, val.clone());
-                    emitter.emit_load(i, None, self.tlookup.value_type_from_tc(t), Some(*pos));
+                    let i = emitter.add_const(None, GosValue::Metadata(meta));
+                    emitter.emit_push_zero_val(i.into(), Some(*pos));
                     types.push(t);
                 }
                 types
@@ -1043,13 +1044,6 @@ impl<'a> CodeGen<'a> {
             };
             init
         })
-    }
-
-    fn get_type_default(&mut self, expr: &Expr) -> (GosValue, TCTypeKey) {
-        let t = self.tlookup.get_expr_tc_type(expr);
-        let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
-        let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
-        (zero_val, t)
     }
 
     fn visit_composite_expr(&mut self, expr: &Expr, tctype: TCTypeKey) {

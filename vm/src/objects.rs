@@ -16,7 +16,6 @@ use std::convert::TryInto;
 use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
-use std::iter::FromIterator;
 use std::ops::Index;
 use std::rc::{Rc, Weak};
 
@@ -200,28 +199,6 @@ impl MapObj {
         }
     }
 
-    /// deep_clone creates a new MapObj with duplicated content of 'self.map'
-    pub fn deep_clone(&self, gcos: &GcoVec) -> MapObj {
-        let m = self.map.as_ref().map(|x| {
-            Rc::new(RefCell::new(
-                x.borrow()
-                    .iter()
-                    .map(|(k, v)| {
-                        (
-                            k.deep_clone(gcos),
-                            RefCell::new(v.borrow().deep_clone(gcos)),
-                        )
-                    })
-                    .collect(),
-            ))
-        });
-        MapObj {
-            meta: self.meta,
-            default_val: self.default_val.clone(),
-            map: m,
-        }
-    }
-
     #[inline]
     pub fn insert(&self, key: GosValue, val: GosValue) -> Option<GosValue> {
         self.borrow_data_mut()
@@ -349,18 +326,6 @@ impl ArrayObj {
             meta: meta,
             vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
-            )),
-        }
-    }
-
-    pub fn deep_clone(&self, gcos: &GcoVec) -> ArrayObj {
-        ArrayObj {
-            meta: self.meta,
-            vec: Rc::new(RefCell::new(
-                self.borrow_data()
-                    .iter()
-                    .map(|x| RefCell::new(x.borrow().deep_clone(gcos)))
-                    .collect(),
             )),
         }
     }
@@ -512,23 +477,6 @@ impl<'a> SliceObj {
         self.end.set(other.end());
         self.cap_end.set(other.cap_end.get());
         *self.borrow_all_data_mut() = other.borrow_all_data().clone()
-    }
-
-    /// deep_clone creates a new SliceObj with duplicated content of 'self.vec'
-    pub fn deep_clone(&self, gcos: &GcoVec) -> SliceObj {
-        SliceObj {
-            meta: self.meta,
-            begin: Cell::from(0),
-            end: Cell::from(self.end() - self.begin()),
-            cap_end: Cell::from(self.cap()),
-            vec: self.vec.clone().map(|vec| {
-                Rc::new(RefCell::new(Vec::from_iter(
-                    vec.borrow()[self.begin()..self.cap_end.get()]
-                        .iter()
-                        .map(|x| RefCell::new(x.borrow().deep_clone(gcos))),
-                )))
-            }),
-        }
     }
 
     #[inline]
@@ -747,15 +695,6 @@ impl<'a> Index<usize> for SliceRef<'a> {
 pub struct StructObj {
     pub meta: GosMetadata,
     pub fields: Vec<GosValue>,
-}
-
-impl StructObj {
-    pub fn deep_clone(&self, gcos: &GcoVec) -> StructObj {
-        StructObj {
-            meta: self.meta,
-            fields: Vec::from_iter(self.fields.iter().map(|x| x.deep_clone(gcos))),
-        }
-    }
 }
 
 impl Eq for StructObj {}
@@ -1045,23 +984,6 @@ impl PointerObj {
             Self::Struct(v, _) => {
                 let mref: &mut StructObj = &mut v.0.borrow_mut();
                 *mref = val.try_get_struct().unwrap().0.borrow().clone();
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn deep_clone(&self, gcos: &GcoVec) -> PointerObj {
-        match &self {
-            PointerObj::Released => PointerObj::Released,
-            PointerObj::Struct(s, m) => PointerObj::Struct(
-                Rc::new((RefCell::new(s.0.borrow().deep_clone(gcos)), Cell::new(0))),
-                *m,
-            ),
-            PointerObj::Slice(s, m) => {
-                PointerObj::Slice(Rc::new((s.0.deep_clone(gcos), Cell::new(0))), *m)
-            }
-            PointerObj::Map(map, m) => {
-                PointerObj::Map(Rc::new((map.0.deep_clone(gcos), Cell::new(0))), *m)
             }
             _ => unreachable!(),
         }
