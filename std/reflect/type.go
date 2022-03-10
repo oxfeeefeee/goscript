@@ -343,12 +343,130 @@ func (tag StructTag) Lookup(key string) (value string, ok bool) {
 	panic("not implemented")
 }
 
-type reflectType unsafe.Pointer
+type reflectType struct {
+	ptr unsafe.Pointer
+}
+
+func (t reflectType) Align() int {
+	panic("not implemented")
+}
+
+func (t reflectType) FieldAlign() int {
+	panic("not implemented")
+}
+
+func (t reflectType) Method(int) Method {
+	panic("not implemented")
+}
+
+func (t reflectType) MethodByName(string) (Method, bool) {
+	panic("not implemented")
+}
+
+func (t reflectType) NumMethod() int {
+	panic("not implemented")
+}
+
+func (t reflectType) Name() string {
+	panic("not implemented")
+}
+
+func (t reflectType) PkgPath() string {
+	panic("not implemented")
+}
+
+func (t reflectType) Size() uintptr {
+	panic("not implemented")
+}
+
+func (t reflectType) String() string {
+	panic("not implemented")
+}
+
+func (t reflectType) Kind() Kind {
+	panic("not implemented")
+}
+
+func (t reflectType) Implements(u Type) bool {
+	panic("not implemented")
+}
+
+func (t reflectType) AssignableTo(u Type) bool {
+	panic("not implemented")
+}
+
+func (t reflectType) ConvertibleTo(u Type) bool {
+	panic("not implemented")
+}
+
+func (t reflectType) Comparable() bool {
+	panic("not implemented")
+}
+
+func (t reflectType) Bits() int {
+	panic("not implemented")
+}
+
+func (t reflectType) ChanDir() ChanDir {
+	panic("not implemented")
+}
+
+func (t reflectType) IsVariadic() bool {
+	panic("not implemented")
+}
+
+func (t reflectType) Elem() Type {
+	panic("not implemented")
+}
+
+func (t reflectType) Field(i int) StructField {
+	panic("not implemented")
+}
+
+func (t reflectType) FieldByIndex(index []int) StructField {
+	panic("not implemented")
+}
+
+func (t reflectType) FieldByName(name string) (StructField, bool) {
+	panic("not implemented")
+}
+
+func (t reflectType) FieldByNameFunc(match func(string) bool) (StructField, bool) {
+	panic("not implemented")
+}
+
+func (t reflectType) In(i int) Type {
+	panic("not implemented")
+}
+
+func (t reflectType) Key() Type {
+	panic("not implemented")
+}
+
+func (t reflectType) Len() int {
+	panic("not implemented")
+}
+
+func (t reflectType) NumField() int {
+	panic("not implemented")
+}
+
+func (t reflectType) NumIn() int {
+	panic("not implemented")
+}
+
+func (t reflectType) NumOut() int {
+	panic("not implemented")
+}
+
+func (t reflectType) Out(i int) Type {
+	panic("not implemented")
+}
 
 // TypeOf returns the reflection Type that represents the dynamic type of i.
 // If i is a nil interface value, TypeOf returns nil.
-func TypeOf(i interface{}) reflectType {
-	return reflectType(reflect_rt.type_of(i))
+func TypeOf(i interface{}) Type {
+	return ValueOf(i).Type()
 }
 
 // PtrTo returns the pointer type with element t.

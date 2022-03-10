@@ -16,7 +16,7 @@ func init() {
 
 type ffiReflect interface {
 	value_of(i interface{}) unsafe.Pointer
-	type_of(i interface{}) unsafe.Pointer
+	type_of(p unsafe.Pointer) unsafe.Pointer
 }
 
 // Value is the reflection interface to a Go value.
@@ -500,7 +500,7 @@ func (v Value) TrySend(x Value) bool {
 
 // Type returns v's type.
 func (v Value) Type() Type {
-	panic("not implemented")
+	return reflectType{ptr: reflect_rt.type_of(v.ptr)}
 }
 
 // Uint returns v's underlying value, as a uint64.

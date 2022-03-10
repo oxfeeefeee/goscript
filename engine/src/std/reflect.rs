@@ -20,7 +20,9 @@ impl Ffi for Reflect {
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
             }
             "type_of" => {
-                let p = PointerObj::UserData(Rc::new(StdValue::type_of(ctx, params)));
+                let ud = params[0].as_pointer().as_user_data();
+                let val = ud.as_any().downcast_ref::<StdValue>().unwrap().clone();
+                let p = PointerObj::UserData(Rc::new(val.type_of(ctx)));
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
             }
             _ => unreachable!(),
@@ -61,9 +63,8 @@ impl StdValue {
         StdValue::new(v)
     }
 
-    fn type_of(ctx: &FfiCallCtx, v: Vec<GosValue>) -> StdValue {
-        let stdv = StdValue::value_of(v);
-        let m = stdv.val.get_meta(ctx.vm_objs, ctx.stack);
+    fn type_of(&self, ctx: &FfiCallCtx) -> StdValue {
+        let m = self.val.get_meta(ctx.vm_objs, ctx.stack);
         StdValue::new(GosValue::Metadata(m))
     }
 }
