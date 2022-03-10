@@ -1078,7 +1078,14 @@ impl<'a> CodeGen<'a> {
                         Expr::KeyValue(kv) => {
                             self.visit_composite_expr(&kv.val, elem);
                             // the key is a constant
-                            self.visit_expr(&kv.key);
+                            let key_const = self.tlookup.get_tc_const_value(kv.key.id()).unwrap();
+                            let (key_i64, ok) = key_const.int_as_i64();
+                            debug_assert!(ok);
+                            current_func_emitter!(self).emit_push_imm(
+                                ValueType::Int,
+                                key_i64 as i32,
+                                None,
+                            );
                         }
                         _ => {
                             self.visit_composite_expr(expr, elem);
