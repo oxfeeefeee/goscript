@@ -963,14 +963,17 @@ impl<'a> CodeGen<'a> {
         let mut ret_type = None;
         if let Some(t0) = lhs {
             if self.tlookup.underlying_value_type_from_tc(t0) == ValueType::Interface {
-                let (cast, typ) = match rhs {
+                let to_cast_typ = match rhs {
                     Some(t1) => {
                         let vt1 = self.tlookup.underlying_value_type_from_tc(t1);
-                        (vt1 != ValueType::Interface && vt1 != ValueType::Nil, vt1)
+                        match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
+                            true => Some(self.tlookup.value_type_from_tc(t1)),
+                            false => None,
+                        }
                     }
-                    None => (true, ValueType::Slice), // it must be a variadic parameter
+                    None => Some(ValueType::Slice), // it must be a variadic parameter
                 };
-                if cast {
+                if let Some(typ) = to_cast_typ {
                     let index = self.iface_mapping.get_index(
                         &(t0, rhs),
                         &mut self.tlookup,
