@@ -463,7 +463,7 @@ impl Stack {
             if t != ValueType::Metadata {
                 a.eq(&b)
             } else {
-                a.as_meta().semantic_eq(b.as_meta(), &objs.metas)
+                a.as_meta().identical(b.as_meta(), &objs.metas)
             }
         };
         self.pop_discard();

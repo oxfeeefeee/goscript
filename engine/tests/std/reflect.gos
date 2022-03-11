@@ -1,0 +1,29 @@
+package main
+
+import (
+    "fmt2"
+    "reflect"
+)
+
+
+type AAA int
+
+
+var i = 222
+
+func get() AAA {
+    return AAA(i)
+}
+
+
+func get2() AAA {
+    return AAA(6*3)
+}
+
+
+func main() {
+    i := reflect.TypeOf(get)
+    j := reflect.TypeOf(get2)
+    assert(i == j)
+    fmt2.Println(get2(), get(), i, j, i == j )
+}

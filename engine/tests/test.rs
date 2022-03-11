@@ -309,6 +309,14 @@ fn test_std_strconv() {
 }
 
 #[test]
+fn test_std_reflect() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/reflect.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 

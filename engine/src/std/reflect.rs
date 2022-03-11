@@ -1,5 +1,7 @@
 use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
 use goscript_vm::instruction::ValueType;
+use goscript_vm::metadata::GosMetadata;
+use goscript_vm::objects::MetadataObjs;
 use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, RtMultiValResult, UserData};
 use std::any::Any;
 use std::cell::RefCell;
@@ -36,6 +38,7 @@ enum GosKind {
     Struct,
     UnsafePointer,
 }
+
 pub struct Reflect {}
 
 impl Ffi for Reflect {
@@ -46,15 +49,14 @@ impl Ffi for Reflect {
     ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
         match ctx.func_name {
             "value_of" => {
-                let p = PointerObj::UserData(Rc::new(StdValue::value_of(params)));
+                let p = PointerObj::UserData(Rc::new(StdValue::value_of(&params[0])));
                 Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
             }
             "type_of" => {
                 let ud = params[0].as_pointer().as_user_data();
-                let val = ud.as_any().downcast_ref::<StdValue>().unwrap().clone();
-                let (typ, kind) = val.type_of(ctx);
-                let p = PointerObj::UserData(Rc::new(typ));
-                Box::pin(async move { Ok(vec![GosValue::new_pointer(p), GosValue::Uint(kind)]) })
+                let v = ud.as_any().downcast_ref::<StdValue>().unwrap();
+                let (t, k) = StdType::type_of(&v.val, ctx);
+                Box::pin(async move { Ok(vec![t, k]) })
             }
             _ => unreachable!(),
         }
@@ -67,7 +69,7 @@ impl Reflect {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct StdValue {
     val: GosValue,
 }
@@ -83,8 +85,8 @@ impl StdValue {
         StdValue { val: v }
     }
 
-    fn value_of(v: Vec<GosValue>) -> StdValue {
-        let iface = v[0].as_interface().borrow();
+    fn value_of(v: &GosValue) -> StdValue {
+        let iface = v.as_interface().borrow();
         let v = match &iface.underlying() {
             IfaceUnderlying::Gos(v, _) => v.clone(),
             // todo: should we return something else?
@@ -93,10 +95,41 @@ impl StdValue {
         };
         StdValue::new(v)
     }
+}
 
-    fn type_of(&self, ctx: &FfiCallCtx) -> (StdValue, usize) {
-        let m = self.val.get_meta(ctx.vm_objs, ctx.stack);
-        let typ = StdValue::new(GosValue::Metadata(m));
+#[derive(Clone, Debug)]
+struct StdType {
+    meta: GosMetadata,
+    mobjs: *const MetadataObjs,
+}
+
+impl UserData for StdType {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn eq(&self, other: &dyn UserData) -> bool {
+        match other.as_any().downcast_ref::<StdType>() {
+            Some(other_type) => {
+                let objs = unsafe { &*self.mobjs };
+                self.meta.identical(&other_type.meta, objs)
+            }
+            None => false,
+        }
+    }
+}
+
+impl StdType {
+    fn new(m: GosMetadata, objs: &MetadataObjs) -> StdType {
+        StdType {
+            meta: m,
+            mobjs: objs,
+        }
+    }
+
+    fn type_of(val: &GosValue, ctx: &FfiCallCtx) -> (GosValue, GosValue) {
+        let m = val.get_meta(ctx.vm_objs, ctx.stack);
+        let typ = StdType::new(m, &ctx.vm_objs.metas);
         let kind = match m
             .get_underlying(&ctx.vm_objs.metas)
             .get_value_type(&ctx.vm_objs.metas)
@@ -118,11 +151,11 @@ impl StdValue {
             ValueType::Complex128 => GosKind::Complex128,
             ValueType::Array => GosKind::Array,
             ValueType::Channel => GosKind::Chan,
-            ValueType::Function => GosKind::Func,
+            ValueType::Closure => GosKind::Func,
             ValueType::Interface => GosKind::Interface,
             ValueType::Map => GosKind::Map,
             ValueType::Pointer => {
-                let ptr: &PointerObj = &*self.val.as_pointer();
+                let ptr: &PointerObj = &*val.as_pointer();
                 match ptr {
                     PointerObj::UserData(_) => GosKind::UnsafePointer,
                     _ => GosKind::Ptr,
@@ -133,6 +166,9 @@ impl StdValue {
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };
-        (typ, kind as usize)
+        (
+            GosValue::new_pointer(PointerObj::UserData(Rc::new(typ))),
+            GosValue::Uint(kind as usize),
+        )
     }
 }

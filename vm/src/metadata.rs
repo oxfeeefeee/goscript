@@ -490,7 +490,7 @@ impl GosMetadata {
         m.members[index as usize].clone()
     }
 
-    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+    pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         match (self, other) {
             (Self::NonPtr(ak, ac), Self::NonPtr(bk, bc)) => {
                 Self::semantic_eq_impl(ak, ac, bk, bc, metas)
@@ -529,7 +529,7 @@ impl GosMetadata {
         bc: &MetaCategory,
         metas: &MetadataObjs,
     ) -> bool {
-        (ac == bc) && ((ak == bk) || metas[*ak].semantic_eq(&metas[*bk], *ac, metas))
+        (ac == bc) && ((ak == bk) || metas[*ak].identical(&metas[*bk], *ac, metas))
     }
 }
 
@@ -573,12 +573,12 @@ impl Fields {
         ret
     }
 
-    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+    pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         if self.fields.len() != other.fields.len() {
             return false;
         }
         for (i, f) in self.fields.iter().enumerate() {
-            if !f.semantic_eq(&other.fields[i], metas) {
+            if !f.identical(&other.fields[i], metas) {
                 return false;
             }
         }
@@ -640,35 +640,33 @@ impl SigMetadata {
         }
     }
 
-    pub fn semantic_eq(&self, other: &Self, metas: &MetadataObjs) -> bool {
+    pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         if !match (&self.recv, &other.recv) {
             (None, None) => true,
-            (Some(a), Some(b)) => a.semantic_eq(b, metas),
+            (Some(a), Some(b)) => a.identical(b, metas),
             _ => false,
         } {
             return false;
         }
-
         if self.params.len() != other.params.len() {
             return false;
         }
         for (i, p) in self.params.iter().enumerate() {
-            if !p.semantic_eq(&other.params[i], metas) {
+            if !p.identical(&other.params[i], metas) {
                 return false;
             }
         }
-
-        if self.results.len() != other.params.len() {
+        if self.results.len() != other.results.len() {
             return false;
         }
         for (i, r) in self.results.iter().enumerate() {
-            if !r.semantic_eq(&other.results[i], metas) {
+            if !r.identical(&other.results[i], metas) {
                 return false;
             }
         }
         if !match (&self.variadic, &other.variadic) {
             (None, None) => true,
-            (Some((a, _)), Some((b, _))) => a.semantic_eq(b, metas),
+            (Some((a, _)), Some((b, _))) => a.identical(b, metas),
             _ => false,
         } {
             return false;
@@ -745,7 +743,7 @@ impl MetadataType {
         }
     }
 
-    pub fn semantic_eq(&self, other: &Self, mc: MetaCategory, metas: &MetadataObjs) -> bool {
+    pub fn identical(&self, other: &Self, mc: MetaCategory, metas: &MetadataObjs) -> bool {
         match (self, other) {
             (Self::Bool, Self::Bool) => true,
             (Self::Int, Self::Int) => true,
@@ -762,8 +760,8 @@ impl MetadataType {
             (Self::Complex64, Self::Complex64) => true,
             (Self::Complex128, Self::Complex128) => true,
             (Self::Str(_), Self::Str(_)) => true,
-            (Self::Struct(a, _), Self::Struct(b, _)) => a.semantic_eq(b, metas),
-            (Self::Signature(a), Self::Signature(b)) => a.semantic_eq(b, metas),
+            (Self::Struct(a, _), Self::Struct(b, _)) => a.identical(b, metas),
+            (Self::Signature(a), Self::Signature(b)) => a.identical(b, metas),
             (Self::SliceOrArray(a, size_a), Self::SliceOrArray(b, size_b)) => {
                 match mc {
                     MetaCategory::Array | MetaCategory::ArrayType => {
@@ -773,16 +771,16 @@ impl MetadataType {
                     }
                     _ => {}
                 }
-                a.semantic_eq(b, metas)
+                a.identical(b, metas)
             }
             (Self::Map(ak, av), Self::Map(bk, bv)) => {
-                ak.semantic_eq(bk, metas) && av.semantic_eq(bv, metas)
+                ak.identical(bk, metas) && av.identical(bv, metas)
             }
-            (Self::Interface(a), Self::Interface(b)) => a.semantic_eq(b, metas),
+            (Self::Interface(a), Self::Interface(b)) => a.identical(b, metas),
             (Self::Channel(at, avt), Self::Channel(bt, bvt)) => {
-                at == bt && avt.semantic_eq(bvt, metas)
+                at == bt && avt.identical(bvt, metas)
             }
-            (Self::Named(_, a), Self::Named(_, b)) => a.semantic_eq(b, metas),
+            (Self::Named(_, a), Self::Named(_, b)) => a.identical(b, metas),
             _ => false,
         }
     }

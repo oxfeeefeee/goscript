@@ -908,6 +908,10 @@ pub trait UserData {
     /// For downcasting
     fn as_any(&self) -> &dyn Any;
 
+    fn eq(&self, _: &dyn UserData) -> bool {
+        false
+    }
+
     /// Returns true if the user data can make reference cycles, so that GC can
     fn can_make_cycle(&self) -> bool {
         false
@@ -1038,7 +1042,7 @@ impl PartialEq for PointerObj {
             (Self::Map(x, _), Self::Map(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
-            (Self::UserData(udx), Self::UserData(udy)) => Rc::ptr_eq(udx, udy),
+            (Self::UserData(udx), Self::UserData(udy)) => udx.eq(&**udy),
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
             _ => false,
         }

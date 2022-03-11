@@ -50,6 +50,7 @@ type Value struct {
 // Addr is typically used to obtain a pointer to a struct field
 // or slice element in order to call a method that requires a
 // pointer receiver.
+// Goscript: cannot implement this for now
 func (v Value) Addr() Value {
 	panic("not implemented")
 }
@@ -71,8 +72,9 @@ func (v Value) Bytes() []byte {
 // an element of a slice, an element of an addressable array,
 // a field of an addressable struct, or the result of dereferencing a pointer.
 // If CanAddr returns false, calling Addr will panic.
+// Goscript: cannot implement this for now
 func (v Value) CanAddr() bool {
-	panic("not implemented")
+	return false
 }
 
 // CanSet reports whether the value of v can be changed.
@@ -670,4 +672,19 @@ func NewAt(typ Type, p unsafe.Pointer) Value {
 // of the value v to type t, Convert panics.
 func (v Value) Convert(t Type) Value {
 	panic("not implemented")
+}
+
+// A ValueError occurs when a Value method is invoked on
+// a Value that does not support it. Such cases are documented
+// in the description of each method.
+type ValueError struct {
+	Method string
+	Kind   Kind
+}
+
+func (e *ValueError) Error() string {
+	if e.Kind == 0 {
+		return "reflect: call of " + e.Method + " on zero Value"
+	}
+	return "reflect: call of " + e.Method + " on " + e.Kind.String() + " Value"
 }
