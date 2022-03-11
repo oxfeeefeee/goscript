@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"fmt2"
 )
 
 type III interface{}
@@ -31,19 +31,19 @@ func main() {
     a = b
     b.i = 55
     
-	fmt.Println("Hello, playground", ia, ia == nil, ib, ib == nil, 10, a.i, b.i)
+	fmt2.Println("Hello, playground", ia, ia == nil, ib, ib == nil, 10, a.i, b.i)
 
     c := &a
     d := &b
     c.i = 111
     d.i = 222
-    fmt.Println(a.i, b.i)
+    fmt2.Println(a.i, b.i)
     *c = b
-    fmt.Println(a.i, b.i)
+    fmt2.Println(a.i, b.i)
 
     var e *int
-    fmt.Println(e)
+    fmt2.Println(e)
     i := 666
     e = &i
-    fmt.Println(e, *e)
+    fmt2.Println(e, *e)
 }

@@ -1,7 +1,7 @@
 // for testing GC; taken from internet
 package main
 
-import "fmt"
+import "fmt2"
 
 type Node struct {
 	prev *Node
@@ -38,26 +38,26 @@ func (L *List) Insert(key interface{}) {
 func (l *List) Display() {
 	list := l.head
 	for list != nil {
-		fmt.Println("%+v ->", list.key)
+		fmt2.Println("%+v ->", list.key)
 		list = list.next
 	}
-	//fmt.Println()
+	//fmt2.Println()
 }
 
 func Display(list *Node) {
 	for list != nil {
-		fmt.Println("%v ->", list.key)
+		fmt2.Println("%v ->", list.key)
 		list = list.next
 	}
-	//fmt.Println()
+	//fmt2.Println()
 }
 
 func ShowBackwards(list *Node) {
 	for list != nil {
-		fmt.Println("%v <-", list.key)
+		fmt2.Println("%v <-", list.key)
 		list = list.prev
 	}
-	//fmt.Println()
+	//fmt2.Println()
 }
 
 func (l *List) Reverse() {
@@ -84,16 +84,16 @@ func main() {
 	link.Insert(7)
 	link.Insert(9)
 	
-	fmt.Println("\n==============================\n")
-	fmt.Println("Head: %v\n", link.head.key)
-	fmt.Println("Tail: %v\n", link.tail.key)
-	//fmt.Println("ttt: %v\n", link.ttt.key)
+	fmt2.Println("\n==============================\n")
+	fmt2.Println("Head: %v\n", link.head.key)
+	fmt2.Println("Tail: %v\n", link.tail.key)
+	//fmt2.Println("ttt: %v\n", link.ttt.key)
 	link.Display()
-	fmt.Println("\n==============================\n")
-	fmt.Println("head: %v\n", link.head.key)
-	fmt.Println("tail: %v\n", link.tail.key)
+	fmt2.Println("\n==============================\n")
+	fmt2.Println("head: %v\n", link.head.key)
+	fmt2.Println("tail: %v\n", link.tail.key)
 	link.Reverse()
-	fmt.Println("\n==============================\n")
+	fmt2.Println("\n==============================\n")
 
 
 	// for testing GC

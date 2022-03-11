@@ -2,7 +2,7 @@ extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
-use super::std::{bits, fmt, reflect, sync};
+use super::std::{bits, fmt2, reflect, sync};
 
 pub struct Config {
     // working directory
@@ -25,7 +25,7 @@ pub struct Engine {
 impl Engine {
     pub fn new(config: Config) -> Engine {
         let mut ffi = vm::ffi::FfiFactory::new();
-        ffi.register("fmt", Box::new(fmt::Fmt::new));
+        ffi.register("fmt2", Box::new(fmt2::Fmt2::new));
         ffi.register("bits", Box::new(bits::Bits::new));
         ffi.register("sync.mutex", Box::new(sync::Mutex::new));
         ffi.register("sync.rw_mutex", Box::new(sync::RWMutex::new));

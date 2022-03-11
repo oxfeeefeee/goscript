@@ -2,7 +2,7 @@ package main
 
 
 import (
-    "fmt"
+    "fmt2"
 )
 
 var i = 10
@@ -29,6 +29,6 @@ func main() {
     m := []byte{1,3}
     n := []byte{2,4}
     t := append(m, n...)
-    fmt.Println(t, m, n, i)
+    fmt2.Println(t, m, n, i)
     
 }

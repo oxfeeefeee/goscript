@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"fmt2"
     "unicode/utf8"
 )
 
@@ -12,7 +12,7 @@ func ExampleDecodeLastRune() {
 	
 	for len(b) > 0 {
 		r, size := utf8.DecodeLastRune(b)
-		fmt.Println("%c %v\n", r, size)
+		fmt2.Println("%c %v\n", r, size)
 
 		b = b[:len(b)-size]
 	}
@@ -32,7 +32,7 @@ func ExampleDecodeLastRune() {
 
 func main() {
     ExampleDecodeLastRune()
-	fmt.Println(utf8.RuneError, "a \n b👌")
+	fmt2.Println(utf8.RuneError, "a \n b👌")
 	s := "\\ \n \\"
-	fmt.Println(s[0], len(s), s)
+	fmt2.Println(s[0], len(s), s)
 }

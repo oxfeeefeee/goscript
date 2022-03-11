@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 
 type Node struct{
@@ -36,7 +36,7 @@ func ttt() {
     d[1] = make([]int, 2)
     d[1][1] = 99
 
-    fmt.Println(a[0], a[1], a, b, b[:1], a[1:], a[1:][0], c, c[0], d[1][0], d[1][1])
+    fmt2.Println(a[0], a[1], a, b, b[:1], a[1:], a[1:][0], c, c[0], d[1][0], d[1][1])
 }
 
 func main() {

@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 func longestPalindrome(s string) string {
     if len(s) <= 1 {
@@ -85,7 +85,7 @@ func main() {
     }
     //assert(j == 10)
 	
-    fmt.Println(len(s))
+    fmt2.Println(len(s))
     result := longestPalindrome2(s)
 	assert(result == "aaabbbaaabbbaaa")
     

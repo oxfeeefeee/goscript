@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"fmt2"
 )
 
 func a() error {
@@ -11,5 +11,5 @@ func a() error {
 func main() {
 	var v = a()
 	assert(v == nil)
-	fmt.Println("Hello, playground", v)
+	fmt2.Println("Hello, playground", v)
 }

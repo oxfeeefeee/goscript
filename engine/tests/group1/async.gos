@@ -1,16 +1,16 @@
 package main
 
 import (
-	"fmt"
+	"fmt2"
 )
 
 func add(a int, b int, c int) {
     assert(a + b == c)
-    fmt.Println(a, "+", b, "=", c)
+    fmt2.Println(a, "+", b, "=", c)
 }
 
 func main() {
-    go fmt.Println("hello world?")
+    go fmt2.Println("hello world?")
     i := 1
     j := 2
     n := 888
@@ -19,15 +19,15 @@ func main() {
     go func() {
         n = 666
         assert(n == 666)
-        fmt.Println("----- n = ", n);
+        fmt2.Println("----- n = ", n);
     }()
 
     assert(n == 888)
-    fmt.Println("before waiting... n = ", n);
+    fmt2.Println("before waiting... n = ", n);
     for i := 1; i <= 10000; i++ {
     }
     assert(n == 666)
-    fmt.Println("after waiting... n = ", n);
+    fmt2.Println("after waiting... n = ", n);
     
     k := i + j
     assert(k == 3)

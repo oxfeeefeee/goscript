@@ -20,7 +20,7 @@ enum GosKind {
     Uint16,
     Uint32,
     Uint64,
-    Uintptr,
+    _Uintptr, // do not support for now
     Float32,
     Float64,
     Complex64,

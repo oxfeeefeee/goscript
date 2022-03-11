@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 func sum(s []int, c chan int) {
 	sum := 0
@@ -8,7 +8,7 @@ func sum(s []int, c chan int) {
 		sum += v
 	}
 	c <- sum // send sum to c
-	fmt.Println("c len: ", len(c))
+	fmt2.Println("c len: ", len(c))
 }
 
 func testWithCap(capacity int) {
@@ -21,7 +21,7 @@ func testWithCap(capacity int) {
 	x, y := <-c, <-c // receive from c
 
 	assert(x + y == 12)
-	fmt.Println(x, y, x+y)
+	fmt2.Println(x, y, x+y)
 
 	
 	go func() {c <- 888}()
@@ -31,14 +31,14 @@ func testWithCap(capacity int) {
 
 	close(c)
 	assert(<-c == 0)
-	fmt.Println(<-c)
+	fmt2.Println(<-c)
 	m := <- c
 	assert(m == 0)
 	n, ok := <- c
 	assert(n == 0)
 	assert(!ok)
 
-	fmt.Println(m, n, nn)
+	fmt2.Println(m, n, nn)
 
 	assert(cap(c) == capacity)
 }

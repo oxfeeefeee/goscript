@@ -2,7 +2,7 @@ package main
 
 
 import (
-	"fmt"
+	"fmt2"
 )
 
 func f() (result int) {
@@ -15,10 +15,10 @@ func f() (result int) {
 
 func main() {
     assert(f() == 42)
-    fmt.Println(f())
+    fmt2.Println(f())
     
     for i := 0; i <= 3; i++ {
-	    defer fmt.Println(i)
+	    defer fmt2.Println(i)
     }
     
 } 

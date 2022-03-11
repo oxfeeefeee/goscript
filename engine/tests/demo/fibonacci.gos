@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 func fibonacci(c, quit chan int) {
 	x, y := 0, 1
@@ -9,7 +9,7 @@ func fibonacci(c, quit chan int) {
 		case c <- x:
 			x, y = y, x+y
 		case <-quit:
-			fmt.Println("quit 拉")
+			fmt2.Println("quit 拉")
 			return
 		}
 	}
@@ -20,7 +20,7 @@ func main() {
 	quit := make(chan int)
 	go func() {
 		for i := 0; i < 12; i++ {
-			fmt.Println(<-c)
+			fmt2.Println(<-c)
 		}
 		quit <- 0
 	}()

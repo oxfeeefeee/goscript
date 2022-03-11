@@ -1,35 +1,35 @@
 package main
 
 
-import "fmt"
+import "fmt2"
 
 func main() {
     f()
-    fmt.Println("Returned normally from f.")
+    fmt2.Println("Returned normally from f.")
 }
 
 func f() {
     defer func() {
         if r := recover(); r != nil {
-            fmt.Println("Recovered in f", r)
+            fmt2.Println("Recovered in f", r)
         }
     }()
 
     //panic("aaaaa")
-    fmt.Println("Calling g.")
+    fmt2.Println("Calling g.")
     g(0)
-    fmt.Println("Returned normally from g.")
+    fmt2.Println("Returned normally from g.")
 }
 
 
 func g(i int) {
     if i > 3 {
-        fmt.Println("Panicking!")
+        fmt2.Println("Panicking!")
         panic("xxxxx")
     }
     
-    defer fmt.Println("Defer in g", i)
-    fmt.Println("Printing in g", i)
+    defer fmt2.Println("Defer in g", i)
+    fmt2.Println("Printing in g", i)
     g(i + 1)
 }
 

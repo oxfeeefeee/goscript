@@ -1,7 +1,7 @@
 package main
 
 
-import "fmt"
+import "fmt2"
 
 
 func f1() {
@@ -155,7 +155,7 @@ OuterLoop:
             }
         }
     }
-    fmt.Println(total)
+    fmt2.Println(total)
     assert(total == 6)
 
 
@@ -169,7 +169,7 @@ OuterLoop2:
             }
         }
     }
-    fmt.Println(total)
+    fmt2.Println(total)
     assert(total == 60)
 
     total = 0
@@ -181,7 +181,7 @@ OuterLoop2:
             }
         }
     }
-    fmt.Println(total)
+    fmt2.Println(total)
     assert(total == 60)
 
     total = 0
@@ -193,7 +193,7 @@ OuterLoop2:
             }
         }
     }
-    fmt.Println(total)
+    fmt2.Println(total)
     assert(total == 100)
 }
 
@@ -210,10 +210,10 @@ FOR1:
         case v, ok := <-quit:
             assert(v == 888)
             assert(ok)
-            fmt.Println("quit recv:", v, ok)
+            fmt2.Println("quit recv:", v, ok)
             break 
         default:
-            fmt.Println("default")
+            fmt2.Println("default")
             break FOR1
         }	
     }
@@ -229,14 +229,14 @@ FOR1:
         switch total {
         case 3:
             assert(total == 3)
-            fmt.Println("case 3")
+            fmt2.Println("case 3")
             break 
         case 106:
             assert(total == 106)
-            fmt.Println("case 106")
+            fmt2.Println("case 106")
             continue
         default:
-            fmt.Println("default")
+            fmt2.Println("default")
             break FOR1
         }	
         total += 100

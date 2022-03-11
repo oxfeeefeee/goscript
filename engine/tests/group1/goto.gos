@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 func main() {
    var a int = 0
@@ -13,10 +13,10 @@ func main() {
          goto LOOP
       }
       total += a
-      fmt.Println("value of a: ", a)
+      fmt2.Println("value of a: ", a)
       a++     
    }  
 
-   fmt.Println(total)
+   fmt2.Println(total)
    assert(total == 45 - skip)
 }

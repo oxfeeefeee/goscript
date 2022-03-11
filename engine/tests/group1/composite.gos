@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"fmt2"
 )
 
 
@@ -35,7 +35,7 @@ func main() {
     assert(p2.y == 88)
 
     var s = []Point3D{{1,2,3},{y:4}}
-    fmt.Println(s[0].x, s[0].y, s[0].z, s[1].x, s[1].y, s[1].z)
+    fmt2.Println(s[0].x, s[0].y, s[0].z, s[1].x, s[1].y, s[1].z)
 
     assert(s[0].z == 3)
     assert(s[1].y == 4)
@@ -44,14 +44,14 @@ func main() {
     assert(pf.x == 1.1)
 
     var t2 = []acceptRange{10:{1,1}, {2,2}, 1:{3,3}}
-    fmt.Println(t2)
+    fmt2.Println(t2)
     assert(t2[0].lo == 0)
     assert(t2[1].lo == 3)
     assert(t2[11].lo == 2)
     assert(len(t2) == 12)
 
     var t3 = []acceptRange{1:{1,1}, {2,2}, 10:{3,3}}
-    fmt.Println(t3)
+    fmt2.Println(t3)
     assert(t3[0].lo == 0)
     assert(t3[1].lo == 1)
     assert(t3[2].lo == 2)

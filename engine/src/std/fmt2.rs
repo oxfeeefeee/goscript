@@ -5,9 +5,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub struct Fmt {}
+pub struct Fmt2 {}
 
-impl Ffi for Fmt {
+impl Ffi for Fmt2 {
     fn call(
         &self,
         ctx: &FfiCallCtx,
@@ -22,9 +22,9 @@ impl Ffi for Fmt {
     }
 }
 
-impl Fmt {
+impl Fmt2 {
     pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(Fmt {})))
+        Ok(Rc::new(RefCell::new(Fmt2 {})))
     }
 
     fn println(&self, params: Vec<GosValue>) {

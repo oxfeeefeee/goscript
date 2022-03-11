@@ -1,6 +1,6 @@
 package main
 
-import "fmt"
+import "fmt2"
 
 type TestKey struct {
     i int
@@ -52,5 +52,5 @@ func main() {
     assert(mp[r] == 0)
     assert(*k == *r)
 
-    fmt.Println(k, q, r, *k, *q, *r)
+    fmt2.Println(k, q, r, *k, *q, *r)
 }

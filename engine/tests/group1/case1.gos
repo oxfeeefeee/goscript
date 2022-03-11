@@ -1,7 +1,7 @@
 package main
 
 
-import "fmt"
+import "fmt2"
 import "unsafe"
 
 
@@ -25,6 +25,6 @@ func main() {
    //var i = n.area()
    //assert(i == 666)
     var p unsafe.Pointer
-    fmt.Println(p, 666)
+    fmt2.Println(p, 666)
   
 }
