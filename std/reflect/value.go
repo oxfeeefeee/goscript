@@ -8,15 +8,15 @@ import (
 	"unsafe"
 )
 
-var reflect_rt ffiReflect
+var reflectHandle ffiReflect
 
 func init() {
-	reflect_rt = ffi(ffiReflect, "reflect")
+	reflectHandle = ffi(ffiReflect, "reflect")
 }
 
 type ffiReflect interface {
 	value_of(i interface{}) unsafe.Pointer
-	type_of(p unsafe.Pointer) unsafe.Pointer
+	type_of(p unsafe.Pointer) (unsafe.Pointer, uint)
 }
 
 // Value is the reflection interface to a Go value.
@@ -41,10 +41,8 @@ type ffiReflect interface {
 // Using == on two Values does not compare the underlying values
 // they represent.
 type Value struct {
-
-	// Pointer-valued data or, if flagIndir is set, pointer to data.
-	// Valid when either flagIndir is set or typ.pointers() is true.
 	ptr unsafe.Pointer
+	typ reflectType
 }
 
 // Addr returns a pointer value representing the address of v.
@@ -223,7 +221,7 @@ func (v Value) IsValid() bool {
 // Kind returns v's Kind.
 // If v is the zero Value (IsValid returns false), Kind returns Invalid.
 func (v Value) Kind() Kind {
-	panic("not implemented")
+	return v.typ.kind
 }
 
 // Len returns v's length.
@@ -500,7 +498,7 @@ func (v Value) TrySend(x Value) bool {
 
 // Type returns v's type.
 func (v Value) Type() Type {
-	return reflectType{ptr: reflect_rt.type_of(v.ptr)}
+	return v.typ
 }
 
 // Uint returns v's underlying value, as a uint64.
@@ -640,7 +638,10 @@ func Indirect(v Value) Value {
 // ValueOf returns a new Value initialized to the concrete value
 // stored in the interface i. ValueOf(nil) returns the zero Value.
 func ValueOf(i interface{}) Value {
-	return Value{ptr: reflect_rt.value_of(i)}
+	pval := reflectHandle.value_of(i)
+	ptyp, kind := reflectHandle.type_of(pval)
+	typ := reflectType{typePtr: ptyp, kind: Kind(kind)}
+	return Value{ptr: pval, typ: typ}
 }
 
 // Zero returns a Value representing the zero value for the specified type.

@@ -344,7 +344,8 @@ func (tag StructTag) Lookup(key string) (value string, ok bool) {
 }
 
 type reflectType struct {
-	ptr unsafe.Pointer
+	typePtr unsafe.Pointer
+	kind    Kind
 }
 
 func (t reflectType) Align() int {
@@ -384,7 +385,7 @@ func (t reflectType) String() string {
 }
 
 func (t reflectType) Kind() Kind {
-	panic("not implemented")
+	return t.kind
 }
 
 func (t reflectType) Implements(u Type) bool {
