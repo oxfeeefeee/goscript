@@ -1,4 +1,5 @@
-use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
+use crate::ffi::*;
+use crate::non_async_result;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::GosMetadata;
 use goscript_vm::objects::MetadataObjs;
@@ -8,6 +9,13 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+
+macro_rules! param_as_std_val {
+    ($param:expr) => {{
+        let ud = $param.as_pointer().as_user_data();
+        ud.as_any().downcast_ref::<StdValue>().unwrap()
+    }};
+}
 
 enum GosKind {
     Invalid = 0,
@@ -50,13 +58,37 @@ impl Ffi for Reflect {
         match ctx.func_name {
             "value_of" => {
                 let p = PointerObj::UserData(Rc::new(StdValue::value_of(&params[0])));
-                Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
+                non_async_result![GosValue::new_pointer(p)]
             }
             "type_of" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let v = ud.as_any().downcast_ref::<StdValue>().unwrap();
+                let v = param_as_std_val!(params[0]);
                 let (t, k) = StdType::type_of(&v.val, ctx);
-                Box::pin(async move { Ok(vec![t, k]) })
+                non_async_result![t, k]
+            }
+            "bool_val" => {
+                let v = param_as_std_val!(params[0]);
+                let (b, err) = v.bool_val();
+                non_async_result![b, err]
+            }
+            "int_val" => {
+                let v = param_as_std_val!(params[0]);
+                let (i, err) = v.int_val();
+                non_async_result![i, err]
+            }
+            "uint_val" => {
+                let v = param_as_std_val!(params[0]);
+                let (i, err) = v.uint_val();
+                non_async_result![i, err]
+            }
+            "float_val" => {
+                let v = param_as_std_val!(params[0]);
+                let (i, err) = v.float_val();
+                non_async_result![i, err]
+            }
+            "bytes_val" => {
+                let v = param_as_std_val!(params[0]);
+                let (i, err) = v.bytes_val();
+                non_async_result![i, err]
             }
             _ => unreachable!(),
         }
@@ -94,6 +126,26 @@ impl StdValue {
             IfaceUnderlying::None => GosValue::Nil(iface.meta),
         };
         StdValue::new(v)
+    }
+
+    fn bool_val(&self) -> (GosValue, GosValue) {
+        (GosValue::new_nil(), GosValue::new_nil())
+    }
+
+    fn int_val(&self) -> (GosValue, GosValue) {
+        (GosValue::Int(888), GosValue::new_str("".to_string()))
+    }
+
+    fn uint_val(&self) -> (GosValue, GosValue) {
+        (GosValue::new_nil(), GosValue::new_nil())
+    }
+
+    fn float_val(&self) -> (GosValue, GosValue) {
+        (GosValue::new_nil(), GosValue::new_nil())
+    }
+
+    fn bytes_val(&self) -> (GosValue, GosValue) {
+        (GosValue::new_nil(), GosValue::new_nil())
     }
 }
 

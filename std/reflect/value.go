@@ -17,6 +17,12 @@ func init() {
 type ffiReflect interface {
 	value_of(i interface{}) unsafe.Pointer
 	type_of(p unsafe.Pointer) (unsafe.Pointer, uint)
+
+	bool_val(p unsafe.Pointer) (bool, string)
+	int_val(p unsafe.Pointer) (int64, string)
+	uint_val(p unsafe.Pointer) (uint64, string)
+	float_val(p unsafe.Pointer) (float64, string)
+	bytes_val(p unsafe.Pointer) ([]byte, string)
 }
 
 // Value is the reflection interface to a Go value.
@@ -177,7 +183,11 @@ func (v Value) Index(i int) Value {
 // Int returns v's underlying value, as an int64.
 // It panics if v's Kind is not Int, Int8, Int16, Int32, or Int64.
 func (v Value) Int() int64 {
-	panic("not implemented")
+	if i, errStr := reflectHandle.int_val(v.ptr); errStr != "" {
+		panic(errStr)
+	} else {
+		return i
+	}
 }
 
 // CanInterface reports whether Interface can be used without panicking.

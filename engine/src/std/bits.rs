@@ -1,4 +1,5 @@
-use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
+use crate::ffi::*;
+use crate::non_async_result;
 use goscript_vm::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
 use std::future::Future;
@@ -20,7 +21,7 @@ impl Ffi for Bits {
             "f64_from_bits" => self.f64_from_bits(params),
             _ => unreachable!(),
         };
-        Box::pin(async move { Ok(v) })
+        non_async_result![v]
     }
 }
 
@@ -29,23 +30,23 @@ impl Bits {
         Ok(Rc::new(RefCell::new(Bits {})))
     }
 
-    fn f32_to_bits(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+    fn f32_to_bits(&self, params: Vec<GosValue>) -> GosValue {
         let result = u32::from_be_bytes(params[0].as_float32().to_be_bytes());
-        vec![GosValue::Uint32(result)]
+        GosValue::Uint32(result)
     }
 
-    fn f32_from_bits(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+    fn f32_from_bits(&self, params: Vec<GosValue>) -> GosValue {
         let result = f32::from_be_bytes(params[0].as_uint32().to_be_bytes());
-        vec![GosValue::Float32(result.into())]
+        GosValue::Float32(result.into())
     }
 
-    fn f64_to_bits(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+    fn f64_to_bits(&self, params: Vec<GosValue>) -> GosValue {
         let result = u64::from_be_bytes(params[0].as_float().to_be_bytes());
-        vec![GosValue::Uint64(result)]
+        GosValue::Uint64(result)
     }
 
-    fn f64_from_bits(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+    fn f64_from_bits(&self, params: Vec<GosValue>) -> GosValue {
         let result = f64::from_be_bytes(params[0].as_uint64().to_be_bytes());
-        vec![GosValue::Float64(result.into())]
+        GosValue::Float64(result.into())
     }
 }

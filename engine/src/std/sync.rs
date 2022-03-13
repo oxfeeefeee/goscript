@@ -1,6 +1,9 @@
 ///https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock
+///
+///
+use crate::ffi::*;
+use crate::non_async_result;
 use futures_lite::future;
-use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
 use goscript_vm::value::{GosValue, PointerObj, RtMultiValResult, UserData};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
@@ -19,7 +22,7 @@ impl Ffi for Mutex {
         match ctx.func_name {
             "new" => {
                 let p = PointerObj::UserData(Rc::new(MutexInner::new()));
-                Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
+                non_async_result![GosValue::new_pointer(p)]
             }
             "lock" => {
                 let ud = params[0].as_pointer().as_user_data();

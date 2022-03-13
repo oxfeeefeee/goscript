@@ -1,4 +1,5 @@
-use goscript_vm::ffi::{Ffi, FfiCallCtx, FfiCtorResult};
+use crate::ffi::*;
+use crate::non_async_result;
 use goscript_vm::value::{GosValue, RtMultiValResult};
 use std::cell::RefCell;
 use std::future::Future;
@@ -18,7 +19,7 @@ impl Ffi for Fmt2 {
             "printf" => self.printf(params),
             _ => unreachable!(),
         }
-        Box::pin(async move { Ok(vec![]) })
+        non_async_result![]
     }
 }
 
