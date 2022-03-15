@@ -1,9 +1,8 @@
 use crate::ffi::*;
-use crate::non_async_result;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::GosMetadata;
 use goscript_vm::objects::MetadataObjs;
-use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, RtMultiValResult, UserData};
+use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UserData};
 use std::any::Any;
 use std::cell::RefCell;
 use std::future::Future;
@@ -47,57 +46,55 @@ enum GosKind {
     UnsafePointer,
 }
 
+#[derive(Ffi)]
 pub struct Reflect {}
 
-impl Ffi for Reflect {
-    fn call(
-        &self,
-        ctx: &FfiCallCtx,
-        params: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        match ctx.func_name {
-            "value_of" => {
-                let p = PointerObj::UserData(Rc::new(StdValue::value_of(&params[0])));
-                non_async_result![GosValue::new_pointer(p)]
-            }
-            "type_of" => {
-                let v = param_as_std_val!(params[0]);
-                let (t, k) = StdType::type_of(&v.val, ctx);
-                non_async_result![t, k]
-            }
-            "bool_val" => {
-                let v = param_as_std_val!(params[0]);
-                let (b, err) = v.bool_val();
-                non_async_result![b, err]
-            }
-            "int_val" => {
-                let v = param_as_std_val!(params[0]);
-                let (i, err) = v.int_val();
-                non_async_result![i, err]
-            }
-            "uint_val" => {
-                let v = param_as_std_val!(params[0]);
-                let (i, err) = v.uint_val();
-                non_async_result![i, err]
-            }
-            "float_val" => {
-                let v = param_as_std_val!(params[0]);
-                let (i, err) = v.float_val();
-                non_async_result![i, err]
-            }
-            "bytes_val" => {
-                let v = param_as_std_val!(params[0]);
-                let (i, err) = v.bytes_val();
-                non_async_result![i, err]
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
+#[ffi_impl]
 impl Reflect {
     pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
         Ok(Rc::new(RefCell::new(Reflect {})))
+    }
+
+    fn ffi_value_of(&self, params: Vec<GosValue>) -> GosValue {
+        GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::value_of(
+            &params[0],
+        ))))
+    }
+
+    fn ffi_type_of(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (t, k) = StdType::type_of(&v.val, ctx);
+        vec![t, k]
+    }
+
+    fn ffi_bool_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (b, err) = v.bool_val();
+        vec![b, err]
+    }
+
+    fn ffi_int_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (i, err) = v.int_val();
+        vec![i, err]
+    }
+
+    fn ffi_uint_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (i, err) = v.uint_val();
+        vec![i, err]
+    }
+
+    fn ffi_float_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (f, err) = v.float_val();
+        vec![f, err]
+    }
+
+    fn ffi_bytes_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
+        let v = param_as_std_val!(params[0]);
+        let (b, err) = v.bytes_val();
+        vec![b, err]
     }
 }
 

@@ -6,4 +6,5 @@ members = [
     "./vm",
     "./engine",
     "./codegen",
+    "./pmacro",
 ]

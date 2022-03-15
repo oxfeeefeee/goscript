@@ -2,46 +2,39 @@
 ///
 ///
 use crate::ffi::*;
-use crate::non_async_result;
 use futures_lite::future;
-use goscript_vm::value::{GosValue, PointerObj, RtMultiValResult, UserData};
+use goscript_vm::value::{GosValue, PointerObj, RuntimeResult, UserData};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::vec;
 
+#[derive(Ffi)]
 pub struct Mutex {}
 
-impl Ffi for Mutex {
-    fn call(
-        &self,
-        ctx: &FfiCallCtx,
-        params: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        match ctx.func_name {
-            "new" => {
-                let p = PointerObj::UserData(Rc::new(MutexInner::new()));
-                non_async_result![GosValue::new_pointer(p)]
-            }
-            "lock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
-                Box::pin(mutex.lock())
-            }
-            "unlock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
-                Box::pin(mutex.unlock())
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
+#[ffi_impl]
 impl Mutex {
     pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
         Ok(Rc::new(RefCell::new(Mutex {})))
+    }
+
+    fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {
+        let p = PointerObj::UserData(Rc::new(MutexInner::new()));
+        GosValue::new_pointer(p)
+    }
+
+    async fn ffi_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
+        mutex.lock().await
+    }
+
+    async fn ffi_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
+        mutex.unlock().await
     }
 }
 
@@ -63,7 +56,7 @@ impl MutexInner {
         }
     }
 
-    async fn lock(self) -> RtMultiValResult {
+    async fn lock(self) -> RuntimeResult<Vec<GosValue>> {
         //dbg!("lock called");
         while self.locked.get() {
             future::yield_now().await;
@@ -72,7 +65,7 @@ impl MutexInner {
         Ok(vec![])
     }
 
-    async fn unlock(self) -> RtMultiValResult {
+    async fn unlock(self) -> RuntimeResult<Vec<GosValue>> {
         //dbg!("unlock called");
         if !self.locked.get() {
             Err("sync: unlock of unlocked mutex".to_string())
@@ -83,47 +76,42 @@ impl MutexInner {
     }
 }
 
+#[derive(Ffi)]
 pub struct RWMutex {}
 
-impl Ffi for RWMutex {
-    fn call(
-        &self,
-        ctx: &FfiCallCtx,
-        params: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>> {
-        match ctx.func_name {
-            "new" => {
-                let p = PointerObj::UserData(Rc::new(RWMutexInner::new()));
-                Box::pin(async move { Ok(vec![GosValue::new_pointer(p)]) })
-            }
-            "r_lock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let lock = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-                Box::pin(lock.r_lock())
-            }
-            "r_unlock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-                Box::pin(mutex.r_unlock())
-            }
-            "w_lock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let lock = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-                Box::pin(lock.w_lock())
-            }
-            "w_unlock" => {
-                let ud = params[0].as_pointer().as_user_data();
-                let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-                Box::pin(mutex.w_unlock())
-            }
-            _ => unreachable!(),
-        }
-    }
-}
-
+#[ffi_impl]
 impl RWMutex {
     pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
         Ok(Rc::new(RefCell::new(RWMutex {})))
+    }
+
+    fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {
+        let p = PointerObj::UserData(Rc::new(RWMutexInner::new()));
+        GosValue::new_pointer(p)
+    }
+
+    async fn ffi_r_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        mutex.r_lock().await
+    }
+
+    async fn ffi_r_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        mutex.r_unlock().await
+    }
+
+    async fn ffi_w_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        mutex.w_lock().await
+    }
+
+    async fn ffi_w_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = p[0].as_pointer().as_user_data();
+        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        mutex.w_unlock().await
     }
 }
 
@@ -195,7 +183,7 @@ impl RWMutexInner {
         }
     }
 
-    async fn r_lock(self) -> RtMultiValResult {
+    async fn r_lock(self) -> RuntimeResult<Vec<GosValue>> {
         loop {
             let can_read = self.data.borrow().can_read();
             if !can_read {
@@ -208,7 +196,7 @@ impl RWMutexInner {
         Ok(vec![])
     }
 
-    async fn r_unlock(self) -> RtMultiValResult {
+    async fn r_unlock(self) -> RuntimeResult<Vec<GosValue>> {
         let num = self.data.borrow_mut().dec_reader_num();
         if num < 0 {
             Err("sync: unmatched rUnlock call".to_string())
@@ -217,7 +205,7 @@ impl RWMutexInner {
         }
     }
 
-    async fn w_lock(self) -> RtMultiValResult {
+    async fn w_lock(self) -> RuntimeResult<Vec<GosValue>> {
         self.data.borrow_mut().inc_writer_num();
         loop {
             let can_write = self.data.borrow().can_write();
@@ -233,7 +221,7 @@ impl RWMutexInner {
         Ok(vec![])
     }
 
-    async fn w_unlock(self) -> RtMultiValResult {
+    async fn w_unlock(self) -> RuntimeResult<Vec<GosValue>> {
         let was_active = self.data.borrow_mut().set_writer_active(false);
         if !was_active {
             Err("sync: unmatched wUnlock call".to_string())
