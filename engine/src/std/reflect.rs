@@ -68,34 +68,24 @@ impl Reflect {
         vec![t, k]
     }
 
-    fn ffi_bool_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = param_as_std_val!(params[0]);
-        let (b, err) = v.bool_val();
-        vec![b, err]
+    fn ffi_bool_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        param_as_std_val!(params[0]).bool_val()
     }
 
-    fn ffi_int_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = param_as_std_val!(params[0]);
-        let (i, err) = v.int_val();
-        vec![i, err]
+    fn ffi_int_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        param_as_std_val!(params[0]).int_val()
     }
 
-    fn ffi_uint_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = param_as_std_val!(params[0]);
-        let (i, err) = v.uint_val();
-        vec![i, err]
+    fn ffi_uint_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        param_as_std_val!(params[0]).uint_val()
     }
 
-    fn ffi_float_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = param_as_std_val!(params[0]);
-        let (f, err) = v.float_val();
-        vec![f, err]
+    fn ffi_float_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        param_as_std_val!(params[0]).float_val()
     }
 
-    fn ffi_bytes_val(&self, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = param_as_std_val!(params[0]);
-        let (b, err) = v.bytes_val();
-        vec![b, err]
+    fn ffi_bytes_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        param_as_std_val!(params[0]).bytes_val()
     }
 }
 
@@ -126,24 +116,24 @@ impl StdValue {
         StdValue::new(v)
     }
 
-    fn bool_val(&self) -> (GosValue, GosValue) {
-        (GosValue::new_nil(), GosValue::new_nil())
+    fn bool_val(&self) -> RuntimeResult<GosValue> {
+        Err("unimplemented!".to_string())
     }
 
-    fn int_val(&self) -> (GosValue, GosValue) {
-        (GosValue::Int(888), GosValue::new_str("".to_string()))
+    fn int_val(&self) -> RuntimeResult<GosValue> {
+        Ok(GosValue::Int(888))
     }
 
-    fn uint_val(&self) -> (GosValue, GosValue) {
-        (GosValue::new_nil(), GosValue::new_nil())
+    fn uint_val(&self) -> RuntimeResult<GosValue> {
+        Err("unimplemented!".to_string())
     }
 
-    fn float_val(&self) -> (GosValue, GosValue) {
-        (GosValue::new_nil(), GosValue::new_nil())
+    fn float_val(&self) -> RuntimeResult<GosValue> {
+        Err("unimplemented!".to_string())
     }
 
-    fn bytes_val(&self) -> (GosValue, GosValue) {
-        (GosValue::new_nil(), GosValue::new_nil())
+    fn bytes_val(&self) -> RuntimeResult<GosValue> {
+        Err("unimplemented!".to_string())
     }
 }
 

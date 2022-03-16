@@ -1,11 +1,13 @@
 #![macro_use]
+use crate::value::RuntimeResult;
+
 use super::channel::Channel;
 use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
-use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RtEmptyResult};
+use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
 use slotmap::{new_key_type, DenseSlotMap, KeyData};
 use std::any::Any;
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -890,7 +892,7 @@ impl ChannelObj {
         self.chan.close()
     }
 
-    pub async fn send(&self, v: &GosValue) -> RtEmptyResult {
+    pub async fn send(&self, v: &GosValue) -> RuntimeResult<()> {
         self.chan.send(v).await
     }
 

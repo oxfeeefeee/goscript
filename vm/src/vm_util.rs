@@ -1,10 +1,12 @@
+use crate::value::RuntimeResult;
+
 //#![allow(dead_code)]
 //use super::opcode::OpIndex;
 use super::gc::GcoVec;
 use super::instruction::*;
 use super::objects::MetadataObjs;
 use super::stack::Stack;
-use super::value::{GosValue, RtEmptyResult, RtValueResult, VMObjects};
+use super::value::{GosValue, VMObjects};
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -177,7 +179,7 @@ pub fn char_from_i32(i: i32) -> char {
 }
 
 #[inline(always)]
-pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
+pub fn load_index(val: &GosValue, ind: &GosValue) -> RuntimeResult<GosValue> {
     match val {
         GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
         GosValue::Slice(slice) => {
@@ -205,7 +207,7 @@ pub fn load_index(val: &GosValue, ind: &GosValue) -> RtValueResult {
 }
 
 #[inline]
-pub fn load_index_int(val: &GosValue, i: usize) -> RtValueResult {
+pub fn load_index_int(val: &GosValue, i: usize) -> RuntimeResult<GosValue> {
     match val {
         GosValue::Slice(slice) => slice
             .0
@@ -282,7 +284,7 @@ pub fn store_index_int(
     r_index: OpIndex,
     t: ValueType,
     gcos: &GcoVec,
-) -> RtEmptyResult {
+) -> RuntimeResult<()> {
     let err = Err("assignment to entry in nil map or slice".to_string());
     match target {
         GosValue::Array(arr) => {

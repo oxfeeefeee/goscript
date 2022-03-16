@@ -220,10 +220,6 @@ macro_rules! convert_to_float {
 
 pub type RuntimeResult<T> = result::Result<T, String>;
 
-pub type RtEmptyResult = RuntimeResult<()>;
-
-pub type RtValueResult = RuntimeResult<GosValue>;
-
 // ----------------------------------------------------------------------------
 // GosValue
 #[derive(Debug)]
