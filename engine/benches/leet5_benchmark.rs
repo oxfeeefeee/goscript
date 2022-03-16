@@ -10,7 +10,7 @@ fn run(path: &str, trace: bool) -> usize {
         trace_checker: trace,
         trace_vm: true,
     };
-    let engine = engine::Engine::new(cfg);
+    let mut engine = engine::Engine::new(cfg);
     engine.run(path)
 }
 

@@ -224,8 +224,6 @@ pub type RtEmptyResult = RuntimeResult<()>;
 
 pub type RtValueResult = RuntimeResult<GosValue>;
 
-pub type RtMultiValResult = RuntimeResult<Vec<GosValue>>;
-
 // ----------------------------------------------------------------------------
 // GosValue
 #[derive(Debug)]

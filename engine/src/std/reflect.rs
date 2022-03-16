@@ -1,3 +1,4 @@
+extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::GosMetadata;
@@ -51,8 +52,8 @@ pub struct Reflect {}
 
 #[ffi_impl]
 impl Reflect {
-    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(Reflect {})))
+    pub fn new(_v: Vec<GosValue>) -> Reflect {
+        Reflect {}
     }
 
     fn ffi_value_of(&self, params: Vec<GosValue>) -> GosValue {

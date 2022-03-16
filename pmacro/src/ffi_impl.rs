@@ -1,11 +1,12 @@
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
+use syn::NestedMeta;
 use syn::Token;
 use syn::{
-    parse_quote, punctuated::Punctuated, Arm, Expr, FnArg, GenericArgument, Ident, ImplItem,
-    ImplItemMethod, ItemImpl, Pat, PatType, PathArguments, PathSegment, ReturnType, Signature,
-    Stmt, Type,
+    parse_macro_input, parse_quote, punctuated::Punctuated, Arm, AttributeArgs, Expr, FnArg,
+    GenericArgument, Ident, ImplItem, ImplItemMethod, ItemImpl, Lit, Meta, Pat, PatType,
+    PathArguments, PathSegment, ReturnType, Signature, Stmt, Type,
 };
 
 const TYPE_ERR_MSG: &str = "unexpected return type";
@@ -25,9 +26,10 @@ enum ReturnedCount {
 }
 
 pub fn ffi_impl_implement(
-    _: proc_macro::TokenStream,
+    args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    let args: Vec<NestedMeta> = parse_macro_input!(args as AttributeArgs);
     let input: TokenStream = input.into();
     let impl_block =
         syn::parse2::<ItemImpl>(input.clone()).expect("ffi_impl only applies to impl blocks");
@@ -49,10 +51,18 @@ pub fn ffi_impl_implement(
             _ => None,
         })
         .collect();
-    output_block
-        .items
-        .push(ImplItem::Method(gen_dispatch_method(&func_name_args)));
+    let type_name = get_type_name(&impl_block.self_ty).unwrap().ident;
 
+    let mut methods: Vec<ImplItem> = vec![
+        gen_dispatch_method(&func_name_args),
+        get_wrapper_new_method(&type_name),
+        gen_register_method(&type_name, &args),
+    ]
+    .into_iter()
+    .map(|x| (ImplItem::Method(x)))
+    .collect();
+
+    output_block.items.append(&mut methods);
     output_block.to_tokens(&mut output);
     output.into()
 }
@@ -104,6 +114,44 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
     match_exp.arms = arms;
 
     method
+}
+
+fn get_wrapper_new_method(type_name: &Ident) -> ImplItemMethod {
+    let wrapper_ident = Ident::new("wrapper_new", Span::call_site());
+    parse_quote! {
+        pub fn #wrapper_ident(params: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
+            Ok(Rc::new(RefCell::new(#type_name::new(params))))
+        }
+    }
+}
+
+fn gen_register_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMethod {
+    let rname = meta
+        .iter()
+        .find_map(|x| match x {
+            NestedMeta::Meta(m) => match m {
+                Meta::NameValue(nv) => nv
+                    .path
+                    .segments
+                    .last()
+                    .map(|seg| match seg.ident.to_string().as_str() {
+                        "rename" => match &nv.lit {
+                            Lit::Str(s) => Some(s.value()),
+                            _ => None,
+                        },
+                        _ => None,
+                    })
+                    .flatten(),
+                _ => None,
+            },
+            NestedMeta::Lit(_) => None,
+        })
+        .unwrap_or(type_name.to_string().to_lowercase());
+    parse_quote! {
+        pub fn register(engine: &mut goscript_engine::Engine) {
+            engine.register_extension(#rname, Box::new(Self::wrapper_new));
+        }
+    }
 }
 
 fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {

@@ -1,3 +1,4 @@
+extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::value::GosValue;
 use std::cell::RefCell;
@@ -10,8 +11,8 @@ pub struct Fmt2 {}
 
 #[ffi_impl]
 impl Fmt2 {
-    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(Fmt2 {})))
+    pub fn new(_v: Vec<GosValue>) -> Fmt2 {
+        Fmt2 {}
     }
 
     fn ffi_println(&self, params: Vec<GosValue>) {

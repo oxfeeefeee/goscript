@@ -1,6 +1,7 @@
 ///https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock
 ///
 ///
+extern crate self as goscript_engine;
 use crate::ffi::*;
 use futures_lite::future;
 use goscript_vm::value::{GosValue, PointerObj, RuntimeResult, UserData};
@@ -14,10 +15,10 @@ use std::vec;
 #[derive(Ffi)]
 pub struct Mutex {}
 
-#[ffi_impl]
+#[ffi_impl(rename = "sync.mutex")]
 impl Mutex {
-    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(Mutex {})))
+    pub fn new(_v: Vec<GosValue>) -> Mutex {
+        Mutex {}
     }
 
     fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {
@@ -79,10 +80,10 @@ impl MutexInner {
 #[derive(Ffi)]
 pub struct RWMutex {}
 
-#[ffi_impl]
+#[ffi_impl(rename = "sync.rw_mutex")]
 impl RWMutex {
-    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(RWMutex {})))
+    pub fn new(_v: Vec<GosValue>) -> RWMutex {
+        RWMutex {}
     }
 
     fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {

@@ -1,3 +1,4 @@
+extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::value::GosValue;
 use std::cell::RefCell;
@@ -10,8 +11,8 @@ pub struct Bits {}
 
 #[ffi_impl]
 impl Bits {
-    pub fn new(_v: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-        Ok(Rc::new(RefCell::new(Bits {})))
+    pub fn new(_v: Vec<GosValue>) -> Bits {
+        Bits {}
     }
 
     fn ffi_f32_to_bits(&self, params: Vec<GosValue>) -> GosValue {

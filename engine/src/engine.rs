@@ -24,19 +24,24 @@ pub struct Engine {
 
 impl Engine {
     pub fn new(config: Config) -> Engine {
-        let mut ffi = vm::ffi::FfiFactory::new();
-        ffi.register("fmt2", Box::new(fmt2::Fmt2::new));
-        ffi.register("bits", Box::new(bits::Bits::new));
-        ffi.register("sync.mutex", Box::new(sync::Mutex::new));
-        ffi.register("sync.rw_mutex", Box::new(sync::RWMutex::new));
-        ffi.register("reflect", Box::new(reflect::Reflect::new));
+        let ffi = vm::ffi::FfiFactory::new();
         Engine {
             config: config,
             ffi: ffi,
         }
     }
 
-    pub fn run(&self, path: &str) -> usize {
+    fn register_std(&mut self) {
+        fmt2::Fmt2::register(self);
+        bits::Bits::register(self);
+        sync::Mutex::register(self);
+        sync::RWMutex::register(self);
+        reflect::Reflect::register(self);
+    }
+
+    pub fn run(&mut self, path: &str) -> usize {
+        self.register_std();
+
         let config = types::Config {
             work_dir: self.config.work_dir.clone(),
             base_path: self.config.base_path.clone(),

@@ -1,6 +1,6 @@
 use super::objects::VMObjects;
 use super::stack::Stack;
-use super::value::{GosValue, RtMultiValResult};
+use super::value::{GosValue, RuntimeResult};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -23,7 +23,7 @@ pub trait Ffi {
         &self,
         ctx: &FfiCallCtx,
         params: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RtMultiValResult> + '_>>;
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>>;
 }
 
 impl std::fmt::Debug for dyn Ffi {
