@@ -8,8 +8,12 @@ import (
 
 type AAA int
 
-
 var i = 222
+
+type Bbb struct {
+    a string
+    b int
+}
 
 func get() AAA {
     return AAA(i)
@@ -20,10 +24,52 @@ func get2() AAA {
     return AAA(6*3)
 }
 
+func testBytes() {
+    a := []byte{111,112,113}
+    v := reflect.ValueOf(a);
+    b := v.Bytes()
+    assert(a[0] == b[0])
+    assert(a[1] == b[1])
+    assert(a[2] == b[2])
+}
+
+func testValueElem() {
+    t := 8
+    i := &t
+    v := reflect.ValueOf(i)
+    re := v.Elem()
+    fmt2.Println(v, re)
+}
+
+func testField() {
+    b := Bbb{"xxx", 123}
+    v := reflect.ValueOf(b)
+    assert(v.Field(1).Int() == 123)
+    fmt2.Println(v, v.Field(1).Int())
+}
+
+func testVals() {
+    var i int16 = 555
+    assert(reflect.ValueOf(i).Int() == 555)
+
+    var j uint32 = 666
+    assert(reflect.ValueOf(j).Uint() == 666)
+
+    var k float32 = 3.5
+    assert(reflect.ValueOf(k).Float() == 3.5)
+}
+
 
 func main() {
+    testBytes()
+    testValueElem()
+    testField()
+    testVals()
+
+    
     i := reflect.TypeOf(get)
     j := reflect.TypeOf(get2)
     assert(i == j)
     fmt2.Println(get2(), get(), i, j, i == j )
+    
 }

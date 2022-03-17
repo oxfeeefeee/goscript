@@ -23,6 +23,8 @@ type ffiReflect interface {
 	uint_val(p unsafe.Pointer) uint64
 	float_val(p unsafe.Pointer) float64
 	bytes_val(p unsafe.Pointer) []byte
+	elem(p unsafe.Pointer) unsafe.Pointer
+	field(p unsafe.Pointer, i int) unsafe.Pointer
 }
 
 // Value is the reflection interface to a Go value.
@@ -70,7 +72,7 @@ func (v Value) Bool() bool {
 // Bytes returns v's underlying value.
 // It panics if v's underlying value is not a slice of bytes.
 func (v Value) Bytes() []byte {
-	panic("not implemented")
+	return reflectHandle.bytes_val(v.ptr)
 }
 
 // CanAddr reports whether the value's address can be obtained with Addr.
@@ -138,13 +140,16 @@ func (v Value) Complex() complex128 {
 // It panics if v's Kind is not Interface or Ptr.
 // It returns the zero Value if v is nil.
 func (v Value) Elem() Value {
-	panic("not implemented")
+	if v.ptr == nil {
+		return Value{}
+	}
+	return valuePtrToValue(reflectHandle.elem(v.ptr))
 }
 
 // Field returns the i'th field of the struct v.
 // It panics if v's Kind is not Struct or i is out of range.
 func (v Value) Field(i int) Value {
-	panic("not implemented")
+	return valuePtrToValue(reflectHandle.field(v.ptr, i))
 }
 
 // FieldByIndex returns the nested field corresponding to index.
@@ -171,7 +176,7 @@ func (v Value) FieldByNameFunc(match func(string) bool) Value {
 // Float returns v's underlying value, as a float64.
 // It panics if v's Kind is not Float32 or Float64
 func (v Value) Float() float64 {
-	panic("not implemented")
+	return reflectHandle.float_val(v.ptr)
 }
 
 // Index returns v's i'th element.
@@ -512,7 +517,7 @@ func (v Value) Type() Type {
 // Uint returns v's underlying value, as a uint64.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64.
 func (v Value) Uint() uint64 {
-	panic("not implemented")
+	return reflectHandle.uint_val(v.ptr)
 }
 
 // UnsafeAddr returns a pointer to v's data.
@@ -647,9 +652,7 @@ func Indirect(v Value) Value {
 // stored in the interface i. ValueOf(nil) returns the zero Value.
 func ValueOf(i interface{}) Value {
 	pval := reflectHandle.value_of(i)
-	ptyp, kind := reflectHandle.type_of(pval)
-	typ := reflectType{typePtr: ptyp, kind: Kind(kind)}
-	return Value{ptr: pval, typ: typ}
+	return valuePtrToValue(pval)
 }
 
 // Zero returns a Value representing the zero value for the specified type.
@@ -693,4 +696,10 @@ func (e *ValueError) Error() string {
 		return "reflect: call of " + e.Method + " on zero Value"
 	}
 	return "reflect: call of " + e.Method + " on " + e.Kind.String() + " Value"
+}
+
+func valuePtrToValue(pval unsafe.Pointer) Value {
+	ptyp, kind := reflectHandle.type_of(pval)
+	typ := reflectType{typePtr: ptyp, kind: Kind(kind)}
+	return Value{ptr: pval, typ: typ}
 }
