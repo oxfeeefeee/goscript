@@ -275,8 +275,7 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        let val = load_up_value!(upvalue, self, stack, self.frames);
-                        stack.push(val);
+                        stack.push(upvalue.value(stack));
                         frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::STORE_UPVALUE => {
@@ -370,7 +369,7 @@ impl<'a> Fiber<'a> {
                         let ind = inst.imm();
                         let mut target = stack.pop_with_type(inst.t0());
                         if let GosValue::Pointer(_) = &target {
-                            target = deref_value!(target, self, stack, self.frames, objs);
+                            target = vm_util::deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
                         let val = match &target {
@@ -444,7 +443,7 @@ impl<'a> Fiber<'a> {
                         let target = stack.get_with_type(s_index, inst.t1());
                         match target {
                             GosValue::Pointer(_) => {
-                                let unboxed = deref_value!(target, self, stack, self.frames, objs);
+                                let unboxed = vm_util::deref_value(&target, stack, objs);
                                 frame = self.frames.last_mut().unwrap();
                                 vm_util::store_field(
                                     stack,
@@ -473,7 +472,7 @@ impl<'a> Fiber<'a> {
                         let s_index = Stack::offset(stack.len(), index);
                         let mut target = stack.get_with_type(s_index, inst.t1());
                         if let GosValue::Pointer(_) = &target {
-                            target = deref_value!(target, self, stack, self.frames, objs);
+                            target = vm_util::deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
                         match &target {
@@ -539,7 +538,7 @@ impl<'a> Fiber<'a> {
                                         let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                         let val = stack.get_with_type(rhs_s_index, inst.t0());
                                         let mref: &mut StructObj = &mut r.0.borrow_mut();
-                                        *mref = val.try_get_struct().unwrap().0.borrow().clone();
+                                        *mref = val.try_as_struct().unwrap().0.borrow().clone();
                                     }
                                     PointerObj::Array(a, _) => {
                                         let rhs_s_index = Stack::offset(stack.len(), rhs_index);
@@ -555,7 +554,7 @@ impl<'a> Fiber<'a> {
                                         let rhs_s_index = Stack::offset(stack.len(), rhs_index);
                                         let val = stack.get_with_type(rhs_s_index, inst.t0());
                                         let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
-                                        *mref = val.try_get_map().unwrap().0.borrow_data().clone();
+                                        *mref = val.try_as_map().unwrap().0.borrow_data().clone();
                                     }
                                     PointerObj::SliceMember(s, index) => {
                                         let vborrow = s.0.borrow();
@@ -771,7 +770,7 @@ impl<'a> Fiber<'a> {
                         let mut struct_ = stack.pop_with_type(inst.t0());
                         // todo: do this check in codegen
                         if inst.t0() == ValueType::Pointer {
-                            struct_ = deref_value!(struct_, self, stack, self.frames, objs);
+                            struct_ = vm_util::deref_value(&struct_, stack, objs);
                         }
                         let struct_ = match &struct_ {
                             GosValue::Named(n) => n.0.clone(),
@@ -798,7 +797,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::DEREF => {
                         let boxed = stack.pop_with_type(inst.t0());
-                        let val = deref_value!(boxed, self, stack, self.frames, objs);
+                        let val = vm_util::deref_value(&boxed, stack, objs);
                         stack.push(val);
                         frame = self.frames.last_mut().unwrap();
                     }

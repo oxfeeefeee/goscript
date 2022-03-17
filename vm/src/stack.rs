@@ -2,11 +2,13 @@
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
+use super::objects::ValueDesc;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::mem;
+use std::ptr;
 use std::rc::Rc;
 
 const DEFAULT_SIZE: usize = 10240;
@@ -425,6 +427,17 @@ impl Stack {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
             self.push(GosValue::slice_with_val(v, meta, gcos))
+        }
+    }
+
+    #[inline]
+    pub fn load_upvalue(&self, desc: &ValueDesc) -> GosValue {
+        let index = (desc.stack_base + desc.index) as usize;
+        let uv_stack = desc.stack.upgrade().unwrap();
+        if ptr::eq(uv_stack.as_ptr(), self) {
+            self.get_with_type(index, desc.typ)
+        } else {
+            uv_stack.borrow().get_with_type(index, desc.typ)
         }
     }
 

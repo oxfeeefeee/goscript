@@ -728,6 +728,14 @@ impl MetadataType {
     }
 
     #[inline]
+    pub fn as_slice_or_array(&self) -> (&GosMetadata, &usize) {
+        match self {
+            Self::SliceOrArray(m, s) => (m, s),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn as_struct(&self) -> (&Fields, &GosValue) {
         match self {
             Self::Struct(f, v) => (f, v),

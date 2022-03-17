@@ -1,12 +1,9 @@
-use crate::value::RuntimeResult;
-
-//#![allow(dead_code)]
-//use super::opcode::OpIndex;
 use super::gc::GcoVec;
 use super::instruction::*;
 use super::objects::MetadataObjs;
 use super::stack::Stack;
 use super::value::{GosValue, VMObjects};
+use crate::value::RuntimeResult;
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -68,24 +65,6 @@ macro_rules! store_local {
     }};
 }
 
-macro_rules! load_up_value {
-    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr) => {{
-        let uv: &UpValueState = &$upvalue.inner.borrow();
-        match &uv {
-            UpValueState::Open(desc) => {
-                let index = (desc.stack_base + desc.index) as usize;
-                let uv_stack = desc.stack.upgrade().unwrap();
-                if ptr::eq(uv_stack.as_ptr(), $stack) {
-                    $stack.get_with_type(index, desc.typ)
-                } else {
-                    uv_stack.borrow().get_with_type(index, desc.typ)
-                }
-            }
-            UpValueState::Closed(val) => val.clone(),
-        }
-    }};
-}
-
 macro_rules! store_up_value {
     ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr, $rhs_index:ident, $typ:expr, $gcos:expr) => {{
         let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
@@ -113,49 +92,6 @@ macro_rules! store_up_value {
     }};
 }
 
-macro_rules! deref_value {
-    ($pointers:expr, $self_:ident, $stack:ident, $frames:expr, $objs:expr) => {{
-        match $pointers {
-            GosValue::Pointer(b) => {
-                let r: &PointerObj = &b;
-                match r {
-                    PointerObj::UpVal(uv) => load_up_value!(&uv, $self_, $stack, $frames),
-                    PointerObj::Struct(s, md) => match md {
-                        GosMetadata::Untyped => GosValue::Struct(s.clone()),
-                        _ => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *md))),
-                    },
-                    PointerObj::Array(a, md) => match md {
-                        GosMetadata::Untyped => GosValue::Array(a.clone()),
-                        _ => GosValue::Named(Box::new((GosValue::Array(a.clone()), *md))),
-                    },
-                    PointerObj::Slice(s, md) => match md {
-                        GosMetadata::Untyped => GosValue::Slice(s.clone()),
-                        _ => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *md))),
-                    },
-                    PointerObj::Map(s, md) => match md {
-                        GosMetadata::Untyped => GosValue::Map(s.clone()),
-                        _ => GosValue::Named(Box::new((GosValue::Map(s.clone()), *md))),
-                    },
-                    PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
-                    PointerObj::StructField(s, index) => {
-                        s.0.borrow().fields[*index as usize].clone()
-                    }
-                    PointerObj::PkgMember(pkg, index) => {
-                        $objs.packages[*pkg].member(*index).clone()
-                    }
-                    PointerObj::UserData(ud) => {
-                        let i = Rc::as_ptr(ud) as *const () as usize;
-                        GosValue::Uint(i)
-                    }
-                    // todo: report error instead of crash?
-                    PointerObj::Released => unreachable!(),
-                }
-            }
-            _ => unreachable!(),
-        }
-    }};
-}
-
 macro_rules! unwrap_recv_val {
     ($chan:expr, $val:expr, $metas:expr, $gcv:expr) => {
         match $val {
@@ -176,6 +112,11 @@ pub fn char_from_u32(u: u32) -> char {
 #[inline]
 pub fn char_from_i32(i: i32) -> char {
     unsafe { char::from_u32_unchecked(i as u32) }
+}
+
+#[inline]
+pub fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> GosValue {
+    v.as_pointer().deref(stack, &objs.packages)
 }
 
 #[inline(always)]

@@ -989,7 +989,7 @@ impl PointerObj {
         match self {
             Self::Struct(v, _) => {
                 let mref: &mut StructObj = &mut v.0.borrow_mut();
-                *mref = val.try_get_struct().unwrap().0.borrow().clone();
+                *mref = val.try_as_struct().unwrap().0.borrow().clone();
             }
             _ => unreachable!(),
         }
@@ -999,6 +999,37 @@ impl PointerObj {
         match self {
             Self::UserData(ud) => ud,
             _ => unreachable!(),
+        }
+    }
+
+    pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> GosValue {
+        match self {
+            PointerObj::UpVal(uv) => uv.value(stack),
+            PointerObj::Struct(s, md) => match md {
+                GosMetadata::Untyped => GosValue::Struct(s.clone()),
+                _ => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *md))),
+            },
+            PointerObj::Array(a, md) => match md {
+                GosMetadata::Untyped => GosValue::Array(a.clone()),
+                _ => GosValue::Named(Box::new((GosValue::Array(a.clone()), *md))),
+            },
+            PointerObj::Slice(s, md) => match md {
+                GosMetadata::Untyped => GosValue::Slice(s.clone()),
+                _ => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *md))),
+            },
+            PointerObj::Map(s, md) => match md {
+                GosMetadata::Untyped => GosValue::Map(s.clone()),
+                _ => GosValue::Named(Box::new((GosValue::Map(s.clone()), *md))),
+            },
+            PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
+            PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
+            PointerObj::PkgMember(pkg, index) => pkgs[*pkg].member(*index).clone(),
+            PointerObj::UserData(ud) => {
+                let i = Rc::as_ptr(ud) as *const () as usize;
+                GosValue::Uint(i)
+            }
+            // todo: report error instead of crash?
+            PointerObj::Released => unreachable!(),
         }
     }
 
@@ -1182,6 +1213,14 @@ impl UpValue {
 
     pub fn close(&self, val: GosValue) {
         *self.inner.borrow_mut() = UpValueState::Closed(val);
+    }
+
+    pub fn value(&self, stack: &Stack) -> GosValue {
+        let uv: &UpValueState = &self.inner.borrow();
+        match &uv {
+            UpValueState::Open(desc) => stack.load_upvalue(desc),
+            UpValueState::Closed(val) => val.clone(),
+        }
     }
 
     /// for gc

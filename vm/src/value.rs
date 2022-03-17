@@ -541,7 +541,7 @@ impl GosValue {
         }
     }
 
-    pub fn try_get_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
+    pub fn try_as_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
         match &self {
             GosValue::Struct(_) => Some(self.as_struct()),
             GosValue::Named(n) => Some(n.0.as_struct()),
@@ -549,7 +549,7 @@ impl GosValue {
         }
     }
 
-    pub fn try_get_map(&self) -> Option<&Rc<(MapObj, RCount)>> {
+    pub fn try_as_map(&self) -> Option<&Rc<(MapObj, RCount)>> {
         match &self {
             GosValue::Map(_) => Some(self.as_map()),
             GosValue::Named(n) => Some(n.0.as_map()),
