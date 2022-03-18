@@ -230,7 +230,7 @@ func (v Value) IsNil() bool {
 // Most functions and methods never return an invalid value.
 // If one does, its documentation states the conditions explicitly.
 func (v Value) IsValid() bool {
-	panic("not implemented")
+	return v.ptr != nil
 }
 
 // Kind returns v's Kind.

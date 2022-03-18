@@ -82,6 +82,15 @@ func testIsNil() {
 }
 
 
+func testIsValid() {
+    var m map[int]string
+    v := reflect.ValueOf(m)
+    var v1 reflect.Value
+    assert(v.IsValid())
+    assert(!v1.IsValid())
+}
+
+
 func main() {
     testBytes()
     testValueElem()
@@ -89,6 +98,7 @@ func main() {
     testVals()
     testIndex()
     testIsNil()
+    testIsValid()
 
     
     i := reflect.TypeOf(get)
