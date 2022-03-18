@@ -26,6 +26,7 @@ type ffiReflect interface {
 	elem(p unsafe.Pointer) unsafe.Pointer
 	field(p unsafe.Pointer, i int) unsafe.Pointer
 	index(p unsafe.Pointer, i int) unsafe.Pointer
+	is_nil(p unsafe.Pointer) bool
 }
 
 // Value is the reflection interface to a Go value.
@@ -220,7 +221,7 @@ func (v Value) InterfaceData() [2]uintptr {
 // i==nil will be true but v.IsNil will panic as v will be the zero
 // Value.
 func (v Value) IsNil() bool {
-	panic("not implemented")
+	return reflectHandle.is_nil(v.ptr)
 }
 
 // IsValid reports whether v represents a value.

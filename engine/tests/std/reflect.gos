@@ -74,6 +74,13 @@ func testIndex() {
     
 }
 
+func testIsNil() {
+    var m map[int]string
+    var s []string
+    assert(reflect.ValueOf(m).IsNil())
+    assert(reflect.ValueOf(s).IsNil())
+}
+
 
 func main() {
     testBytes()
@@ -81,6 +88,7 @@ func main() {
     testField()
     testVals()
     testIndex()
+    testIsNil()
 
     
     i := reflect.TypeOf(get)

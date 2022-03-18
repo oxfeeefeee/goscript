@@ -124,6 +124,10 @@ impl Reflect {
     fn ffi_index(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
         params_as_std_val!(params).index(ctx, &params[1])
     }
+
+    fn ffi_is_nil(&self, params: Vec<GosValue>) -> GosValue {
+        GosValue::Bool(params_as_std_val!(params).val.equals_nil())
+    }
 }
 
 #[derive(Clone, Debug)]
