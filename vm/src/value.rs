@@ -541,19 +541,38 @@ impl GosValue {
         }
     }
 
-    pub fn try_as_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
+    #[inline]
+    pub fn try_as_interface(&self) -> Option<&Rc<RefCell<InterfaceObj>>> {
         match &self {
-            GosValue::Struct(_) => Some(self.as_struct()),
-            GosValue::Named(n) => Some(n.0.as_struct()),
+            GosValue::Named(n) => Some(n.0.as_interface()),
+            GosValue::Interface(_) => Some(self.as_interface()),
             _ => None,
         }
     }
 
+    #[inline]
+    pub fn try_as_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
+        match &self {
+            GosValue::Named(n) => Some(n.0.as_struct()),
+            GosValue::Struct(_) => Some(self.as_struct()),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn try_as_map(&self) -> Option<&Rc<(MapObj, RCount)>> {
         match &self {
-            GosValue::Map(_) => Some(self.as_map()),
             GosValue::Named(n) => Some(n.0.as_map()),
+            GosValue::Map(_) => Some(self.as_map()),
             _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn unwrap_named(self) -> GosValue {
+        match self {
+            GosValue::Named(n) => n.0,
+            _ => self,
         }
     }
 

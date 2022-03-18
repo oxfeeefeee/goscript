@@ -372,17 +372,8 @@ impl<'a> Fiber<'a> {
                             target = vm_util::deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
-                        let val = match &target {
-                            GosValue::Named(n) => {
-                                n.0.as_struct().0.borrow().fields[ind as usize].clone()
-                            }
-                            GosValue::Struct(sval) => sval.0.borrow().fields[ind as usize].clone(),
-                            _ => {
-                                dbg!(&target);
-                                unreachable!()
-                            }
-                        };
-
+                        let val =
+                            target.try_as_struct().unwrap().0.borrow().fields[ind as usize].clone();
                         stack.push(val);
                     }
                     Opcode::BIND_METHOD => {
@@ -399,12 +390,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::BIND_INTERFACE_METHOD => {
                         let val = stack.pop_with_type(inst.t0());
-                        let val = match &val {
-                            GosValue::Named(n) => n.0.clone(),
-                            GosValue::Interface(_) => val,
-                            _ => unreachable!(),
-                        };
-                        let borrowed = val.as_interface().borrow();
+                        let borrowed = val.try_as_interface().unwrap().borrow();
                         let cls = match borrowed.underlying() {
                             IfaceUnderlying::Gos(val, funcs) => {
                                 let func = funcs.as_ref().unwrap()[inst.imm() as usize];
@@ -475,21 +461,9 @@ impl<'a> Fiber<'a> {
                             target = vm_util::deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
-                        match &target {
-                            GosValue::Named(n) => {
-                                let field =
-                                    &mut n.0.as_struct().0.borrow_mut().fields[imm as usize];
-                                stack.store_val(field, rhs_index, inst.t0(), gcv);
-                            }
-                            GosValue::Struct(s) => {
-                                let field = &mut s.0.borrow_mut().fields[imm as usize];
-                                stack.store_val(field, rhs_index, inst.t0(), gcv);
-                            }
-                            _ => {
-                                dbg!(&target);
-                                unreachable!()
-                            }
-                        }
+                        let field = &mut target.try_as_struct().unwrap().0.borrow_mut().fields
+                            [imm as usize];
+                        stack.store_val(field, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::LOAD_PKG_FIELD => {
                         let index = inst.imm();
@@ -772,11 +746,7 @@ impl<'a> Fiber<'a> {
                         if inst.t0() == ValueType::Pointer {
                             struct_ = vm_util::deref_value(&struct_, stack, objs);
                         }
-                        let struct_ = match &struct_ {
-                            GosValue::Named(n) => n.0.clone(),
-                            GosValue::Struct(_) => struct_,
-                            _ => unreachable!(),
-                        };
+                        let struct_ = struct_.unwrap_named();
                         stack.push(GosValue::new_pointer(PointerObj::StructField(
                             struct_.as_struct().clone(),
                             inst.imm(),
