@@ -11,6 +11,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 const WRONG_TYPE_MSG: &str = "reflect: wrong type";
+const INDEX_OOR_MSG: &str = "reflect: index out of range";
 
 macro_rules! params_as_std_val {
     ($params:expr) => {{
@@ -34,6 +35,12 @@ macro_rules! meta_objs {
 macro_rules! err_wrong_type {
     () => {
         Err(WRONG_TYPE_MSG.to_string())
+    };
+}
+
+macro_rules! err_index_oor {
+    () => {
+        Err(INDEX_OOR_MSG.to_string())
     };
 }
 
@@ -113,6 +120,10 @@ impl Reflect {
     fn ffi_field(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
         params_as_std_val!(params).field(ctx, &params[1])
     }
+
+    fn ffi_index(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        params_as_std_val!(params).index(ctx, &params[1])
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -147,14 +158,14 @@ impl StdValue {
     }
 
     fn bool_val(&self) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Bool(_) => Ok(self.val.clone()),
             _ => err_wrong_type!(),
         }
     }
 
     fn int_val(&self) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Int(i) => Ok(*i as i64),
             GosValue::Int8(i) => Ok(*i as i64),
             GosValue::Int16(i) => Ok(*i as i64),
@@ -166,7 +177,7 @@ impl StdValue {
     }
 
     fn uint_val(&self) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Uint(i) => Ok(*i as u64),
             GosValue::Uint8(i) => Ok(*i as u64),
             GosValue::Uint16(i) => Ok(*i as u64),
@@ -178,7 +189,7 @@ impl StdValue {
     }
 
     fn float_val(&self) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Float32(f) => Ok((Into::<f32>::into(*f) as f64).into()),
             GosValue::Float64(f) => Ok(*f),
             _ => err_wrong_type!(),
@@ -187,7 +198,7 @@ impl StdValue {
     }
 
     fn bytes_val(&self) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Slice(s) => {
                 let metas = meta_objs!(self.mobjs);
                 let (m, _) = metas[s.0.meta.as_non_ptr()].as_slice_or_array();
@@ -201,7 +212,7 @@ impl StdValue {
     }
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        match &self.val {
+        match self.val.unwrap_named_ref() {
             GosValue::Interface(iface) => Ok(iface
                 .borrow()
                 .underlying_value()
@@ -219,12 +230,32 @@ impl StdValue {
             Some(s) => {
                 let fields = &s.0.borrow().fields;
                 if fields.len() <= i {
-                    Err("reflect: Field index out of range".to_string())
+                    err_index_oor!()
                 } else {
                     Ok(fields[i].clone())
                 }
             }
             None => err_wrong_type!(),
+        }
+        .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
+    }
+
+    fn index(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
+        let i = *ival.as_int() as usize;
+        match self.val.unwrap_named_ref() {
+            GosValue::Array(arr) => match arr.0.len() > i {
+                true => Ok(arr.0.get(i).unwrap()),
+                false => err_index_oor!(),
+            },
+            GosValue::Slice(s) => match s.0.len() > i {
+                true => Ok(s.0.get(i).unwrap()),
+                false => err_index_oor!(),
+            },
+            GosValue::Str(s) => match s.len() > i {
+                true => Ok(GosValue::Uint8(*s.get_byte(i).unwrap())),
+                false => err_index_oor!(),
+            },
+            _ => err_wrong_type!(),
         }
         .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
     }

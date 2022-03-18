@@ -59,12 +59,28 @@ func testVals() {
     assert(reflect.ValueOf(k).Float() == 3.5)
 }
 
+func testIndex() {
+    a := []int{23,34,56}
+    v := reflect.ValueOf(a)  
+    assert(v.Index(1).Int() == 34)
+
+    b := "abcd"
+    v = reflect.ValueOf(b)  
+    assert(v.Index(1).Uint() == 'b')
+
+    c := [3]int{23,34,56}
+    v = reflect.ValueOf(c)  
+    assert(v.Index(2).Int() == 56)
+    
+}
+
 
 func main() {
     testBytes()
     testValueElem()
     testField()
     testVals()
+    testIndex()
 
     
     i := reflect.TypeOf(get)

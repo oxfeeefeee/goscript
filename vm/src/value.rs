@@ -577,6 +577,14 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn unwrap_named_ref(&self) -> &GosValue {
+        match self {
+            GosValue::Named(n) => &n.0,
+            _ => &self,
+        }
+    }
+
+    #[inline]
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
             GosValue::Named(n) => match &n.0 {

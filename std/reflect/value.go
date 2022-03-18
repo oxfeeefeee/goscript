@@ -25,6 +25,7 @@ type ffiReflect interface {
 	bytes_val(p unsafe.Pointer) []byte
 	elem(p unsafe.Pointer) unsafe.Pointer
 	field(p unsafe.Pointer, i int) unsafe.Pointer
+	index(p unsafe.Pointer, i int) unsafe.Pointer
 }
 
 // Value is the reflection interface to a Go value.
@@ -182,7 +183,7 @@ func (v Value) Float() float64 {
 // Index returns v's i'th element.
 // It panics if v's Kind is not Array, Slice, or String or i is out of range.
 func (v Value) Index(i int) Value {
-	panic("not implemented")
+	return valuePtrToValue(reflectHandle.index(v.ptr, i))
 }
 
 // Int returns v's underlying value, as an int64.
@@ -193,7 +194,7 @@ func (v Value) Int() int64 {
 
 // CanInterface reports whether Interface can be used without panicking.
 func (v Value) CanInterface() bool {
-	panic("not implemented")
+	return false
 }
 
 // Interface returns v's current value as an interface{}.
@@ -681,21 +682,6 @@ func NewAt(typ Type, p unsafe.Pointer) Value {
 // of the value v to type t, Convert panics.
 func (v Value) Convert(t Type) Value {
 	panic("not implemented")
-}
-
-// A ValueError occurs when a Value method is invoked on
-// a Value that does not support it. Such cases are documented
-// in the description of each method.
-type ValueError struct {
-	Method string
-	Kind   Kind
-}
-
-func (e *ValueError) Error() string {
-	if e.Kind == 0 {
-		return "reflect: call of " + e.Method + " on zero Value"
-	}
-	return "reflect: call of " + e.Method + " on " + e.Kind.String() + " Value"
 }
 
 func valuePtrToValue(pval unsafe.Pointer) Value {
