@@ -27,6 +27,7 @@ type ffiReflect interface {
 	field(p unsafe.Pointer, i int) unsafe.Pointer
 	index(p unsafe.Pointer, i int) unsafe.Pointer
 	is_nil(p unsafe.Pointer) bool
+	len(p unsafe.Pointer) int
 }
 
 // Value is the reflection interface to a Go value.
@@ -242,7 +243,7 @@ func (v Value) Kind() Kind {
 // Len returns v's length.
 // It panics if v's Kind is not Array, Chan, Map, Slice, or String.
 func (v Value) Len() int {
-	panic("not implemented")
+	return reflectHandle.len(v.ptr)
 }
 
 // MapIndex returns the value associated with key in the map v.

@@ -90,6 +90,15 @@ func testIsValid() {
     assert(!v1.IsValid())
 }
 
+func testLen() {
+    m := map[int]string{1:"a"}
+    var s []int
+    v := reflect.ValueOf(m)
+    v1 := reflect.ValueOf(s)
+    assert(v.Len() == 1)
+    assert(v1.Len() == 0)
+}
+
 
 func main() {
     testBytes()
@@ -99,6 +108,7 @@ func main() {
     testIndex()
     testIsNil()
     testIsValid()
+    testLen()
 
     
     i := reflect.TypeOf(get)

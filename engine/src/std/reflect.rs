@@ -128,6 +128,9 @@ impl Reflect {
     fn ffi_is_nil(&self, params: Vec<GosValue>) -> GosValue {
         GosValue::Bool(params_as_std_val!(params).val.equals_nil())
     }
+    fn ffi_len(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        params_as_std_val!(params).len()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -262,6 +265,18 @@ impl StdValue {
             _ => err_wrong_type!(),
         }
         .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
+    }
+
+    fn len(&self) -> RuntimeResult<GosValue> {
+        match self.val.unwrap_named_ref() {
+            GosValue::Array(arr) => Ok(arr.0.len()),
+            GosValue::Slice(s) => Ok(s.0.len()),
+            GosValue::Str(s) => Ok(s.len()),
+            GosValue::Channel(c) => Ok(c.len()),
+            GosValue::Map(m) => Ok(m.0.len()),
+            _ => err_wrong_type!(),
+        }
+        .map(|x| GosValue::Int(x as isize))
     }
 }
 
