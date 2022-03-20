@@ -14,9 +14,9 @@ use std::rc::Rc;
 const WRONG_TYPE_MSG: &str = "reflect: wrong type";
 const INDEX_OOR_MSG: &str = "reflect: index out of range";
 
-macro_rules! params_as {
-    ($params:expr, $t:ty) => {{
-        match &$params[0] {
+macro_rules! args_as {
+    ($args:expr, $t:ty) => {{
+        match &$args[0] {
             GosValue::Pointer(p) => match &*p as &PointerObj {
                 PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
                 _ => Err("reflect: expect UserData".to_string()),
@@ -89,84 +89,78 @@ impl Reflect {
         Reflect {}
     }
 
-    fn ffi_value_of(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> GosValue {
-        StdValue::value_of(&params[0], ctx)
+    fn ffi_value_of(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> GosValue {
+        StdValue::value_of(&args[0], ctx)
     }
 
-    fn ffi_type_of(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let v = params_as!(params, StdValue)?;
+    fn ffi_type_of(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let v = args_as!(args, StdValue)?;
         let (t, k) = StdType::type_of(&v.val, ctx);
         Ok(vec![t, k])
     }
 
-    fn ffi_bool_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.bool_val()
+    fn ffi_bool_val(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.bool_val()
     }
 
-    fn ffi_int_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.int_val()
+    fn ffi_int_val(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.int_val()
     }
 
-    fn ffi_uint_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.uint_val()
+    fn ffi_uint_val(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.uint_val()
     }
 
-    fn ffi_float_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.float_val()
+    fn ffi_float_val(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.float_val()
     }
 
-    fn ffi_bytes_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.bytes_val()
+    fn ffi_bytes_val(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.bytes_val()
     }
 
-    fn ffi_elem(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.elem(ctx)
+    fn ffi_elem(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.elem(ctx)
     }
 
-    fn ffi_num_field(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.num_field()
+    fn ffi_num_field(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.num_field()
     }
 
-    fn ffi_field(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.field(ctx, &params[1])
+    fn ffi_field(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.field(ctx, &args[1])
     }
 
-    fn ffi_index(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.index(ctx, &params[1])
+    fn ffi_index(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.index(ctx, &args[1])
     }
 
-    fn ffi_is_nil(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::Bool(
-            params_as!(params, StdValue)?.val.equals_nil(),
-        ))
+    fn ffi_is_nil(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(GosValue::Bool(args_as!(args, StdValue)?.val.equals_nil()))
     }
 
-    fn ffi_len(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as!(params, StdValue)?.len()
+    fn ffi_len(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdValue)?.len()
     }
 
-    fn ffi_map_range_init(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(StdMapIter::map_range(params_as!(params, StdValue)?))
+    fn ffi_map_range_init(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(StdMapIter::map_range(args_as!(args, StdValue)?))
     }
 
-    fn ffi_map_range_next(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(params_as!(params, StdMapIter)?.next())
+    fn ffi_map_range_next(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(args_as!(args, StdMapIter)?.next())
     }
 
-    fn ffi_map_range_key(
-        &self,
-        ctx: &FfiCallCtx,
-        params: Vec<GosValue>,
-    ) -> RuntimeResult<GosValue> {
-        params_as!(params, StdMapIter)?.key(ctx)
+    fn ffi_map_range_key(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        args_as!(args, StdMapIter)?.key(ctx)
     }
 
     fn ffi_map_range_value(
         &self,
         ctx: &FfiCallCtx,
-        params: Vec<GosValue>,
+        args: Vec<GosValue>,
     ) -> RuntimeResult<GosValue> {
-        params_as!(params, StdMapIter)?.value(ctx)
+        args_as!(args, StdMapIter)?.value(ctx)
     }
 }
 

@@ -15,8 +15,8 @@ impl Fmt2 {
         Fmt2 {}
     }
 
-    fn ffi_println(&self, params: Vec<GosValue>) {
-        let vec = params[0].as_slice().0.get_vec();
+    fn ffi_println(&self, args: Vec<GosValue>) {
+        let vec = args[0].as_slice().0.get_vec();
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {
@@ -33,8 +33,8 @@ impl Fmt2 {
         println!("{}", strs.join(", "));
     }
 
-    fn ffi_printf(&self, params: Vec<GosValue>) {
-        let _vec = params[0].as_slice().0.get_vec();
+    fn ffi_printf(&self, args: Vec<GosValue>) {
+        let _vec = args[0].as_slice().0.get_vec();
         unimplemented!();
     }
 }

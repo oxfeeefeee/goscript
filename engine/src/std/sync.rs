@@ -26,14 +26,14 @@ impl Mutex {
         GosValue::new_pointer(p)
     }
 
-    async fn ffi_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
         mutex.lock().await
     }
 
-    async fn ffi_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
         mutex.unlock().await
     }
@@ -91,26 +91,26 @@ impl RWMutex {
         GosValue::new_pointer(p)
     }
 
-    async fn ffi_r_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_r_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.r_lock().await
     }
 
-    async fn ffi_r_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.r_unlock().await
     }
 
-    async fn ffi_w_lock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_w_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.w_lock().await
     }
 
-    async fn ffi_w_unlock(&self, p: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = p[0].as_pointer().as_user_data();
+    async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let ud = args[0].as_pointer().as_user_data();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.w_unlock().await
     }

@@ -72,10 +72,10 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
         fn dispatch(
             &self,
             ctx: &FfiCallCtx,
-            params: Vec<GosValue>,
+            args: Vec<GosValue>,
         ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
             match ctx.func_name {
-                "dummy" => self.dummy(ctx, params),
+                "dummy" => self.dummy(ctx, args),
                 _ => unreachable!(),
             }
         }
@@ -119,8 +119,8 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
 fn get_wrapper_new_method(type_name: &Ident) -> ImplItemMethod {
     let wrapper_ident = Ident::new("wrapper_new", Span::call_site());
     parse_quote! {
-        pub fn #wrapper_ident(params: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-            Ok(Rc::new(RefCell::new(#type_name::new(params))))
+        pub fn #wrapper_ident(args: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
+            Ok(Rc::new(RefCell::new(#type_name::new(args))))
         }
     }
 }
