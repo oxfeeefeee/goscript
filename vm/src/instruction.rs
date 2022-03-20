@@ -234,6 +234,7 @@ pub enum ValueType {
     Int32,
     Int64,
     Uint,
+    UintPtr,
     Uint8,
     Uint16,
     Uint32,

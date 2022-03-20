@@ -82,6 +82,7 @@ macro_rules! binary_op_int_float {
             ValueType::Int32 => union_op_wrap!($a, $b, int32, $op),
             ValueType::Int64 => union_op_wrap!($a, $b, int64, $op),
             ValueType::Uint => union_op_wrap!($a, $b, uint, $op),
+            ValueType::UintPtr => union_op_wrap!($a, $b, uint_ptr, $op),
             ValueType::Uint8 => union_op_wrap!($a, $b, uint8, $op),
             ValueType::Uint16 => union_op_wrap!($a, $b, uint16, $op),
             ValueType::Uint32 => union_op_wrap!($a, $b, uint32, $op),
@@ -102,6 +103,7 @@ macro_rules! binary_op_int_no_wrap {
             ValueType::Int32 => union_op!($a, $b, int32, $op),
             ValueType::Int64 => union_op!($a, $b, int64, $op),
             ValueType::Uint => union_op!($a, $b, uint, $op),
+            ValueType::UintPtr => union_op!($a, $b, uint_ptr, $op),
             ValueType::Uint8 => union_op!($a, $b, uint8, $op),
             ValueType::Uint16 => union_op!($a, $b, uint16, $op),
             ValueType::Uint32 => union_op!($a, $b, uint32, $op),
@@ -121,6 +123,7 @@ macro_rules! cmp_bool_int_float {
             ValueType::Int32 => union_cmp!($a, $b, int32, $op),
             ValueType::Int64 => union_cmp!($a, $b, int64, $op),
             ValueType::Uint => union_cmp!($a, $b, uint, $op),
+            ValueType::UintPtr => union_cmp!($a, $b, uint_ptr, $op),
             ValueType::Uint8 => union_cmp!($a, $b, uint8, $op),
             ValueType::Uint16 => union_cmp!($a, $b, uint16, $op),
             ValueType::Uint32 => union_cmp!($a, $b, uint32, $op),
@@ -141,6 +144,7 @@ macro_rules! cmp_int_float {
             ValueType::Int32 => union_cmp!($a, $b, int32, $op),
             ValueType::Int64 => union_cmp!($a, $b, int64, $op),
             ValueType::Uint => union_cmp!($a, $b, uint, $op),
+            ValueType::UintPtr => union_cmp!($a, $b, uint_ptr, $op),
             ValueType::Uint8 => union_cmp!($a, $b, uint8, $op),
             ValueType::Uint16 => union_cmp!($a, $b, uint16, $op),
             ValueType::Uint32 => union_cmp!($a, $b, uint32, $op),
@@ -161,6 +165,7 @@ macro_rules! shift_int {
             ValueType::Int32 => union_shift!($a, $b, int32, $op),
             ValueType::Int64 => union_shift!($a, $b, int64, $op),
             ValueType::Uint => union_shift!($a, $b, uint, $op),
+            ValueType::UintPtr => union_shift!($a, $b, uint_ptr, $op),
             ValueType::Uint8 => union_shift!($a, $b, uint8, $op),
             ValueType::Uint16 => union_shift!($a, $b, uint16, $op),
             ValueType::Uint32 => union_shift!($a, $b, uint32, $op),
@@ -175,6 +180,7 @@ macro_rules! convert_to_int {
         unsafe {
             match $vt {
                 ValueType::Uint => $val.data.$d_type = $val.data.uint as $typ,
+                ValueType::UintPtr => $val.data.$d_type = $val.data.uint_ptr as $typ,
                 ValueType::Uint8 => $val.data.$d_type = $val.data.uint8 as $typ,
                 ValueType::Uint16 => $val.data.$d_type = $val.data.uint16 as $typ,
                 ValueType::Uint32 => $val.data.$d_type = $val.data.uint32 as $typ,
@@ -197,6 +203,7 @@ macro_rules! convert_to_float {
         unsafe {
             match $vt {
                 ValueType::Uint => $val.data.$d_type = $f_type::from($val.data.uint as $typ),
+                ValueType::UintPtr => $val.data.$d_type = $f_type::from($val.data.uint_ptr as $typ),
                 ValueType::Uint8 => $val.data.$d_type = $f_type::from($val.data.uint8 as $typ),
                 ValueType::Uint16 => $val.data.$d_type = $f_type::from($val.data.uint16 as $typ),
                 ValueType::Uint32 => $val.data.$d_type = $f_type::from($val.data.uint32 as $typ),
@@ -232,6 +239,7 @@ pub enum GosValue {
     Int32(i32),
     Int64(i64),
     Uint(usize),
+    UintPtr(usize),
     Uint8(u8),
     Uint16(u16),
     Uint32(u32),
@@ -626,6 +634,7 @@ impl GosValue {
             GosValue::Int32(_) => ValueType::Int32,
             GosValue::Int64(_) => ValueType::Int64,
             GosValue::Uint(_) => ValueType::Uint,
+            GosValue::UintPtr(_) => ValueType::UintPtr,
             GosValue::Uint8(_) => ValueType::Uint8,
             GosValue::Uint16(_) => ValueType::Uint16,
             GosValue::Uint32(_) => ValueType::Uint32,
@@ -664,6 +673,7 @@ impl GosValue {
             GosValue::Int32(_) => objs.metadata.mint32,
             GosValue::Int64(_) => objs.metadata.mint64,
             GosValue::Uint(_) => objs.metadata.muint,
+            GosValue::UintPtr(_) => objs.metadata.muint_ptr,
             GosValue::Uint8(_) => objs.metadata.muint8,
             GosValue::Uint16(_) => objs.metadata.muint16,
             GosValue::Uint32(_) => objs.metadata.muint32,
@@ -842,6 +852,7 @@ impl Clone for GosValue {
             GosValue::Int32(v) => GosValue::Int32(*v),
             GosValue::Int64(v) => GosValue::Int64(*v),
             GosValue::Uint(v) => GosValue::Uint(*v),
+            GosValue::UintPtr(v) => GosValue::UintPtr(*v),
             GosValue::Uint8(v) => GosValue::Uint8(*v),
             GosValue::Uint16(v) => GosValue::Uint16(*v),
             GosValue::Uint32(v) => GosValue::Uint32(*v),
@@ -881,6 +892,7 @@ impl PartialEq for GosValue {
             (Self::Int32(x), Self::Int32(y)) => x == y,
             (Self::Int64(x), Self::Int64(y)) => x == y,
             (Self::Uint(x), Self::Uint(y)) => x == y,
+            (Self::UintPtr(x), Self::UintPtr(y)) => x == y,
             (Self::Uint8(x), Self::Uint8(y)) => x == y,
             (Self::Uint16(x), Self::Uint16(y)) => x == y,
             (Self::Uint32(x), Self::Uint32(y)) => x == y,
@@ -931,6 +943,7 @@ impl Hash for GosValue {
             GosValue::Int32(i) => i.hash(state),
             GosValue::Int64(i) => i.hash(state),
             GosValue::Uint(i) => i.hash(state),
+            GosValue::UintPtr(i) => i.hash(state),
             GosValue::Uint8(i) => i.hash(state),
             GosValue::Uint16(i) => i.hash(state),
             GosValue::Uint32(i) => i.hash(state),
@@ -972,6 +985,7 @@ impl Ord for GosValue {
             (Self::Int32(x), Self::Int32(y)) => x.cmp(y),
             (Self::Int64(x), Self::Int64(y)) => x.cmp(y),
             (Self::Uint(x), Self::Uint(y)) => x.cmp(y),
+            (Self::UintPtr(x), Self::UintPtr(y)) => x.cmp(y),
             (Self::Uint8(x), Self::Uint8(y)) => x.cmp(y),
             (Self::Uint16(x), Self::Uint16(y)) => x.cmp(y),
             (Self::Uint32(x), Self::Uint32(y)) => x.cmp(y),
@@ -999,6 +1013,7 @@ impl Display for GosValue {
             GosValue::Int32(i) => write!(f, "{}", i),
             GosValue::Int64(i) => write!(f, "{}", i),
             GosValue::Uint(i) => write!(f, "{}", i),
+            GosValue::UintPtr(i) => write!(f, "{}", i),
             GosValue::Uint8(i) => write!(f, "{}", i),
             GosValue::Uint16(i) => write!(f, "{}", i),
             GosValue::Uint32(i) => write!(f, "{}", i),
@@ -1039,6 +1054,7 @@ pub union V64Union {
     int32: i32,
     int64: i64,
     uint: usize,
+    uint_ptr: usize,
     uint8: u8,
     uint16: u16,
     uint32: u32,
@@ -1089,6 +1105,9 @@ impl GosValue64 {
             }),
             GosValue::Uint(i) => Some(GosValue64 {
                 data: V64Union { uint: *i },
+            }),
+            GosValue::UintPtr(i) => Some(GosValue64 {
+                data: V64Union { uint_ptr: *i },
             }),
             GosValue::Uint8(i) => Some(GosValue64 {
                 data: V64Union { uint8: *i },
@@ -1156,6 +1175,9 @@ impl GosValue64 {
             ValueType::Int32 => V64Union { int32: i as i32 },
             ValueType::Int64 => V64Union { int64: i as i64 },
             ValueType::Uint => V64Union { uint: i as usize },
+            ValueType::UintPtr => V64Union {
+                uint_ptr: i as usize,
+            },
             ValueType::Uint8 => V64Union { uint8: i as u8 },
             ValueType::Uint16 => V64Union { uint16: i as u16 },
             ValueType::Uint32 => V64Union { uint32: i as u32 },
@@ -1200,6 +1222,7 @@ impl GosValue64 {
                 ValueType::Int32 => GosValue::Int32(self.data.int32),
                 ValueType::Int64 => GosValue::Int64(self.data.int64),
                 ValueType::Uint => GosValue::Uint(self.data.uint),
+                ValueType::UintPtr => GosValue::UintPtr(self.data.uint_ptr),
                 ValueType::Uint8 => GosValue::Uint8(self.data.uint8),
                 ValueType::Uint16 => GosValue::Uint16(self.data.uint16),
                 ValueType::Uint32 => GosValue::Uint32(self.data.uint32),
@@ -1258,6 +1281,11 @@ impl GosValue64 {
     #[inline]
     pub fn to_uint(&mut self, t: ValueType) {
         convert_to_int!(self, t, uint, usize);
+    }
+
+    #[inline]
+    pub fn to_uint_ptr(&mut self, t: ValueType) {
+        convert_to_int!(self, t, uint_ptr, usize);
     }
 
     #[inline]

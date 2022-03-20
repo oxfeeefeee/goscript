@@ -376,9 +376,13 @@ impl<'a> TypeLookup<'a> {
                 let (i, _) = val.to_int().int_as_i64();
                 GosValue::Int64(i)
             }
-            BasicType::Uint | BasicType::Uintptr => {
+            BasicType::Uint => {
                 let (i, _) = val.to_int().int_as_u64();
                 GosValue::Uint(i as usize)
+            }
+            BasicType::Uintptr => {
+                let (i, _) = val.to_int().int_as_u64();
+                GosValue::UintPtr(i as usize)
             }
             BasicType::Uint8 | BasicType::Byte => {
                 let (i, _) = val.to_int().int_as_u64();
@@ -546,7 +550,8 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Int16 => ValueType::Int16,
                 BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => ValueType::Int32,
                 BasicType::Int64 => ValueType::Int64,
-                BasicType::Uint | BasicType::Uintptr => ValueType::Uint,
+                BasicType::Uint => ValueType::Uint,
+                BasicType::Uintptr => ValueType::UintPtr,
                 BasicType::Uint8 | BasicType::Byte => ValueType::Uint8,
                 BasicType::Uint16 => ValueType::Uint16,
                 BasicType::Uint32 => ValueType::Uint32,

@@ -63,7 +63,7 @@ enum GosKind {
     Uint16,
     Uint32,
     Uint64,
-    _Uintptr, // do not support for now
+    UintPtr,
     Float32,
     Float64,
     Complex64,
@@ -362,6 +362,7 @@ impl StdType {
             ValueType::Int32 => GosKind::Int32,
             ValueType::Int64 => GosKind::Int64,
             ValueType::Uint => GosKind::Uint,
+            ValueType::UintPtr => GosKind::UintPtr,
             ValueType::Uint8 => GosKind::Uint8,
             ValueType::Uint16 => GosKind::Uint16,
             ValueType::Uint32 => GosKind::Uint32,

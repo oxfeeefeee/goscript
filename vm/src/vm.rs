@@ -633,6 +633,16 @@ impl<'a> Fiber<'a> {
                                     GosValue::slice_with_val(result.1, result.0, gcv),
                                 )
                             }
+                            ValueType::UintPtr => match inst.t1() {
+                                ValueType::Pointer => {
+                                    let v = stack.pop_rc();
+                                    let ud = v.as_pointer().as_user_data();
+                                    stack.push(GosValue::UintPtr(
+                                        Rc::as_ptr(ud) as *const () as usize
+                                    ));
+                                }
+                                _ => stack.get_c_mut(rhs_s_index).to_uint_ptr(inst.t1()),
+                            },
                             ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
                             ValueType::Uint8 => stack.get_c_mut(rhs_s_index).to_uint8(inst.t1()),
                             ValueType::Uint16 => stack.get_c_mut(rhs_s_index).to_uint16(inst.t1()),

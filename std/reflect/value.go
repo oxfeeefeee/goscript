@@ -365,21 +365,10 @@ func (v Value) OverflowUint(x uint64) bool {
 }
 
 // Pointer returns v's value as a uintptr.
-// It returns uintptr instead of unsafe.Pointer so that
-// code using reflect cannot obtain unsafe.Pointers
-// without importing the unsafe package explicitly.
-// It panics if v's Kind is not Chan, Func, Map, Ptr, Slice, or UnsafePointer.
-//
-// If v's Kind is Func, the returned pointer is an underlying
-// code pointer, but not necessarily enough to identify a
-// single function uniquely. The only guarantee is that the
-// result is zero if and only if v is a nil func Value.
-//
-// If v's Kind is Slice, the returned pointer is to the first
-// element of the slice. If the slice is nil the returned value
-// is 0.  If the slice is empty but non-nil the return value is non-zero.
+// Unlike in Go, there is nothing much you can do with uintptr
+// other than using it as a handle or printing it out
 func (v Value) Pointer() uintptr {
-	panic("not implemented")
+	return uintptr(v.ptr)
 }
 
 // Recv receives and returns a value from the channel v.

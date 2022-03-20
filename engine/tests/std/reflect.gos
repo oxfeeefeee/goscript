@@ -109,6 +109,20 @@ func testMapIter() {
     assert(!iter.Next())
 }
 
+func testPointer() {
+    var i uintptr
+	i <<= 1
+	i += 1
+	i <<= 3
+	var j int
+	j = 9
+	i = (uintptr)(j)
+    f := float32(i)
+    assert(f == 9)
+
+    fmt2.Println(reflect.ValueOf(i).Pointer())
+}
+
 
 func main() {
     testBytes()
@@ -120,11 +134,12 @@ func main() {
     testIsValid()
     testLen()
     testMapIter()
+    testPointer()
 
     
     i := reflect.TypeOf(get)
     j := reflect.TypeOf(get2)
     assert(i == j)
-    fmt2.Println(get2(), get(), i, j, i == j )
+    fmt2.Println(get2(), get(), i, j, i == j, reflect.ValueOf(get).Pointer())
     
 }
