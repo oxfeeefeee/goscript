@@ -99,6 +99,15 @@ func testLen() {
     assert(v1.Len() == 0)
 }
 
+func testMapIter() {
+    m := map[int]string{66:"a"}
+    v := reflect.ValueOf(m)
+    iter := v.MapRange()
+    assert(iter.Next())
+    assert(iter.Key().Int() == 66)
+    assert(!iter.Next())
+}
+
 
 func main() {
     testBytes()
@@ -109,6 +118,7 @@ func main() {
     testIsNil()
     testIsValid()
     testLen()
+    testMapIter()
 
     
     i := reflect.TypeOf(get)

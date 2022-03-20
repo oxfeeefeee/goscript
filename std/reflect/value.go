@@ -28,6 +28,11 @@ type ffiReflect interface {
 	index(p unsafe.Pointer, i int) unsafe.Pointer
 	is_nil(p unsafe.Pointer) bool
 	len(p unsafe.Pointer) int
+
+	map_range_init(p unsafe.Pointer) unsafe.Pointer
+	map_range_next(p unsafe.Pointer) bool
+	map_range_key(p unsafe.Pointer) unsafe.Pointer
+	map_range_value(p unsafe.Pointer) unsafe.Pointer
 }
 
 // Value is the reflection interface to a Go value.
@@ -265,25 +270,24 @@ func (v Value) MapKeys() []Value {
 // A MapIter is an iterator for ranging over a map.
 // See Value.MapRange.
 type MapIter struct {
-	m  Value
-	it unsafe.Pointer
+	ptr unsafe.Pointer
 }
 
 // Key returns the key of the iterator's current map entry.
-func (it *MapIter) Key() Value {
-	panic("not implemented")
+func (it MapIter) Key() Value {
+	return valuePtrToValue(reflectHandle.map_range_key(it.ptr))
 }
 
 // Value returns the value of the iterator's current map entry.
-func (it *MapIter) Value() Value {
-	panic("not implemented")
+func (it MapIter) Value() Value {
+	return valuePtrToValue(reflectHandle.map_range_value(it.ptr))
 }
 
 // Next advances the map iterator and reports whether there is another
 // entry. It returns false when the iterator is exhausted; subsequent
 // calls to Key, Value, or Next will panic.
-func (it *MapIter) Next() bool {
-	panic("not implemented")
+func (it MapIter) Next() bool {
+	return reflectHandle.map_range_next(it.ptr)
 }
 
 // MapRange returns a range iterator for a map.
@@ -302,8 +306,9 @@ func (it *MapIter) Next() bool {
 //		...
 //	}
 //
-func (v Value) MapRange() *MapIter {
-	panic("not implemented")
+func (v Value) MapRange() MapIter {
+	p := reflectHandle.map_range_init(v.ptr)
+	return MapIter{ptr: p}
 }
 
 // Method returns a function value corresponding to v's i'th method.

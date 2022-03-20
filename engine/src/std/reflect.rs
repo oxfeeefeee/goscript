@@ -2,21 +2,27 @@ extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::GosMetadata;
-use goscript_vm::objects::MetadataObjs;
+use goscript_vm::objects::*;
 use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UserData};
 use std::any::Any;
 use std::cell::RefCell;
 use std::future::Future;
+use std::mem;
 use std::pin::Pin;
 use std::rc::Rc;
 
 const WRONG_TYPE_MSG: &str = "reflect: wrong type";
 const INDEX_OOR_MSG: &str = "reflect: index out of range";
 
-macro_rules! params_as_std_val {
-    ($params:expr) => {{
-        let ud = $params[0].as_pointer().as_user_data();
-        ud.as_any().downcast_ref::<StdValue>().unwrap()
+macro_rules! params_as {
+    ($params:expr, $t:ty) => {{
+        match &$params[0] {
+            GosValue::Pointer(p) => match &*p as &PointerObj {
+                PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
+                _ => Err("reflect: expect UserData".to_string()),
+            },
+            _ => Err("reflect: expect pointer".to_string()),
+        }
     }};
 }
 
@@ -87,49 +93,76 @@ impl Reflect {
         StdValue::value_of(&params[0], ctx)
     }
 
-    fn ffi_type_of(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> Vec<GosValue> {
-        let v = params_as_std_val!(params);
+    fn ffi_type_of(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+        let v = params_as!(params, StdValue)?;
         let (t, k) = StdType::type_of(&v.val, ctx);
-        vec![t, k]
+        Ok(vec![t, k])
     }
 
     fn ffi_bool_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).bool_val()
+        params_as!(params, StdValue)?.bool_val()
     }
 
     fn ffi_int_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).int_val()
+        params_as!(params, StdValue)?.int_val()
     }
 
     fn ffi_uint_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).uint_val()
+        params_as!(params, StdValue)?.uint_val()
     }
 
     fn ffi_float_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).float_val()
+        params_as!(params, StdValue)?.float_val()
     }
 
     fn ffi_bytes_val(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).bytes_val()
+        params_as!(params, StdValue)?.bytes_val()
     }
 
     fn ffi_elem(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).elem(ctx)
+        params_as!(params, StdValue)?.elem(ctx)
     }
 
     fn ffi_field(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).field(ctx, &params[1])
+        params_as!(params, StdValue)?.field(ctx, &params[1])
     }
 
     fn ffi_index(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).index(ctx, &params[1])
+        params_as!(params, StdValue)?.index(ctx, &params[1])
     }
 
-    fn ffi_is_nil(&self, params: Vec<GosValue>) -> GosValue {
-        GosValue::Bool(params_as_std_val!(params).val.equals_nil())
+    fn ffi_is_nil(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(GosValue::Bool(
+            params_as!(params, StdValue)?.val.equals_nil(),
+        ))
     }
+
     fn ffi_len(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        params_as_std_val!(params).len()
+        params_as!(params, StdValue)?.len()
+    }
+
+    fn ffi_map_range_init(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(StdMapIter::map_range(params_as!(params, StdValue)?))
+    }
+
+    fn ffi_map_range_next(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(params_as!(params, StdMapIter)?.next())
+    }
+
+    fn ffi_map_range_key(
+        &self,
+        ctx: &FfiCallCtx,
+        params: Vec<GosValue>,
+    ) -> RuntimeResult<GosValue> {
+        params_as!(params, StdMapIter)?.key(ctx)
+    }
+
+    fn ffi_map_range_value(
+        &self,
+        ctx: &FfiCallCtx,
+        params: Vec<GosValue>,
+    ) -> RuntimeResult<GosValue> {
+        params_as!(params, StdMapIter)?.value(ctx)
     }
 }
 
@@ -353,5 +386,61 @@ impl StdType {
             GosValue::new_pointer(PointerObj::UserData(Rc::new(typ))),
             GosValue::Uint(kind as usize),
         )
+    }
+}
+
+#[derive(Clone, Debug)]
+struct StdMapIterInner {
+    iter: GosHashMapIter<'static>,
+    item: Option<(GosValue, GosValue)>,
+}
+
+#[derive(Clone, Debug)]
+struct StdMapIter {
+    inner: RefCell<StdMapIterInner>,
+}
+
+impl UserData for StdMapIter {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl StdMapIter {
+    fn map_range(v: &StdValue) -> GosValue {
+        let mref = v.val.as_map().0.borrow_data();
+        let iter: GosHashMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
+        let smi = StdMapIter {
+            inner: RefCell::new(StdMapIterInner {
+                iter: iter,
+                item: None,
+            }),
+        };
+        GosValue::new_pointer(PointerObj::UserData(Rc::new(smi)))
+    }
+
+    fn next(&self) -> GosValue {
+        let mut inner = self.inner.borrow_mut();
+        inner.item = inner
+            .iter
+            .next()
+            .map(|x| (x.0.clone(), x.1.clone().into_inner()));
+        GosValue::Bool(inner.item.is_some())
+    }
+
+    fn key(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
+        match &self.inner.borrow().item {
+            Some(kv) => Ok(kv.0.clone()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
+        }
+        .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
+    }
+
+    fn value(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
+        match &self.inner.borrow().item {
+            Some(kv) => Ok(kv.1.clone()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
+        }
+        .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
     }
 }
