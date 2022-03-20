@@ -44,6 +44,7 @@ func testValueElem() {
 func testField() {
     b := Bbb{"xxx", 123}
     v := reflect.ValueOf(b)
+    assert(v.NumField() == 2)
     assert(v.Field(1).Int() == 123)
     fmt2.Println(v, v.Field(1).Int())
 }

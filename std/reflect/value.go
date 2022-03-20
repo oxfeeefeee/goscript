@@ -8,10 +8,10 @@ import (
 	"unsafe"
 )
 
-var reflectHandle ffiReflect
+var native ffiReflect
 
 func init() {
-	reflectHandle = ffi(ffiReflect, "reflect")
+	native = ffi(ffiReflect, "reflect")
 }
 
 type ffiReflect interface {
@@ -24,6 +24,7 @@ type ffiReflect interface {
 	float_val(p unsafe.Pointer) float64
 	bytes_val(p unsafe.Pointer) []byte
 	elem(p unsafe.Pointer) unsafe.Pointer
+	num_field(p unsafe.Pointer) int
 	field(p unsafe.Pointer, i int) unsafe.Pointer
 	index(p unsafe.Pointer, i int) unsafe.Pointer
 	is_nil(p unsafe.Pointer) bool
@@ -74,13 +75,13 @@ func (v Value) Addr() Value {
 // Bool returns v's underlying value.
 // It panics if v's kind is not Bool.
 func (v Value) Bool() bool {
-	return reflectHandle.bool_val(v.ptr)
+	return native.bool_val(v.ptr)
 }
 
 // Bytes returns v's underlying value.
 // It panics if v's underlying value is not a slice of bytes.
 func (v Value) Bytes() []byte {
-	return reflectHandle.bytes_val(v.ptr)
+	return native.bytes_val(v.ptr)
 }
 
 // CanAddr reports whether the value's address can be obtained with Addr.
@@ -151,13 +152,13 @@ func (v Value) Elem() Value {
 	if v.ptr == nil {
 		return Value{}
 	}
-	return valuePtrToValue(reflectHandle.elem(v.ptr))
+	return valuePtrToValue(native.elem(v.ptr))
 }
 
 // Field returns the i'th field of the struct v.
 // It panics if v's Kind is not Struct or i is out of range.
 func (v Value) Field(i int) Value {
-	return valuePtrToValue(reflectHandle.field(v.ptr, i))
+	return valuePtrToValue(native.field(v.ptr, i))
 }
 
 // FieldByIndex returns the nested field corresponding to index.
@@ -184,19 +185,19 @@ func (v Value) FieldByNameFunc(match func(string) bool) Value {
 // Float returns v's underlying value, as a float64.
 // It panics if v's Kind is not Float32 or Float64
 func (v Value) Float() float64 {
-	return reflectHandle.float_val(v.ptr)
+	return native.float_val(v.ptr)
 }
 
 // Index returns v's i'th element.
 // It panics if v's Kind is not Array, Slice, or String or i is out of range.
 func (v Value) Index(i int) Value {
-	return valuePtrToValue(reflectHandle.index(v.ptr, i))
+	return valuePtrToValue(native.index(v.ptr, i))
 }
 
 // Int returns v's underlying value, as an int64.
 // It panics if v's Kind is not Int, Int8, Int16, Int32, or Int64.
 func (v Value) Int() int64 {
-	return reflectHandle.int_val(v.ptr)
+	return native.int_val(v.ptr)
 }
 
 // CanInterface reports whether Interface can be used without panicking.
@@ -227,7 +228,7 @@ func (v Value) InterfaceData() [2]uintptr {
 // i==nil will be true but v.IsNil will panic as v will be the zero
 // Value.
 func (v Value) IsNil() bool {
-	return reflectHandle.is_nil(v.ptr)
+	return native.is_nil(v.ptr)
 }
 
 // IsValid reports whether v represents a value.
@@ -248,7 +249,7 @@ func (v Value) Kind() Kind {
 // Len returns v's length.
 // It panics if v's Kind is not Array, Chan, Map, Slice, or String.
 func (v Value) Len() int {
-	return reflectHandle.len(v.ptr)
+	return native.len(v.ptr)
 }
 
 // MapIndex returns the value associated with key in the map v.
@@ -275,19 +276,19 @@ type MapIter struct {
 
 // Key returns the key of the iterator's current map entry.
 func (it MapIter) Key() Value {
-	return valuePtrToValue(reflectHandle.map_range_key(it.ptr))
+	return valuePtrToValue(native.map_range_key(it.ptr))
 }
 
 // Value returns the value of the iterator's current map entry.
 func (it MapIter) Value() Value {
-	return valuePtrToValue(reflectHandle.map_range_value(it.ptr))
+	return valuePtrToValue(native.map_range_value(it.ptr))
 }
 
 // Next advances the map iterator and reports whether there is another
 // entry. It returns false when the iterator is exhausted; subsequent
 // calls to Key, Value, or Next will panic.
 func (it MapIter) Next() bool {
-	return reflectHandle.map_range_next(it.ptr)
+	return native.map_range_next(it.ptr)
 }
 
 // MapRange returns a range iterator for a map.
@@ -307,7 +308,7 @@ func (it MapIter) Next() bool {
 //	}
 //
 func (v Value) MapRange() MapIter {
-	p := reflectHandle.map_range_init(v.ptr)
+	p := native.map_range_init(v.ptr)
 	return MapIter{ptr: p}
 }
 
@@ -336,7 +337,7 @@ func (v Value) MethodByName(name string) Value {
 // NumField returns the number of fields in the struct v.
 // It panics if v's Kind is not Struct.
 func (v Value) NumField() int {
-	panic("not implemented")
+	return native.num_field(v.ptr)
 }
 
 // OverflowComplex reports whether the complex128 x cannot be represented by v's type.
@@ -525,7 +526,7 @@ func (v Value) Type() Type {
 // Uint returns v's underlying value, as a uint64.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64.
 func (v Value) Uint() uint64 {
-	return reflectHandle.uint_val(v.ptr)
+	return native.uint_val(v.ptr)
 }
 
 // UnsafeAddr returns a pointer to v's data.
@@ -659,7 +660,7 @@ func Indirect(v Value) Value {
 // ValueOf returns a new Value initialized to the concrete value
 // stored in the interface i. ValueOf(nil) returns the zero Value.
 func ValueOf(i interface{}) Value {
-	pval := reflectHandle.value_of(i)
+	pval := native.value_of(i)
 	return valuePtrToValue(pval)
 }
 
@@ -692,7 +693,7 @@ func (v Value) Convert(t Type) Value {
 }
 
 func valuePtrToValue(pval unsafe.Pointer) Value {
-	ptyp, kind := reflectHandle.type_of(pval)
+	ptyp, kind := native.type_of(pval)
 	typ := reflectType{typePtr: ptyp, kind: Kind(kind)}
 	return Value{ptr: pval, typ: typ}
 }

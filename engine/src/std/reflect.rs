@@ -123,6 +123,10 @@ impl Reflect {
         params_as!(params, StdValue)?.elem(ctx)
     }
 
+    fn ffi_num_field(&self, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        params_as!(params, StdValue)?.num_field()
+    }
+
     fn ffi_field(&self, ctx: &FfiCallCtx, params: Vec<GosValue>) -> RuntimeResult<GosValue> {
         params_as!(params, StdValue)?.field(ctx, &params[1])
     }
@@ -262,6 +266,13 @@ impl StdValue {
             _ => err_wrong_type!(),
         }
         .map(|x| wrap_std_val!(x, &ctx.vm_objs.metas))
+    }
+
+    fn num_field(&self) -> RuntimeResult<GosValue> {
+        match self.val.try_as_struct() {
+            Some(s) => Ok(GosValue::Int(s.0.borrow().fields.len() as isize)),
+            None => err_wrong_type!(),
+        }
     }
 
     fn field(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
