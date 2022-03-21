@@ -41,57 +41,6 @@ macro_rules! read_imm_key {
     }};
 }
 
-macro_rules! store_local_to {
-    ($stack:expr, $to:expr, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
-        if $rhs_index < 0 {
-            let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
-            Stack::store_to_copy_semantic($stack, $to, $s_index, rhs_s_index, $typ, $gcos);
-        } else {
-            let op_ex = Instruction::index2code($rhs_index);
-            Stack::store_to_with_op($stack, $to, $s_index, $stack.len() - 1, op_ex, $typ);
-        }
-    }};
-}
-
-macro_rules! store_local {
-    ($stack:expr, $s_index:expr, $rhs_index:expr, $typ:expr, $gcos:expr) => {{
-        if $rhs_index < 0 {
-            let rhs_s_index = Stack::offset($stack.len(), $rhs_index);
-            $stack.store_copy_semantic($s_index, rhs_s_index, $typ, $gcos);
-        } else {
-            let op_ex = Instruction::index2code($rhs_index);
-            $stack.store_with_op($s_index, $stack.len() - 1, op_ex, $typ);
-        }
-    }};
-}
-
-macro_rules! store_up_value {
-    ($upvalue:expr, $self_:ident, $stack:ident, $frames:expr, $rhs_index:ident, $typ:expr, $gcos:expr) => {{
-        let uv: &mut UpValueState = &mut $upvalue.inner.borrow_mut();
-        match uv {
-            UpValueState::Open(desc) => {
-                let index = (desc.stack_base + desc.index) as usize;
-                let uv_stack = desc.stack.upgrade().unwrap();
-                if ptr::eq(uv_stack.as_ptr(), $stack) {
-                    store_local!($stack, index, $rhs_index, $typ, $gcos);
-                } else {
-                    store_local_to!(
-                        $stack,
-                        &mut uv_stack.borrow_mut(),
-                        index,
-                        $rhs_index,
-                        $typ,
-                        $gcos
-                    );
-                }
-            }
-            UpValueState::Closed(v) => {
-                $stack.store_val(v, $rhs_index, $typ, $gcos);
-            }
-        }
-    }};
-}
-
 macro_rules! unwrap_recv_val {
     ($chan:expr, $val:expr, $metas:expr, $gcv:expr) => {
         match $val {

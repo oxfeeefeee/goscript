@@ -422,6 +422,66 @@ impl Stack {
     }
 
     #[inline]
+    pub fn store_local(
+        &mut self,
+        s_index: usize,
+        rhs_index: OpIndex,
+        typ: ValueType,
+        gcos: &GcoVec,
+    ) {
+        if rhs_index < 0 {
+            let rhs_s_index = Stack::offset(self.len(), rhs_index);
+            self.store_copy_semantic(s_index, rhs_s_index, typ, gcos);
+        } else {
+            let op_ex = Instruction::index2code(rhs_index);
+            self.store_with_op(s_index, self.len() - 1, op_ex, typ);
+        }
+    }
+
+    #[inline]
+    pub fn store_local_to(
+        &self,
+        to: &mut Stack,
+        s_index: usize,
+        rhs_index: OpIndex,
+        typ: ValueType,
+        gcos: &GcoVec,
+    ) {
+        if rhs_index < 0 {
+            let rhs_s_index = Stack::offset(self.len(), rhs_index);
+            Stack::store_to_copy_semantic(self, to, s_index, rhs_s_index, typ, gcos);
+        } else {
+            let op_ex = Instruction::index2code(rhs_index);
+            Stack::store_to_with_op(self, to, s_index, self.len() - 1, op_ex, typ);
+        }
+    }
+
+    #[inline]
+    pub fn store_up_value(
+        &mut self,
+        upvalue: &UpValue,
+        rhs_index: OpIndex,
+        typ: ValueType,
+        gcos: &GcoVec,
+    ) {
+        let uv: &mut UpValueState = &mut upvalue.inner.borrow_mut();
+        match uv {
+            UpValueState::Open(desc) => {
+                let index = (desc.stack_base + desc.index) as usize;
+                let uv_stack = desc.stack.upgrade().unwrap();
+                if ptr::eq(uv_stack.as_ptr(), self) {
+                    self.store_local(index, rhs_index, typ, gcos);
+                } else {
+                    self.store_local_to(&mut uv_stack.borrow_mut(), index, rhs_index, typ, gcos);
+                }
+            }
+            UpValueState::Closed(v) => {
+                self.store_val(v, rhs_index, typ, gcos);
+            }
+        }
+    }
+
+    #[inline]
     pub fn pack_variadic(&mut self, index: usize, meta: GosMetadata, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();

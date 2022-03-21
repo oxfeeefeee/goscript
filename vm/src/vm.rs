@@ -4,7 +4,7 @@ use super::ffi::{FfiCallCtx, FfiFactory};
 use super::gc::{gc, GcoVec};
 use super::instruction::*;
 use super::metadata::*;
-use super::objects::{u64_to_key, ClosureObj, GosHashMap};
+use super::objects::{u64_to_key, ClosureObj};
 use super::stack::{RangeStack, Stack};
 use super::value::*;
 use super::vm_util;
@@ -14,7 +14,6 @@ use goscript_parser::FileSet;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::ptr;
 use std::rc::Rc;
 use std::str;
 
@@ -269,7 +268,7 @@ impl<'a> Fiber<'a> {
                     Opcode::STORE_LOCAL => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack_base, index);
-                        store_local!(stack, s_index, rhs_index, inst.t0(), gcv);
+                        stack.store_local(s_index, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
@@ -280,15 +279,7 @@ impl<'a> Fiber<'a> {
                     Opcode::STORE_UPVALUE => {
                         let (rhs_index, index) = inst.imm824();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        store_up_value!(
-                            upvalue,
-                            self,
-                            stack,
-                            self.frames,
-                            rhs_index,
-                            inst.t0(),
-                            gcv
-                        );
+                        stack.store_up_value(&upvalue, rhs_index, inst.t0(), gcv);
                         frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::LOAD_INDEX => {
@@ -491,68 +482,9 @@ impl<'a> Fiber<'a> {
                     Opcode::STORE_DEREF => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
-                        match stack.get_with_type(s_index, ValueType::Pointer) {
-                            GosValue::Pointer(b) => {
-                                let r: &PointerObj = &b;
-                                match r {
-                                    PointerObj::UpVal(uv) => {
-                                        store_up_value!(
-                                            uv,
-                                            self,
-                                            stack,
-                                            self.frames,
-                                            rhs_index,
-                                            inst.t0(),
-                                            gcv
-                                        );
-                                        frame = self.frames.last_mut().unwrap();
-                                    }
-                                    PointerObj::Struct(r, _) => {
-                                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                        let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                        let mref: &mut StructObj = &mut r.0.borrow_mut();
-                                        *mref = val.try_as_struct().unwrap().0.borrow().clone();
-                                    }
-                                    PointerObj::Array(a, _) => {
-                                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                        let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                        a.0.set_from(&val.as_array().0);
-                                    }
-                                    PointerObj::Slice(r, _) => {
-                                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                        let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                        r.0.set_from(&val.as_slice().0);
-                                    }
-                                    PointerObj::Map(r, _) => {
-                                        let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                                        let val = stack.get_with_type(rhs_s_index, inst.t0());
-                                        let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
-                                        *mref = val.try_as_map().unwrap().0.borrow_data().clone();
-                                    }
-                                    PointerObj::SliceMember(s, index) => {
-                                        let vborrow = s.0.borrow();
-                                        let target: &mut GosValue = &mut vborrow
-                                            [s.0.begin() + *index as usize]
-                                            .borrow_mut();
-                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
-                                    }
-                                    PointerObj::StructField(s, index) => {
-                                        let target: &mut GosValue =
-                                            &mut s.0.borrow_mut().fields[*index as usize];
-                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
-                                    }
-                                    PointerObj::PkgMember(p, index) => {
-                                        let target: &mut GosValue =
-                                            &mut objs.packages[*p].member_mut(*index);
-                                        stack.store_val(target, rhs_index, inst.t0(), gcv);
-                                    }
-                                    // todo: report error instead of crash
-                                    PointerObj::UserData(_) => unreachable!(),
-                                    PointerObj::Released => unreachable!(),
-                                };
-                            }
-                            _ => unreachable!(),
-                        }
+                        let p = stack.get_with_type(s_index, ValueType::Pointer);
+                        p.as_pointer()
+                            .store(stack, rhs_index, inst.t0(), &objs.packages, gcv);
                     }
                     Opcode::CAST => {
                         let (target, mapping) = inst.imm824();
