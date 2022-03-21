@@ -1181,9 +1181,9 @@ impl<'a> CodeGen<'a> {
         match &self.objects.metas[meta_key] {
             MetadataType::Named(_, m) => {
                 let (key2, _) = m.unwrap_non_ptr_or_prt1();
-                self.objects.metas[key2].as_struct().0.fields[index]
+                self.objects.metas[key2].as_struct().0.fields[index].0
             }
-            MetadataType::Struct(f, _) => f.fields[index],
+            MetadataType::Struct(f, _) => f.fields[index].0,
             _ => unreachable!(),
         }
     }

@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 #[macro_export]
 macro_rules! zero_val {
-    ($meta:ident, $objs:expr, $gcv:expr) => {
+    ($meta:expr, $objs:expr, $gcv:expr) => {
         $meta.zero_val(&$objs.metas, $gcv)
     };
 }
@@ -159,7 +159,8 @@ impl GosMetadata {
 
     #[inline]
     pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> GosMetadata {
-        let field_zeros: Vec<GosValue> = f.fields.iter().map(|x| zero_val!(x, objs, gcv)).collect();
+        let field_zeros: Vec<GosValue> =
+            f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
         let struct_val = StructObj {
             meta: GosMetadata::Untyped, // placeholder, will be set below
             fields: field_zeros,
@@ -543,13 +544,16 @@ impl GosMetadata {
 
 #[derive(Debug, Clone)]
 pub struct Fields {
-    pub fields: Vec<GosMetadata>,
+    pub fields: Vec<(GosMetadata, String, bool)>,
     pub mapping: HashMap<String, OpIndex>,
 }
 
 impl Fields {
     #[inline]
-    pub fn new(fields: Vec<GosMetadata>, mapping: HashMap<String, OpIndex>) -> Fields {
+    pub fn new(
+        fields: Vec<(GosMetadata, String, bool)>,
+        mapping: HashMap<String, OpIndex>,
+    ) -> Fields {
         Fields {
             fields: fields,
             mapping: mapping,
@@ -570,10 +574,15 @@ impl Fields {
         result
     }
 
+    #[inline]
+    pub fn is_exported(&self, i: usize) -> bool {
+        self.fields[i].2
+    }
+
     pub fn iface_methods_info(&self) -> Vec<(String, GosMetadata)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
-            ret.push((String::new(), *f));
+            ret.push((String::new(), f.0));
         }
         for (name, index) in self.mapping.iter() {
             ret[*index as usize].0 = name.clone();
@@ -586,7 +595,7 @@ impl Fields {
             return false;
         }
         for (i, f) in self.fields.iter().enumerate() {
-            if !f.identical(&other.fields[i], metas) {
+            if f.1 == other.fields[i].1 && !f.0.identical(&other.fields[i].0, metas) {
                 return false;
             }
         }

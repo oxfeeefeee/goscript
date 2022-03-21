@@ -622,7 +622,8 @@ impl<'a> TypeLookup<'a> {
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
             let f_type = self.meta_from_tc(field.typ().unwrap(), vm_objs, dummy_gcv);
-            vec.push(f_type);
+            let exported = field.name().chars().next().unwrap().is_uppercase();
+            vec.push((f_type, field.name().clone(), exported));
             map.insert(field.name().clone(), i as OpIndex);
         }
         Fields::new(vec, map)

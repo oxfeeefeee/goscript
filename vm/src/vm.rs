@@ -1240,7 +1240,7 @@ impl<'a> Fiber<'a> {
                                         let mut sref = struct_val.as_struct().0.borrow_mut();
                                         for _ in 0..count {
                                             let index = stack.pop_uint();
-                                            let tv = f.fields[index].get_value_type(&objs.metas);
+                                            let tv = f.fields[index].0.get_value_type(&objs.metas);
                                             sref.fields[index] = stack.pop_with_type(tv);
                                         }
                                         drop(sref);
