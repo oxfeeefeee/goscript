@@ -13,7 +13,6 @@ use futures_lite::future;
 use goscript_parser::FileSet;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::pin::Pin;
 use std::ptr;
 use std::rc::Rc;
@@ -734,21 +733,21 @@ impl<'a> Fiber<'a> {
                         } else {
                             stack.pop_with_type(t)
                         };
-                        let boxed = PointerObj::new_local(val);
+                        let boxed = PointerObj::try_new_local(&val).unwrap();
                         stack.push(GosValue::new_pointer(boxed));
                     }
                     Opcode::REF_SLICE_MEMBER => {
-                        let index = stack.pop_int();
+                        let i = stack.pop_int() as OpIndex;
                         let typ = inst.t0();
-                        let mut slice = stack.pop_with_type(typ);
-                        // create a slice if it's an array
-                        if typ == ValueType::Array {
-                            slice = GosValue::slice_with_array(&slice, 0, -1, gcv);
-                        }
-                        stack.push(GosValue::new_pointer(PointerObj::SliceMember(
-                            slice.as_slice().clone(),
-                            index.try_into().unwrap(),
-                        )));
+                        let arr_or_slice = stack.pop_with_type(typ);
+                        let v = match typ {
+                            ValueType::Array => PointerObj::new_array_member(&arr_or_slice, i, gcv),
+                            ValueType::Slice => {
+                                PointerObj::SliceMember(arr_or_slice.as_slice().clone(), i)
+                            }
+                            _ => unreachable!(),
+                        };
+                        stack.push(GosValue::new_pointer(v));
                     }
                     Opcode::REF_STRUCT_FIELD => {
                         let mut struct_ = stack.pop_with_type(inst.t0());
@@ -887,6 +886,7 @@ impl<'a> Fiber<'a> {
                                         func_name: &call.func_name,
                                         vm_objs: objs,
                                         stack: &self.stack.borrow(),
+                                        gcv: gcv,
                                     };
                                     let fut = ffi_ref.call(&ctx, params);
                                     fut.await

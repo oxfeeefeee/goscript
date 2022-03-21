@@ -961,27 +961,24 @@ pub enum PointerObj {
 
 impl PointerObj {
     #[inline]
-    pub fn new_local(val: GosValue) -> PointerObj {
+    pub fn try_new_local(val: &GosValue) -> Option<PointerObj> {
+        let (val, meta) = match val {
+            GosValue::Named(n) => (&n.0, n.1),
+            _ => (val, GosMetadata::Untyped),
+        };
         match val {
-            GosValue::Named(s) => match &s.0 {
-                GosValue::Struct(stru) => PointerObj::Struct(stru.clone(), s.1),
-                GosValue::Array(arr) => PointerObj::Array(arr.clone(), s.1),
-                GosValue::Slice(slice) => PointerObj::Slice(slice.clone(), s.1),
-                GosValue::Map(map) => PointerObj::Map(map.clone(), s.1),
-                _ => {
-                    dbg!(s);
-                    unreachable!()
-                }
-            },
-            GosValue::Struct(s) => PointerObj::Struct(s.clone(), GosMetadata::Untyped),
-            GosValue::Array(a) => PointerObj::Array(a.clone(), GosMetadata::Untyped),
-            GosValue::Slice(s) => PointerObj::Slice(s.clone(), GosMetadata::Untyped),
-            GosValue::Map(m) => PointerObj::Map(m.clone(), GosMetadata::Untyped),
-            _ => {
-                dbg!(val);
-                unreachable!()
-            }
+            GosValue::Struct(s) => Some(PointerObj::Struct(s.clone(), meta)),
+            GosValue::Array(a) => Some(PointerObj::Array(a.clone(), meta)),
+            GosValue::Slice(s) => Some(PointerObj::Slice(s.clone(), meta)),
+            GosValue::Map(m) => Some(PointerObj::Map(m.clone(), meta)),
+            _ => None,
         }
+    }
+
+    #[inline]
+    pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
+        let slice = GosValue::slice_with_array(val, 0, -1, gcv);
+        PointerObj::SliceMember(slice.as_slice().clone(), i)
     }
 
     #[inline]
