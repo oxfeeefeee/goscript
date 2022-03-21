@@ -1,6 +1,6 @@
 //#![allow(dead_code)]
 use super::gc::{GcWeak, GcoVec};
-use super::instruction::{Opcode, ValueType};
+use super::instruction::{OpIndex, Opcode, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
 use super::stack::Stack;
@@ -785,6 +785,76 @@ impl GosValue {
         let mut s = a.as_str().as_str().to_string();
         s.push_str(b.as_str().as_str());
         GosValue::new_str(s)
+    }
+
+    #[inline(always)]
+    pub fn load_index(&self, ind: &GosValue) -> RuntimeResult<GosValue> {
+        match self {
+            GosValue::Map(map) => Ok(map.0.get(&ind).clone()),
+            GosValue::Slice(slice) => {
+                let index = ind.as_index();
+                slice
+                    .0
+                    .get(index)
+                    .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x))
+            }
+            GosValue::Str(s) => {
+                let index = ind.as_index();
+                s.get_byte(index).map_or_else(
+                    || Err(format!("index {} out of range", index)),
+                    |x| Ok(GosValue::Int((*x).into())),
+                )
+            }
+            GosValue::Array(arr) => {
+                let index = ind.as_index();
+                arr.0
+                    .get(index)
+                    .map_or_else(|| Err(format!("index {} out of range", index)), |x| Ok(x))
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn load_index_int(&self, i: usize) -> RuntimeResult<GosValue> {
+        match self {
+            GosValue::Slice(slice) => slice
+                .0
+                .get(i)
+                .map_or_else(|| Err(format!("index {} out of range", i)), |x| Ok(x)),
+            GosValue::Map(map) => {
+                let ind = GosValue::Int(i as isize);
+                Ok(map.0.get(&ind).clone())
+            }
+            GosValue::Str(s) => s.get_byte(i).map_or_else(
+                || Err(format!("index {} out of range", i)),
+                |x| Ok(GosValue::Int((*x).into())),
+            ),
+            GosValue::Array(arr) => arr
+                .0
+                .get(i)
+                .map_or_else(|| Err(format!("index {} out of range", i)), |x| Ok(x)),
+            GosValue::Named(n) => n.0.load_index_int(i),
+            _ => {
+                dbg!(self);
+                unreachable!();
+            }
+        }
+    }
+
+    #[inline]
+    pub fn load_field(&self, ind: &GosValue, objs: &VMObjects) -> GosValue {
+        match self {
+            GosValue::Struct(sval) => match &ind {
+                GosValue::Int(i) => sval.0.borrow().fields[*i as usize].clone(),
+                _ => unreachable!(),
+            },
+            GosValue::Package(pkey) => {
+                let pkg = &objs.packages[*pkey];
+                pkg.member(*ind.as_int() as OpIndex).clone()
+            }
+            _ => unreachable!(),
+        }
     }
 
     /// for gc

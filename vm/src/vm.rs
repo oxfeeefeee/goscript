@@ -7,7 +7,6 @@ use super::metadata::*;
 use super::objects::{u64_to_key, ClosureObj};
 use super::stack::{RangeStack, Stack};
 use super::value::*;
-use super::vm_util;
 use async_executor::LocalExecutor;
 use futures_lite::future;
 use goscript_parser::FileSet;
@@ -16,6 +15,69 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::str;
+
+// restore stack_ref after drop to allow code in block call yield
+macro_rules! restore_stack_ref {
+    ($self_:ident, $stack:ident, $stack_ref:ident) => {{
+        $stack_ref = $self_.stack.borrow_mut();
+        $stack = &mut $stack_ref;
+    }};
+}
+
+macro_rules! go_panic {
+    ($panic:ident, $msg:expr, $frame:ident, $code:ident) => {
+        let mut data = PanicData::new($msg);
+        data.call_stack.push(($frame.func(), $frame.pc - 1));
+        $panic = Some(data);
+        $frame.pc = $code.len() - 1;
+    };
+}
+
+macro_rules! go_panic_str {
+    ($panic:ident, $mdata:expr, $msg:expr, $frame:ident, $code:ident) => {
+        let str_val = GosValue::new_str($msg);
+        let iface = GosValue::new_empty_iface($mdata, str_val);
+        let mut data = PanicData::new(iface);
+        data.call_stack.push(($frame.func(), $frame.pc - 1));
+        $panic = Some(data);
+        $frame.pc = $code.len() - 1;
+    };
+}
+
+macro_rules! read_imm_key {
+    ($code:ident, $frame:ident, $objs:ident) => {{
+        let inst = $code[$frame.pc];
+        $frame.pc += 1;
+        u64_to_key(inst.get_u64())
+    }};
+}
+
+macro_rules! unwrap_recv_val {
+    ($chan:expr, $val:expr, $metas:expr, $gcv:expr) => {
+        match $val {
+            Some(v) => (v, true),
+            None => {
+                let val_meta = $metas[$chan.meta.as_non_ptr()].as_channel().1;
+                (val_meta.zero_val(&$metas, $gcv), false)
+            }
+        }
+    };
+}
+
+#[inline]
+fn char_from_u32(u: u32) -> char {
+    unsafe { char::from_u32_unchecked(u) }
+}
+
+#[inline]
+fn char_from_i32(i: i32) -> char {
+    unsafe { char::from_u32_unchecked(i as u32) }
+}
+
+#[inline]
+fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> GosValue {
+    v.as_pointer().deref(stack, &objs.packages)
+}
 
 #[derive(Debug)]
 pub struct ByteCode {
@@ -289,14 +351,14 @@ impl<'a> Fiber<'a> {
                             val = &val.as_named().0;
                         }
                         if inst.t2_as_index() == 0 {
-                            match vm_util::load_index(val, &ind) {
+                            match val.load_index(&ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
                                     go_panic_str!(panic, &objs.metadata, e, frame, code);
                                 }
                             }
                         } else {
-                            vm_util::push_index_comma_ok(stack, val, &ind);
+                            stack.push_index_comma_ok(val, &ind);
                         }
                     }
                     Opcode::LOAD_INDEX_IMM => {
@@ -306,18 +368,14 @@ impl<'a> Fiber<'a> {
                         }
                         let index = inst.imm() as usize;
                         if inst.t2_as_index() == 0 {
-                            match vm_util::load_index_int(val, index) {
+                            match val.load_index_int(index) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
                                     go_panic_str!(panic, metadata, e, frame, code);
                                 }
                             }
                         } else {
-                            vm_util::push_index_comma_ok(
-                                stack,
-                                val,
-                                &GosValue::Int(index as isize),
-                            );
+                            stack.push_index_comma_ok(val, &GosValue::Int(index as isize));
                         }
                     }
                     Opcode::STORE_INDEX => {
@@ -328,7 +386,7 @@ impl<'a> Fiber<'a> {
                         if inst.t1() == ValueType::Named {
                             target = &target.as_named().0;
                         }
-                        vm_util::store_index(stack, target, &key, rhs_index, inst.t0(), gcv);
+                        stack.store_index(target, &key, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::STORE_INDEX_IMM => {
                         // the only place we can store the immediate index is t2
@@ -339,27 +397,22 @@ impl<'a> Fiber<'a> {
                         if inst.t1() == ValueType::Named {
                             target = &target.as_named().0;
                         }
-                        if let Err(e) = vm_util::store_index_int(
-                            stack,
-                            target,
-                            imm as usize,
-                            rhs_index,
-                            inst.t0(),
-                            gcv,
-                        ) {
+                        if let Err(e) =
+                            stack.store_index_int(target, imm as usize, rhs_index, inst.t0(), gcv)
+                        {
                             go_panic_str!(panic, metadata, e, frame, code);
                         }
                     }
                     Opcode::LOAD_FIELD => {
                         let ind = stack.pop_with_type(inst.t1());
                         let val = stack.pop_with_type(inst.t0());
-                        stack.push(vm_util::load_field(&val, &ind, objs));
+                        stack.push(val.load_field(&ind, objs));
                     }
                     Opcode::LOAD_STRUCT_FIELD => {
                         let ind = inst.imm();
                         let mut target = stack.pop_with_type(inst.t0());
                         if let GosValue::Pointer(_) = &target {
-                            target = vm_util::deref_value(&target, stack, objs);
+                            target = deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
                         let val =
@@ -419,10 +472,9 @@ impl<'a> Fiber<'a> {
                         let target = stack.get_with_type(s_index, inst.t1());
                         match target {
                             GosValue::Pointer(_) => {
-                                let unboxed = vm_util::deref_value(&target, stack, objs);
+                                let unboxed = deref_value(&target, stack, objs);
                                 frame = self.frames.last_mut().unwrap();
-                                vm_util::store_field(
-                                    stack,
+                                stack.store_field(
                                     &unboxed,
                                     &key,
                                     rhs_index,
@@ -431,8 +483,7 @@ impl<'a> Fiber<'a> {
                                     gcv,
                                 );
                             }
-                            _ => vm_util::store_field(
-                                stack,
+                            _ => stack.store_field(
                                 &target,
                                 &key,
                                 rhs_index,
@@ -448,7 +499,7 @@ impl<'a> Fiber<'a> {
                         let s_index = Stack::offset(stack.len(), index);
                         let mut target = stack.get_with_type(s_index, inst.t1());
                         if let GosValue::Pointer(_) = &target {
-                            target = vm_util::deref_value(&target, stack, objs);
+                            target = deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
                         let field = &mut target.try_as_struct().unwrap().0.borrow_mut().fields
@@ -518,9 +569,7 @@ impl<'a> Fiber<'a> {
                                                 .0
                                                 .borrow()
                                                 .iter()
-                                                .map(|x| {
-                                                    vm_util::char_from_i32(*(x.borrow().as_int32()))
-                                                })
+                                                .map(|x| char_from_i32(*(x.borrow().as_int32())))
                                                 .collect(),
                                             ValueType::Uint8 => {
                                                 let buf: Vec<u8> = slice
@@ -538,7 +587,7 @@ impl<'a> Fiber<'a> {
                                     _ => {
                                         let target = stack.get_c_mut(rhs_s_index);
                                         target.to_uint32(inst.t1());
-                                        vm_util::char_from_u32(target.get_uint32()).to_string()
+                                        char_from_u32(target.get_uint32()).to_string()
                                     }
                                 };
                                 stack.set(rhs_s_index, GosValue::new_str(result));
@@ -685,7 +734,7 @@ impl<'a> Fiber<'a> {
                         let mut struct_ = stack.pop_with_type(inst.t0());
                         // todo: do this check in codegen
                         if inst.t0() == ValueType::Pointer {
-                            struct_ = vm_util::deref_value(&struct_, stack, objs);
+                            struct_ = deref_value(&struct_, stack, objs);
                         }
                         let struct_ = struct_.unwrap_named();
                         stack.push(GosValue::new_pointer(PointerObj::StructField(
@@ -708,7 +757,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::DEREF => {
                         let boxed = stack.pop_with_type(inst.t0());
-                        let val = vm_util::deref_value(&boxed, stack, objs);
+                        let val = deref_value(&boxed, stack, objs);
                         stack.push(val);
                         frame = self.frames.last_mut().unwrap();
                     }

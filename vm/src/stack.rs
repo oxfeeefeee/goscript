@@ -475,6 +475,118 @@ impl Stack {
     }
 
     #[inline]
+    pub fn store_index(
+        &self,
+        target: &GosValue,
+        key: &GosValue,
+        r_index: OpIndex,
+        t: ValueType,
+        gcos: &GcoVec,
+    ) {
+        match target {
+            GosValue::Array(arr) => {
+                let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+            }
+            GosValue::Slice(s) => {
+                let target_cell = &s.0.borrow()[*key.as_int() as usize];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+            }
+            GosValue::Map(map) => {
+                map.0.touch_key(&key);
+                let borrowed = map.0.borrow_data();
+                let target_cell = borrowed.get(&key).unwrap();
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn store_index_int(
+        &self,
+        target: &GosValue,
+        i: usize,
+        r_index: OpIndex,
+        t: ValueType,
+        gcos: &GcoVec,
+    ) -> RuntimeResult<()> {
+        let err = Err("assignment to entry in nil map or slice".to_string());
+        match target {
+            GosValue::Array(arr) => {
+                let target_cell = &arr.0.borrow_data()[i];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                Ok(())
+            }
+            GosValue::Slice(s) => {
+                if s.0.is_nil() {
+                    err
+                } else {
+                    let target_cell = &s.0.borrow()[i];
+                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                    Ok(())
+                }
+            }
+            GosValue::Map(map) => {
+                if map.0.is_nil() {
+                    err
+                } else {
+                    let key = GosValue::Int(i as isize);
+                    map.0.touch_key(&key);
+                    let borrowed = map.0.borrow_data();
+                    let target_cell = borrowed.get(&key).unwrap();
+                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                    Ok(())
+                }
+            }
+            GosValue::Nil(_) => err,
+            _ => {
+                dbg!(target);
+                unreachable!()
+            }
+        }
+    }
+
+    #[inline]
+    pub fn store_field(
+        &self,
+        target: &GosValue,
+        key: &GosValue,
+        r_index: OpIndex,
+        t: ValueType,
+        metas: &MetadataObjs,
+        gcos: &GcoVec,
+    ) {
+        match target {
+            GosValue::Struct(s) => {
+                match key {
+                    GosValue::Int(i) => {
+                        let target = &mut s.0.borrow_mut().fields[*i as usize];
+                        self.store_val(target, r_index, t, gcos);
+                    }
+                    GosValue::Str(sval) => {
+                        let i = s.0.borrow().meta.field_index(sval.as_str(), metas);
+                        let target = &mut s.0.borrow_mut().fields[i as usize];
+                        self.store_val(target, r_index, t, gcos);
+                    }
+                    _ => unreachable!(),
+                };
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn push_index_comma_ok(&mut self, map: &GosValue, index: &GosValue) {
+        let (v, b) = match map.as_map().0.try_get(index) {
+            Some(v) => (v, true),
+            None => (GosValue::new_nil(), false),
+        };
+        self.push(v);
+        self.push_bool(b);
+    }
+
+    #[inline]
     pub fn pack_variadic(&mut self, index: usize, meta: GosMetadata, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();
