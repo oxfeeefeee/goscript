@@ -365,26 +365,19 @@ impl Stack {
 
     #[inline]
     pub fn store_to_copy_semantic(
-        from: &Stack,
+        &self,
         to: &mut Stack,
         li: usize,
         ri: usize,
         t: ValueType,
         gcos: &GcoVec,
     ) {
-        store_to_copy_semantic!(from, to, li, ri, t, gcos);
+        store_to_copy_semantic!(self, to, li, ri, t, gcos);
     }
 
     #[inline]
-    pub fn store_to_with_op(
-        from: &Stack,
-        to: &mut Stack,
-        li: usize,
-        ri: usize,
-        op: Opcode,
-        t: ValueType,
-    ) {
-        store_to_with_op!(from, to, li, ri, op, t);
+    pub fn store_to_with_op(&self, to: &mut Stack, li: usize, ri: usize, op: Opcode, t: ValueType) {
+        store_to_with_op!(self, to, li, ri, op, t);
     }
 
     #[inline]
@@ -449,10 +442,10 @@ impl Stack {
     ) {
         if rhs_index < 0 {
             let rhs_s_index = Stack::offset(self.len(), rhs_index);
-            Stack::store_to_copy_semantic(self, to, s_index, rhs_s_index, typ, gcos);
+            self.store_to_copy_semantic(to, s_index, rhs_s_index, typ, gcos);
         } else {
             let op_ex = Instruction::index2code(rhs_index);
-            Stack::store_to_with_op(self, to, s_index, self.len() - 1, op_ex, typ);
+            self.store_to_with_op(to, s_index, self.len() - 1, op_ex, typ);
         }
     }
 
