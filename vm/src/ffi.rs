@@ -1,3 +1,4 @@
+use super::gc::GcoVec;
 use super::objects::VMObjects;
 use super::stack::Stack;
 use super::value::{GosValue, RuntimeResult};
@@ -15,6 +16,7 @@ pub struct FfiCallCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
     pub stack: &'a Stack,
+    pub gcv: &'a GcoVec,
 }
 
 /// A FFI function call
