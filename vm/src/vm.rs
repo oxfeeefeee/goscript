@@ -1249,7 +1249,7 @@ impl<'a> Fiber<'a> {
                         let param = stack.pop_with_type(inst.t0());
                         let new_val = match param {
                             GosValue::Metadata(md) => {
-                                let v = md.default_val(&objs.metas, gcv);
+                                let v = md.into_value_category().zero_val(&objs.metas, gcv);
                                 GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                             }
                             _ => unimplemented!(),

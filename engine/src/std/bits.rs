@@ -26,7 +26,7 @@ impl Bits {
     }
 
     fn ffi_f64_to_bits(&self, args: Vec<GosValue>) -> GosValue {
-        let result = u64::from_be_bytes(args[0].as_float().to_be_bytes());
+        let result = u64::from_be_bytes(args[0].as_float64().to_be_bytes());
         GosValue::Uint64(result)
     }
 

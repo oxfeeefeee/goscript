@@ -462,6 +462,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_int64(&self) -> &i64 {
+        unwrap_gos_val!(Int64, self)
+    }
+
+    #[inline]
     pub fn as_int_mut(&mut self) -> &mut isize {
         unwrap_gos_val!(Int, self)
     }
@@ -472,8 +477,21 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_float(&self) -> &f64 {
+    pub fn as_float64(&self) -> &f64 {
         unwrap_gos_val!(Float64, self)
+    }
+
+    #[inline]
+    pub fn as_complex64(&self) -> (&F32, &F32) {
+        match self {
+            Self::Complex64(r, i) => (r, i),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_complex128(&self) -> &Box<(F64, F64)> {
+        unwrap_gos_val!(Complex128, self)
     }
 
     #[inline]

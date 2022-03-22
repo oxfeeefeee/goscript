@@ -11,9 +11,6 @@ use std::mem;
 use std::pin::Pin;
 use std::rc::Rc;
 
-const WRONG_TYPE_MSG: &str = "reflect: wrong type";
-const INDEX_OOR_MSG: &str = "reflect: index out of range";
-
 macro_rules! arg_as {
     ($arg:expr, $t:ty) => {{
         match $arg {
@@ -28,13 +25,19 @@ macro_rules! arg_as {
 
 macro_rules! err_wrong_type {
     () => {
-        Err(WRONG_TYPE_MSG.to_string())
+        Err("reflect: wrong type".to_string())
     };
 }
 
 macro_rules! err_index_oor {
     () => {
-        Err(INDEX_OOR_MSG.to_string())
+        Err("reflect: index out of range".to_string())
+    };
+}
+
+macro_rules! err_set_val_type {
+    () => {
+        Err("reflect: set value with wrong type".to_string())
     };
 }
 
@@ -184,6 +187,41 @@ impl Reflect {
     fn ffi_set_bool(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_bool(ctx, val)
+    }
+
+    fn ffi_set_string(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_string(ctx, val)
+    }
+
+    fn ffi_set_int(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_int(ctx, val)
+    }
+
+    fn ffi_set_uint(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_uint(ctx, val)
+    }
+
+    fn ffi_set_float(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_float(ctx, val)
+    }
+
+    fn ffi_set_complex(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_complex(ctx, val)
+    }
+
+    fn ffi_set_bytes(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_bytes(ctx, val)
+    }
+
+    fn ffi_set_pointer(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_pointer(ctx, val)
     }
 }
 
@@ -425,11 +463,88 @@ impl StdValue {
     fn set_bool(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
             ValueType::Bool => self.set(ctx, val),
-            _ => Err("reflect: set value with wrong type".to_string()),
+            _ => err_set_val_type!(),
         }
     }
 
-    //fn set_bytes(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {}
+    fn set_string(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Str => self.set(ctx, val),
+            _ => err_set_val_type!(),
+        }
+    }
+
+    fn set_int(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let ival = *val.as_int64();
+        let val = match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Int => Ok(GosValue::Int(ival as isize)),
+            ValueType::Int8 => Ok(GosValue::Int8(ival as i8)),
+            ValueType::Int16 => Ok(GosValue::Int16(ival as i16)),
+            ValueType::Int32 => Ok(GosValue::Int32(ival as i32)),
+            ValueType::Int64 => Ok(GosValue::Int64(ival as i64)),
+            _ => err_set_val_type!(),
+        }?;
+        self.set(ctx, val)
+    }
+
+    fn set_uint(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let ival = *val.as_uint64();
+        let val = match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Uint => Ok(GosValue::Uint(ival as usize)),
+            ValueType::Uint8 => Ok(GosValue::Uint8(ival as u8)),
+            ValueType::Uint16 => Ok(GosValue::Uint16(ival as u16)),
+            ValueType::Uint32 => Ok(GosValue::Uint32(ival as u32)),
+            ValueType::Uint64 => Ok(GosValue::Uint64(ival as u64)),
+            _ => err_set_val_type!(),
+        }?;
+        self.set(ctx, val)
+    }
+
+    fn set_float(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let fval = *val.as_float64();
+        let val = match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Float32 => Ok(GosValue::Float32((fval as f32).into())),
+            ValueType::Float64 => Ok(GosValue::Float64(fval.into())),
+            _ => err_set_val_type!(),
+        }?;
+        self.set(ctx, val)
+    }
+
+    fn set_complex(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let c = val.as_complex128();
+        let val = match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Complex64 => Ok(GosValue::Complex64(
+                (Into::<f64>::into(c.0) as f32).into(),
+                (Into::<f64>::into(c.1) as f32).into(),
+            )),
+            ValueType::Complex128 => Ok(GosValue::Complex128(c.clone())),
+            _ => err_set_val_type!(),
+        }?;
+        self.set(ctx, val)
+    }
+
+    fn set_bytes(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let metas = &ctx.vm_objs.metas;
+        let meta = self.settable_meta(ctx)?;
+        if meta.value_type(metas) != ValueType::Slice {
+            err_wrong_type!()
+        } else {
+            let (elem_meta, _) = metas[meta.as_non_ptr()].as_slice_or_array();
+            if elem_meta.value_type(metas) != ValueType::Uint8 {
+                err_wrong_type!()
+            } else {
+                self.set(ctx, val)
+            }
+        }
+    }
+
+    fn set_pointer(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        if self.settable_meta(ctx)? != ctx.vm_objs.metadata.unsafe_ptr {
+            err_wrong_type!()
+        } else {
+            self.set(ctx, val)
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

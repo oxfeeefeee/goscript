@@ -39,6 +39,13 @@ type ffiReflect interface {
 	can_set(p unsafe.Pointer) bool
 	set(p unsafe.Pointer, v unsafe.Pointer) bool
 	set_bool(p unsafe.Pointer, b bool)
+	set_bytes(p unsafe.Pointer, x []byte)
+	set_complex(p unsafe.Pointer, x complex128)
+	set_float(p unsafe.Pointer, x float64)
+	set_int(p unsafe.Pointer, x int64)
+	set_uint(p unsafe.Pointer, x uint64)
+	set_pointer(p unsafe.Pointer, x unsafe.Pointer)
+	set_string(p unsafe.Pointer, x string)
 }
 
 // Value is the reflection interface to a Go value.
@@ -408,25 +415,25 @@ func (v Value) SetBool(x bool) {
 // SetBytes sets v's underlying value.
 // It panics if v's underlying value is not a slice of bytes.
 func (v Value) SetBytes(x []byte) {
-	panic("not implemented")
+	native.set_bytes(v.ptr, x)
 }
 
 // SetComplex sets v's underlying value to x.
 // It panics if v's Kind is not Complex64 or Complex128, or if CanSet() is false.
 func (v Value) SetComplex(x complex128) {
-	panic("not implemented")
+	native.set_complex(v.ptr, x)
 }
 
 // SetFloat sets v's underlying value to x.
 // It panics if v's Kind is not Float32 or Float64, or if CanSet() is false.
 func (v Value) SetFloat(x float64) {
-	panic("not implemented")
+	native.set_float(v.ptr, x)
 }
 
 // SetInt sets v's underlying value to x.
 // It panics if v's Kind is not Int, Int8, Int16, Int32, or Int64, or if CanSet() is false.
 func (v Value) SetInt(x int64) {
-	panic("not implemented")
+	native.set_int(v.ptr, x)
 }
 
 // SetLen sets v's length to n.
@@ -456,19 +463,19 @@ func (v Value) SetMapIndex(key, val Value) {
 // SetUint sets v's underlying value to x.
 // It panics if v's Kind is not Uint, Uintptr, Uint8, Uint16, Uint32, or Uint64, or if CanSet() is false.
 func (v Value) SetUint(x uint64) {
-	panic("not implemented")
+	native.set_uint(v.ptr, x)
 }
 
 // SetPointer sets the unsafe.Pointer value v to x.
 // It panics if v's Kind is not UnsafePointer.
 func (v Value) SetPointer(x unsafe.Pointer) {
-	panic("not implemented")
+	native.set_pointer(v.ptr, x)
 }
 
 // SetString sets v's underlying value to x.
 // It panics if v's Kind is not String or if CanSet() is false.
 func (v Value) SetString(x string) {
-	panic("not implemented")
+	native.set_string(v.ptr, x)
 }
 
 // Slice returns v[i:j].

@@ -20,7 +20,8 @@ func (c *Container) inc(name string) {
 
 
 func sync_map() {
-    var m sync.Map
+    // todo: fix this
+    var m sync.Map = sync.Map(make(map[interface{}]interface{}))
 
     m.Store(2, "b")
     v, ok := m.LoadOrStore(1, "a")
@@ -42,6 +43,7 @@ func main() {
 
     sync_map()
 
+    /*
     c := Container{
 
         counters: map[string]int{"a": 0, "b": 0},
@@ -58,4 +60,5 @@ func main() {
     fmt2.Println(c.counters)
 
     fmt2.Println()
+    */
 }

@@ -293,6 +293,28 @@ impl GosMetadata {
     }
 
     #[inline]
+    pub fn into_value_category(self) -> GosMetadata {
+        let convert = |c| match c {
+            MetaCategory::Type => MetaCategory::Default,
+            MetaCategory::ArrayType => MetaCategory::Array,
+            _ => c,
+        };
+        match self {
+            GosMetadata::NonPtr(k, c) => GosMetadata::NonPtr(k, convert(c)),
+            GosMetadata::Ptr1(k, c) => GosMetadata::Ptr1(k, convert(c)),
+            GosMetadata::Ptr2(k, c) => GosMetadata::Ptr2(k, convert(c)),
+            GosMetadata::Ptr3(k, c) => GosMetadata::Ptr3(k, convert(c)),
+            GosMetadata::Ptr4(k, c) => GosMetadata::Ptr4(k, convert(c)),
+            GosMetadata::Ptr5(k, c) => GosMetadata::Ptr5(k, convert(c)),
+            GosMetadata::Ptr6(k, c) => GosMetadata::Ptr6(k, convert(c)),
+            GosMetadata::Ptr7(k, c) => GosMetadata::Ptr7(k, convert(c)),
+            GosMetadata::Untyped => {
+                unreachable!() /* todo: panic */
+            }
+        }
+    }
+
+    #[inline]
     pub fn value_type(&self, metas: &MetadataObjs) -> ValueType {
         match self {
             GosMetadata::NonPtr(k, mc) => match mc {
@@ -363,7 +385,7 @@ impl GosMetadata {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::SliceOrArray(m, size) => match mc {
                     MetaCategory::Array => {
-                        let val = m.default_val(mobjs, gcos);
+                        let val = m.zero_val_impl(mobjs, gcos);
                         GosValue::array_with_size(*size, &val, *self, gcos)
                     }
                     MetaCategory::Default => GosValue::new_slice_nil(*self, gcos),
@@ -372,59 +394,12 @@ impl GosMetadata {
                 MetadataType::Struct(_, s) => s.copy_semantic(gcos),
                 MetadataType::Signature(_) => GosValue::Nil(*self),
                 MetadataType::Map(_, v) => {
-                    GosValue::new_map_nil(*self, v.default_val(mobjs, gcos), gcos)
+                    GosValue::new_map_nil(*self, v.zero_val_impl(mobjs, gcos), gcos)
                 }
                 MetadataType::Interface(_) => GosValue::Nil(*self),
                 MetadataType::Channel(_, _) => GosValue::Nil(*self),
                 MetadataType::Named(_, gm) => {
-                    let val = gm.default_val(mobjs, gcos);
-                    GosValue::Named(Box::new((val, *gm)))
-                }
-            },
-            _ => GosValue::Nil(*self),
-        }
-    }
-
-    #[inline]
-    pub fn default_val(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
-        match &self {
-            GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
-                MetadataType::Bool => GosValue::Bool(false),
-                MetadataType::Int => GosValue::Int(0),
-                MetadataType::Int8 => GosValue::Int8(0),
-                MetadataType::Int16 => GosValue::Int16(0),
-                MetadataType::Int32 => GosValue::Int32(0),
-                MetadataType::Int64 => GosValue::Int64(0),
-                MetadataType::Uint => GosValue::Uint(0),
-                MetadataType::UintPtr => GosValue::UintPtr(0),
-                MetadataType::Uint8 => GosValue::Uint8(0),
-                MetadataType::Uint16 => GosValue::Uint16(0),
-                MetadataType::Uint32 => GosValue::Uint32(0),
-                MetadataType::Uint64 => GosValue::Uint64(0),
-                MetadataType::Float32 => GosValue::Float32(0.0.into()),
-                MetadataType::Float64 => GosValue::Float64(0.0.into()),
-                MetadataType::Complex64 => GosValue::Complex64(0.0.into(), 0.0.into()),
-                MetadataType::Complex128 => {
-                    GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
-                }
-                MetadataType::Str(s) => s.clone(),
-                MetadataType::SliceOrArray(m, size) => match mc {
-                    MetaCategory::Array => {
-                        let val = m.default_val(mobjs, gcos);
-                        GosValue::array_with_size(*size, &val, *self, gcos)
-                    }
-                    MetaCategory::Default => GosValue::new_slice(0, 0, *self, None, gcos),
-                    _ => unreachable!(),
-                },
-                MetadataType::Struct(_, s) => s.copy_semantic(gcos),
-                MetadataType::Signature(_) => GosValue::Nil(*self),
-                MetadataType::Map(_, v) => {
-                    GosValue::new_map(*self, v.default_val(mobjs, gcos), gcos)
-                }
-                MetadataType::Interface(_) => GosValue::Nil(*self),
-                MetadataType::Channel(_, _) => GosValue::Nil(*self),
-                MetadataType::Named(_, gm) => {
-                    let val = gm.default_val(mobjs, gcos);
+                    let val = gm.zero_val_impl(mobjs, gcos);
                     GosValue::Named(Box::new((val, *gm)))
                 }
             },
