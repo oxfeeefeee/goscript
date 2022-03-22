@@ -534,8 +534,13 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
                         let p = stack.get_with_type(s_index, ValueType::Pointer);
-                        p.as_pointer()
-                            .store(stack, rhs_index, inst.t0(), &objs.packages, gcv);
+                        stack.store_to_pointer(
+                            p.as_pointer(),
+                            rhs_index,
+                            inst.t0(),
+                            &objs.packages,
+                            gcv,
+                        );
                     }
                     Opcode::CAST => {
                         let (target, mapping) = inst.imm824();

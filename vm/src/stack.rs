@@ -457,8 +457,7 @@ impl Stack {
         typ: ValueType,
         gcos: &GcoVec,
     ) {
-        let uv: &mut UpValueState = &mut upvalue.inner.borrow_mut();
-        match uv {
+        match &mut upvalue.inner.borrow_mut() as &mut UpValueState {
             UpValueState::Open(desc) => {
                 let index = (desc.stack_base + desc.index) as usize;
                 let uv_stack = desc.stack.upgrade().unwrap();
@@ -574,6 +573,60 @@ impl Stack {
             }
             _ => unreachable!(),
         }
+    }
+
+    pub fn store_to_pointer(
+        &mut self,
+        p: &PointerObj,
+        rhs_index: OpIndex,
+        typ: ValueType,
+        packages: &PackageObjs,
+        gcv: &GcoVec,
+    ) {
+        match p {
+            PointerObj::UpVal(uv) => {
+                self.store_up_value(uv, rhs_index, typ, gcv);
+            }
+            PointerObj::Struct(r, _) => {
+                let rhs_s_index = Stack::offset(self.len(), rhs_index);
+                let val = self.get_with_type(rhs_s_index, typ);
+                let mref: &mut StructObj = &mut r.0.borrow_mut();
+                *mref = val.try_as_struct().unwrap().0.borrow().clone();
+            }
+            PointerObj::Array(a, _) => {
+                let rhs_s_index = Stack::offset(self.len(), rhs_index);
+                let val = self.get_with_type(rhs_s_index, typ);
+                a.0.set_from(&val.as_array().0);
+            }
+            PointerObj::Slice(r, _) => {
+                let rhs_s_index = Stack::offset(self.len(), rhs_index);
+                let val = self.get_with_type(rhs_s_index, typ);
+                r.0.set_from(&val.as_slice().0);
+            }
+            PointerObj::Map(r, _) => {
+                let rhs_s_index = Stack::offset(self.len(), rhs_index);
+                let val = self.get_with_type(rhs_s_index, typ);
+                let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
+                *mref = val.try_as_map().unwrap().0.borrow_data().clone();
+            }
+            PointerObj::SliceMember(s, index) => {
+                let vborrow = s.0.borrow();
+                let target: &mut GosValue =
+                    &mut vborrow[s.0.begin() + *index as usize].borrow_mut();
+                self.store_val(target, rhs_index, typ, gcv);
+            }
+            PointerObj::StructField(s, index) => {
+                let target: &mut GosValue = &mut s.0.borrow_mut().fields[*index as usize];
+                self.store_val(target, rhs_index, typ, gcv);
+            }
+            PointerObj::PkgMember(p, index) => {
+                let target: &mut GosValue = &mut packages[*p].member_mut(*index);
+                self.store_val(target, rhs_index, typ, gcv);
+            }
+            // todo: report error instead of crash
+            PointerObj::UserData(_) => unreachable!(),
+            PointerObj::Released => unreachable!(),
+        };
     }
 
     #[inline]

@@ -699,6 +699,15 @@ pub struct StructObj {
     pub fields: Vec<GosValue>,
 }
 
+impl StructObj {
+    pub fn is_exported(&self, index: usize, metas: &MetadataObjs) -> bool {
+        metas[self.meta.as_non_ptr()]
+            .as_struct()
+            .0
+            .is_exported(index)
+    }
+}
+
 impl Eq for StructObj {}
 
 impl PartialEq for StructObj {
@@ -999,60 +1008,6 @@ impl PointerObj {
         }
     }
 
-    pub fn store(
-        &self,
-        stack: &mut Stack,
-        rhs_index: OpIndex,
-        typ: ValueType,
-        packages: &PackageObjs,
-        gcv: &GcoVec,
-    ) {
-        match self {
-            PointerObj::UpVal(uv) => {
-                stack.store_up_value(uv, rhs_index, typ, gcv);
-            }
-            PointerObj::Struct(r, _) => {
-                let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                let val = stack.get_with_type(rhs_s_index, typ);
-                let mref: &mut StructObj = &mut r.0.borrow_mut();
-                *mref = val.try_as_struct().unwrap().0.borrow().clone();
-            }
-            PointerObj::Array(a, _) => {
-                let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                let val = stack.get_with_type(rhs_s_index, typ);
-                a.0.set_from(&val.as_array().0);
-            }
-            PointerObj::Slice(r, _) => {
-                let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                let val = stack.get_with_type(rhs_s_index, typ);
-                r.0.set_from(&val.as_slice().0);
-            }
-            PointerObj::Map(r, _) => {
-                let rhs_s_index = Stack::offset(stack.len(), rhs_index);
-                let val = stack.get_with_type(rhs_s_index, typ);
-                let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
-                *mref = val.try_as_map().unwrap().0.borrow_data().clone();
-            }
-            PointerObj::SliceMember(s, index) => {
-                let vborrow = s.0.borrow();
-                let target: &mut GosValue =
-                    &mut vborrow[s.0.begin() + *index as usize].borrow_mut();
-                stack.store_val(target, rhs_index, typ, gcv);
-            }
-            PointerObj::StructField(s, index) => {
-                let target: &mut GosValue = &mut s.0.borrow_mut().fields[*index as usize];
-                stack.store_val(target, rhs_index, typ, gcv);
-            }
-            PointerObj::PkgMember(p, index) => {
-                let target: &mut GosValue = &mut packages[*p].member_mut(*index);
-                stack.store_val(target, rhs_index, typ, gcv);
-            }
-            // todo: report error instead of crash
-            PointerObj::UserData(_) => unreachable!(),
-            PointerObj::Released => unreachable!(),
-        };
-    }
-
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> GosValue {
         match self {
             PointerObj::UpVal(uv) => uv.value(stack),
@@ -1248,6 +1203,13 @@ impl UpValue {
         }
     }
 
+    pub fn is_open(&self) -> bool {
+        match &self.inner.borrow() as &UpValueState {
+            UpValueState::Open(_) => true,
+            UpValueState::Closed(_) => false,
+        }
+    }
+
     pub fn downgrade(&self) -> WeakUpValue {
         WeakUpValue {
             inner: Rc::downgrade(&self.inner),
@@ -1267,8 +1229,7 @@ impl UpValue {
     }
 
     pub fn value(&self, stack: &Stack) -> GosValue {
-        let uv: &UpValueState = &self.inner.borrow();
-        match &uv {
+        match &self.inner.borrow() as &UpValueState {
             UpValueState::Open(desc) => stack.load_upvalue(desc),
             UpValueState::Closed(val) => val.clone(),
         }
