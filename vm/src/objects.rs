@@ -1010,7 +1010,7 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
+    pub fn point_to_meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
             PointerObj::UpVal(uv) => {
                 let state: &UpValueState = &uv.inner.borrow();

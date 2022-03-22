@@ -684,7 +684,7 @@ impl GosValue {
             GosValue::Complex128(_) => objs.metadata.mcomplex128,
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.0.meta,
-            GosValue::Pointer(b) => b.meta(objs, stack).ptr_to(),
+            GosValue::Pointer(b) => b.point_to_meta(objs, stack).ptr_to(),
             GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,
