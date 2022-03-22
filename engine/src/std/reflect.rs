@@ -14,9 +14,9 @@ use std::rc::Rc;
 const WRONG_TYPE_MSG: &str = "reflect: wrong type";
 const INDEX_OOR_MSG: &str = "reflect: index out of range";
 
-macro_rules! args_as {
-    ($args:expr, $t:ty) => {{
-        match &$args[0] {
+macro_rules! arg_as {
+    ($arg:expr, $t:ty) => {{
+        match $arg {
             GosValue::Pointer(p) => match &*p as &PointerObj {
                 PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
                 _ => Err("reflect: expect UserData".to_string()),
@@ -24,24 +24,6 @@ macro_rules! args_as {
             _ => Err("reflect: expect pointer".to_string()),
         }
     }};
-}
-
-macro_rules! wrap_std_val {
-    ($v:expr) => {
-        GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::new($v))))
-    };
-}
-
-macro_rules! wrap_std_val_with_ptr {
-    ($p:expr) => {
-        GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::Pointer($p))))
-    };
-}
-
-macro_rules! meta_objs {
-    ($ptr:expr) => {
-        unsafe { &*$ptr }
-    };
 }
 
 macro_rules! err_wrong_type {
@@ -54,6 +36,21 @@ macro_rules! err_index_oor {
     () => {
         Err(INDEX_OOR_MSG.to_string())
     };
+}
+
+#[inline]
+fn wrap_std_val(v: GosValue) -> GosValue {
+    GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::new(v))))
+}
+
+#[inline]
+fn wrap_ptr_std_val(p: Box<PointerObj>) -> GosValue {
+    GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::Pointer(p))))
+}
+
+#[inline]
+fn meta_objs(p: *const MetadataObjs) -> &'static MetadataObjs {
+    unsafe { &*p }
 }
 
 enum GosKind {
@@ -100,78 +97,111 @@ impl Reflect {
     }
 
     fn ffi_type_of(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let v = args_as!(args, StdValue)?;
+        let v = arg_as!(&args[0], StdValue)?;
         let (t, k) = StdType::type_of(&v.val(ctx), ctx);
         Ok(vec![t, k])
     }
 
     fn ffi_bool_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.bool_val(ctx)
+        arg_as!(&args[0], StdValue)?.bool_val(ctx)
     }
 
     fn ffi_int_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.int_val(ctx)
+        arg_as!(&args[0], StdValue)?.int_val(ctx)
     }
 
     fn ffi_uint_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.uint_val(ctx)
+        arg_as!(&args[0], StdValue)?.uint_val(ctx)
     }
 
     fn ffi_float_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.float_val(ctx)
+        arg_as!(&args[0], StdValue)?.float_val(ctx)
     }
 
     fn ffi_bytes_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.bytes_val(ctx)
+        arg_as!(&args[0], StdValue)?.bytes_val(ctx)
     }
 
     fn ffi_elem(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.elem(ctx)
+        arg_as!(&args[0], StdValue)?.elem(ctx)
     }
 
     fn ffi_num_field(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.num_field(ctx)
+        arg_as!(&args[0], StdValue)?.num_field(ctx)
     }
 
     fn ffi_field(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.field(ctx, &args[1])
+        arg_as!(&args[0], StdValue)?.field(ctx, &args[1])
     }
 
     fn ffi_index(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.index(ctx, &args[1])
+        arg_as!(&args[0], StdValue)?.index(ctx, &args[1])
     }
 
     fn ffi_is_nil(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
         Ok(GosValue::Bool(
-            args_as!(args, StdValue)?.val(ctx).equals_nil(),
+            arg_as!(&args[0], StdValue)?.val(ctx).equals_nil(),
         ))
     }
 
     fn ffi_len(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdValue)?.len(ctx)
+        arg_as!(&args[0], StdValue)?.len(ctx)
     }
 
     fn ffi_map_range_init(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(StdMapIter::map_range(ctx, args_as!(args, StdValue)?))
+        Ok(StdMapIter::map_range(ctx, arg_as!(&args[0], StdValue)?))
     }
 
     fn ffi_map_range_next(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(args_as!(args, StdMapIter)?.next())
+        Ok(arg_as!(&args[0], StdMapIter)?.next())
     }
 
     fn ffi_map_range_key(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdMapIter)?.key()
+        arg_as!(&args[0], StdMapIter)?.key()
     }
 
     fn ffi_map_range_value(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        args_as!(args, StdMapIter)?.value()
+        arg_as!(&args[0], StdMapIter)?.value()
+    }
+
+    fn ffi_can_addr(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(GosValue::Bool(arg_as!(&args[0], StdValue)?.can_addr()))
+    }
+
+    fn ffi_can_set(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
+        Ok(GosValue::Bool(arg_as!(&args[0], StdValue)?.can_set(ctx)))
+    }
+
+    fn ffi_set(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        arg_as!(&args[0], StdValue)?.set(ctx, arg_as!(&args[1], StdValue)?.val(ctx))
+    }
+
+    fn ffi_set_bool(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        self.set_with_val(ctx, args, ValueType::Bool)
+    }
+
+    fn set_with_val(
+        &self,
+        ctx: &FfiCallCtx,
+        args: Vec<GosValue>,
+        vt: ValueType,
+    ) -> RuntimeResult<()> {
+        let mut i = args.into_iter();
+        let to = i.next().unwrap();
+        let to = arg_as!(&to, StdValue)?;
+        if to.value_type(ctx) != vt {
+            Err("reflect: set value with wrong type".to_string())
+        } else {
+            let val = i.next().unwrap().clone();
+            to.set(ctx, val)
+        }
     }
 }
 
 #[derive(Clone, Debug)]
 enum StdValue {
     Value(GosValue),
-    Pointer(PointerObj),
+    Pointer(Box<PointerObj>),
 }
 
 impl UserData for StdValue {
@@ -183,7 +213,7 @@ impl UserData for StdValue {
 impl StdValue {
     fn new(v: GosValue) -> StdValue {
         match PointerObj::try_new_local(&v) {
-            Some(p) => StdValue::Pointer(p),
+            Some(p) => StdValue::Pointer(Box::new(p)),
             None => StdValue::Value(v),
         }
     }
@@ -196,7 +226,7 @@ impl StdValue {
             IfaceUnderlying::Ffi(_) => GosValue::Nil(iface.meta),
             IfaceUnderlying::None => GosValue::Nil(iface.meta),
         };
-        wrap_std_val!(v)
+        wrap_std_val(v)
     }
 
     fn val(&self, ctx: &FfiCallCtx) -> GosValue {
@@ -204,6 +234,10 @@ impl StdValue {
             Self::Value(v) => v.clone(),
             Self::Pointer(p) => p.deref(&ctx.stack, &ctx.vm_objs.packages),
         }
+    }
+
+    fn value_type(&self, ctx: &FfiCallCtx) -> ValueType {
+        self.val(ctx).get_type()
     }
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -267,13 +301,16 @@ impl StdValue {
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val.unwrap_named_ref() {
-            GosValue::Interface(iface) => Ok(wrap_std_val!(iface
-                .borrow()
-                .underlying_value()
-                .map(|x| x.clone())
-                .unwrap_or(GosValue::new_nil()))),
-            GosValue::Pointer(p) => Ok(wrap_std_val_with_ptr!(p.as_ref().clone())),
+        let val = val.unwrap_named_ref();
+        match val {
+            GosValue::Interface(iface) => Ok(wrap_std_val(
+                iface
+                    .borrow()
+                    .underlying_value()
+                    .map(|x| x.clone())
+                    .unwrap_or(GosValue::new_nil()),
+            )),
+            GosValue::Pointer(p) => Ok(wrap_ptr_std_val(p.clone())),
             _ => err_wrong_type!(),
         }
     }
@@ -293,15 +330,14 @@ impl StdValue {
                 if fields.len() <= i {
                     err_index_oor!()
                 } else {
-                    Ok(GosValue::new_pointer(PointerObj::StructField(
+                    Ok(wrap_ptr_std_val(Box::new(PointerObj::StructField(
                         s.clone(),
                         i as i32,
-                    )))
+                    ))))
                 }
             }
             None => err_wrong_type!(),
         }
-        .map(|x| wrap_std_val!(x))
     }
 
     fn index(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
@@ -311,22 +347,24 @@ impl StdValue {
         let container = container.unwrap_named_ref();
         match container {
             GosValue::Array(arr) => match arr.0.len() > iusize {
-                true => Ok(GosValue::new_pointer(PointerObj::new_array_member(
+                true => Ok(wrap_ptr_std_val(Box::new(PointerObj::new_array_member(
                     container, i, ctx.gcv,
-                ))),
+                )))),
                 false => err_index_oor!(),
             },
             GosValue::Slice(s) => match s.0.len() > iusize {
-                true => Ok(GosValue::new_pointer(PointerObj::SliceMember(s.clone(), i))),
+                true => Ok(wrap_ptr_std_val(Box::new(PointerObj::SliceMember(
+                    s.clone(),
+                    i,
+                )))),
                 false => err_index_oor!(),
             },
             GosValue::Str(s) => match s.len() > iusize {
-                true => Ok(GosValue::Uint8(*s.get_byte(iusize).unwrap())),
+                true => Ok(wrap_std_val(GosValue::Uint8(*s.get_byte(iusize).unwrap()))),
                 false => err_index_oor!(),
             },
             _ => err_wrong_type!(),
         }
-        .map(|x| wrap_std_val!(x))
     }
 
     fn len(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -339,6 +377,57 @@ impl StdValue {
             _ => err_wrong_type!(),
         }
         .map(|x| GosValue::Int(x as isize))
+    }
+
+    fn can_addr(&self) -> bool {
+        match self {
+            Self::Value(_) => false,
+            Self::Pointer(_) => true,
+        }
+    }
+
+    fn can_set(&self, ctx: &FfiCallCtx) -> bool {
+        match self {
+            Self::Value(_) => false,
+            Self::Pointer(p) => match p as &PointerObj {
+                PointerObj::SliceMember(_, _) => true,
+                PointerObj::StructField(s, i) => {
+                    s.0.borrow().is_exported(*i as usize, &ctx.vm_objs.metas)
+                }
+                PointerObj::UpVal(uv) => !uv.is_open(),
+                _ => false,
+            },
+        }
+    }
+
+    fn set(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        let err = Err("reflect: value is not settable".to_string());
+        match self {
+            Self::Value(_) => err,
+            Self::Pointer(p) => match p as &PointerObj {
+                PointerObj::SliceMember(s, i) => {
+                    let vborrow = s.0.borrow();
+                    *vborrow[s.0.begin() + *i as usize].borrow_mut() = val;
+                    Ok(())
+                }
+                PointerObj::StructField(s, i) => {
+                    if s.0.borrow().is_exported(*i as usize, &ctx.vm_objs.metas) {
+                        s.0.borrow_mut().fields[*i as usize] = val;
+                        Ok(())
+                    } else {
+                        err
+                    }
+                }
+                PointerObj::UpVal(uv) => match &mut uv.inner.borrow_mut() as &mut UpValueState {
+                    UpValueState::Open(_) => err,
+                    UpValueState::Closed(c) => {
+                        *c = val;
+                        Ok(())
+                    }
+                },
+                _ => err,
+            },
+        }
     }
 }
 
@@ -356,7 +445,7 @@ impl UserData for StdType {
     fn eq(&self, other: &dyn UserData) -> bool {
         match other.as_any().downcast_ref::<StdType>() {
             Some(other_type) => {
-                let objs = meta_objs!(self.mobjs);
+                let objs = meta_objs(self.mobjs);
                 self.meta.identical(&other_type.meta, objs)
             }
             None => false,
@@ -464,7 +553,7 @@ impl StdMapIter {
             Some(kv) => Ok(kv.0.clone()),
             None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
         }
-        .map(|x| wrap_std_val!(x))
+        .map(|x| wrap_std_val(x))
     }
 
     fn value(&self) -> RuntimeResult<GosValue> {
@@ -472,6 +561,6 @@ impl StdMapIter {
             Some(kv) => Ok(kv.1.clone()),
             None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
         }
-        .map(|x| wrap_std_val!(x))
+        .map(|x| wrap_std_val(x))
     }
 }

@@ -34,6 +34,11 @@ type ffiReflect interface {
 	map_range_next(p unsafe.Pointer) bool
 	map_range_key(p unsafe.Pointer) unsafe.Pointer
 	map_range_value(p unsafe.Pointer) unsafe.Pointer
+
+	can_addr(p unsafe.Pointer) bool
+	can_set(p unsafe.Pointer) bool
+	set(p unsafe.Pointer, v unsafe.Pointer) bool
+	set_bool(p unsafe.Pointer, b bool)
 }
 
 // Value is the reflection interface to a Go value.
@@ -91,7 +96,7 @@ func (v Value) Bytes() []byte {
 // If CanAddr returns false, calling Addr will panic.
 // Goscript: cannot implement this for now
 func (v Value) CanAddr() bool {
-	return false
+	return native.can_addr(v.ptr)
 }
 
 // CanSet reports whether the value of v can be changed.
@@ -100,7 +105,7 @@ func (v Value) CanAddr() bool {
 // If CanSet returns false, calling Set or any type-specific
 // setter (e.g., SetBool, SetInt) will panic.
 func (v Value) CanSet() bool {
-	panic("not implemented")
+	return native.can_set(v.ptr)
 }
 
 // Call calls the function v with the input arguments in.
@@ -391,13 +396,13 @@ func (v Value) Send(x Value) {
 // It panics if CanSet returns false.
 // As in Go, x's value must be assignable to v's type.
 func (v Value) Set(x Value) {
-	panic("not implemented")
+	native.set(v.ptr, x.ptr)
 }
 
 // SetBool sets v's underlying value.
 // It panics if v's Kind is not Bool or if CanSet() is false.
 func (v Value) SetBool(x bool) {
-	panic("not implemented")
+	native.set_bool(v.ptr, x)
 }
 
 // SetBytes sets v's underlying value.

@@ -13,6 +13,8 @@ var i = 222
 type Bbb struct {
     a string
     b int
+    C int
+    D bool
 }
 
 func get() AAA {
@@ -42,10 +44,10 @@ func testValueElem() {
 }
 
 func testField() {
-    b := Bbb{"xxx", 123}
+    b := Bbb{"xxx", 123, 0, false}
     v := reflect.ValueOf(b)
-    assert(v.NumField() == 2)
-    assert(v.Field(1).Int() == 123)
+    assert(v.NumField() == 4)
+   // assert(v.Field(1).Int() == 123)
     fmt2.Println(v, v.Field(1).Int())
 }
 
@@ -123,18 +125,54 @@ func testPointer() {
     fmt2.Println(reflect.ValueOf(i).Pointer())
 }
 
+func testSet() {
+    assert(!reflect.ValueOf("").CanSet())
+
+    var bbb Bbb
+    bv := reflect.ValueOf(bbb);
+    bv0 := bv.Field(0)
+    bv2 := bv.Field(2)    
+    bv3 := bv.Field(3)    
+    assert(!bv0.CanSet())
+    assert(bv2.CanSet())
+    assert(bv3.CanSet())
+    assert(!bv3.Bool())
+    bv3.SetBool(true)
+    assert(bv3.Bool())
+    
+    a := []int{23,34,56}
+    v := reflect.ValueOf(a)   
+    v1 := v.Index(1)
+    assert(v1.CanSet())
+    
+    v1.Set(reflect.ValueOf(888))
+    assert(v.Index(1).Int() == 888)
+}
+
 
 func main() {
+    
     testBytes()
+    
     testValueElem()
+    
     testField()
+
     testVals()
+
     testIndex()
+
     testIsNil()
+
     testIsValid()
+
     testLen()
+
     testMapIter()
+    
     testPointer()
+    
+    testSet() 
 
     
     i := reflect.TypeOf(get)
