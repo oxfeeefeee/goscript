@@ -1001,10 +1001,53 @@ impl PointerObj {
         }
     }
 
+    #[inline]
     pub fn as_user_data(&self) -> &Rc<dyn UserData> {
         match self {
             Self::UserData(ud) => ud,
             _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
+        match self {
+            PointerObj::UpVal(uv) => {
+                let state: &UpValueState = &uv.inner.borrow();
+                match state {
+                    UpValueState::Open(d) => stack
+                        .get_with_type(d.index as usize, d.typ)
+                        .meta(objs, stack),
+                    UpValueState::Closed(v) => v.meta(objs, stack),
+                }
+            }
+            PointerObj::Struct(s, named_md) => match named_md {
+                GosMetadata::Untyped => s.0.borrow().meta,
+                _ => *named_md,
+            },
+            PointerObj::Array(a, named_md) => match named_md {
+                GosMetadata::Untyped => a.0.meta,
+                _ => *named_md,
+            },
+            PointerObj::Slice(s, named_md) => match named_md {
+                GosMetadata::Untyped => s.0.meta,
+                _ => *named_md,
+            },
+            PointerObj::Map(m, named_md) => match named_md {
+                GosMetadata::Untyped => m.0.meta,
+                _ => *named_md,
+            },
+            PointerObj::StructField(sobj, index) => {
+                sobj.0.borrow().fields[*index as usize].meta(objs, stack)
+            }
+            PointerObj::SliceMember(sobj, index) => {
+                sobj.0.borrow()[*index as usize].borrow().meta(objs, stack)
+            }
+            PointerObj::PkgMember(pkey, index) => {
+                objs.packages[*pkey].member(*index).meta(objs, stack)
+            }
+            PointerObj::UserData(_) => objs.metadata.unsafe_ptr,
+            PointerObj::Released => unreachable!(),
         }
     }
 

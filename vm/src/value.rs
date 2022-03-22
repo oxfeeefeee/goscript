@@ -684,49 +684,7 @@ impl GosValue {
             GosValue::Complex128(_) => objs.metadata.mcomplex128,
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.0.meta,
-            GosValue::Pointer(b) => {
-                let bobj: &PointerObj = &*b;
-                let pointee = match bobj {
-                    //PointerObj::Nil => GosMetadata::Untyped,
-                    PointerObj::UpVal(uv) => {
-                        let state: &UpValueState = &uv.inner.borrow();
-                        match state {
-                            UpValueState::Open(d) => stack
-                                .get_with_type(d.index as usize, d.typ)
-                                .meta(objs, stack),
-                            UpValueState::Closed(v) => v.meta(objs, stack),
-                        }
-                    }
-                    PointerObj::Struct(s, named_md) => match named_md {
-                        GosMetadata::Untyped => s.0.borrow().meta,
-                        _ => *named_md,
-                    },
-                    PointerObj::Array(a, named_md) => match named_md {
-                        GosMetadata::Untyped => a.0.meta,
-                        _ => *named_md,
-                    },
-                    PointerObj::Slice(s, named_md) => match named_md {
-                        GosMetadata::Untyped => s.0.meta,
-                        _ => *named_md,
-                    },
-                    PointerObj::Map(m, named_md) => match named_md {
-                        GosMetadata::Untyped => m.0.meta,
-                        _ => *named_md,
-                    },
-                    PointerObj::StructField(sobj, index) => {
-                        sobj.0.borrow().fields[*index as usize].meta(objs, stack)
-                    }
-                    PointerObj::SliceMember(sobj, index) => {
-                        sobj.0.borrow()[*index as usize].borrow().meta(objs, stack)
-                    }
-                    PointerObj::PkgMember(pkey, index) => {
-                        objs.packages[*pkey].member(*index).meta(objs, stack)
-                    }
-                    PointerObj::UserData(_) => objs.metadata.unsafe_ptr,
-                    PointerObj::Released => unreachable!(),
-                };
-                pointee.ptr_to()
-            }
+            GosValue::Pointer(b) => b.meta(objs, stack).ptr_to(),
             GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,
