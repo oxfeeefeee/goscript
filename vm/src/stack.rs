@@ -664,7 +664,7 @@ impl Stack {
         for i in 0..count {
             let var_index = (count - 1 - i) as OpIndex;
             let var: &mut GosValue = &mut pkg.var_mut(var_index);
-            let t = var.get_type();
+            let t = var.typ();
             *var = self.pop_with_type(t);
         }
     }

@@ -1153,7 +1153,7 @@ impl<'a> CodeGen<'a> {
             .tlookup
             .get_const_value(node, self.objects, self.dummy_gcv);
         let mut emitter = current_func_emitter!(self);
-        let t = val.get_type();
+        let t = val.typ();
         let i = emitter.add_const(None, val);
         emitter.emit_load(i, None, t, pos);
     }

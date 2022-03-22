@@ -1080,7 +1080,7 @@ impl<'a> Fiber<'a> {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
-                        let meta = GosValue::Metadata(val.get_meta(objs, stack));
+                        let meta = GosValue::Metadata(val.meta(objs, stack));
                         stack.push(val);
                         let ok = &consts[inst.imm() as usize] == &meta;
                         let do_try = inst.t2_as_index() > 0;
@@ -1098,7 +1098,7 @@ impl<'a> Fiber<'a> {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
-                        stack.push(GosValue::Metadata(val.get_meta(objs, stack)));
+                        stack.push(GosValue::Metadata(val.meta(objs, stack)));
                         if inst.t2_as_index() > 0 {
                             let index = inst.imm();
                             let s_index = Stack::offset(stack_base, index);

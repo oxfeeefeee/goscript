@@ -624,7 +624,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn get_type(&self) -> ValueType {
+    pub fn typ(&self) -> ValueType {
         match self {
             GosValue::Nil(_) => ValueType::Nil,
             GosValue::Bool(_) => ValueType::Bool,
@@ -660,10 +660,10 @@ impl GosValue {
     }
 
     pub fn identical(&self, other: &GosValue) -> bool {
-        self.get_type() == other.get_type() && self == other
+        self.typ() == other.typ() && self == other
     }
 
-    pub fn get_meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
+    pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
             GosValue::Nil(m) => *m,
             GosValue::Bool(_) => objs.metadata.mbool,
@@ -693,8 +693,8 @@ impl GosValue {
                         match state {
                             UpValueState::Open(d) => stack
                                 .get_with_type(d.index as usize, d.typ)
-                                .get_meta(objs, stack),
-                            UpValueState::Closed(v) => v.get_meta(objs, stack),
+                                .meta(objs, stack),
+                            UpValueState::Closed(v) => v.meta(objs, stack),
                         }
                     }
                     PointerObj::Struct(s, named_md) => match named_md {
@@ -714,13 +714,13 @@ impl GosValue {
                         _ => *named_md,
                     },
                     PointerObj::StructField(sobj, index) => {
-                        sobj.0.borrow().fields[*index as usize].get_meta(objs, stack)
+                        sobj.0.borrow().fields[*index as usize].meta(objs, stack)
                     }
-                    PointerObj::SliceMember(sobj, index) => sobj.0.borrow()[*index as usize]
-                        .borrow()
-                        .get_meta(objs, stack),
+                    PointerObj::SliceMember(sobj, index) => {
+                        sobj.0.borrow()[*index as usize].borrow().meta(objs, stack)
+                    }
                     PointerObj::PkgMember(pkey, index) => {
-                        objs.packages[*pkey].member(*index).get_meta(objs, stack)
+                        objs.packages[*pkey].member(*index).meta(objs, stack)
                     }
                     PointerObj::UserData(_) => objs.metadata.unsafe_ptr,
                     PointerObj::Released => unreachable!(),

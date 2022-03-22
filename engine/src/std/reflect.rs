@@ -237,7 +237,7 @@ impl StdValue {
     }
 
     fn value_type(&self, ctx: &FfiCallCtx) -> ValueType {
-        self.val(ctx).get_type()
+        self.val(ctx).typ()
     }
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -462,7 +462,7 @@ impl StdType {
     }
 
     fn type_of(val: &GosValue, ctx: &FfiCallCtx) -> (GosValue, GosValue) {
-        let m = val.get_meta(ctx.vm_objs, ctx.stack);
+        let m = val.meta(ctx.vm_objs, ctx.stack);
         let typ = StdType::new(m, &ctx.vm_objs.metas);
         let kind = match m
             .get_underlying(&ctx.vm_objs.metas)
