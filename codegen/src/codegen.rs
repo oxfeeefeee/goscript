@@ -1061,7 +1061,7 @@ impl<'a> CodeGen<'a> {
             .meta_from_tc(tctype, &mut self.objects, self.dummy_gcv);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
-        let (mkey, mc) = meta.get_underlying(&self.objects.metas).unwrap_non_ptr();
+        let (mkey, mc) = meta.underlying(&self.objects.metas).unwrap_non_ptr();
         let mtype = &self.objects.metas[mkey].clone();
         match mtype {
             MetadataType::SliceOrArray(_, _) => {
@@ -1171,7 +1171,7 @@ impl<'a> CodeGen<'a> {
             let embed_index = i as OpIndex;
             current_func_emitter!(self).emit_load_struct_field(embed_index, lhs_type, pos);
             lhs_meta = self.get_embedded_member_meta(&lhs_meta, i);
-            lhs_type = lhs_meta.get_value_type(&self.objects.metas);
+            lhs_type = lhs_meta.value_type(&self.objects.metas);
         }
         (lhs_meta, lhs_type)
     }
@@ -1358,7 +1358,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             );
             let index = embedded_indices[index_count_m1];
             let final_meta = self.get_embedded_member_meta(&m, index);
-            let final_typ = final_meta.get_value_type(&self.objects.metas);
+            let final_typ = final_meta.value_type(&self.objects.metas);
             let recv_prep = get_recv_prep(&stype, final_typ);
             match &recv_prep {
                 ReceiverPreprocess::Ref => {
@@ -1382,12 +1382,12 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
         }
 
-        let typ = lhs_meta.get_value_type(&self.objects.metas);
+        let typ = lhs_meta.value_type(&self.objects.metas);
         match &stype {
             SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
                 if lhs_meta
-                    .get_underlying(&self.objects.metas)
-                    .get_value_type(&self.objects.metas)
+                    .underlying(&self.objects.metas)
+                    .value_type(&self.objects.metas)
                     == ValueType::Interface
                 {
                     current_func_mut!(self).emit_code_with_type_imm(
@@ -1488,10 +1488,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                                 self.objects,
                                 self.dummy_gcv,
                             );
-                            let t = meta.get_value_type(&self.objects.metas);
+                            let t = meta.value_type(&self.objects.metas);
                             let ut = meta
-                                .get_underlying(&self.objects.metas)
-                                .get_value_type(&self.objects.metas);
+                                .underlying(&self.objects.metas)
+                                .value_type(&self.objects.metas);
                             if ut == ValueType::Struct
                                 || ut == ValueType::Array
                                 || ut == ValueType::Slice

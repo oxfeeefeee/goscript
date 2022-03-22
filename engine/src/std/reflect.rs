@@ -17,7 +17,7 @@ const INDEX_OOR_MSG: &str = "reflect: index out of range";
 macro_rules! arg_as {
     ($arg:expr, $t:ty) => {{
         match $arg {
-            GosValue::Pointer(p) => match &*p as &PointerObj {
+            GosValue::Pointer(p) => match p as &PointerObj {
                 PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
                 _ => Err("reflect: expect UserData".to_string()),
             },
@@ -46,6 +46,11 @@ fn wrap_std_val(v: GosValue) -> GosValue {
 #[inline]
 fn wrap_ptr_std_val(p: Box<PointerObj>) -> GosValue {
     GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::Pointer(p))))
+}
+
+#[inline]
+fn unwrap_set_args(args: &Vec<GosValue>) -> RuntimeResult<(&StdValue, GosValue)> {
+    Ok((arg_as!(&args[0], StdValue)?, args[1].clone()))
 }
 
 #[inline]
@@ -177,24 +182,8 @@ impl Reflect {
     }
 
     fn ffi_set_bool(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
-        self.set_with_val(ctx, args, ValueType::Bool)
-    }
-
-    fn set_with_val(
-        &self,
-        ctx: &FfiCallCtx,
-        args: Vec<GosValue>,
-        vt: ValueType,
-    ) -> RuntimeResult<()> {
-        let mut i = args.into_iter();
-        let to = i.next().unwrap();
-        let to = arg_as!(&to, StdValue)?;
-        if to.value_type(ctx) != vt {
-            Err("reflect: set value with wrong type".to_string())
-        } else {
-            let val = i.next().unwrap().clone();
-            to.set(ctx, val)
-        }
+        let (to, val) = unwrap_set_args(&args)?;
+        to.set_bool(ctx, val)
     }
 }
 
@@ -236,8 +225,11 @@ impl StdValue {
         }
     }
 
-    fn value_type(&self, ctx: &FfiCallCtx) -> ValueType {
-        self.val(ctx).typ()
+    fn settable_meta(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosMetadata> {
+        match self {
+            Self::Pointer(p) => Ok(p.point_to_meta(ctx.vm_objs, ctx.stack)),
+            Self::Value(_) => Err("reflect: value not settable".to_string()),
+        }
     }
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -290,7 +282,7 @@ impl StdValue {
         match val.unwrap_named_ref() {
             GosValue::Slice(s) => {
                 let (m, _) = mobjs[s.0.meta.as_non_ptr()].as_slice_or_array();
-                match m.get_value_type(mobjs) {
+                match m.value_type(mobjs) {
                     ValueType::Uint8 => Ok(val),
                     _ => err_wrong_type!(),
                 }
@@ -429,6 +421,15 @@ impl StdValue {
             },
         }
     }
+
+    fn set_bool(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+        match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
+            ValueType::Bool => self.set(ctx, val),
+            _ => Err("reflect: set value with wrong type".to_string()),
+        }
+    }
+
+    //fn set_bytes(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {}
 }
 
 #[derive(Clone, Debug)]
@@ -465,8 +466,8 @@ impl StdType {
         let m = val.meta(ctx.vm_objs, ctx.stack);
         let typ = StdType::new(m, &ctx.vm_objs.metas);
         let kind = match m
-            .get_underlying(&ctx.vm_objs.metas)
-            .get_value_type(&ctx.vm_objs.metas)
+            .underlying(&ctx.vm_objs.metas)
+            .value_type(&ctx.vm_objs.metas)
         {
             ValueType::Bool => GosKind::Bool,
             ValueType::Int => GosKind::Int,

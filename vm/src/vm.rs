@@ -794,7 +794,7 @@ impl<'a> Fiber<'a> {
                         if pack {
                             let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
                             let (meta, v_meta) = sig.variadic.unwrap();
-                            let vt = v_meta.get_value_type(&objs.metas);
+                            let vt = v_meta.value_type(&objs.metas);
                             let is_ffi = cls.func.is_none();
                             let index = nframe.stack_base
                                 + sig.params.len()
@@ -1169,12 +1169,12 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_runtime_closure(val, gcv)
                             }
                             GosValue::Metadata(md) => {
-                                let umd = md.get_underlying(&objs.metas);
+                                let umd = md.underlying(&objs.metas);
                                 let (key, mc) = umd.unwrap_non_ptr();
                                 let count = stack.pop_int32();
                                 let val = match &objs.metas[key] {
                                     MetadataType::SliceOrArray(asm, _) => {
-                                        let elem_type = asm.get_value_type(&objs.metas);
+                                        let elem_type = asm.value_type(&objs.metas);
                                         let zero_val = asm.zero_val(&objs.metas, gcv);
                                         let mut val = vec![];
                                         let mut cur_index = -1;
@@ -1212,8 +1212,8 @@ impl<'a> Fiber<'a> {
                                         let gosv =
                                             GosValue::new_map(*md, zero_val!(vm, objs, gcv), gcv);
                                         let map = gosv.as_map();
-                                        let tk = km.get_value_type(&objs.metas);
-                                        let tv = vm.get_value_type(&objs.metas);
+                                        let tk = km.value_type(&objs.metas);
+                                        let tv = vm.value_type(&objs.metas);
                                         for _ in 0..count {
                                             let k = stack.pop_with_type(tk);
                                             let v = stack.pop_with_type(tv);
@@ -1226,7 +1226,7 @@ impl<'a> Fiber<'a> {
                                         let mut sref = struct_val.as_struct().0.borrow_mut();
                                         for _ in 0..count {
                                             let index = stack.pop_uint();
-                                            let tv = f.fields[index].0.get_value_type(&objs.metas);
+                                            let tv = f.fields[index].0.value_type(&objs.metas);
                                             sref.fields[index] = stack.pop_with_type(tv);
                                         }
                                         drop(sref);
@@ -1409,7 +1409,7 @@ impl<'a> Fiber<'a> {
                         let params = stack.pop_with_type_n(ptypes);
                         let v = match self.context.ffi_factory.create_by_name(name_str, params) {
                             Ok(v) => {
-                                let meta = itype.as_meta().get_underlying(&objs.metas).clone();
+                                let meta = itype.as_meta().underlying(&objs.metas).clone();
                                 let info = objs.metas[meta.as_non_ptr()]
                                     .as_interface()
                                     .iface_methods_info();

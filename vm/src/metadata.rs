@@ -185,7 +185,7 @@ impl GosMetadata {
         variadic: Option<(GosMetadata, GosMetadata)>,
         metas: &mut MetadataObjs,
     ) -> GosMetadata {
-        let ptypes = params.iter().map(|x| x.get_value_type(metas)).collect();
+        let ptypes = params.iter().map(|x| x.value_type(metas)).collect();
         let t = MetadataType::Signature(SigMetadata {
             recv: recv,
             params: params,
@@ -197,7 +197,7 @@ impl GosMetadata {
     }
 
     pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        //debug_assert!(underlying.get_value_type(metas) != ValueType::Named);
+        //debug_assert!(underlying.value_type(metas) != ValueType::Named);
         GosMetadata::new(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
@@ -293,7 +293,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn get_value_type(&self, metas: &MetadataObjs) -> ValueType {
+    pub fn value_type(&self, metas: &MetadataObjs) -> ValueType {
         match self {
             GosMetadata::NonPtr(k, mc) => match mc {
                 MetaCategory::Default => match &metas[*k] {
@@ -436,7 +436,7 @@ impl GosMetadata {
     pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let key = self.recv_meta_key();
         match &metas[GosMetadata::NonPtr(key, MetaCategory::Default)
-            .get_underlying(metas)
+            .underlying(metas)
             .as_non_ptr()]
         {
             MetadataType::Struct(m, _) => m.mapping[name] as OpIndex,
@@ -445,7 +445,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn get_underlying(&self, metas: &MetadataObjs) -> GosMetadata {
+    pub fn underlying(&self, metas: &MetadataObjs) -> GosMetadata {
         match self {
             GosMetadata::NonPtr(k, _) => match &metas[*k] {
                 MetadataType::Named(_, u) => *u,
