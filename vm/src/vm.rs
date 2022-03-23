@@ -386,7 +386,9 @@ impl<'a> Fiber<'a> {
                         if inst.t1() == ValueType::Named {
                             target = &target.as_named().0;
                         }
-                        stack.store_index(target, &key, rhs_index, inst.t0(), gcv);
+                        if let Err(e) = stack.store_index(target, &key, rhs_index, inst.t0(), gcv) {
+                            go_panic_str!(panic, metadata, e, frame, code);
+                        }
                     }
                     Opcode::STORE_INDEX_IMM => {
                         // the only place we can store the immediate index is t2
@@ -398,7 +400,7 @@ impl<'a> Fiber<'a> {
                             target = &target.as_named().0;
                         }
                         if let Err(e) =
-                            stack.store_index_int(target, imm as usize, rhs_index, inst.t0(), gcv)
+                            stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv)
                         {
                             go_panic_str!(panic, metadata, e, frame, code);
                         }

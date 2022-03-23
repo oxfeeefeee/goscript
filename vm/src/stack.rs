@@ -481,23 +481,37 @@ impl Stack {
         r_index: OpIndex,
         t: ValueType,
         gcos: &GcoVec,
-    ) {
+    ) -> RuntimeResult<()> {
+        let err = Err("assignment to entry in nil map or slice".to_string());
         match target {
             GosValue::Array(arr) => {
                 let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
                 self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                Ok(())
             }
-            GosValue::Slice(s) => {
-                let target_cell = &s.0.borrow()[*key.as_int() as usize];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+            GosValue::Slice(s) => match s.0.is_nil() {
+                false => {
+                    let target_cell = &s.0.borrow()[*key.as_int() as usize];
+                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                    Ok(())
+                }
+                true => err,
+            },
+            GosValue::Map(map) => match map.0.is_nil() {
+                false => {
+                    map.0.touch_key(&key);
+                    let borrowed = map.0.borrow_data();
+                    let target_cell = borrowed.get(&key).unwrap();
+                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                    Ok(())
+                }
+                true => err,
+            },
+            GosValue::Nil(_) => err,
+            _ => {
+                dbg!(target);
+                unreachable!()
             }
-            GosValue::Map(map) => {
-                map.0.touch_key(&key);
-                let borrowed = map.0.borrow_data();
-                let target_cell = borrowed.get(&key).unwrap();
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-            }
-            _ => unreachable!(),
         }
     }
 
@@ -505,45 +519,13 @@ impl Stack {
     pub fn store_index_int(
         &self,
         target: &GosValue,
-        i: usize,
+        i: OpIndex,
         r_index: OpIndex,
         t: ValueType,
         gcos: &GcoVec,
     ) -> RuntimeResult<()> {
-        let err = Err("assignment to entry in nil map or slice".to_string());
-        match target {
-            GosValue::Array(arr) => {
-                let target_cell = &arr.0.borrow_data()[i];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-                Ok(())
-            }
-            GosValue::Slice(s) => {
-                if s.0.is_nil() {
-                    err
-                } else {
-                    let target_cell = &s.0.borrow()[i];
-                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-                    Ok(())
-                }
-            }
-            GosValue::Map(map) => {
-                if map.0.is_nil() {
-                    err
-                } else {
-                    let key = GosValue::Int(i as isize);
-                    map.0.touch_key(&key);
-                    let borrowed = map.0.borrow_data();
-                    let target_cell = borrowed.get(&key).unwrap();
-                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-                    Ok(())
-                }
-            }
-            GosValue::Nil(_) => err,
-            _ => {
-                dbg!(target);
-                unreachable!()
-            }
-        }
+        let index = GosValue::Int(i as isize);
+        self.store_index(target, &index, r_index, t, gcos)
     }
 
     #[inline]
