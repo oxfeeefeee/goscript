@@ -121,7 +121,7 @@ impl<'a> Checker<'a> {
         } else {
             let pos = self.ast_ident(ikey).pos;
             if name == "_" {
-                self.error(pos, "cannot use _ as value or type".to_string());
+                self.error(pos, "cannot use _ as value or type".to_owned());
             } else {
                 self.error(pos, format!("undeclared name: {}", name));
             }
@@ -178,7 +178,7 @@ impl<'a> Checker<'a> {
     ) -> TypeKey {
         let skey = self
             .tc_objs
-            .new_scope(self.octx.scope, 0, 0, "function".to_string(), true);
+            .new_scope(self.octx.scope, 0, 0, "function".to_owned(), true);
         self.result.record_scope(&ftype, skey);
 
         let (recv_list, _) = self.collect_params(skey, recv, false, fctx);
@@ -198,7 +198,7 @@ impl<'a> Checker<'a> {
                     let pos = recv.unwrap().pos(self.ast_objs);
                     self.error_str(pos, "method is missing receiver");
                     self.tc_objs
-                        .new_param_var(0, None, "".to_string(), Some(invalid_type))
+                        .new_param_var(0, None, "".to_owned(), Some(invalid_type))
                 }
                 x if x > 1 => {
                     let pos = self.lobj(recv_list[recv_list.len() - 1]).pos();
@@ -469,7 +469,7 @@ impl<'a> Checker<'a> {
                     } else {
                         self.soft_error(
                             elli.pos,
-                            "can only use ... with final parameter in list".to_string(),
+                            "can only use ... with final parameter in list".to_owned(),
                         )
                         // ignore ... and continue
                     }
@@ -502,7 +502,7 @@ impl<'a> Checker<'a> {
                     let par = self.tc_objs.new_param_var(
                         ftype.pos(self.ast_objs),
                         Some(self.pkg),
-                        "".to_string(),
+                        "".to_owned(),
                         Some(ty),
                     );
                     self.result.record_implicit(fkey, par);
@@ -674,7 +674,7 @@ impl<'a> Checker<'a> {
 
                 let recv_key =
                     self.tc_objs
-                        .new_var(pos, Some(self.pkg), "".to_string(), Some(recv_type));
+                        .new_var(pos, Some(self.pkg), "".to_owned(), Some(recv_type));
                 let empty_tuple = *self.tc_objs.universe().no_value_tuple();
                 let sig_key = self.tc_objs.new_t_signature(
                     None,

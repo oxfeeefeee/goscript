@@ -16,28 +16,28 @@ macro_rules! arg_as {
         match $arg {
             GosValue::Pointer(p) => match p as &PointerObj {
                 PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
-                _ => Err("reflect: expect UserData".to_string()),
+                _ => Err("reflect: expect UserData".to_owned()),
             },
-            _ => Err("reflect: expect pointer".to_string()),
+            _ => Err("reflect: expect pointer".to_owned()),
         }
     }};
 }
 
 macro_rules! err_wrong_type {
     () => {
-        Err("reflect: wrong type".to_string())
+        Err("reflect: wrong type".to_owned())
     };
 }
 
 macro_rules! err_index_oor {
     () => {
-        Err("reflect: index out of range".to_string())
+        Err("reflect: index out of range".to_owned())
     };
 }
 
 macro_rules! err_set_val_type {
     () => {
-        Err("reflect: set value with wrong type".to_string())
+        Err("reflect: set value with wrong type".to_owned())
     };
 }
 
@@ -266,7 +266,7 @@ impl StdValue {
     fn settable_meta(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosMetadata> {
         match self {
             Self::Pointer(p) => Ok(p.point_to_meta(ctx.vm_objs, ctx.stack)),
-            Self::Value(_) => Err("reflect: value not settable".to_string()),
+            Self::Value(_) => Err("reflect: value not settable".to_owned()),
         }
     }
 
@@ -431,7 +431,7 @@ impl StdValue {
     }
 
     fn set(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
-        let err = Err("reflect: value is not settable".to_string());
+        let err = Err("reflect: value is not settable".to_owned());
         match self {
             Self::Value(_) => err,
             Self::Pointer(p) => match p as &PointerObj {
@@ -667,7 +667,7 @@ impl StdMapIter {
     fn key(&self) -> RuntimeResult<GosValue> {
         match &self.inner.borrow().item {
             Some(kv) => Ok(kv.0.clone()),
-            None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted".to_owned()),
         }
         .map(|x| wrap_std_val(x))
     }
@@ -675,7 +675,7 @@ impl StdMapIter {
     fn value(&self) -> RuntimeResult<GosValue> {
         match &self.inner.borrow().item {
             Some(kv) => Ok(kv.1.clone()),
-            None => Err("reflect.MapIter: Next not called or iter exhausted".to_string()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted".to_owned()),
         }
         .map(|x| wrap_std_val(x))
     }

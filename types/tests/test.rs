@@ -63,7 +63,7 @@ fn test_file(path: &str, trace: bool) {
     dbg!(path);
     let pkgs = &mut HashMap::new();
     let config = types::Config {
-        work_dir: Some("./".to_string()),
+        work_dir: Some("./".to_owned()),
         base_path: None,
         trace_parser: trace,
         trace_checker: trace,

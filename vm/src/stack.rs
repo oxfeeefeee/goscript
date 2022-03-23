@@ -482,7 +482,7 @@ impl Stack {
         t: ValueType,
         gcos: &GcoVec,
     ) -> RuntimeResult<()> {
-        let err = Err("assignment to entry in nil map or slice".to_string());
+        let err = Err("assignment to entry in nil map or slice".to_owned());
         match target {
             GosValue::Array(arr) => {
                 let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
@@ -937,8 +937,8 @@ mod test {
         s.push(GosValue::Int(1));
         //assert_eq!(s.pop(), GosValue::Int(1));
 
-        s.push(GosValue::new_str("11".to_string()));
-        let v2 = GosValue::new_str("aa".to_string());
+        s.push(GosValue::new_str("11".to_owned()));
+        let v2 = GosValue::new_str("aa".to_owned());
         s.set(0, v2.clone());
         //assert_eq!(s.get(0, ValueType::Str), v2);
     }

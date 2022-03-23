@@ -393,7 +393,7 @@ impl<'a> Checker<'a> {
                             self.error(pos, format!("cannot assign to {}", self.new_dis(x)));
                             // dummy variable
                             self.tc_objs
-                                .new_var(pos, Some(self.pkg), "_".to_string(), None)
+                                .new_var(pos, Some(self.pkg), "_".to_owned(), None)
                         }
                     } else {
                         // declare new variable, possibly a blank (_) variable
@@ -411,7 +411,7 @@ impl<'a> Checker<'a> {
                     self.error(pos, format!("cannot declare {}", self.new_dis(x)));
                     // dummy variable
                     self.tc_objs
-                        .new_var(pos, Some(self.pkg), "_".to_string(), None)
+                        .new_var(pos, Some(self.pkg), "_".to_owned(), None)
                 }
             })
             .collect();
@@ -432,7 +432,7 @@ impl<'a> Checker<'a> {
                 self.declare(scope_key, None, *okey, scope_pos);
             }
         } else {
-            self.soft_error(pos, "no new variables on left side of :=".to_string());
+            self.soft_error(pos, "no new variables on left side of :=".to_owned());
         }
     }
 }

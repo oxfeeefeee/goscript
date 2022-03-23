@@ -176,7 +176,7 @@ mod test {
         let mut arena_s = ar::Arena::new();
         let scope = Scope::new(None);
         let s = arena_s.insert(scope);
-        let e = Entity::with_no_data(EntityKind::Fun, "test_entity".to_string(), DeclObj::NoDecl);
+        let e = Entity::with_no_data(EntityKind::Fun, "test_entity".to_owned(), DeclObj::NoDecl);
         let mut arena = ar::Arena::new();
         insert_new(&mut arena_s[s], e, &mut arena);
 

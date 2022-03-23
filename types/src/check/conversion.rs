@@ -25,7 +25,7 @@ impl<'a> Checker<'a> {
             if clone.representable(basic, Some(v)) {
                 true
             } else if typ::is_integer(xtype, o) && tval.is_string(o) {
-                let mut s = "\u{FFFD}".to_string();
+                let mut s = "\u{FFFD}".to_owned();
                 let (i, exact) = v.int_as_i64();
                 if exact {
                     if let Some(c) = char::from_u32(i as u32) {

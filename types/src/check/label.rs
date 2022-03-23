@@ -116,7 +116,7 @@ impl StmtBranchesContext {
 impl<'a> Checker<'a> {
     pub fn labels(&mut self, body: &Rc<BlockStmt>) {
         let (pos, end) = (body.pos(), body.end());
-        let comment = "label".to_string();
+        let comment = "label".to_owned();
         let all = self.tc_objs.new_scope(None, pos, end, comment, false);
         let fwd_jumps = self.block_branches(all, None, None, &body.list);
 

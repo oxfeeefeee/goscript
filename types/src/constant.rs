@@ -574,7 +574,7 @@ impl Value {
     pub fn str_as_string(&self) -> String {
         match self {
             Value::Str(s) => s.to_string(), //quote_str(s)
-            Value::Unknown => "".to_string(),
+            Value::Unknown => "".to_owned(),
             _ => panic!("not a string"),
         }
     }

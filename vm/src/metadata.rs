@@ -79,7 +79,7 @@ impl Metadata {
                 MetaCategory::Default,
             ),
             mstr: GosMetadata::NonPtr(
-                objs.insert(MetadataType::Str(GosValue::new_str("".to_string()))),
+                objs.insert(MetadataType::Str(GosValue::new_str("".to_owned()))),
                 MetaCategory::Default,
             ),
             // todo: do we need a dedicated MetadataType::udata for it?

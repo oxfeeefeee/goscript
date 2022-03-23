@@ -21,11 +21,11 @@ impl Fmt2 {
             .iter()
             .map(|x| {
                 if x.is_nil() {
-                    "<nil>".to_string()
+                    "<nil>".to_owned()
                 } else {
                     match x.iface_underlying() {
                         Some(v) => v.to_string(),
-                        None => "<ffi>".to_string(),
+                        None => "<ffi>".to_owned(),
                     }
                 }
             })

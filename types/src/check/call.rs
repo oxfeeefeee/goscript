@@ -360,7 +360,7 @@ impl<'a> Checker<'a> {
                     // argument of the method expression's function type
                     let var = self
                         .tc_objs
-                        .new_var(0, Some(self.pkg), "".to_string(), x.typ);
+                        .new_var(0, Some(self.pkg), "".to_owned(), x.typ);
                     let lobj = self.lobj(okey);
                     let sig = self.otype(lobj.typ().unwrap()).try_as_signature().unwrap();
                     let (p, r, v) = (sig.params(), sig.results(), sig.variadic());

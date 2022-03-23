@@ -586,7 +586,7 @@ impl<'a> Checker<'a> {
             if s.typ.is_none() {
                 self.error(
                     self.ast_ident(s.names[0]).pos,
-                    "missing type or init expr".to_string(),
+                    "missing type or init expr".to_owned(),
                 );
             }
         } else if l < r {
@@ -669,7 +669,7 @@ impl<'a> Checker<'a> {
     fn valid_import_path(&self, blit: &'a ast::BasicLit) -> Result<&'a str, String> {
         let path = blit.token.get_literal();
         if path.len() < 3 || (!path.starts_with('"') || !path.ends_with('"')) {
-            return Err("empty string".to_string());
+            return Err("empty string".to_owned());
         }
         let result = &path[1..path.len() - 1];
         let mut illegal_chars: Vec<char> = r##"!"#$%&'()*,:;<=>?[\]^{|}`"##.chars().collect();

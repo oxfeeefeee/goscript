@@ -459,7 +459,7 @@ impl<'a> Fiber<'a> {
                                 )))
                             }
                             IfaceUnderlying::None => {
-                                let msg = "access nil interface".to_string();
+                                let msg = "access nil interface".to_owned();
                                 go_panic_str!(panic, metadata, msg, frame, code);
                                 continue;
                             }
@@ -1439,7 +1439,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::ASSERT => {
                         if !stack.pop_bool() {
-                            let msg = "Opcode::ASSERT: not true!".to_string();
+                            let msg = "Opcode::ASSERT: not true!".to_owned();
                             go_panic_str!(panic, metadata, msg, frame, code);
                         }
                     }

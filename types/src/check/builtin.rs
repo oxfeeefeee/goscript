@@ -889,12 +889,12 @@ fn make_sig(
         .iter()
         .map(|&x| {
             let ty = Some(untyped_default_type(x, objs));
-            objs.new_var(0, None, "".to_string(), ty)
+            objs.new_var(0, None, "".to_owned(), ty)
         })
         .collect();
     let params = objs.new_t_tuple(list);
     let rlist = res.map_or(vec![], |x| {
-        vec![objs.new_var(0, None, "".to_string(), Some(x))]
+        vec![objs.new_var(0, None, "".to_owned(), Some(x))]
     });
     let results = objs.new_t_tuple(rlist);
     objs.new_t_signature(None, None, params, results, variadic)

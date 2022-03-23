@@ -101,7 +101,7 @@ impl Universe {
         let (iota, byte, rune) = Universe::iota_byte_rune(&uskey, objs);
         let slice_of_bytes = objs.new_t_slice(byte);
         let no_value_tuple = objs.new_t_tuple(vec![]);
-        let indir = objs.new_type_name(0, None, "*".to_string(), None);
+        let indir = objs.new_type_name(0, None, "*".to_owned(), None);
         let guard_sig = objs.new_t_signature(None, None, no_value_tuple, no_value_tuple, false);
         Universe {
             scope: uskey,

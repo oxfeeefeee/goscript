@@ -4,8 +4,8 @@ extern crate goscript_engine as engine;
 
 fn run(path: &str, trace: bool) -> usize {
     let cfg = engine::Config {
-        work_dir: Some("./".to_string()),
-        base_path: Some("../std/".to_string()),
+        work_dir: Some("./".to_owned()),
+        base_path: Some("../std/".to_owned()),
         trace_parser: trace,
         trace_checker: trace,
         trace_vm: true,

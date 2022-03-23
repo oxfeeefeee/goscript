@@ -460,7 +460,7 @@ impl<'a> Checker<'a> {
         {
             self.error(
                 fdecl.pos(self.ast_objs),
-                "func init must have no arguments and no return values".to_string(),
+                "func init must have no arguments and no return values".to_owned(),
             );
             // ok to continue
         }

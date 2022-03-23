@@ -702,7 +702,7 @@ impl InterfaceDetail {
                 if let Some(sig) = signature {
                     if sig.recv.is_none() {
                         let var =
-                            LangObj::new_var(mobj.pos(), mobj.pkg(), "".to_string(), mobj.typ());
+                            LangObj::new_var(mobj.pos(), mobj.pkg(), "".to_owned(), mobj.typ());
                         sig.recv = Some(objs.lobjs.insert(var));
                     }
                     Ok(s)

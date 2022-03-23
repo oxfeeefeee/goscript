@@ -1596,16 +1596,16 @@ mod test {
     #[test]
     fn test_types() {
         let _t1: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_string()),
+            GosValue::new_str("Norway".to_owned()),
             GosValue::Int(100),
-            GosValue::new_str("Denmark".to_string()),
+            GosValue::new_str("Denmark".to_owned()),
             GosValue::Int(10),
         ];
 
         let _t2: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_string()),
+            GosValue::new_str("Norway".to_owned()),
             GosValue::Int(100),
-            GosValue::new_str("Denmark".to_string()),
+            GosValue::new_str("Denmark".to_owned()),
             GosValue::Int(10),
         ];
     }

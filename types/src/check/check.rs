@@ -467,7 +467,7 @@ impl<'a> Checker<'a> {
             let ident = &self.ast_objs.idents[f.name];
             if pkg_name.is_none() {
                 if ident.name == "_" {
-                    self.error(ident.pos, "invalid package name _".to_string());
+                    self.error(ident.pos, "invalid package name _".to_owned());
                     return Err(());
                 } else {
                     pkg_name = Some(ident.name.clone());

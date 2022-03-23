@@ -352,7 +352,7 @@ impl<'a> Checker<'a> {
                     .iter()
                     .find(|(&t2, _)| typ::identical_option(t, t2, self.tc_objs))
                 {
-                    let ts = t.map_or("nil".to_string(), |x| self.new_dis(&x).to_string());
+                    let ts = t.map_or("nil".to_owned(), |x| self.new_dis(&x).to_string());
                     self.error(
                         e.pos(self.ast_objs),
                         format!("duplicate case {} in type switch", ts),
@@ -601,14 +601,14 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Block(bs) => {
-                self.open_scope(stmt, "block".to_string());
+                self.open_scope(stmt, "block".to_owned());
 
                 self.stmt_list(&bs.list, &inner_ctx, fctx);
 
                 self.close_scope();
             }
             Stmt::If(ifs) => {
-                self.open_scope(stmt, "if".to_string());
+                self.open_scope(stmt, "if".to_owned());
 
                 self.simple_stmt(ifs.init.as_ref(), fctx);
                 let x = &mut Operand::new();
@@ -639,7 +639,7 @@ impl<'a> Checker<'a> {
             }
             Stmt::Switch(ss) => {
                 inner_ctx.break_ok = true;
-                self.open_scope(stmt, "switch".to_string());
+                self.open_scope(stmt, "switch".to_owned());
 
                 self.simple_stmt(ss.init.as_ref(), fctx);
                 let x = &mut Operand::new();
@@ -664,7 +664,7 @@ impl<'a> Checker<'a> {
                 for (i, c) in ss.body.list.iter().enumerate() {
                     if let Stmt::Case(cc) = c {
                         self.case_values(x, &cc.list, &mut seen, fctx);
-                        self.open_scope(stmt, "case".to_string());
+                        self.open_scope(stmt, "case".to_owned());
                         let mut inner2 = inner_ctx.clone();
                         if i + 1 < ss.body.list.len() {
                             inner2.fallthrough_ok = true;
@@ -682,7 +682,7 @@ impl<'a> Checker<'a> {
             }
             Stmt::TypeSwitch(tss) => {
                 inner_ctx.break_ok = true;
-                self.open_scope(stmt, "type switch".to_string());
+                self.open_scope(stmt, "type switch".to_owned());
 
                 self.simple_stmt(tss.init.as_ref(), fctx);
                 // A type switch guard must be of the form:
@@ -768,7 +768,7 @@ impl<'a> Checker<'a> {
                     };
                     // Check each type in this type switch case.
                     let mut t = self.case_types(x, xtype, &clause.list, &mut seen, fctx);
-                    self.open_scope(stmt, "case".to_string());
+                    self.open_scope(stmt, "case".to_owned());
                     // If lhs exists, declare a corresponding variable in the case-local scope.
                     if let Some(lhs) = lhs {
                         // spec: "The TypeSwitchGuard may include a short variable declaration.
@@ -852,7 +852,7 @@ impl<'a> Checker<'a> {
                         continue;
                     }
 
-                    self.open_scope(stmt, "case".to_string());
+                    self.open_scope(stmt, "case".to_owned());
                     if let Some(cc) = &clause.comm {
                         self.stmt(cc, &inner_ctx, fctx);
                     }
@@ -863,7 +863,7 @@ impl<'a> Checker<'a> {
             Stmt::For(fs) => {
                 inner_ctx.break_ok = true;
                 inner_ctx.continue_ok = true;
-                self.open_scope(stmt, "for".to_string());
+                self.open_scope(stmt, "for".to_owned());
 
                 self.simple_stmt(fs.init.as_ref(), fctx);
                 if let Some(cond) = &fs.cond {
@@ -903,7 +903,7 @@ impl<'a> Checker<'a> {
             Stmt::Range(rs) => {
                 inner_ctx.break_ok = true;
                 inner_ctx.continue_ok = true;
-                self.open_scope(stmt, "for".to_string());
+                self.open_scope(stmt, "for".to_owned());
 
                 // check expression to iterate over
                 let x = &mut Operand::new();
@@ -995,7 +995,7 @@ impl<'a> Checker<'a> {
                             _ => {
                                 let ed = self.new_dis(lhs.unwrap());
                                 self.error(ed.pos(), format!("cannot declare {}", ed));
-                                let (pos, name) = (ed.pos(), "_".to_string());
+                                let (pos, name) = (ed.pos(), "_".to_owned());
                                 self.tc_objs.new_var(pos, Some(self.pkg), name, None)
                             }
                         };

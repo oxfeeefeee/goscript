@@ -311,7 +311,7 @@ impl<'a> Parser<'a> {
     }
 
     fn error_expected(&self, pos: position::Pos, msg: &str) {
-        let mut mstr = "expected ".to_string();
+        let mut mstr = "expected ".to_owned();
         mstr.push_str(msg);
         if pos == self.pos {
             match &self.token {
@@ -370,7 +370,7 @@ impl<'a> Parser<'a> {
         if self.token == Token::COMMA {
             true
         } else if self.token != *follow {
-            let mut msg =  "missing ','".to_string();
+            let mut msg =  "missing ','".to_owned();
             if let Token::SEMICOLON(real) = &self.token {
                 if !*real.as_bool() {msg.push_str(" before newline");}
             }
@@ -432,12 +432,12 @@ impl<'a> Parser<'a> {
 
     fn parse_ident(&mut self) -> IdentKey {
         let pos = self.pos;
-        let mut name = "_".to_string();
+        let mut name = "_".to_owned();
         if let Token::IDENT(lit) = &self.token {
             name = lit.as_str().clone();
             self.next();
         } else {
-            self.expect(&Token::IDENT("".to_string().into()));
+            self.expect(&Token::IDENT("".to_owned().into()));
         }
         self.objects.idents.insert(Ident{ pos: pos, name: name,
             entity: IdentEntity::NoEntity})
@@ -586,7 +586,7 @@ impl<'a> Parser<'a> {
                         // only report error if it's a new one
                         self.error_expected(pos, "identifier")
                     }
-                    new_ident!(self, pos, "_".to_string(), IdentEntity::NoEntity)
+                    new_ident!(self, pos, "_".to_owned(), IdentEntity::NoEntity)
                 }
             }
         }).collect()
@@ -1400,7 +1400,7 @@ impl<'a> Parser<'a> {
                             self.error_expected(pos, "selector or type assertion");
                             self.next();
                             let sel = new_ident!(
-                                self, pos, "_".to_string(), IdentEntity::NoEntity);
+                                self, pos, "_".to_owned(), IdentEntity::NoEntity);
                             x = Expr::new_selector(x, sel);
                         }
                     }
@@ -2258,7 +2258,7 @@ impl<'a> Parser<'a> {
 
         let ident = match self.token {
             Token::PERIOD => {
-                let i = new_ident!(self, self.pos, ".".to_string(), 
+                let i = new_ident!(self, self.pos, ".".to_owned(), 
                     IdentEntity::NoEntity);
                 self.next();
                 Some(i)
@@ -2280,7 +2280,7 @@ impl<'a> Parser<'a> {
             }
             _ => {
                 // use expect() error handling
-                let token = Token::STRING("_".to_string().into());
+                let token = Token::STRING("_".to_owned().into());
                 self.expect(&token); 
                 token
             }
@@ -2560,7 +2560,7 @@ mod test {
 	#[test]
 	fn test_parser () {
         let mut fs = position::FileSet::new();
-        let f = fs.add_file("testfile1.gs".to_string(), None, 1000);
+        let f = fs.add_file("testfile1.gs".to_owned(), None, 1000);
 
         let s1 = r###"
         func (p *someobj) testFunc(a, b *int) (i int) {

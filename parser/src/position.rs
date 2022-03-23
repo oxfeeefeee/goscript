@@ -205,7 +205,7 @@ impl FileSet {
             f.position(p)
         } else {
             return Position {
-                filename: Rc::new("non_file_name".to_string()),
+                filename: Rc::new("non_file_name".to_owned()),
                 line: 0,
                 offset: 0,
                 column: 0,
@@ -274,14 +274,14 @@ mod test {
     #[test]
     fn test_position() {
         let p = Position {
-            filename: Rc::new("test.gs".to_string()),
+            filename: Rc::new("test.gs".to_owned()),
             offset: 0,
             line: 54321,
             column: 8,
         };
         print!("this is the position: {} ", p);
         let mut fs = FileSet::new();
-        let mut f = File::new("test.gs".to_string());
+        let mut f = File::new("test.gs".to_owned());
         f.size = 12345;
         f.add_line(123);
         f.add_line(133);
@@ -291,9 +291,9 @@ mod test {
         print!("\nfile after merge: {:?}", f);
 
         {
-            fs.add_file("testfile1.gs".to_string(), None, 222);
-            fs.add_file("testfile2.gs".to_string(), None, 222);
-            fs.add_file("testfile3.gs".to_string(), None, 222);
+            fs.add_file("testfile1.gs".to_owned(), None, 222);
+            fs.add_file("testfile2.gs".to_owned(), None, 222);
+            fs.add_file("testfile3.gs".to_owned(), None, 222);
             print!("\nset {:?}", fs);
         }
 
