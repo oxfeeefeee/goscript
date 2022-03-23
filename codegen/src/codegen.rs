@@ -769,6 +769,9 @@ impl<'a> CodeGen<'a> {
                 let opcode = match builtin {
                     Builtin::New => Opcode::NEW,
                     Builtin::Make => Opcode::MAKE,
+                    Builtin::Complex => Opcode::COMPLEX,
+                    Builtin::Real => Opcode::REAL,
+                    Builtin::Imag => Opcode::IMAG,
                     Builtin::Len => Opcode::LEN,
                     Builtin::Cap => Opcode::CAP,
                     Builtin::Append => Opcode::APPEND,

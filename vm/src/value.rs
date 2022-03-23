@@ -1313,8 +1313,12 @@ impl GosValue64 {
     }
 
     #[inline]
+    pub fn get_float32(&self) -> F32 {
+        unsafe { self.data.float32 }
+    }
+
+    #[inline]
     pub fn get_float64(&self) -> F64 {
-        //debug_assert_eq!(self.debug_type, ValueType::Float64);
         unsafe { self.data.float64 }
     }
 

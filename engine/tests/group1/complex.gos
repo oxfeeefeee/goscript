@@ -1,0 +1,26 @@
+package main
+
+import "fmt2"
+
+func main() {
+    c := complex(1,2)
+    assert(real(c) == 1)
+    assert(imag(c) == 2)
+    fmt2.Println(c)
+    
+
+    var f float64
+    f = 1.2345699999
+    c2 := complex(8, f)
+
+    var iface interface{}
+    iface = real(c2)
+    switch i := iface.(type) {
+	case float32:
+        j := 0
+        assert(j == 1)
+    case float64:
+        assert(i == 8)
+        fmt2.Println("float64", i)
+    }
+}

@@ -94,6 +94,9 @@ pub enum Opcode {
     LITERAL,    // for function literal or composite literal
     NEW,        // for built-in function new
     MAKE,       // for built-in function make
+    COMPLEX,    // for built-in function complex
+    REAL,       // for built-in function real
+    IMAG,       // for built-in function imag
     LEN,        // for built-in function len
     CAP,        // for built-in function cap
     APPEND,     // for built-in function append
@@ -195,6 +198,9 @@ impl Opcode {
             Opcode::LITERAL => ("LITERAL", 0),
             Opcode::NEW => ("NEW", 0),
             Opcode::MAKE => ("MAKE", 0),
+            Opcode::COMPLEX => ("COMPLEX", 0),
+            Opcode::REAL => ("REAL", 0),
+            Opcode::IMAG => ("IMAG", 0),
             Opcode::LEN => ("LEN", 0),
             Opcode::CAP => ("CAP", 0),
             Opcode::APPEND => ("APPEND", -128),

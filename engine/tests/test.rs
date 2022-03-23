@@ -263,6 +263,12 @@ fn test_init_func() {
 }
 
 #[test]
+fn test_complex() {
+    let err_cnt = run("./tests/group1/complex.gos", true);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_linked() {
     let err_cnt = run("./tests/demo/linked.gos", true);
     assert!(err_cnt == 0);

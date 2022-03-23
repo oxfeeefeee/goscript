@@ -1299,6 +1299,51 @@ impl<'a> Fiber<'a> {
                         stack.pop_discard();
                         stack.push(val);
                     }
+                    Opcode::COMPLEX => {
+                        // for the specs: For complex, the two arguments must be of the same
+                        // floating-point type and the return type is the complex type with
+                        // the corresponding floating-point constituents
+                        let t = inst.t0();
+                        dbg!(t);
+                        let val = match t {
+                            ValueType::Float32 => {
+                                let i = stack.pop_c().get_float32();
+                                let r = stack.pop_c().get_float32();
+                                GosValue::Complex64(r, i)
+                            }
+                            ValueType::Float64 => {
+                                let i = stack.pop_c().get_float64();
+                                let r = stack.pop_c().get_float64();
+                                GosValue::Complex128(Box::new((r, i)))
+                            }
+                            _ => unreachable!(),
+                        };
+                        stack.push(val);
+                    }
+                    Opcode::REAL => {
+                        let val = match inst.t0() {
+                            ValueType::Complex64 => {
+                                GosValue::Float32(stack.pop_c().get_complex64().0)
+                            }
+                            ValueType::Complex128 => {
+                                GosValue::Float64(stack.pop_rc().as_complex128().0)
+                            }
+                            _ => unreachable!(),
+                        };
+                        stack.push(val);
+                    }
+                    Opcode::IMAG => {
+                        let val = match inst.t0() {
+                            ValueType::Complex64 => {
+                                GosValue::Float32(stack.pop_c().get_complex64().1)
+                            }
+                            ValueType::Complex128 => {
+                                GosValue::Float64(stack.pop_rc().as_complex128().1)
+                            }
+                            _ => unreachable!(),
+                        };
+                        stack.push(val);
+                    }
                     Opcode::LEN => {
                         let l = match &stack.pop_with_type(inst.t0()) {
                             GosValue::Slice(slice) => slice.0.len(),
