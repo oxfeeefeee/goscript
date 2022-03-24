@@ -1108,25 +1108,28 @@ impl<'a> CodeGen<'a> {
                 }
             }
             MetadataType::Struct(f, _) => {
-                let struct_type = typ.try_as_struct().unwrap();
+                let fields = typ.try_as_struct().unwrap().fields();
                 for (i, expr) in clit.elts.iter().enumerate() {
-                    let field_type = self.tc_objs.lobjs[struct_type.fields()[i]].typ().unwrap();
-                    let index = match expr {
+                    let (expr, index) = match expr {
                         Expr::KeyValue(kv) => {
-                            self.visit_composite_expr(&kv.val, field_type);
                             let ident = kv.key.try_as_ident().unwrap();
-                            f.mapping[&self.ast_objs.idents[*ident].name]
+                            let index = f.mapping[&self.ast_objs.idents[*ident].name];
+                            (&kv.val, index)
                         }
-                        _ => {
-                            self.visit_composite_expr(expr, field_type);
-                            i as OpIndex
-                        }
+                        _ => (expr, i),
                     };
-                    current_func_emitter!(self).emit_push_imm(ValueType::Uint, index, pos);
+                    let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
+                    self.visit_composite_expr(expr, field_type);
+                    current_func_emitter!(self).emit_push_imm(
+                        ValueType::Uint,
+                        index as OpIndex,
+                        pos,
+                    );
                 }
             }
             _ => {
                 dbg!(&mtype);
+                dbg!(&self.ast_objs.idents[*clit.typ.as_ref().unwrap().try_as_ident().unwrap()]);
                 unreachable!()
             }
         }

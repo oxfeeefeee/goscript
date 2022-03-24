@@ -7,7 +7,7 @@ use goscript_types::{
     PackageKey as TCPackageKey, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::gc::GcoVec;
-use goscript_vm::instruction::{OpIndex, ValueType};
+use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
@@ -618,13 +618,13 @@ impl<'a> TypeLookup<'a> {
         dummy_gcv: &mut GcoVec,
     ) -> Fields {
         let mut vec = Vec::new();
-        let mut map = HashMap::<String, OpIndex>::new();
+        let mut map = HashMap::<String, usize>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
             let f_type = self.meta_from_tc(field.typ().unwrap(), vm_objs, dummy_gcv);
             let exported = field.name().chars().next().unwrap().is_uppercase();
             vec.push((f_type, field.name().clone(), exported));
-            map.insert(field.name().clone(), i as OpIndex);
+            map.insert(field.name().clone(), i);
         }
         Fields::new(vec, map)
     }

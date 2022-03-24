@@ -520,14 +520,14 @@ impl GosMetadata {
 #[derive(Debug, Clone)]
 pub struct Fields {
     pub fields: Vec<(GosMetadata, String, bool)>,
-    pub mapping: HashMap<String, OpIndex>,
+    pub mapping: HashMap<String, usize>,
 }
 
 impl Fields {
     #[inline]
     pub fn new(
         fields: Vec<(GosMetadata, String, bool)>,
-        mapping: HashMap<String, OpIndex>,
+        mapping: HashMap<String, usize>,
     ) -> Fields {
         Fields {
             fields: fields,
