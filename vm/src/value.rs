@@ -1257,7 +1257,7 @@ impl GosValue64 {
 
     /// returns GosValue and increases RC
     #[inline]
-    pub fn get_v128(&self, t: ValueType) -> GosValue {
+    pub fn v128(&self, t: ValueType) -> GosValue {
         //debug_assert!(t == self.debug_type);
         unsafe {
             match t {

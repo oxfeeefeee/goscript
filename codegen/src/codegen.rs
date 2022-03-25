@@ -1129,7 +1129,6 @@ impl<'a> CodeGen<'a> {
             }
             _ => {
                 dbg!(&mtype);
-                dbg!(&self.ast_objs.idents[*clit.typ.as_ref().unwrap().try_as_ident().unwrap()]);
                 unreachable!()
             }
         }
