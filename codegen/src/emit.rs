@@ -384,4 +384,27 @@ impl<'a> Emitter<'a> {
     pub fn emit_raw_inst(&mut self, u: u64, pos: Option<usize>) {
         self.f.emit_raw_inst(u, pos);
     }
+
+    pub fn emit_ops(
+        &mut self,
+        code: Opcode,
+        named: bool,
+        binary: bool,
+        typ: ValueType,
+        pos: Option<usize>,
+    ) {
+        if named {
+            self.f
+                .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-1), pos);
+            if binary {
+                self.f
+                    .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-2), pos);
+            }
+        }
+        self.f.emit_inst(code, [Some(typ), None, None], None, pos);
+        if named {
+            self.f
+                .emit_inst(Opcode::WRAP, [Some(typ), None, None], Some(-1), pos);
+        }
+    }
 }

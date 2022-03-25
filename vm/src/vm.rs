@@ -656,7 +656,7 @@ impl<'a> Fiber<'a> {
                             }
                             ValueType::FlagB => {
                                 let val = &stack.get_rc(rhs_s_index).as_named().0;
-                                *stack.get_c_mut(rhs_s_index) = GosValue64::from_v128(val).unwrap();
+                                *stack.get_c_mut(rhs_s_index) = GosValue64::from_v128(val).0;
                             }
                             _ => {
                                 // we do not support tags yet, is there anything to implement?
@@ -664,6 +664,14 @@ impl<'a> Fiber<'a> {
                                 unimplemented!()
                             }
                         }
+                    }
+                    Opcode::UNWRAP => {
+                        let i = Stack::offset(stack_base, inst.imm());
+                        stack.unwrap_named(i);
+                    }
+                    Opcode::WRAP => {
+                        let i = Stack::offset(stack_base, inst.imm());
+                        stack.wrap_restore_named(i, inst.t0());
                     }
                     Opcode::ADD => stack.add(inst.t0()),
                     Opcode::SUB => stack.sub(inst.t0()),

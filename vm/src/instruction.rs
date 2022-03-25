@@ -35,6 +35,9 @@ pub enum Opcode {
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
     CAST,
+    // wrap and unwrap Named values to avoid branching
+    UNWRAP,
+    WRAP,
     // arithmetic, logical, ref, deref, arrow
     ADD,       // +
     SUB,       // -
@@ -144,6 +147,8 @@ impl Opcode {
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
             Opcode::CAST => ("CAST", 0),
+            Opcode::UNWRAP => ("UNWRAP", 0),
+            Opcode::WRAP => ("WRAP", 0),
 
             Opcode::ADD => ("ADD", -1),
             Opcode::SUB => ("SUB", -1),

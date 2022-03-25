@@ -1,6 +1,5 @@
-#![allow(dead_code)]
 use super::gc::GcoVec;
-use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
+use super::instruction::{Instruction, OpIndex, ValueType};
 use super::metadata::GosMetadata;
 use super::objects::ValueDesc;
 use super::value::*;
@@ -23,6 +22,16 @@ macro_rules! stack_binary_op {
     }};
 }
 
+macro_rules! stack_binary_op_shift {
+    ($stack:ident, $op:tt, $t0:ident, $t1:ident) => {{
+        let mut right = $stack.pop_c();
+        right.to_uint32($t1);
+        $stack
+            .get_c_mut($stack.len() - 1)
+            .$op(right.get_uint32(), $t0);
+    }};
+}
+
 macro_rules! stack_cmp_op {
     ($stack:ident, $op:tt, $t:ident) => {{
         let len = $stack.len();
@@ -33,37 +42,22 @@ macro_rules! stack_cmp_op {
     }};
 }
 
-macro_rules! store_to_copy_semantic {
-    ($from:expr,
-        $to:expr,
-        $li:expr,
-        $ri:expr,
-        $t:expr,
-        $gcos:expr) => {{
-        if $t.copyable() {
-            *$to.get_c_mut($li) = *$from.get_c($ri);
+macro_rules! store_local_val {
+    ($stack:ident, $to:expr, $s_index:ident, $r_index:ident, $t:ident, $gcos:ident) => {{
+        if $r_index < 0 {
+            if $t.copyable() {
+                *$to.get_c_mut($s_index) = $stack.read_copyable($r_index);
+            } else {
+                *$to.get_rc_mut($s_index) = $stack.read_non_copyable($r_index, $gcos);
+            }
         } else {
-            let v = $from.get_rc($ri).copy_semantic($gcos);
-            *$to.get_rc_mut($li) = v;
-        }
-    }};
-}
-
-macro_rules! store_to_with_op {
-    ($from:expr,
-        $to:expr,
-        $li:expr,
-        $ri:expr,
-        $op:expr,
-        $t:expr) => {{
-        if $t.copyable() {
-            let a = $from.get_c($li);
-            let b = $from.get_c($ri);
-            *$to.get_c_mut($li) = GosValue64::binary_op(a, b, $t, $op);
-        } else {
-            let a = $from.get_rc($li);
-            let b = $from.get_rc($ri);
-            *$to.get_rc_mut($li) = GosValue::add_str(a, b);
+            if $t.copyable() {
+                *$to.get_c_mut($s_index) =
+                    $stack.read_copyable_ops($to.get_c($s_index), $r_index, $t);
+            } else {
+                *$to.get_rc_mut($s_index) =
+                    $stack.read_non_copyable_ops($to.get_rc($s_index), $r_index, $t);
+            }
         }
     }};
 }
@@ -155,13 +149,11 @@ impl Stack {
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
-        match GosValue64::from_v128(&val) {
-            Some(v) => {
-                *self.get_c_mut(self.cursor) = v;
-            }
-            None => {
-                *self.get_rc_mut(self.cursor) = val;
-            }
+        let (v, t) = GosValue64::from_v128(&val);
+        if t != ValueType::Nil {
+            *self.get_c_mut(self.cursor) = v;
+        } else {
+            *self.get_rc_mut(self.cursor) = val;
         }
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
@@ -315,13 +307,11 @@ impl Stack {
 
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) {
-        match GosValue64::from_v128(&val) {
-            Some(v) => {
-                *self.get_c_mut(index) = v;
-            }
-            None => {
-                *self.get_rc_mut(index) = val;
-            }
+        let (v, t) = GosValue64::from_v128(&val);
+        if t != ValueType::Nil {
+            *self.get_c_mut(index) = v;
+        } else {
+            *self.get_rc_mut(index) = val;
         }
     }
 
@@ -364,89 +354,64 @@ impl Stack {
     }
 
     #[inline]
-    pub fn store_to_copy_semantic(
-        &self,
-        to: &mut Stack,
-        li: usize,
-        ri: usize,
-        t: ValueType,
-        gcos: &GcoVec,
-    ) {
-        store_to_copy_semantic!(self, to, li, ri, t, gcos);
+    fn read_copyable(&self, r_index: OpIndex) -> GosValue64 {
+        let rhs_s_index = Stack::offset(self.len(), r_index);
+        *self.get_c(rhs_s_index)
     }
 
     #[inline]
-    pub fn store_to_with_op(&self, to: &mut Stack, li: usize, ri: usize, op: Opcode, t: ValueType) {
-        store_to_with_op!(self, to, li, ri, op, t);
+    fn read_copyable_ops(&self, lhs: &GosValue64, r_index: OpIndex, t: ValueType) -> GosValue64 {
+        let ri = Stack::offset(self.len(), -1);
+        let op = Instruction::index2code(r_index);
+        let b = self.get_c(ri);
+        GosValue64::binary_op(lhs, b, t, op)
     }
 
     #[inline]
-    pub fn store_copy_semantic(&mut self, li: usize, ri: usize, t: ValueType, gcos: &GcoVec) {
-        store_to_copy_semantic!(self, self, li, ri, t, gcos)
+    fn read_non_copyable(&self, r_index: OpIndex, gcos: &GcoVec) -> GosValue {
+        let rhs_s_index = Stack::offset(self.len(), r_index);
+        self.get_rc(rhs_s_index).copy_semantic(gcos)
     }
 
     #[inline]
-    pub fn store_with_op(&mut self, li: usize, ri: usize, op: Opcode, t: ValueType) {
-        store_to_with_op!(self, self, li, ri, op, t);
+    fn read_non_copyable_ops(&self, lhs: &GosValue, r_index: OpIndex, t: ValueType) -> GosValue {
+        let ri = Stack::offset(self.len(), -1);
+        let op = Instruction::index2code(r_index);
+        if t == ValueType::Named {
+            let l = lhs.as_named();
+            let r = self.get_rc(ri).as_named();
+            let (a, typ) = GosValue64::from_v128(&l.0);
+            let (b, _) = GosValue64::from_v128(&r.0);
+            GosValue::Named(Box::new((
+                GosValue64::binary_op(&a, &b, typ, op).v128(typ),
+                l.1,
+            )))
+        } else {
+            GosValue::add_str(lhs, self.get_rc(ri))
+        }
     }
 
     #[inline]
     pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
-        let val = if r_index < 0 {
-            let rhs_s_index = Stack::offset(self.len(), r_index);
+        *target = if r_index < 0 {
             if t.copyable() {
-                self.get_c(rhs_s_index).v128(t)
+                self.read_copyable(r_index).v128(t)
             } else {
-                self.get_rc(rhs_s_index).copy_semantic(gcos)
+                self.read_non_copyable(r_index, gcos)
             }
         } else {
-            let ri = Stack::offset(self.len(), -1);
-            let op = Instruction::index2code(r_index);
             if t.copyable() {
-                let a = GosValue64::from_v128(target).unwrap();
-                let b = self.get_c(ri);
-                let v = GosValue64::binary_op(&a, b, t, op);
-                v.v128(t)
+                self.read_copyable_ops(&GosValue64::from_v128(target).0, r_index, t)
+                    .v128(t)
             } else {
-                GosValue::add_str(target, self.get_rc(ri))
+                self.read_non_copyable_ops(target, r_index, t)
             }
         };
-        *target = val;
     }
 
     #[inline]
-    pub fn store_local(
-        &mut self,
-        s_index: usize,
-        rhs_index: OpIndex,
-        typ: ValueType,
-        gcos: &GcoVec,
-    ) {
-        if rhs_index < 0 {
-            let rhs_s_index = Stack::offset(self.len(), rhs_index);
-            self.store_copy_semantic(s_index, rhs_s_index, typ, gcos);
-        } else {
-            let op_ex = Instruction::index2code(rhs_index);
-            self.store_with_op(s_index, self.len() - 1, op_ex, typ);
-        }
-    }
-
-    #[inline]
-    pub fn store_local_to(
-        &self,
-        to: &mut Stack,
-        s_index: usize,
-        rhs_index: OpIndex,
-        typ: ValueType,
-        gcos: &GcoVec,
-    ) {
-        if rhs_index < 0 {
-            let rhs_s_index = Stack::offset(self.len(), rhs_index);
-            self.store_to_copy_semantic(to, s_index, rhs_s_index, typ, gcos);
-        } else {
-            let op_ex = Instruction::index2code(rhs_index);
-            self.store_to_with_op(to, s_index, self.len() - 1, op_ex, typ);
-        }
+    pub fn store_local(&mut self, s_index: usize, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
+        store_local_val!(self, self, s_index, r_index, t, gcos);
     }
 
     #[inline]
@@ -461,11 +426,17 @@ impl Stack {
             UpValueState::Open(desc) => {
                 let index = (desc.stack_base + desc.index) as usize;
                 let uv_stack = desc.stack.upgrade().unwrap();
-                if ptr::eq(uv_stack.as_ptr(), self) {
-                    self.store_local(index, rhs_index, typ, gcos);
-                } else {
-                    self.store_local_to(&mut uv_stack.borrow_mut(), index, rhs_index, typ, gcos);
-                }
+                match ptr::eq(uv_stack.as_ptr(), self) {
+                    true => store_local_val!(self, self, index, rhs_index, typ, gcos),
+                    false => store_local_val!(
+                        self,
+                        &mut uv_stack.borrow_mut(),
+                        index,
+                        rhs_index,
+                        typ,
+                        gcos
+                    ),
+                };
             }
             UpValueState::Closed(v) => {
                 self.store_val(v, rhs_index, typ, gcos);
@@ -652,14 +623,43 @@ impl Stack {
     }
 
     #[inline]
+    pub fn unwrap_named(&mut self, i: usize) -> ValueType {
+        let (v64, t) = GosValue64::from_v128(&self.get_rc(i).as_named().0);
+        *self.get_c_mut(i) = v64;
+        t
+    }
+
+    #[inline]
+    pub fn wrap_restore_named(&mut self, i: usize, typ: ValueType) {
+        let val = self.get_c(i).v128(typ);
+        match self.get_rc_mut(i) {
+            GosValue::Named(n) => {
+                n.as_mut().0 = val;
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
     pub fn add(&mut self, t: ValueType) {
         if t.copyable() {
             stack_binary_op!(self, binary_op_add, t)
         } else {
-            let a = self.get_rc(self.len() - 2);
-            let b = self.get_rc(self.len() - 1);
-            *self.get_rc_mut(self.len() - 2) = GosValue::add_str(a, b);
-            self.pop_discard();
+            match t {
+                ValueType::Str => {
+                    let a = self.get_rc(self.len() - 2);
+                    let b = self.get_rc(self.len() - 1);
+                    *self.get_rc_mut(self.len() - 2) = GosValue::add_str(a, b);
+                    self.pop_discard();
+                }
+                ValueType::Named => {
+                    let t = self.unwrap_named(self.len() - 2);
+                    self.unwrap_named(self.len() - 1);
+                    stack_binary_op!(self, binary_op_add, t);
+                    self.wrap_restore_named(self.len() - 1, t)
+                }
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -720,18 +720,12 @@ impl Stack {
 
     #[inline]
     pub fn shl(&mut self, t0: ValueType, t1: ValueType) {
-        let mut right = self.pop_c();
-        right.to_uint32(t1);
-        self.get_c_mut(self.len() - 1)
-            .binary_op_shl(right.get_uint32(), t0);
+        stack_binary_op_shift!(self, binary_op_shl, t0, t1)
     }
 
     #[inline]
     pub fn shr(&mut self, t0: ValueType, t1: ValueType) {
-        let mut right = self.pop_c();
-        right.to_uint32(t1);
-        self.get_c_mut(self.len() - 1)
-            .binary_op_shr(right.get_uint32(), t0);
+        stack_binary_op_shift!(self, binary_op_shr, t0, t1)
     }
 
     #[inline]
