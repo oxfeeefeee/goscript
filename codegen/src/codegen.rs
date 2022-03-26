@@ -493,7 +493,6 @@ impl<'a> CodeGen<'a> {
                     Some(self.tlookup.value_type_from_tc(tkv[2])),
                 ];
                 let pos = Some(r.pos(&self.ast_objs));
-                //current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, pos);
                 let func = current_func_mut!(self);
                 func.emit_inst(Opcode::RANGE_INIT, types, None, pos);
                 range_marker = Some(func.next_code_index());

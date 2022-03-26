@@ -116,6 +116,17 @@ impl<'a> Emitter<'a> {
             .sum()
     }
 
+    #[inline]
+    fn try_imm<T: TryInto<OpIndex>>(&mut self, i: T, typ: ValueType, pos: Option<usize>) -> bool {
+        match T::try_into(i) {
+            Ok(imm) => {
+                self.emit_push_imm(typ, imm, pos);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     pub fn emit_load(
         &mut self,
         index: EntIndex,
@@ -124,19 +135,34 @@ impl<'a> Emitter<'a> {
         pos: Option<usize>,
     ) {
         match index {
-            EntIndex::Const(i) => match self.f.const_val(i).clone() {
-                //GosValue::Nil => self.emit_code(Opcode::PUSH_NIL),
-                GosValue::Bool(b) if b => self.f.emit_code(Opcode::PUSH_TRUE, pos),
-                GosValue::Bool(b) if !b => self.f.emit_code(Opcode::PUSH_FALSE, pos),
-                GosValue::Int(i) if OpIndex::try_from(i).ok().is_some() => {
-                    let imm: OpIndex = OpIndex::try_from(i).unwrap();
-                    self.emit_push_imm(typ, imm, pos);
-                }
-                _ => {
+            EntIndex::Const(i) => {
+                let done = match self.f.const_val(i).clone() {
+                    GosValue::Bool(b) => {
+                        let op = if b {
+                            Opcode::PUSH_TRUE
+                        } else {
+                            Opcode::PUSH_FALSE
+                        };
+                        self.f.emit_code(op, pos);
+                        true
+                    }
+                    GosValue::Int(i) => self.try_imm(i, typ, pos),
+                    GosValue::Int8(i) => self.try_imm(i, typ, pos),
+                    GosValue::Int16(i) => self.try_imm(i, typ, pos),
+                    GosValue::Int32(i) => self.try_imm(i, typ, pos),
+                    GosValue::Int64(i) => self.try_imm(i, typ, pos),
+                    GosValue::Uint(i) => self.try_imm(i, typ, pos),
+                    GosValue::Uint8(i) => self.try_imm(i, typ, pos),
+                    GosValue::Uint16(i) => self.try_imm(i, typ, pos),
+                    GosValue::Uint32(i) => self.try_imm(i, typ, pos),
+                    GosValue::Uint64(i) => self.try_imm(i, typ, pos),
+                    _ => false,
+                };
+                if !done {
                     self.f
                         .emit_inst(Opcode::PUSH_CONST, [Some(typ), None, None], Some(i), pos);
                 }
-            },
+            }
             EntIndex::LocalVar(i) => {
                 self.f
                     .emit_inst(Opcode::LOAD_LOCAL, [Some(typ), None, None], Some(i), pos);
