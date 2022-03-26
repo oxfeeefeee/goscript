@@ -613,13 +613,13 @@ impl<'a> CodeGen<'a> {
         p: usize,
     ) {
         let pos = Some(p);
-        if let Some(e) = right {
-            self.visit_expr(e);
-        } else {
-            // place holder for now
-            current_func_emitter!(self).emit_push_imm(ValueType::Int, 66666, pos);
-            // It's INC/DEC
-        }
+        let rhs_count = match right {
+            Some(e) => {
+                self.visit_expr(e);
+                1
+            }
+            None => 0, //It's INC/DEC
+        };
 
         // If this is SHL/SHR, unwrap and/or cast the rhs to uint32
         if let Some(t) = op.1 {
@@ -645,31 +645,38 @@ impl<'a> CodeGen<'a> {
                     typ,
                     pos,
                 );
-                emitter.emit_pop(1, pos);
+                emitter.emit_pop(rhs_count, pos);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - 1)),
+                    &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - rhs_count)),
                     -1,
                     Some(op),
                     None,
                     typ,
                     pos,
                 );
-                let mut total_pop = 2;
+                let mut total_pop = rhs_count + 1;
                 if let Some(_) = info.t2 {
                     total_pop += 1;
                 }
                 current_func_emitter!(self).emit_pop(total_pop, pos);
             }
             LeftHandSide::Deref(_) => {
-                // why -2?  stack looks like this(bottom to top) :
+                // stack looks like this(bottom to top) :
                 //  [... target, value]
                 let mut emitter = current_func_emitter!(self);
-                emitter.emit_store(&LeftHandSide::Deref(-2), -1, Some(op), None, typ, pos);
-                emitter.emit_pop(2, pos);
+                emitter.emit_store(
+                    &LeftHandSide::Deref(-1 - rhs_count),
+                    -1,
+                    Some(op),
+                    None,
+                    typ,
+                    pos,
+                );
+                emitter.emit_pop(1 + rhs_count, pos);
             }
         }
     }

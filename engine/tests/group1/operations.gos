@@ -70,6 +70,21 @@ func test1() {
         assert(a[1] == 2)
         
     }
+
+    {
+        i := 1
+        i ++
+        assert(i == 2)
+
+        type S1 struct {i, j int}
+        var s S1
+        s.i++
+        assert(s.i == 1)
+
+        p := &i;
+        *p++
+        assert(i == 3)
+    }
 }
 
 type INT_ int
@@ -146,6 +161,21 @@ func test2() {
         assert(a[0] == 4)
         assert(a[1] == 2)
         
+    }
+
+     {
+        i := INT_(1)
+        i ++
+        assert(i == 2)
+
+        type S1 struct {i, j INT_}
+        var s S1
+        s.i++
+        assert(s.i == 1)
+
+        p := &i;
+        *p++
+        assert(i == 3)
     }
 }
 
