@@ -1631,34 +1631,34 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 unreachable!()
             }
         };
-        let t = self.tlookup.get_expr_value_type(expr);
-        current_func_mut!(self).emit_code_with_type(code, t, pos);
+        let (t, t_inner) = self.tlookup.get_expr_value_type_named(expr);
+        let mut emitter = current_func_emitter!(self);
+        emitter.emit_ops(code, t, None, t_inner, None, t_inner, pos);
     }
 
     fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
         self.visit_expr(left);
-        let t = self.tlookup.get_expr_value_type(left);
-        let code = match op {
-            Token::ADD => Opcode::ADD,
-            Token::SUB => Opcode::SUB,
-            Token::MUL => Opcode::MUL,
-            Token::QUO => Opcode::QUO,
-            Token::REM => Opcode::REM,
-            Token::AND => Opcode::AND,
-            Token::OR => Opcode::OR,
-            Token::XOR => Opcode::XOR,
-            Token::SHL => Opcode::SHL,
-            Token::SHR => Opcode::SHR,
-            Token::AND_NOT => Opcode::AND_NOT,
-            Token::LAND => Opcode::PUSH_FALSE,
-            Token::LOR => Opcode::PUSH_TRUE,
-            Token::NOT => Opcode::NOT,
-            Token::EQL => Opcode::EQL,
-            Token::LSS => Opcode::LSS,
-            Token::GTR => Opcode::GTR,
-            Token::NEQ => Opcode::NEQ,
-            Token::LEQ => Opcode::LEQ,
-            Token::GEQ => Opcode::GEQ,
+        let (t0, t0_inner) = self.tlookup.get_expr_value_type_named(left);
+        let (code, compare) = match op {
+            Token::ADD => (Opcode::ADD, false),
+            Token::SUB => (Opcode::SUB, false),
+            Token::MUL => (Opcode::MUL, false),
+            Token::QUO => (Opcode::QUO, false),
+            Token::REM => (Opcode::REM, false),
+            Token::AND => (Opcode::AND, false),
+            Token::OR => (Opcode::OR, false),
+            Token::XOR => (Opcode::XOR, false),
+            Token::SHL => (Opcode::SHL, false),
+            Token::SHR => (Opcode::SHR, false),
+            Token::AND_NOT => (Opcode::AND_NOT, false),
+            Token::LAND => (Opcode::PUSH_FALSE, false),
+            Token::LOR => (Opcode::PUSH_TRUE, false),
+            Token::EQL => (Opcode::EQL, true),
+            Token::LSS => (Opcode::LSS, true),
+            Token::GTR => (Opcode::GTR, true),
+            Token::NEQ => (Opcode::NEQ, true),
+            Token::LEQ => (Opcode::LEQ, true),
+            Token::GEQ => (Opcode::GEQ, true),
             _ => unreachable!(),
         };
         let pos = Some(left.pos(&self.ast_objs));
@@ -1681,16 +1681,23 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if let Some((i, c)) = mark_code {
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::JUMP, 1, pos);
-            func.emit_code_with_type(c, t, pos);
+            func.emit_code_with_type(c, t0, pos);
             let diff = func.next_code_index() - i - 1;
             func.instruction_mut(i - 1).set_imm(diff as OpIndex);
+            // todo: wrap to named if necessary
         } else {
-            let t1 = if code == Opcode::SHL || code == Opcode::SHR {
-                Some(self.tlookup.get_expr_value_type(right))
+            let (t1, t1_inner) = if code == Opcode::SHL || code == Opcode::SHR {
+                self.tlookup.get_expr_value_type_named(right)
             } else {
-                None
+                (t0, t0_inner)
             };
-            current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
+            let mut emitter = current_func_emitter!(self);
+            if compare {
+                // don't unwrap named operands of comparisons
+                emitter.emit_ops(code, t0, None, None, None, None, pos);
+            } else {
+                emitter.emit_ops(code, t0, Some(t1), t0_inner, t1_inner, t0_inner, pos);
+            }
         }
     }
 

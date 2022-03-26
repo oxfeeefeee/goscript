@@ -666,11 +666,11 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::UNWRAP => {
-                        let i = Stack::offset(stack_base, inst.imm());
+                        let i = Stack::offset(stack.len(), inst.imm());
                         stack.unwrap_named(i);
                     }
                     Opcode::WRAP => {
-                        let i = Stack::offset(stack_base, inst.imm());
+                        let i = Stack::offset(stack.len(), inst.imm());
                         stack.wrap_restore_named(i, inst.t0());
                     }
                     Opcode::ADD => stack.add(inst.t0()),

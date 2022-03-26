@@ -153,13 +153,22 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
+    pub fn get_expr_value_type_named(&mut self, e: &Expr) -> (ValueType, Option<ValueType>) {
         let tv = self.ti.types.get(&e.id()).unwrap();
         if tv.mode == OperandMode::TypeExpr {
-            ValueType::Metadata
+            (ValueType::Metadata, None)
         } else {
-            self.value_type_from_tc(self.get_expr_tc_type(e))
+            let t = self.get_expr_tc_type(e);
+            let vt = self.value_type_from_tc(t);
+            let named = (vt == ValueType::Named).then(|| {
+                self.value_type_from_tc(self.tc_objs.types[t].try_as_named().unwrap().underlying())
+            });
+            (vt, named)
         }
+    }
+
+    pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
+        self.get_expr_value_type_named(e).0
     }
 
     pub fn get_meta_by_node_id(

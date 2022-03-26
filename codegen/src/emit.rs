@@ -388,23 +388,35 @@ impl<'a> Emitter<'a> {
     pub fn emit_ops(
         &mut self,
         code: Opcode,
-        named: bool,
-        binary: bool,
-        typ: ValueType,
+        t0: ValueType,
+        t1: Option<ValueType>,
+        t0_inner: Option<ValueType>,
+        t1_inner: Option<ValueType>,
+        tr_inner: Option<ValueType>,
         pos: Option<usize>,
     ) {
-        if named {
-            self.f
-                .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-1), pos);
-            if binary {
+        let t0 = match t0_inner {
+            Some(t) => {
                 self.f
                     .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-2), pos);
+                t
             }
-        }
-        self.f.emit_inst(code, [Some(typ), None, None], None, pos);
-        if named {
+            None => t0,
+        };
+        let t1 = match t1_inner {
+            Some(t) => {
+                self.f
+                    .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-1), pos);
+                Some(t)
+            }
+            None => t1,
+        };
+
+        self.f.emit_code_with_type2(code, t0, t1, pos);
+
+        if let Some(t) = tr_inner {
             self.f
-                .emit_inst(Opcode::WRAP, [Some(typ), None, None], Some(-1), pos);
+                .emit_inst(Opcode::WRAP, [Some(t), None, None], Some(-1), pos);
         }
     }
 }
