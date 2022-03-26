@@ -1,5 +1,5 @@
 use super::gc::GcoVec;
-use super::instruction::{Instruction, OpIndex, ValueType};
+use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
 use super::objects::ValueDesc;
 use super::value::*;
@@ -17,7 +17,7 @@ macro_rules! stack_binary_op {
         let len = $stack.len();
         let a = $stack.get_c(len - 2);
         let b = $stack.get_c(len - 1);
-        *$stack.get_c_mut(len - 2) = GosValue64::$op(a, b, $t);
+        *$stack.get_c_mut(len - 2) = a.$op(b, $t);
         $stack.pop_discard();
     }};
 }
@@ -39,6 +39,43 @@ macro_rules! stack_cmp_op {
         let b = $stack.get_c(len - 1);
         *$stack.get_c_mut(len - 2) = GosValue64::from_bool(GosValue64::$op(a, b, $t));
         $stack.pop_discard();
+    }};
+}
+
+macro_rules! read_with_ops {
+    ($op:expr, $lhs:expr, $rhs:expr, $shift_rhs:expr, $t:expr) => {{
+        match $op {
+            Opcode::UNARY_ADD => {
+                let mut v = $lhs.clone();
+                v.inc($t);
+                v
+            } // INC
+            Opcode::UNARY_SUB => {
+                let mut v = $lhs.clone();
+                v.dec($t);
+                v
+            } // DEC
+            Opcode::ADD => $lhs.binary_op_add($rhs, $t),
+            Opcode::SUB => $lhs.binary_op_sub($rhs, $t),
+            Opcode::MUL => $lhs.binary_op_mul($rhs, $t),
+            Opcode::QUO => $lhs.binary_op_quo($rhs, $t),
+            Opcode::REM => $lhs.binary_op_rem($rhs, $t),
+            Opcode::AND => $lhs.binary_op_and($rhs, $t),
+            Opcode::OR => $lhs.binary_op_or($rhs, $t),
+            Opcode::XOR => $lhs.binary_op_xor($rhs, $t),
+            Opcode::AND_NOT => $lhs.binary_op_and_not($rhs, $t),
+            Opcode::SHL => {
+                let mut v = $lhs.clone();
+                v.binary_op_shl($shift_rhs.get_uint32(), $t);
+                v
+            }
+            Opcode::SHR => {
+                let mut v = $lhs.clone();
+                v.binary_op_shr($shift_rhs.get_uint32(), $t);
+                v
+            }
+            _ => unreachable!(),
+        }
     }};
 }
 
@@ -360,14 +397,6 @@ impl Stack {
     }
 
     #[inline]
-    fn read_copyable_ops(&self, lhs: &GosValue64, r_index: OpIndex, t: ValueType) -> GosValue64 {
-        let ri = Stack::offset(self.len(), -1);
-        let op = Instruction::index2code(r_index);
-        let b = self.get_c(ri);
-        GosValue64::binary_op(lhs, b, t, op)
-    }
-
-    #[inline]
     fn read_non_copyable(&self, r_index: OpIndex, gcos: &GcoVec) -> GosValue {
         let rhs_s_index = Stack::offset(self.len(), r_index);
         self.get_rc(rhs_s_index).copy_semantic(gcos)
@@ -376,19 +405,28 @@ impl Stack {
     #[inline]
     fn read_non_copyable_ops(&self, lhs: &GosValue, r_index: OpIndex, t: ValueType) -> GosValue {
         let ri = Stack::offset(self.len(), -1);
-        let op = Instruction::index2code(r_index);
         if t == ValueType::Named {
+            let op = Instruction::index2code(r_index);
             let l = lhs.as_named();
-            let r = self.get_rc(ri).as_named();
-            let (a, typ) = GosValue64::from_v128(&l.0);
-            let (b, _) = GosValue64::from_v128(&r.0);
-            GosValue::Named(Box::new((
-                GosValue64::binary_op(&a, &b, typ, op).v128(typ),
-                l.1,
-            )))
+            let (a, t) = GosValue64::from_v128(&l.0);
+            let v = read_with_ops!(
+                op,
+                &a,
+                &GosValue64::from_v128(&self.get_rc(ri).as_named().0).0,
+                self.get_c(ri),
+                t
+            );
+            GosValue::Named(Box::new((v.v128(t), l.1)))
         } else {
             GosValue::add_str(lhs, self.get_rc(ri))
         }
+    }
+
+    #[inline]
+    fn read_copyable_ops(&self, lhs: &GosValue64, r_index: OpIndex, t: ValueType) -> GosValue64 {
+        let ri = Stack::offset(self.len(), -1);
+        let op = Instruction::index2code(r_index);
+        read_with_ops!(op, lhs, self.get_c(ri), self.get_c(ri), t)
     }
 
     #[inline]

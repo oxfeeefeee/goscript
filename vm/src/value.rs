@@ -1,6 +1,6 @@
 //#![allow(dead_code)]
 use super::gc::{GcWeak, GcoVec};
-use super::instruction::{OpIndex, Opcode, ValueType};
+use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
 use super::stack::Stack;
@@ -1294,7 +1294,6 @@ impl GosValue64 {
     pub fn from_float64(f: F64) -> GosValue64 {
         GosValue64 {
             data: V64Union { float64: f },
-            //debug_type: ValueType::Float64,
         }
     }
 
@@ -1302,14 +1301,12 @@ impl GosValue64 {
     pub fn from_complex64(r: F32, i: F32) -> GosValue64 {
         GosValue64 {
             data: V64Union { complex64: (r, i) },
-            //debug_type: ValueType::Complex64,
         }
     }
 
     /// returns GosValue and increases RC
     #[inline]
     pub fn v128(&self, t: ValueType) -> GosValue {
-        //debug_assert!(t == self.debug_type);
         unsafe {
             match t {
                 ValueType::Bool => GosValue::Bool(self.data.ubool),
@@ -1338,13 +1335,11 @@ impl GosValue64 {
 
     #[inline]
     pub fn get_bool(&self) -> bool {
-        //debug_assert_eq!(self.debug_type, ValueType::Bool);
         unsafe { self.data.ubool }
     }
 
     #[inline]
     pub fn get_int(&self) -> isize {
-        //debug_assert_eq!(self.debug_type, ValueType::Int);
         unsafe { self.data.int }
     }
 
@@ -1375,7 +1370,6 @@ impl GosValue64 {
 
     #[inline]
     pub fn get_complex64(&self) -> (F32, F32) {
-        //debug_assert_eq!(self.debug_type, ValueType::Complex64);
         unsafe { self.data.complex64 }
     }
 
@@ -1487,43 +1481,81 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_add(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_float!(t, a, b, +) }
+    pub fn inc(&mut self, t: ValueType) {
+        match t {
+            ValueType::Int => self.data.int = unsafe { self.data.int } + 1,
+            ValueType::Int8 => self.data.int8 = unsafe { self.data.int8 } + 1,
+            ValueType::Int16 => self.data.int16 = unsafe { self.data.int16 } + 1,
+            ValueType::Int32 => self.data.int32 = unsafe { self.data.int32 } + 1,
+            ValueType::Int64 => self.data.int64 = unsafe { self.data.int64 } + 1,
+            ValueType::Float32 => self.data.float32 = unsafe { self.data.float32 } + 1.0,
+            ValueType::Float64 => self.data.float64 = unsafe { self.data.float64 } + 1.0,
+            ValueType::Uint => self.data.uint = unsafe { self.data.uint } + 1,
+            ValueType::Uint8 => self.data.uint8 = unsafe { self.data.uint8 } + 1,
+            ValueType::Uint16 => self.data.uint16 = unsafe { self.data.uint16 } + 1,
+            ValueType::Uint32 => self.data.uint32 = unsafe { self.data.uint32 } + 1,
+            ValueType::Uint64 => self.data.uint64 = unsafe { self.data.uint64 } + 1,
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
-    pub fn binary_op_sub(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_float!(t, a, b, -) }
+    pub fn dec(&mut self, t: ValueType) {
+        match t {
+            ValueType::Int => self.data.int = unsafe { self.data.int } - 1,
+            ValueType::Int8 => self.data.int8 = unsafe { self.data.int8 } - 1,
+            ValueType::Int16 => self.data.int16 = unsafe { self.data.int16 } - 1,
+            ValueType::Int32 => self.data.int32 = unsafe { self.data.int32 } - 1,
+            ValueType::Int64 => self.data.int64 = unsafe { self.data.int64 } - 1,
+            ValueType::Float32 => self.data.float32 = unsafe { self.data.float32 } - 1.0,
+            ValueType::Float64 => self.data.float64 = unsafe { self.data.float64 } - 1.0,
+            ValueType::Uint => self.data.uint = unsafe { self.data.uint } - 1,
+            ValueType::Uint8 => self.data.uint8 = unsafe { self.data.uint8 } - 1,
+            ValueType::Uint16 => self.data.uint16 = unsafe { self.data.uint16 } - 1,
+            ValueType::Uint32 => self.data.uint32 = unsafe { self.data.uint32 } - 1,
+            ValueType::Uint64 => self.data.uint64 = unsafe { self.data.uint64 } - 1,
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
-    pub fn binary_op_mul(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_float!(t, a, b, *) }
+    pub fn binary_op_add(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, self, b, +) }
     }
 
     #[inline]
-    pub fn binary_op_quo(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_float!(t, a, b, /) }
+    pub fn binary_op_sub(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, self, b, -) }
     }
 
     #[inline]
-    pub fn binary_op_rem(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, %) }
+    pub fn binary_op_mul(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, self, b, *) }
     }
 
     #[inline]
-    pub fn binary_op_and(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, &) }
+    pub fn binary_op_quo(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_float!(t, self, b, /) }
     }
 
     #[inline]
-    pub fn binary_op_or(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, |) }
+    pub fn binary_op_rem(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_no_wrap!(t, self, b, %) }
     }
 
     #[inline]
-    pub fn binary_op_xor(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
-        unsafe { binary_op_int_no_wrap!(t, a, b, ^) }
+    pub fn binary_op_and(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_no_wrap!(t, self, b, &) }
+    }
+
+    #[inline]
+    pub fn binary_op_or(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_no_wrap!(t, self, b, |) }
+    }
+
+    #[inline]
+    pub fn binary_op_xor(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+        unsafe { binary_op_int_no_wrap!(t, self, b, ^) }
     }
 
     #[inline]
@@ -1537,73 +1569,44 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_and_not(a: &GosValue64, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_and_not(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
         GosValue64 {
             //debug_type: t,
             data: unsafe {
                 match t {
                     ValueType::Int => V64Union {
-                        int: a.data.int & !b.data.int,
+                        int: self.data.int & !b.data.int,
                     },
                     ValueType::Int8 => V64Union {
-                        int8: a.data.int8 & !b.data.int8,
+                        int8: self.data.int8 & !b.data.int8,
                     },
                     ValueType::Int16 => V64Union {
-                        int16: a.data.int16 & !b.data.int16,
+                        int16: self.data.int16 & !b.data.int16,
                     },
                     ValueType::Int32 => V64Union {
-                        int32: a.data.int32 & !b.data.int32,
+                        int32: self.data.int32 & !b.data.int32,
                     },
                     ValueType::Int64 => V64Union {
-                        int64: a.data.int64 & !b.data.int64,
+                        int64: self.data.int64 & !b.data.int64,
                     },
                     ValueType::Uint => V64Union {
-                        uint: a.data.uint & !b.data.uint,
+                        uint: self.data.uint & !b.data.uint,
                     },
                     ValueType::Uint8 => V64Union {
-                        uint8: a.data.uint8 & !b.data.uint8,
+                        uint8: self.data.uint8 & !b.data.uint8,
                     },
                     ValueType::Uint16 => V64Union {
-                        uint16: a.data.uint16 & !b.data.uint16,
+                        uint16: self.data.uint16 & !b.data.uint16,
                     },
                     ValueType::Uint32 => V64Union {
-                        uint32: a.data.uint32 & !b.data.uint32,
+                        uint32: self.data.uint32 & !b.data.uint32,
                     },
                     ValueType::Uint64 => V64Union {
-                        uint64: a.data.uint64 & !b.data.uint64,
+                        uint64: self.data.uint64 & !b.data.uint64,
                     },
                     _ => unreachable!(),
                 }
             },
-        }
-    }
-
-    #[inline]
-    pub fn binary_op(a: &GosValue64, b: &GosValue64, t: ValueType, op: Opcode) -> GosValue64 {
-        match op {
-            Opcode::ADD => GosValue64::binary_op_add(a, b, t),
-            Opcode::SUB => GosValue64::binary_op_sub(a, b, t),
-            Opcode::MUL => GosValue64::binary_op_mul(a, b, t),
-            Opcode::QUO => GosValue64::binary_op_quo(a, b, t),
-            Opcode::REM => GosValue64::binary_op_rem(a, b, t),
-            Opcode::AND => GosValue64::binary_op_and(a, b, t),
-            Opcode::OR => GosValue64::binary_op_or(a, b, t),
-            Opcode::XOR => GosValue64::binary_op_xor(a, b, t),
-            Opcode::AND_NOT => GosValue64::binary_op_and_not(a, b, t),
-            Opcode::SHL => {
-                let mut v = a.clone();
-                v.binary_op_shl(b.get_uint32(), t);
-                v
-            }
-            Opcode::SHR => {
-                let mut v = a.clone();
-                v.binary_op_shr(b.get_uint32(), t);
-                v
-            }
-            _ => {
-                dbg!(t, op);
-                unreachable!()
-            }
         }
     }
 

@@ -324,8 +324,10 @@ impl<'a> Emitter<'a> {
     }
 
     pub fn emit_pop(&mut self, count: OpIndex, pos: Option<usize>) {
-        self.f
-            .emit_inst(Opcode::POP, [None, None, None], Some(count), pos);
+        if count > 0 {
+            self.f
+                .emit_inst(Opcode::POP, [None, None, None], Some(count), pos);
+        }
     }
 
     pub fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType, pos: Option<usize>) {
@@ -411,6 +413,16 @@ impl<'a> Emitter<'a> {
         self.f.emit_raw_inst(u, pos);
     }
 
+    pub fn emit_unwrap(&mut self, index: OpIndex, pos: Option<usize>) {
+        self.f
+            .emit_inst(Opcode::UNWRAP, [None, None, None], Some(index), pos);
+    }
+
+    pub fn emit_wrap(&mut self, t: ValueType, index: OpIndex, pos: Option<usize>) {
+        self.f
+            .emit_inst(Opcode::WRAP, [Some(t), None, None], Some(index), pos);
+    }
+
     pub fn emit_ops(
         &mut self,
         code: Opcode,
@@ -423,16 +435,14 @@ impl<'a> Emitter<'a> {
     ) {
         let t0 = match t0_inner {
             Some(t) => {
-                self.f
-                    .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-2), pos);
+                self.emit_unwrap(-2, pos);
                 t
             }
             None => t0,
         };
         let t1 = match t1_inner {
             Some(t) => {
-                self.f
-                    .emit_inst(Opcode::UNWRAP, [None, None, None], Some(-1), pos);
+                self.emit_unwrap(-1, pos);
                 Some(t)
             }
             None => t1,
@@ -441,8 +451,7 @@ impl<'a> Emitter<'a> {
         self.f.emit_code_with_type2(code, t0, t1, pos);
 
         if let Some(t) = tr_inner {
-            self.f
-                .emit_inst(Opcode::WRAP, [Some(t), None, None], Some(-1), pos);
+            self.emit_wrap(t, -1, pos);
         }
     }
 }

@@ -306,7 +306,7 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
-                dbg!(inst_op);
+                //dbg!(inst_op);
                 match inst_op {
                     Opcode::PUSH_CONST => {
                         let index = inst.imm();

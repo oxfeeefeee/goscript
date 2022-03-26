@@ -352,12 +352,12 @@ impl<'a> CodeGen<'a> {
         match rhs {
             RightHandSide::Nothing => {
                 let code = match token {
-                    Token::INC => Opcode::ADD,
-                    Token::DEC => Opcode::SUB,
+                    Token::INC => Opcode::UNARY_ADD,
+                    Token::DEC => Opcode::UNARY_SUB,
                     _ => unreachable!(),
                 };
                 let typ = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
-                self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
+                self.gen_op_assign(&lhs[0].0, (code, None), None, false, typ, lhs[0].2);
                 None
             }
             RightHandSide::Values(rhs_exprs) => {
@@ -380,16 +380,20 @@ impl<'a> CodeGen<'a> {
                     assert_eq!(lhs_exprs.len(), 1);
                     assert_eq!(rhs_exprs.len(), 1);
                     let ltyp = self.tlookup.get_expr_value_type(&lhs_exprs[0]);
-                    let rtyp = match code {
+                    let (rtyp, unwrap) = match code {
                         Opcode::SHL | Opcode::SHR => {
-                            Some(self.tlookup.get_expr_value_type(&rhs_exprs[0]))
+                            let (t, t_inner) =
+                                self.tlookup.get_expr_value_type_named(&rhs_exprs[0]);
+                            let t = t_inner.unwrap_or(t);
+                            (Some(t), t_inner.is_some())
                         }
-                        _ => None,
+                        _ => (None, false),
                     };
                     self.gen_op_assign(
                         &lhs[0].0,
                         (code, rtyp),
                         Some(&rhs_exprs[0]),
+                        unwrap,
                         ltyp,
                         lhs[0].2,
                     );
@@ -604,6 +608,7 @@ impl<'a> CodeGen<'a> {
         left: &LeftHandSide,
         op: (Opcode, Option<ValueType>),
         right: Option<&Expr>,
+        unwrap_right: bool,
         typ: ValueType,
         p: usize,
     ) {
@@ -611,9 +616,21 @@ impl<'a> CodeGen<'a> {
         if let Some(e) = right {
             self.visit_expr(e);
         } else {
-            // it's inc/dec
-            current_func_emitter!(self).emit_push_imm(typ, 1, pos);
+            // place holder for now
+            current_func_emitter!(self).emit_push_imm(ValueType::Int, 66666, pos);
+            // It's INC/DEC
         }
+
+        // If this is SHL/SHR, unwrap and/or cast the rhs to uint32
+        if let Some(t) = op.1 {
+            if unwrap_right {
+                current_func_emitter!(self).emit_unwrap(-1, pos);
+            }
+            if t != ValueType::Uint32 {
+                current_func_emitter!(self).emit_cast(ValueType::Uint32, t, None, -1, 0, pos);
+            }
+        }
+
         match left {
             LeftHandSide::Primitive(_) => {
                 // why no magic number?

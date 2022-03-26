@@ -1,6 +1,8 @@
 package main
 
-func main() {
+import "fmt2"
+
+func test1() {
     var i, j = 80, 8
     assert( i + j == 88)
     assert( i - j == 72)
@@ -68,4 +70,87 @@ func main() {
         assert(a[1] == 2)
         
     }
+}
+
+type INT_ int
+type BOOL_ bool
+type FLOAT_ float32
+
+func test2() {
+    var i, j INT_ = 80, 8
+    fmt2.Println(i + j)
+    assert (i != j)
+    assert (i == j + 72)
+    assert( i + j == 88)
+    assert( i - j == 72)
+    assert( i * j == 640)
+    assert( i / j == 10)
+    assert( i % j == 0)
+    var k = i
+    k += j
+    assert(k == i + j)
+    k = i
+    k -= j
+    assert(k == i - j)
+    k = i
+    k *= j
+    assert(k == i * j)
+    k = i
+    k /= j
+    assert(k == i / j)
+    k = i
+    k %= j
+    assert(k == i % j)
+
+    {
+        var i, j FLOAT_ = 80.0, 0.1
+        assert( i + j == 80.1)
+        assert( i - j == 79.9)
+        assert( i * j == 8.0)
+        assert( i / j == 800.0)
+        var k = i
+        k += j
+        assert(k == i + j)
+        k = i
+        k -= j
+        assert(k == i - j)
+        k = i
+        k *= j
+        assert(k == i * j)
+        k = i
+        k /= j
+        assert(k == i / j)
+    }
+
+    {
+        type S1 struct {i, j INT_}
+        var s S1
+        s.i = 1
+        s.j = 2000000000
+        s.i--
+        s.j++
+        assert(s.i == 0)
+        assert(s.j == 2000000001)
+    }
+
+    {
+        var a = [3]INT_{1, 8}
+
+        f := uint(2)
+        i := INT_(1) <<f 
+        j := INT_(8) >>f
+        a[0] <<= 2  
+        a[1] >>= 2   
+        assert(i == 4)
+        assert(j == 2)
+        assert(a[0] == 4)
+        assert(a[1] == 2)
+        
+    }
+}
+
+func main() {
+
+    test1()
+    test2()
 }
