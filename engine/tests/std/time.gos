@@ -30,7 +30,6 @@ func main() {
     
     p(then.After(now))
     p(then.Equal(now))
-    return
 
     diff := now.Sub(then)
     p(diff)

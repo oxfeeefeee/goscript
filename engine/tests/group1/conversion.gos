@@ -58,4 +58,19 @@ func main() {
     assert(s51[8] == shijie[0])
     assert(s52[9] == shijie[1])
     fmt2.Println(b4, r4, s51, s52)
+
+
+    
+    named()
 }
+
+
+type Duration int64
+
+func named() {
+    var minDuration Duration
+    var i int32 = 4
+	d :=  Duration(i) + minDuration
+    j := Duration(i)
+    assert(j==d)
+} 

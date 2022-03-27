@@ -418,9 +418,19 @@ impl<'a> Emitter<'a> {
             .emit_inst(Opcode::UNWRAP, [None, None, None], Some(index), pos);
     }
 
-    pub fn emit_wrap(&mut self, t: ValueType, index: OpIndex, pos: Option<usize>) {
+    pub fn emit_wrap(
+        &mut self,
+        t: ValueType,
+        index: OpIndex,
+        meta: Option<u64>,
+        pos: Option<usize>,
+    ) {
+        let t1 = meta.map(|_| ValueType::FlagA);
         self.f
-            .emit_inst(Opcode::WRAP, [Some(t), None, None], Some(index), pos);
+            .emit_inst(Opcode::WRAP, [Some(t), t1, None], Some(index), pos);
+        if let Some(m) = meta {
+            self.f.emit_raw_inst(m, pos);
+        }
     }
 
     pub fn emit_ops(
@@ -452,7 +462,7 @@ impl<'a> Emitter<'a> {
         self.f.emit_code_with_type2(code, t0, t1, pos);
 
         if let Some(t) = t0_inner {
-            self.emit_wrap(t, -1, pos);
+            self.emit_wrap(t, -1, None, pos);
         }
     }
 }

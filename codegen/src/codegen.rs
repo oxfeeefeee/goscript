@@ -857,37 +857,41 @@ impl<'a> CodeGen<'a> {
             /*
             A non-constant value x can be converted to type T in any of these cases:
                 x is assignable to T.
-                ignoring struct tags (see below), x's type and T have identical underlying types.
-                ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
-                x's type and T are both integer or floating point types.
-                x's type and T are both complex types.
-                x is an integer or a slice of bytes or runes and T is a string type.
-                x is a string and T is a slice of bytes or runes.
+                +3 [struct] ignoring struct tags (see below), x's type and T have identical underlying types.
+                +4 [pointer] ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
+                +5 [number] x's type and T are both integer or floating point types.
+                +6 [number] x's type and T are both complex types.
+                +7 [string] x is an integer or a slice of bytes or runes and T is a string type.
+                +8 [slice] x is a string and T is a slice of bytes or runes.
             A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
-                x's type is identical to T.
-                x's type V and T have identical underlying types and at least one of V or T is not a defined type.
-                T is an interface type and x implements T.
-                x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
-                x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
-                x is an untyped constant representable by a value of type T.
+                - x's type is identical to T.
+                - x's type V and T have identical underlying types and at least one of V or T is not a defined type.
+                +1 [interface] T is an interface type and x implements T.
+                +2 [channel] x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
+                - x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
+                - x is an untyped constant representable by a value of type T.
             */
             OperandMode::TypeExpr => {
                 assert!(params.len() == 1);
                 self.visit_expr(&params[0]);
-                let tct0 = self.tlookup.get_expr_tc_type(func_expr);
-                let utct0 = self.tlookup.underlying_tc(tct0);
-                let ut0 = self.tlookup.value_type_from_tc(utct0);
-                let tct1 = self.tlookup.get_expr_tc_type(&params[0]);
-                let utct1 = self.tlookup.underlying_tc(tct1);
-                let ut1 = self.tlookup.value_type_from_tc(utct1);
-                // just ignore conversion if it's nil or types are identical
-                if ut1 == ValueType::Nil || identical(tct0, tct1, self.tc_objs) {
-                } else if !identical(utct0, utct1, self.tc_objs) {
-                    let iface_index = match ut0 {
+                let tct_to = self.tlookup.get_expr_tc_type(func_expr);
+                let utct_to = self.tlookup.underlying_tc(tct_to);
+                let ut_to = self.tlookup.value_type_from_tc(utct_to);
+                let tct_from = self.tlookup.get_expr_tc_type(&params[0]);
+                let utct_from = self.tlookup.underlying_tc(tct_from);
+                let ut_from = self.tlookup.value_type_from_tc(utct_from);
+
+                let need_wrap = if ut_from == ValueType::Nil
+                    || identical(tct_to, tct_from, self.tc_objs)
+                {
+                    false
+                    // just ignore conversion if it's nil or types are identical
+                } else if !identical(utct_to, utct_from, self.tc_objs) {
+                    let iface_index = match ut_to {
                         ValueType::Interface => {
-                            if ut1 != ValueType::Nil {
+                            if ut_from != ValueType::Nil {
                                 self.iface_mapping.get_index(
-                                    &(tct0, Some(tct1)),
+                                    &(tct_to, Some(tct_from)),
                                     &mut self.tlookup,
                                     self.objects,
                                     self.dummy_gcv,
@@ -898,40 +902,61 @@ impl<'a> CodeGen<'a> {
                         }
                         _ => 0,
                     };
+
                     // get the type of slice element if we are converting to or from a slice
-                    let tct2 = if ut0 == ValueType::Slice {
-                        Some(utct0)
-                    } else if ut1 == ValueType::Slice {
-                        Some(utct1)
+                    let tct2 = if ut_to == ValueType::Slice {
+                        Some(utct_to)
+                    } else if ut_from == ValueType::Slice {
+                        Some(utct_from)
                     } else {
                         None
                     };
-                    let t2 = tct2.map(|x| {
+                    let t_elem = tct2.map(|x| {
                         self.tlookup.value_type_from_tc(
                             self.tc_objs.types[x].try_as_slice().unwrap().elem(),
                         )
                     });
-                    current_func_emitter!(self).emit_cast(ut0, ut1, t2, -1, iface_index, pos);
+
+                    //need unwrap if converting Named number to number
+                    if ut_to.copyable()
+                        && self.tlookup.value_type_from_tc(tct_from) == ValueType::Named
+                    {
+                        current_func_emitter!(self).emit_unwrap(-1, pos);
+                    }
+
+                    current_func_emitter!(self).emit_cast(
+                        ut_to,
+                        ut_from,
+                        t_elem,
+                        -1,
+                        iface_index,
+                        pos,
+                    );
+
+                    //need wrap if converting number to Named number
+                    ut_to.copyable() && self.tlookup.value_type_from_tc(tct_to) == ValueType::Named
                 } else {
                     // convert between Named type and underlying type
-                    let t0 = self.tlookup.value_type_from_tc(tct0);
-                    let t1 = self.tlookup.value_type_from_tc(tct1);
-                    let flag = if t0 == ValueType::Named {
-                        ValueType::FlagA
-                    } else if t1 == ValueType::Named {
-                        ValueType::FlagB
+                    if self.tlookup.value_type_from_tc(tct_from) == ValueType::Named {
+                        current_func_emitter!(self).emit_unwrap(-1, pos);
+                        false
+                    } else if self.tlookup.value_type_from_tc(tct_to) == ValueType::Named {
+                        true
                     } else {
                         unreachable!();
-                    };
-                    current_func_emitter!(self).emit_cast(flag, t0, Some(t1), -1, 0, pos);
-                    if flag == ValueType::FlagA {
-                        // when converting from underlying type to Named, we need type info
-                        let meta = self
-                            .tlookup
-                            .meta_from_tc(tct0, self.objects, self.dummy_gcv);
-                        current_func_emitter!(self)
-                            .emit_raw_inst(key_to_u64(meta.as_non_ptr()), pos);
                     }
+                };
+
+                if need_wrap {
+                    let meta = self
+                        .tlookup
+                        .meta_from_tc(tct_to, self.objects, self.dummy_gcv);
+                    current_func_emitter!(self).emit_wrap(
+                        ut_to,
+                        -1,
+                        Some(key_to_u64(meta.as_non_ptr())),
+                        pos,
+                    )
                 }
             }
             // normal goscript function
@@ -1709,7 +1734,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             if t0 == ValueType::Named {
                 emitter.f.emit_code_with_imm(Opcode::JUMP, 1, pos);
                 diff += 1;
-                emitter.emit_wrap(ValueType::Bool, -1, pos);
+                emitter.emit_wrap(ValueType::Bool, -1, None, pos);
             };
             emitter.f.instruction_mut(i).set_imm(diff as OpIndex);
         } else {
