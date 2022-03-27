@@ -752,6 +752,7 @@ impl GosValue {
             GosValue::Uint16(i) => *i as usize,
             GosValue::Uint32(i) => *i as usize,
             GosValue::Uint64(i) => *i as usize,
+            GosValue::Named(n) => n.0.as_index(),
             _ => unreachable!(),
         }
     }
