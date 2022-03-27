@@ -1,34 +1,18 @@
 package main
 
-
-
 import (
-    "fmt2"
-    "reflect"
-    "math"
+    //"fmt2"
+    "time"
 )
 
-
-type AAA int
-
-
-var i = 222
-
-func get() AAA {
-    return AAA(i)
-}
-
-
-func get2() AAA {
-    return AAA(6*3)
-}
-
-
-
-
 func main() {
-    i := reflect.TypeOf(get)
-    j := reflect.TypeOf(get2)
-    v := reflect.ValueOf(333)
-    fmt2.Println(get2(), get(), i, j, i == j , v.Int(), "xxxx", math.Float32bits(1.1))
+    //p := fmt2.Println
+
+    now := time.Now()
+
+    then := time.Date(
+        2009, 11, 17, 20, 34, 58, 651387237, time.UTC)
+
+    
+    now.Sub(then)
 }

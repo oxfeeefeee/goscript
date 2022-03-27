@@ -53,7 +53,5 @@ func (m *Map) Delete(key interface{}) {
 // Range may be O(N) with the number of elements in the map even if f returns
 // false after a constant number of calls.
 func (m *Map) Range(f func(key, value interface{}) bool) {
-    // todo
-    i := false
-    assert(i)
+    panic("not implemented")
 }
