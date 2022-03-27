@@ -1656,7 +1656,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         };
         let (t, t_inner) = self.tlookup.get_expr_value_type_named(expr);
         let mut emitter = current_func_emitter!(self);
-        emitter.emit_ops(code, t, None, t_inner, None, t_inner, pos);
+        if code == Opcode::RECV {
+            emitter.f.emit_code_with_type(code, t, pos);
+        } else {
+            emitter.emit_ops(code, t, None, t_inner, None, pos);
+        }
     }
 
     fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
@@ -1674,8 +1678,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Token::SHL => (Opcode::SHL, false),
             Token::SHR => (Opcode::SHR, false),
             Token::AND_NOT => (Opcode::AND_NOT, false),
-            Token::LAND => (Opcode::PUSH_FALSE, false),
-            Token::LOR => (Opcode::PUSH_TRUE, false),
+            Token::LAND => (Opcode::SHORT_CIRCUIT_AND, false),
+            Token::LOR => (Opcode::SHORT_CIRCUIT_OR, false),
             Token::EQL => (Opcode::EQL, true),
             Token::LSS => (Opcode::LSS, true),
             Token::GTR => (Opcode::GTR, true),
@@ -1686,28 +1690,28 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         };
         let pos = Some(left.pos(&self.ast_objs));
         // handles short circuit
-        let mark_code = match op {
-            Token::LAND => {
-                let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF_NOT, pos);
-                Some((func.next_code_index(), code))
-            }
-            Token::LOR => {
-                let func = current_func_mut!(self);
-                func.emit_code(Opcode::JUMP_IF, pos);
-                Some((func.next_code_index(), code))
+        let mark = match code {
+            Opcode::SHORT_CIRCUIT_AND | Opcode::SHORT_CIRCUIT_OR => {
+                let mut emitter = current_func_emitter!(self);
+                if t0 == ValueType::Named {
+                    emitter.emit_unwrap(-1, pos);
+                }
+                emitter.f.emit_code(code, pos);
+                Some(emitter.f.next_code_index() - 1)
             }
             _ => None,
         };
         self.visit_expr(right);
 
-        if let Some((i, c)) = mark_code {
-            let func = current_func_mut!(self);
-            func.emit_code_with_imm(Opcode::JUMP, 1, pos);
-            func.emit_code_with_type(c, t0, pos);
-            let diff = func.next_code_index() - i - 1;
-            func.instruction_mut(i - 1).set_imm(diff as OpIndex);
-            // todo: wrap to named if necessary
+        if let Some(i) = mark {
+            let mut emitter = current_func_emitter!(self);
+            let mut diff = emitter.f.next_code_index() - i - 1;
+            if t0 == ValueType::Named {
+                emitter.f.emit_code_with_imm(Opcode::JUMP, 1, pos);
+                diff += 1;
+                emitter.emit_wrap(ValueType::Bool, -1, pos);
+            };
+            emitter.f.instruction_mut(i).set_imm(diff as OpIndex);
         } else {
             let (t1, t1_inner) = if code == Opcode::SHL || code == Opcode::SHR {
                 self.tlookup.get_expr_value_type_named(right)
@@ -1717,9 +1721,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let mut emitter = current_func_emitter!(self);
             if compare {
                 // don't unwrap named operands of comparisons
-                emitter.emit_ops(code, t0, None, None, None, None, pos);
+                emitter.f.emit_code_with_type(code, t0, pos);
             } else {
-                emitter.emit_ops(code, t0, Some(t1), t0_inner, t1_inner, t0_inner, pos);
+                emitter.emit_ops(code, t0, Some(t1), t0_inner, t1_inner, pos);
             }
         }
     }

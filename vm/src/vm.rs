@@ -991,6 +991,20 @@ impl<'a> Fiber<'a> {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         }
                     }
+                    Opcode::SHORT_CIRCUIT_OR => {
+                        if stack.get_c(stack.len() - 1).get_bool() {
+                            frame.pc = Stack::offset(frame.pc, inst.imm());
+                        } else {
+                            stack.pop_discard()
+                        }
+                    }
+                    Opcode::SHORT_CIRCUIT_AND => {
+                        if !stack.get_c(stack.len() - 1).get_bool() {
+                            frame.pc = Stack::offset(frame.pc, inst.imm());
+                        } else {
+                            stack.pop_discard()
+                        }
+                    }
                     Opcode::SWITCH => {
                         if stack.switch_cmp(inst.t0(), objs) {
                             frame.pc = Stack::offset(frame.pc, inst.imm());

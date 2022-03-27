@@ -2,6 +2,19 @@ package main
 
 import "fmt2"
 
+
+func shortCircuit() bool {
+    i := 1
+    assert(i == 0)
+    return true
+}
+
+func shortCircuit2() BOOL_ {
+    i := 1
+    assert(i == 0)
+    return BOOL_(true)
+}
+
 func test1() {
     var i, j = 80, 8
     assert( i + j == 88)
@@ -84,6 +97,19 @@ func test1() {
         p := &i;
         *p++
         assert(i == 3)
+    }
+
+    {
+        t := true
+        f := false
+
+        assert(!(t&&f))
+        assert(t&&t)
+        assert(t&&t||f)
+        assert(!(t&&t&&f)) 
+
+        assert(t||shortCircuit())
+        assert(!(f&&shortCircuit()))
     }
 }
 
@@ -177,9 +203,23 @@ func test2() {
         *p++
         assert(i == 3)
     }
+
+      {
+        var t BOOL_ = true
+        var f BOOL_ = false
+
+        assert(!(t&&f))
+        assert(t&&t)
+        assert(t&&t||f)
+        assert(!(t&&t&&f)) 
+
+        assert(t||shortCircuit2())
+        assert(!(f&&shortCircuit2()))
+    }
 }
 
 func main() {
+
 
     test1()
     test2()

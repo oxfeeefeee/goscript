@@ -83,7 +83,7 @@ pub enum RightHandSide<'a> {
 }
 
 pub struct Emitter<'a> {
-    f: &'a mut FunctionVal,
+    pub f: &'a mut FunctionVal,
 }
 
 impl<'a> Emitter<'a> {
@@ -430,16 +430,8 @@ impl<'a> Emitter<'a> {
         t1: Option<ValueType>,
         t0_inner: Option<ValueType>,
         t1_inner: Option<ValueType>,
-        tr_inner: Option<ValueType>,
         pos: Option<usize>,
     ) {
-        let t0 = match t0_inner {
-            Some(t) => {
-                self.emit_unwrap(-2, pos);
-                t
-            }
-            None => t0,
-        };
         let t1 = match t1_inner {
             Some(t) => {
                 self.emit_unwrap(-1, pos);
@@ -448,9 +440,18 @@ impl<'a> Emitter<'a> {
             None => t1,
         };
 
+        let t0 = match t0_inner {
+            Some(t) => {
+                let i = t1.map_or(-1, |_| -2);
+                self.emit_unwrap(i, pos);
+                t
+            }
+            None => t0,
+        };
+
         self.f.emit_code_with_type2(code, t0, t1, pos);
 
-        if let Some(t) = tr_inner {
+        if let Some(t) = t0_inner {
             self.emit_wrap(t, -1, pos);
         }
     }

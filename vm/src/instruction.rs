@@ -80,6 +80,8 @@ pub enum Opcode {
     JUMP,
     JUMP_IF,
     JUMP_IF_NOT,
+    SHORT_CIRCUIT_OR,
+    SHORT_CIRCUIT_AND,
     SWITCH, // EQL + JUMP_IF + do not pop the first argument
     SELECT,
     LOOP,
@@ -189,6 +191,8 @@ impl Opcode {
             Opcode::LOOP => ("LOOP", 0),
             Opcode::JUMP_IF => ("JUMP_IF", -1),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
+            Opcode::SHORT_CIRCUIT_OR => ("SHORT_CIRCUIT_OR", -128),
+            Opcode::SHORT_CIRCUIT_AND => ("SHORT_CIRCUIT_AND", -128),
             Opcode::SWITCH => ("SWITCH", -1),
             Opcode::SELECT => ("SELECT", -128),
             Opcode::RANGE_INIT => ("RANGE_INIT", 0),
