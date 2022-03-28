@@ -881,10 +881,10 @@ impl<'a> CodeGen<'a> {
                 let utct_from = self.tlookup.underlying_tc(tct_from);
                 let ut_from = self.tlookup.value_type_from_tc(utct_from);
 
-                let to_meta_u64 = |self_: &mut CodeGen| {
+                let type_to_meta_u64 = |self_: &mut CodeGen, t: TCTypeKey| {
                     let meta = self_
                         .tlookup
-                        .meta_from_tc(tct_to, self_.objects, self_.dummy_gcv);
+                        .meta_from_tc(t, self_.objects, self_.dummy_gcv);
                     key_to_u64(meta.as_non_ptr())
                 };
                 let to_is_named =
@@ -939,23 +939,42 @@ impl<'a> CodeGen<'a> {
                                 current_func_emitter!(self).emit_unwrap(-1, pos);
                             }
 
-                            // Need elem type when converting to Str or Slice
-                            let t_elem = match ut_to {
-                                ValueType::Str => (ut_from == ValueType::Slice).then(|| utct_from),
-                                ValueType::Slice => Some(utct_to),
+                            // We need:
+                            // - Elem type when converting to Str or Slice
+                            // - Underlying meta if converting to a pointer which points Named struct
+                            // - Underlying meta if converting to a Named channel
+                            let t_extra = match ut_to {
+                                ValueType::Str => (ut_from == ValueType::Slice).then(|| {
+                                    self.tc_objs.types[utct_from].try_as_slice().unwrap().elem()
+                                }),
+                                ValueType::Slice => {
+                                    Some(self.tc_objs.types[utct_to].try_as_slice().unwrap().elem())
+                                }
+                                ValueType::Pointer => {
+                                    let base = self.tc_objs.types[utct_to]
+                                        .try_as_pointer()
+                                        .unwrap()
+                                        .base();
+                                    Some(base)
+                                }
+                                ValueType::Channel => to_is_named(&self.tlookup).then(|| utct_to),
                                 _ => None,
-                            }
-                            .map(|x| {
-                                self.tlookup.value_type_from_tc(
-                                    self.tc_objs.types[x].try_as_slice().unwrap().elem(),
-                                )
-                            });
+                            };
+                            let t2 = t_extra.map(|x| self.tlookup.value_type_from_tc(x));
 
-                            current_func_emitter!(self)
-                                .emit_cast(ut_to, ut_from, t_elem, -1, 0, pos);
+                            current_func_emitter!(self).emit_cast(ut_to, ut_from, t2, -1, 0, pos);
+                            match ut_to {
+                                ValueType::Pointer | ValueType::Channel => {
+                                    if let Some(t) = t_extra {
+                                        let m = type_to_meta_u64(self, t);
+                                        current_func_mut!(self).emit_raw_inst(m, pos);
+                                    }
+                                }
+                                _ => {}
+                            }
 
                             if to_is_named(&self.tlookup) {
-                                let m = Some(to_meta_u64(self));
+                                let m = Some(type_to_meta_u64(self, tct_to));
                                 current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
                             }
                         }
@@ -971,7 +990,7 @@ impl<'a> CodeGen<'a> {
                         current_func_emitter!(self).emit_unwrap(-1, pos);
                     }
                     if to_is_named(&self.tlookup) {
-                        let m = Some(to_meta_u64(self));
+                        let m = Some(type_to_meta_u64(self, tct_to));
                         current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
                     }
                 }

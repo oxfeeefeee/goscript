@@ -94,9 +94,13 @@ var data struct {
 
 
 func testStruct() {
-    //var person = (*Person)(data)  // ignoring tags, the underlying types are identical
-    //assert(person != nil)
-
     var p Person = Person(data)
+
+    var person = (*Person)(&data)  // ignoring tags, the underlying types are identical
+    assert(person != nil)
+    person.Name = "aaaa"
+    assert(data.Name == "aaaa")
+
+    assert(p.Name == "")
     fmt2.Println(p)
 } 

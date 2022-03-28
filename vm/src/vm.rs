@@ -622,7 +622,22 @@ impl<'a> Fiber<'a> {
                             }
                             ValueType::Pointer => {
                                 // the underlying types are identical, we just need to replace the metadata
-                                unimplemented!()
+                                let target = stack.get_rc(target_index);
+                                let pointee = target.as_pointer().deref(stack, &objs.packages);
+                                let pointee = pointee.unwrap_named();
+                                let pointee = if inst.t2() != ValueType::Zero {
+                                    let meta_key = read_imm_key!(code, frame, objs);
+                                    let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                                    GosValue::Named(Box::new((pointee, meta)))
+                                } else {
+                                    pointee
+                                };
+                                stack.set(
+                                    target_index,
+                                    GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(
+                                        pointee,
+                                    ))),
+                                );
                             }
                             ValueType::Channel => {
                                 unimplemented!()
