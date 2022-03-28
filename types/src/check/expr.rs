@@ -737,7 +737,7 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        if !typ::identical_option(x.typ, y.typ, self.tc_objs) {
+        if !typ::identical_o(x.typ, y.typ, self.tc_objs) {
             // only report an error if we have valid types
             // (otherwise we had an error reported elsewhere already)
             let invalid = Some(self.invalid_type());

@@ -1011,14 +1011,19 @@ pub fn identical(x: TypeKey, y: TypeKey, objs: &TCObjects) -> bool {
     identical_impl(x, y, true, &mut HashSet::new(), objs)
 }
 
-/// identical_option is the same as identical except for the parameters
-pub fn identical_option(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
+/// identical_o is the same as identical except for the parameters
+pub fn identical_o(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
     identical_impl_o(x, y, true, &mut HashSet::new(), objs)
 }
 
 /// identical_ignore_tags reports whether x and y are identical types if tags are ignored.
 /// Receivers of Signature types are ignored.
-pub fn identical_ignore_tags(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
+pub fn identical_ignore_tags(x: TypeKey, y: TypeKey, objs: &TCObjects) -> bool {
+    identical_impl(x, y, false, &mut HashSet::new(), objs)
+}
+
+/// identical_ignore_tags_o is the same as identical_ignore_tags except for the parameters
+pub fn identical_ignore_tags_o(x: Option<TypeKey>, y: Option<TypeKey>, objs: &TCObjects) -> bool {
     identical_impl_o(x, y, false, &mut HashSet::new(), objs)
 }
 

@@ -337,7 +337,7 @@ pub fn missing_method(
                 fval.name(),
                 objs,
             ) {
-                if !typ::identical_option(fval.typ(), objs.lobjs[*f].typ(), objs) {
+                if !typ::identical_o(fval.typ(), objs.lobjs[*f].typ(), objs) {
                     return Some((*fkey, true));
                 }
             } else if static_ {
@@ -354,7 +354,7 @@ pub fn missing_method(
                 let result_obj = &objs.lobjs[okey];
                 if !result_obj.entity_type().is_func() {
                     return Some((*fkey, false));
-                } else if !typ::identical_option(fval.typ(), result_obj.typ(), objs) {
+                } else if !typ::identical_o(fval.typ(), result_obj.typ(), objs) {
                     return Some((*fkey, true));
                 }
             }

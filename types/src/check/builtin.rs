@@ -318,7 +318,7 @@ impl<'a> Checker<'a> {
                 }
 
                 // both argument types must be identical
-                if !typ::identical_option(x.typ, y.typ, self.tc_objs) {
+                if !typ::identical_o(x.typ, y.typ, self.tc_objs) {
                     self.invalid_arg(
                         x.pos(self.ast_objs),
                         &format!(
@@ -414,7 +414,7 @@ impl<'a> Checker<'a> {
                     return false;
                 }
 
-                if !typ::identical_option(dst, src, self.tc_objs) {
+                if !typ::identical_o(dst, src, self.tc_objs) {
                     let (xd, yd) = (self.new_dis(x), self.new_dis(&y));
                     let (txd, tyd) = (self.new_td_o(&dst), self.new_td_o(&src));
                     self.invalid_arg(

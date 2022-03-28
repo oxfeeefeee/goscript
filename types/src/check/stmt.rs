@@ -350,7 +350,7 @@ impl<'a> Checker<'a> {
                 }
                 if let Some((_, &pos)) = seen
                     .iter()
-                    .find(|(&t2, _)| typ::identical_option(t, t2, self.tc_objs))
+                    .find(|(&t2, _)| typ::identical_o(t, t2, self.tc_objs))
                 {
                     let ts = t.map_or("nil".to_owned(), |x| self.new_dis(&x).to_string());
                     self.error(

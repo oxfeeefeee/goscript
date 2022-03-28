@@ -90,7 +90,7 @@ impl<'a> Checker<'a> {
         let v = x.typ.unwrap();
         let vu = typ::underlying_type(v, o);
         let tu = typ::underlying_type(t, o);
-        if typ::identical_ignore_tags(Some(vu), Some(tu), o) {
+        if typ::identical_ignore_tags_o(Some(vu), Some(tu), o) {
             return true;
         }
 
@@ -104,7 +104,7 @@ impl<'a> Checker<'a> {
             if let Some(tdetail) = tval.try_as_pointer() {
                 let vu = typ::underlying_type(vdetail.base(), o);
                 let tu = typ::underlying_type(tdetail.base(), o);
-                if typ::identical_ignore_tags(Some(vu), Some(tu), o) {
+                if typ::identical_ignore_tags_o(Some(vu), Some(tu), o) {
                     return true;
                 }
             }

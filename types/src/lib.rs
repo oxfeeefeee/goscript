@@ -32,5 +32,5 @@ pub use importer::{Config, ImportKey, Importer};
 pub use obj::EntityType;
 pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 pub use operand::OperandMode;
-pub use typ::{identical, BasicType, ChanDir, Type};
+pub use typ::{identical, identical_ignore_tags, BasicType, ChanDir, Type};
 pub use universe::{Builtin, Universe};
