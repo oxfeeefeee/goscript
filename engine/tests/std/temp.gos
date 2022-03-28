@@ -1,18 +1,35 @@
 package main
 
 import (
-    //"fmt2"
-    "time"
+    "fmt2"
+    //"time"
 )
 
-func main() {
-    //p := fmt2.Println
 
-    now := time.Now()
 
-    then := time.Date(
-        2009, 11, 17, 20, 34, 58, 651387237, time.UTC)
 
-    
-    now.Sub(then)
+type Person struct {
+	Name    string
+	Address *struct {
+		Street string
+		City   string
+	}
 }
+
+var data struct {
+	Name    string `json:"name"`
+	Address *struct {
+		Street string `json:"street"`
+		City   string `json:"city"`
+	} `json:"address"`
+}
+
+
+
+func main() {
+    //var person = (*Person)(data)  // ignoring tags, the underlying types are identical
+    //assert(person != nil)
+
+    var p Person = Person(data)
+    fmt2.Println(p)
+} 

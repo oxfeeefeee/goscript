@@ -546,11 +546,11 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::CAST => {
                         let (target, mapping) = inst.imm824();
-                        let rhs_s_index = Stack::offset(stack.len(), target);
+                        let target_index = Stack::offset(stack.len(), target);
                         match inst.t0() {
                             ValueType::Interface => {
                                 let iface = ifaces[mapping as usize].clone();
-                                let under = stack.get_with_type(rhs_s_index, inst.t1());
+                                let under = stack.get_with_type(target_index, inst.t1());
                                 let val = match &objs.metas[iface.0.as_non_ptr()] {
                                     MetadataType::Named(_, md) => GosValue::Named(Box::new((
                                         GosValue::new_iface(
@@ -565,12 +565,12 @@ impl<'a> Fiber<'a> {
                                     ),
                                     _ => unreachable!(),
                                 };
-                                stack.set(rhs_s_index, val);
+                                stack.set(target_index, val);
                             }
                             ValueType::Str => {
                                 let result = match inst.t1() {
                                     ValueType::Slice => {
-                                        let slice = stack.get_rc(rhs_s_index).as_slice();
+                                        let slice = stack.get_rc(target_index).as_slice();
                                         match inst.t2() {
                                             ValueType::Int32 => slice
                                                 .0
@@ -592,15 +592,15 @@ impl<'a> Fiber<'a> {
                                         }
                                     }
                                     _ => {
-                                        let target = stack.get_c_mut(rhs_s_index);
+                                        let target = stack.get_c_mut(target_index);
                                         target.to_uint32(inst.t1());
                                         char_from_u32(target.get_uint32()).to_string()
                                     }
                                 };
-                                stack.set(rhs_s_index, GosValue::new_str(result));
+                                stack.set(target_index, GosValue::new_str(result));
                             }
                             ValueType::Slice => {
-                                let from = stack.get_rc(rhs_s_index).as_str();
+                                let from = stack.get_rc(target_index).as_str();
                                 let result = match inst.t2() {
                                     ValueType::Int32 => (
                                         objs.metadata.mint32,
@@ -616,9 +616,16 @@ impl<'a> Fiber<'a> {
                                     _ => unreachable!(),
                                 };
                                 stack.set(
-                                    rhs_s_index,
+                                    target_index,
                                     GosValue::slice_with_val(result.1, result.0, gcv),
-                                )
+                                );
+                            }
+                            ValueType::Pointer => {
+                                // the underlying types are identical, we just need to replace the metadata
+                                unimplemented!()
+                            }
+                            ValueType::Channel => {
+                                unimplemented!()
                             }
                             ValueType::UintPtr => match inst.t1() {
                                 ValueType::Pointer => {
@@ -628,23 +635,23 @@ impl<'a> Fiber<'a> {
                                         Rc::as_ptr(ud) as *const () as usize
                                     ));
                                 }
-                                _ => stack.get_c_mut(rhs_s_index).to_uint_ptr(inst.t1()),
+                                _ => stack.get_c_mut(target_index).to_uint_ptr(inst.t1()),
                             },
-                            ValueType::Uint => stack.get_c_mut(rhs_s_index).to_uint(inst.t1()),
-                            ValueType::Uint8 => stack.get_c_mut(rhs_s_index).to_uint8(inst.t1()),
-                            ValueType::Uint16 => stack.get_c_mut(rhs_s_index).to_uint16(inst.t1()),
-                            ValueType::Uint32 => stack.get_c_mut(rhs_s_index).to_uint32(inst.t1()),
-                            ValueType::Uint64 => stack.get_c_mut(rhs_s_index).to_uint64(inst.t1()),
-                            ValueType::Int => stack.get_c_mut(rhs_s_index).to_int(inst.t1()),
-                            ValueType::Int8 => stack.get_c_mut(rhs_s_index).to_int8(inst.t1()),
-                            ValueType::Int16 => stack.get_c_mut(rhs_s_index).to_int16(inst.t1()),
-                            ValueType::Int32 => stack.get_c_mut(rhs_s_index).to_int32(inst.t1()),
-                            ValueType::Int64 => stack.get_c_mut(rhs_s_index).to_int64(inst.t1()),
+                            ValueType::Uint => stack.get_c_mut(target_index).to_uint(inst.t1()),
+                            ValueType::Uint8 => stack.get_c_mut(target_index).to_uint8(inst.t1()),
+                            ValueType::Uint16 => stack.get_c_mut(target_index).to_uint16(inst.t1()),
+                            ValueType::Uint32 => stack.get_c_mut(target_index).to_uint32(inst.t1()),
+                            ValueType::Uint64 => stack.get_c_mut(target_index).to_uint64(inst.t1()),
+                            ValueType::Int => stack.get_c_mut(target_index).to_int(inst.t1()),
+                            ValueType::Int8 => stack.get_c_mut(target_index).to_int8(inst.t1()),
+                            ValueType::Int16 => stack.get_c_mut(target_index).to_int16(inst.t1()),
+                            ValueType::Int32 => stack.get_c_mut(target_index).to_int32(inst.t1()),
+                            ValueType::Int64 => stack.get_c_mut(target_index).to_int64(inst.t1()),
                             ValueType::Float32 => {
-                                stack.get_c_mut(rhs_s_index).to_float32(inst.t1())
+                                stack.get_c_mut(target_index).to_float32(inst.t1())
                             }
                             ValueType::Float64 => {
-                                stack.get_c_mut(rhs_s_index).to_float64(inst.t1())
+                                stack.get_c_mut(target_index).to_float64(inst.t1())
                             }
                             _ => {
                                 dbg!(inst.t0());

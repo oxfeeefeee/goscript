@@ -343,13 +343,14 @@ impl Stack {
     }
 
     #[inline]
-    pub fn set(&mut self, index: usize, val: GosValue) {
+    pub fn set(&mut self, index: usize, val: GosValue) -> ValueType {
         let (v, t) = GosValue64::from_v128(&val);
         if t != ValueType::Nil {
             *self.get_c_mut(index) = v;
         } else {
             *self.get_rc_mut(index) = val;
         }
+        t
     }
 
     #[inline]
@@ -662,14 +663,12 @@ impl Stack {
 
     #[inline]
     pub fn unwrap_named(&mut self, i: usize) -> ValueType {
-        let (v64, t) = GosValue64::from_v128(&self.get_rc(i).as_named().0);
-        *self.get_c_mut(i) = v64;
-        t
+        self.set(i, self.get_rc(i).as_named().0.clone())
     }
 
     #[inline]
     pub fn wrap_restore_named(&mut self, i: usize, typ: ValueType) {
-        let val = self.get_c(i).v128(typ);
+        let val = self.get_with_type(i, typ);
         match self.get_rc_mut(i) {
             GosValue::Named(n) => {
                 n.as_mut().0 = val;

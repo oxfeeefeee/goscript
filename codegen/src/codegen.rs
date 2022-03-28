@@ -24,8 +24,8 @@ use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
-    identical, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, Type, TypeInfo,
-    TypeKey as TCTypeKey,
+    identical_ignore_tags, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, Type,
+    TypeInfo, TypeKey as TCTypeKey,
 };
 
 macro_rules! current_func_mut {
@@ -881,82 +881,99 @@ impl<'a> CodeGen<'a> {
                 let utct_from = self.tlookup.underlying_tc(tct_from);
                 let ut_from = self.tlookup.value_type_from_tc(utct_from);
 
-                let need_wrap = if ut_from == ValueType::Nil
-                    || identical(tct_to, tct_from, self.tc_objs)
+                let to_meta_u64 = |self_: &mut CodeGen| {
+                    let meta = self_
+                        .tlookup
+                        .meta_from_tc(tct_to, self_.objects, self_.dummy_gcv);
+                    key_to_u64(meta.as_non_ptr())
+                };
+                let to_is_named =
+                    |lookup: &TypeLookup| lookup.value_type_from_tc(tct_to) == ValueType::Named;
+                let from_is_named =
+                    |lookup: &TypeLookup| lookup.value_type_from_tc(tct_from) == ValueType::Named;
+
+                if ut_from == ValueType::Nil
+                    || identical_ignore_tags(tct_to, tct_from, self.tc_objs)
                 {
-                    false
                     // just ignore conversion if it's nil or types are identical
-                } else if !identical(utct_to, utct_from, self.tc_objs) {
-                    let iface_index = match ut_to {
+                } else if !identical_ignore_tags(utct_to, utct_from, self.tc_objs) {
+                    match ut_to {
                         ValueType::Interface => {
                             if ut_from != ValueType::Nil {
-                                self.iface_mapping.get_index(
+                                let iface_index = self.iface_mapping.get_index(
                                     &(tct_to, Some(tct_from)),
                                     &mut self.tlookup,
                                     self.objects,
                                     self.dummy_gcv,
-                                )
-                            } else {
-                                0
+                                );
+                                current_func_emitter!(self).emit_cast(
+                                    ut_to,
+                                    ut_from,
+                                    None,
+                                    -1,
+                                    iface_index,
+                                    pos,
+                                );
                             }
                         }
-                        _ => 0,
-                    };
+                        ValueType::Int
+                        | ValueType::Int8
+                        | ValueType::Int16
+                        | ValueType::Int32
+                        | ValueType::Int64
+                        | ValueType::Uint
+                        | ValueType::UintPtr
+                        | ValueType::Uint8
+                        | ValueType::Uint16
+                        | ValueType::Uint32
+                        | ValueType::Uint64
+                        | ValueType::Float32
+                        | ValueType::Float64
+                        | ValueType::Complex64
+                        | ValueType::Complex128
+                        | ValueType::Str
+                        | ValueType::Slice
+                        | ValueType::Channel
+                        | ValueType::Pointer => {
+                            if from_is_named(&self.tlookup) {
+                                current_func_emitter!(self).emit_unwrap(-1, pos);
+                            }
 
-                    // get the type of slice element if we are converting to or from a slice
-                    let tct2 = if ut_to == ValueType::Slice {
-                        Some(utct_to)
-                    } else if ut_from == ValueType::Slice {
-                        Some(utct_from)
-                    } else {
-                        None
-                    };
-                    let t_elem = tct2.map(|x| {
-                        self.tlookup.value_type_from_tc(
-                            self.tc_objs.types[x].try_as_slice().unwrap().elem(),
-                        )
-                    });
+                            // Need elem type when converting to Str or Slice
+                            let t_elem = match ut_to {
+                                ValueType::Str => (ut_from == ValueType::Slice).then(|| utct_from),
+                                ValueType::Slice => Some(utct_to),
+                                _ => None,
+                            }
+                            .map(|x| {
+                                self.tlookup.value_type_from_tc(
+                                    self.tc_objs.types[x].try_as_slice().unwrap().elem(),
+                                )
+                            });
 
-                    //need unwrap if converting Named number to number
-                    if ut_to.copyable()
-                        && self.tlookup.value_type_from_tc(tct_from) == ValueType::Named
-                    {
-                        current_func_emitter!(self).emit_unwrap(-1, pos);
+                            current_func_emitter!(self)
+                                .emit_cast(ut_to, ut_from, t_elem, -1, 0, pos);
+
+                            if to_is_named(&self.tlookup) {
+                                let m = Some(to_meta_u64(self));
+                                current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
+                            }
+                        }
+                        _ => {
+                            dbg!(ut_to);
+                            unreachable!()
+                        }
                     }
-
-                    current_func_emitter!(self).emit_cast(
-                        ut_to,
-                        ut_from,
-                        t_elem,
-                        -1,
-                        iface_index,
-                        pos,
-                    );
-
-                    //need wrap if converting number to Named number
-                    ut_to.copyable() && self.tlookup.value_type_from_tc(tct_to) == ValueType::Named
                 } else {
-                    // convert between Named type and underlying type
-                    if self.tlookup.value_type_from_tc(tct_from) == ValueType::Named {
+                    // Convert between Named type and underlying type,
+                    // Or both types are Named in case they are Structs
+                    if from_is_named(&self.tlookup) {
                         current_func_emitter!(self).emit_unwrap(-1, pos);
-                        false
-                    } else if self.tlookup.value_type_from_tc(tct_to) == ValueType::Named {
-                        true
-                    } else {
-                        unreachable!();
                     }
-                };
-
-                if need_wrap {
-                    let meta = self
-                        .tlookup
-                        .meta_from_tc(tct_to, self.objects, self.dummy_gcv);
-                    current_func_emitter!(self).emit_wrap(
-                        ut_to,
-                        -1,
-                        Some(key_to_u64(meta.as_non_ptr())),
-                        pos,
-                    )
+                    if to_is_named(&self.tlookup) {
+                        let m = Some(to_meta_u64(self));
+                        current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
+                    }
                 }
             }
             // normal goscript function
