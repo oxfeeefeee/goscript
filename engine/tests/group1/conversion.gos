@@ -63,6 +63,7 @@ func main() {
     
     testNamed()
     testStruct()
+    testChan()
 }
 
 
@@ -103,4 +104,12 @@ func testStruct() {
 
     assert(p.Name == "")
     fmt2.Println(p)
+} 
+
+type C chan string
+
+func testChan() {
+   var c C = make(C)
+   d := (chan <- string)(c)
+   fmt2.Println(d)
 } 

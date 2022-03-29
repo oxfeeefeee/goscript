@@ -961,7 +961,7 @@ impl<'a> CodeGen<'a> {
                                         .base();
                                     Some(base)
                                 }
-                                ValueType::Channel => to_is_named(&self.tlookup).then(|| utct_to),
+                                ValueType::Channel => Some(utct_to),
                                 _ => None,
                             };
                             let t2 = t_extra.map(|x| self.tlookup.value_type_from_tc(x));

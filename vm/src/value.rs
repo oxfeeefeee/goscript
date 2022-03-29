@@ -1,9 +1,9 @@
-//#![allow(dead_code)]
 use super::gc::{GcWeak, GcoVec};
 use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
 use super::stack::Stack;
+use crate::channel::Channel;
 use ordered_float;
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -424,6 +424,11 @@ impl GosValue {
     #[inline]
     pub fn new_channel(meta: GosMetadata, cap: usize) -> GosValue {
         GosValue::Channel(Rc::new(ChannelObj::new(meta, cap)))
+    }
+
+    #[inline]
+    pub fn channel_with_chan(meta: GosMetadata, chan: Channel) -> GosValue {
+        GosValue::Channel(Rc::new(ChannelObj::with_chan(meta, chan)))
     }
 
     #[inline]

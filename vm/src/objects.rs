@@ -886,6 +886,13 @@ impl ChannelObj {
         }
     }
 
+    pub fn with_chan(meta: GosMetadata, chan: Channel) -> ChannelObj {
+        ChannelObj {
+            meta: meta,
+            chan: chan,
+        }
+    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.chan.len()

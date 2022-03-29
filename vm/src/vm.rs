@@ -615,10 +615,8 @@ impl<'a> Fiber<'a> {
                                     ),
                                     _ => unreachable!(),
                                 };
-                                stack.set(
-                                    target_index,
-                                    GosValue::slice_with_val(result.1, result.0, gcv),
-                                );
+                                let v = GosValue::slice_with_val(result.1, result.0, gcv);
+                                stack.set(target_index, v);
                             }
                             ValueType::Pointer => {
                                 // the underlying types are identical, we just need to replace the metadata
@@ -632,15 +630,18 @@ impl<'a> Fiber<'a> {
                                 } else {
                                     pointee
                                 };
-                                stack.set(
-                                    target_index,
-                                    GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(
-                                        pointee,
-                                    ))),
-                                );
+                                let v = GosValue::new_pointer(PointerObj::UpVal(
+                                    UpValue::new_closed(pointee),
+                                ));
+                                stack.set(target_index, v);
                             }
                             ValueType::Channel => {
-                                unimplemented!()
+                                let target = stack.get_rc(target_index);
+                                let chan = target.as_channel().chan.clone();
+                                let meta_key = read_imm_key!(code, frame, objs);
+                                let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                                let v = GosValue::channel_with_chan(meta, chan);
+                                stack.set(target_index, v);
                             }
                             ValueType::UintPtr => match inst.t1() {
                                 ValueType::Pointer => {
