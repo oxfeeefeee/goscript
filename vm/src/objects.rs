@@ -1494,7 +1494,7 @@ pub enum EntIndex {
     UpValue(OpIndex),
     PackageMember(PackageKey, KeyData),
     BuiltInVal(Opcode), // built-in identifiers
-    BuiltInType(GosMetadata),
+    TypeMeta(GosMetadata),
     Blank,
 }
 
@@ -1506,7 +1506,7 @@ impl From<EntIndex> for OpIndex {
             EntIndex::UpValue(i) => i,
             EntIndex::PackageMember(_, _) => unreachable!(),
             EntIndex::BuiltInVal(_) => unreachable!(),
-            EntIndex::BuiltInType(_) => unreachable!(),
+            EntIndex::TypeMeta(_) => unreachable!(),
             EntIndex::Blank => unreachable!(),
         }
     }

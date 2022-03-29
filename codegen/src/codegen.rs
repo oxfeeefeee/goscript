@@ -127,7 +127,7 @@ impl<'a> CodeGen<'a> {
                 let lookup = &self.tlookup;
                 let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
                 match lookup.basic_type_from_tc(tctype, self.objects) {
-                    Some(meta) => EntIndex::BuiltInType(meta),
+                    Some(meta) => EntIndex::TypeMeta(meta),
                     None => self.resolve_var_ident(ident),
                 }
             }
@@ -817,8 +817,7 @@ impl<'a> CodeGen<'a> {
                         // FFI needs the signature of the call
                         let meta = self.tlookup.meta_from_tc(t, self.objects, self.dummy_gcv);
                         let mut emitter = current_func_emitter!(self);
-                        let i = emitter.add_const(None, GosValue::Metadata(meta));
-                        emitter.emit_load(i, None, ValueType::Metadata, pos);
+                        emitter.emit_load(EntIndex::TypeMeta(meta), None, ValueType::Metadata, pos);
                     }
                 }
                 let (param0t, param_last_t) = match params.len() > 0 {
@@ -1232,9 +1231,8 @@ impl<'a> CodeGen<'a> {
             .tlookup
             .get_meta_by_node_id(typ.id(), self.objects, self.dummy_gcv);
         let mut emitter = current_func_emitter!(self);
-        let i = emitter.add_const(None, GosValue::Metadata(m));
         let pos = Some(typ.pos(&self.ast_objs));
-        emitter.emit_load(i, None, ValueType::Metadata, pos);
+        emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
     }
 
     fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
@@ -1553,8 +1551,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     )
                     .ptr_to();
                 let mut emitter = current_func_emitter!(self);
-                let index = emitter.add_const(None, GosValue::Metadata(m));
-                emitter.emit_load(index, None, ValueType::Metadata, pos);
+                emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
             }
             _ => {
                 self.visit_expr(expr);

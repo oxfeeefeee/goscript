@@ -183,7 +183,7 @@ impl<'a> Emitter<'a> {
                 pairs.add_pair(pkg, ident.into(), func, self.f.code().len() - 2, false);
             }
             EntIndex::BuiltInVal(op) => self.f.emit_code(op, pos),
-            EntIndex::BuiltInType(m) => {
+            EntIndex::TypeMeta(m) => {
                 let i = self.f.add_const(None, GosValue::Metadata(m));
                 self.emit_load(i, None, ValueType::Metadata, pos);
             }
@@ -223,7 +223,7 @@ impl<'a> Emitter<'a> {
                     )
                 }
                 EntIndex::BuiltInVal(_) => unreachable!(),
-                EntIndex::BuiltInType(_) => unreachable!(),
+                EntIndex::TypeMeta(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
             LeftHandSide::IndexSelExpr(info) => match info.typ {
