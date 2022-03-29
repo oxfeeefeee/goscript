@@ -1211,7 +1211,9 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_runtime_closure(val, gcv)
                             }
                             GosValue::Metadata(md) => {
-                                let umd = md.underlying(&objs.metas);
+                                let is_named = inst.t1() == ValueType::Named;
+                                let umd =
+                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
                                 let (key, mc) = umd.unwrap_non_ptr();
                                 let count = stack.pop_int32();
                                 let val = match &objs.metas[key] {
@@ -1276,10 +1278,9 @@ impl<'a> Fiber<'a> {
                                     }
                                     _ => unreachable!(),
                                 };
-                                if umd == *md {
-                                    val
-                                } else {
-                                    GosValue::Named(Box::new((val, *md)))
+                                match !is_named {
+                                    true => val,
+                                    false => GosValue::Named(Box::new((val, *md))),
                                 }
                             }
                             _ => unimplemented!(),
@@ -1291,7 +1292,14 @@ impl<'a> Fiber<'a> {
                         let param = stack.pop_with_type(inst.t0());
                         let new_val = match param {
                             GosValue::Metadata(md) => {
-                                let v = md.into_value_category().zero_val(&objs.metas, gcv);
+                                let is_named = inst.t1() == ValueType::Named;
+                                let umd =
+                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(md);
+                                let v = umd.into_value_category().zero_val(&objs.metas, gcv);
+                                let v = match !is_named {
+                                    true => v,
+                                    false => GosValue::Named(Box::new((v, md))),
+                                };
                                 GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                             }
                             _ => unimplemented!(),
@@ -1302,8 +1310,10 @@ impl<'a> Fiber<'a> {
                         let index = inst.imm() - 1;
                         let i = Stack::offset(stack.len(), index - 1);
                         let meta_val = stack.get_with_type(i, ValueType::Metadata);
-                        let meta = meta_val.as_meta();
-                        let metadata = &objs.metas[meta.as_non_ptr()];
+                        let md = meta_val.as_meta();
+                        let is_named = inst.t1() == ValueType::Named;
+                        let umd = is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
+                        let metadata = &objs.metas[umd.as_non_ptr()];
                         let val = match metadata {
                             MetadataType::SliceOrArray(vmeta, _) => {
                                 let (cap, len) = match index {
@@ -1317,14 +1327,14 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_slice(
                                     len,
                                     cap,
-                                    *meta,
+                                    umd,
                                     Some(&zero_val!(vmeta, objs, gcv)),
                                     gcv,
                                 )
                             }
                             MetadataType::Map(_, v) => {
                                 let default = zero_val!(v, objs, gcv);
-                                GosValue::new_map(*meta, default, gcv)
+                                GosValue::new_map(umd, default, gcv)
                             }
                             MetadataType::Channel(_, _) => {
                                 let cap = match index {
@@ -1332,9 +1342,13 @@ impl<'a> Fiber<'a> {
                                     0 => 0,
                                     _ => unreachable!(),
                                 };
-                                GosValue::new_channel(*meta, cap)
+                                GosValue::new_channel(umd, cap)
                             }
                             _ => unreachable!(),
+                        };
+                        let val = match !is_named {
+                            true => val,
+                            false => GosValue::Named(Box::new((val, *md))),
                         };
                         stack.pop_discard();
                         stack.push(val);
@@ -1344,7 +1358,6 @@ impl<'a> Fiber<'a> {
                         // floating-point type and the return type is the complex type with
                         // the corresponding floating-point constituents
                         let t = inst.t0();
-                        dbg!(t);
                         let val = match t {
                             ValueType::Float32 => {
                                 let i = stack.pop_c().get_float32();

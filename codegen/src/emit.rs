@@ -394,9 +394,19 @@ impl<'a> Emitter<'a> {
             .emit_inst(Opcode::CALL, [Some(style_flag), pack_flag, None], None, pos);
     }
 
-    pub fn emit_literal(&mut self, typ: ValueType, index: OpIndex, pos: Option<usize>) {
-        self.f
-            .emit_inst(Opcode::LITERAL, [Some(typ), None, None], Some(index), pos);
+    pub fn emit_literal(
+        &mut self,
+        typ: ValueType,
+        t_extra: Option<ValueType>,
+        index: OpIndex,
+        pos: Option<usize>,
+    ) {
+        self.f.emit_inst(
+            Opcode::LITERAL,
+            [Some(typ), t_extra, None],
+            Some(index),
+            pos,
+        );
     }
 
     pub fn emit_push_imm(&mut self, typ: ValueType, imm: OpIndex, pos: Option<usize>) {

@@ -846,6 +846,11 @@ impl<'a> CodeGen<'a> {
                 };
                 let param1t = match opcode {
                     Opcode::DELETE => param_last_t,
+                    Opcode::MAKE | Opcode::NEW => {
+                        // provide the type of param0 too instead of only ValueType::Metadata
+                        let t = self.tlookup.get_expr_tc_type(&params[0]);
+                        Some(self.tlookup.value_type_from_tc(t))
+                    }
                     _ => None,
                 };
                 let func = current_func_mut!(self);
@@ -1145,6 +1150,7 @@ impl<'a> CodeGen<'a> {
         let meta = self
             .tlookup
             .meta_from_tc(tctype, &mut self.objects, self.dummy_gcv);
+        let vt = self.tlookup.value_type_from_tc(tctype);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
         let (mkey, mc) = meta.underlying(&self.objects.metas).unwrap_non_ptr();
@@ -1223,7 +1229,7 @@ impl<'a> CodeGen<'a> {
 
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Metadata(meta));
-        emitter.emit_literal(ValueType::Metadata, i.into(), pos);
+        emitter.emit_literal(ValueType::Metadata, Some(vt), i.into(), pos);
     }
 
     fn gen_type_meta(&mut self, typ: &Expr) {
@@ -1377,7 +1383,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::Function(fkey));
         let pos = Some(flit.body.l_brace);
-        emitter.emit_literal(ValueType::Function, i.into(), pos);
+        emitter.emit_literal(ValueType::Function, None, i.into(), pos);
     }
 
     fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
