@@ -2,44 +2,45 @@ package sync
 
 // map operations in goscript are atomic
 
-type Map map[interface{}]interface{}
+type Map struct {
+    data map[interface{}]interface{}
+}
 
 // Load returns the value stored in the map for a key, or nil if no
 // value is present.
 // The ok result indicates whether value was found in the map.
 func (m *Map) Load(key interface{}) (value interface{}, ok bool) {
-    v, ok := (*m)[key]
+    v, ok := m.getData()[key]
     return v, ok
 }
 
 // Store sets the value for a key.
 func (m *Map) Store(key, value interface{}) {
-    (*m)[key] = value
+    m.getData()[key] = value
 }
 
 // LoadOrStore returns the existing value for the key if present.
 // Otherwise, it stores and returns the given value.
 // The loaded result is true if the value was loaded, false if stored.
 func (m *Map) LoadOrStore(key, value interface{}) (actual interface{}, loaded bool) {
-    if e, ok := (*m)[key]; ok {
+    if e, ok := m.getData()[key]; ok {
         return e, true
     }
 
     var mu Mutex
     mu.Lock()
-    if e, ok := (*m)[key]; ok {
-        mu.Unlock()
+    defer mu.Unlock()
+    if e, ok := m.data[key]; ok {
         return e, true
     } else {
-        (*m)[key] = value
-        mu.Unlock()
+        m.data[key] = value
         return value, false
     }
 }
 
 // Delete deletes the value for a key.
 func (m *Map) Delete(key interface{}) {
-    delete((*m), key)
+    delete(m.getData(), key)
 }
 
 // Range calls f sequentially for each key and value present in the map.
@@ -54,4 +55,14 @@ func (m *Map) Delete(key interface{}) {
 // false after a constant number of calls.
 func (m *Map) Range(f func(key, value interface{}) bool) {
     panic("not implemented")
+}
+
+func (m *Map) getData() map[interface{}]interface{} {
+    var l Mutex
+    l.Lock()
+    defer l.Unlock()
+    if m.data == nil {
+        m.data = make(map[interface{}]interface{})
+    }
+    return m.data
 }

@@ -20,8 +20,7 @@ func (c *Container) inc(name string) {
 
 
 func sync_map() {
-    // todo: fix this
-    var m sync.Map = sync.Map(make(map[interface{}]interface{}))
+    var m sync.Map
 
     m.Store(2, "b")
     v, ok := m.LoadOrStore(1, "a")
@@ -33,8 +32,10 @@ func sync_map() {
     fmt2.Println(v, ok, v2, ok2)
     fmt2.Println(m)
     m.Delete(2)
-    assert(m[2] == nil)
-    fmt2.Println(m, m[2])
+    v3, _ := m.Load(2)
+    fmt2.Println(m, v3)
+    assert(v3 == nil)
+    
 
 }
 
