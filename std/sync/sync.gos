@@ -2,17 +2,23 @@ package sync
 
 import "unsafe"
 
+var nativeMutex ffiMutex
+var nativeRWMutex ffiRWMutex
+
+func init() {
+	nativeMutex = ffi(ffiMutex, "sync.mutex")
+    nativeRWMutex = ffi(ffiRWMutex, "sync.rw_mutex")
+}
+
 type ffiMutex interface {
-    new() unsafe.Pointer
-    lock(unsafe.Pointer)
+    lock(*unsafe.Pointer)
     unlock(unsafe.Pointer)
 }
 
 type ffiRWMutex interface {
-    new() unsafe.Pointer
-    r_lock(unsafe.Pointer)
+    r_lock(*unsafe.Pointer)
     r_unlock(unsafe.Pointer)
-    w_lock(unsafe.Pointer)
+    w_lock(*unsafe.Pointer)
     w_unlock(unsafe.Pointer)
 }
 
@@ -27,7 +33,6 @@ type Locker interface {
 //
 // A Mutex must not be copied after first use.
 type Mutex struct {
-    f ffiMutex
     handle unsafe.Pointer
 }
 
@@ -35,12 +40,7 @@ type Mutex struct {
 // If the lock is already in use, the calling goroutine
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
-    if m.handle == nil {
-        m.f = ffi(ffiMutex, "sync.mutex")
-        m.handle = m.f.new()
-        
-    }
-    m.f.lock(m.handle)
+    nativeMutex.lock(&m.handle)
 }
 
 
@@ -51,7 +51,7 @@ func (m *Mutex) Lock() {
 // It is allowed for one goroutine to lock a Mutex and then
 // arrange for another goroutine to unlock it.
 func (m *Mutex) Unlock() {
-   m.f.unlock(m.handle)
+   nativeMutex.unlock(m.handle)
 }
 
 
@@ -61,32 +61,21 @@ func (m *Mutex) Unlock() {
 //
 // A RWMutex must not be copied after first use.
 type RWMutex struct {
-    f ffiRWMutex
     handle unsafe.Pointer
 }
 
 func (rw *RWMutex) RLock() {
-    if rw.handle == nil {
-        rw.f = ffi(ffiRWMutex, "sync.rw_mutex")
-        rw.handle = rw.f.new()
-        
-    }
-    rw.f.r_lock(rw.handle)
+    nativeRWMutex.r_lock(&rw.handle)
 }
 
 func (rw *RWMutex) RUnlock() {
-    rw.f.r_unlock(rw.handle)
+    nativeRWMutex.r_unlock(rw.handle)
 }
 
 func (rw *RWMutex) Lock() {
-    if rw.handle == nil {
-        rw.f = ffi(ffiRWMutex, "sync.rw_mutex")
-        rw.handle = rw.f.new()
-        
-    }
-    rw.f.w_lock(rw.handle)
+    nativeRWMutex.w_lock(&rw.handle)
 }
 
 func (rw *RWMutex) Unlock() {
-    rw.f.w_unlock(rw.handle)
+    nativeRWMutex.w_unlock(rw.handle)
 }

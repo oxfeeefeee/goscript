@@ -417,8 +417,8 @@ impl<'a> Fiber<'a> {
                             target = deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
-                        let val =
-                            target.try_as_struct().unwrap().0.borrow().fields[ind as usize].clone();
+                        target = target.unwrap_named();
+                        let val = target.as_struct().0.borrow().fields[ind as usize].clone();
                         stack.push(val);
                     }
                     Opcode::BIND_METHOD => {
@@ -434,8 +434,8 @@ impl<'a> Fiber<'a> {
                         ))));
                     }
                     Opcode::BIND_INTERFACE_METHOD => {
-                        let val = stack.pop_with_type(inst.t0());
-                        let borrowed = val.try_as_interface().unwrap().borrow();
+                        let val = stack.pop_with_type(inst.t0()).unwrap_named();
+                        let borrowed = val.as_interface().borrow();
                         let cls = match borrowed.underlying() {
                             IfaceUnderlying::Gos(val, funcs) => {
                                 let func = funcs.as_ref().unwrap()[inst.imm() as usize];
@@ -504,8 +504,8 @@ impl<'a> Fiber<'a> {
                             target = deref_value(&target, stack, objs);
                             frame = self.frames.last_mut().unwrap();
                         }
-                        let field = &mut target.try_as_struct().unwrap().0.borrow_mut().fields
-                            [imm as usize];
+                        target = target.unwrap_named();
+                        let field = &mut target.as_struct().0.borrow_mut().fields[imm as usize];
                         stack.store_val(field, rhs_index, inst.t0(), gcv);
                     }
                     Opcode::LOAD_PKG_FIELD => {
@@ -897,13 +897,13 @@ impl<'a> Fiber<'a> {
                                 drop(stack_mut_ref);
                                 let returns = {
                                     let ffi_ref = call.ffi.borrow();
-                                    let ctx = FfiCallCtx {
+                                    let mut ctx = FfiCallCtx {
                                         func_name: &call.func_name,
                                         vm_objs: objs,
-                                        stack: &self.stack.borrow(),
+                                        stack: &mut self.stack.borrow_mut(),
                                         gcv: gcv,
                                     };
-                                    let fut = ffi_ref.call(&ctx, params);
+                                    let fut = ffi_ref.call(&mut ctx, params);
                                     fut.await
                                 };
                                 restore_stack_ref!(self, stack, stack_mut_ref);

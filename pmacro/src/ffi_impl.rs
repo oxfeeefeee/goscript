@@ -19,10 +19,11 @@ macro_rules! type_panic {
     };
 }
 
-enum ReturnedCount {
-    Zero,
-    One,
-    Multiple,
+enum FfiReturnType {
+    ZeroVal,
+    OneVal,
+    MultipleVal,
+    AlreadyBoxed,
 }
 
 pub fn ffi_impl_implement(
@@ -71,7 +72,7 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
     let mut method: ImplItemMethod = parse_quote! {
         fn dispatch(
             &self,
-            ctx: &FfiCallCtx,
+            ctx: &mut FfiCallCtx,
             args: Vec<GosValue>,
         ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
             match ctx.func_name {
@@ -162,46 +163,51 @@ fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {
     let is_async = m.sig.asyncness.is_some();
     let (is_result, rcount) = get_return_type_attributes(&m.sig.output);
     wrapper.block = match (is_async, is_result, rcount) {
-        (false, true, ReturnedCount::Zero) => {
+        (false, true, FfiReturnType::ZeroVal) => {
             parse_quote! {{
                 let re = self.#callee(#args).map(|x| vec![]);
                 Box::pin(async move { re })
             }}
         }
-        (false, true, ReturnedCount::One) => {
+        (false, true, FfiReturnType::OneVal) => {
             parse_quote! {{
                 let re = self.#callee(#args).map(|x| vec![x]);
                 Box::pin(async move { re })
             }}
         }
-        (false, true, ReturnedCount::Multiple) => {
+        (false, true, FfiReturnType::MultipleVal) => {
             parse_quote! {{
                 let re = self.#callee(#args);
                 Box::pin(async move { re })
             }}
         }
-        (false, false, ReturnedCount::Zero) => {
+        (false, false, FfiReturnType::ZeroVal) => {
             parse_quote! {{
                 self.#callee(#args);
                 Box::pin(async move { Ok(vec![]) })
             }}
         }
-        (false, false, ReturnedCount::One) => {
+        (false, false, FfiReturnType::OneVal) => {
             parse_quote! {{
                 let re = self.#callee(#args);
                 Box::pin(async move { Ok(vec![re]) })
             }}
         }
-        (false, false, ReturnedCount::Multiple) => {
+        (false, false, FfiReturnType::MultipleVal) => {
             parse_quote! {{
                 let re = self.#callee(#args);
                 Box::pin(async move { Ok( re ) })
             }}
         }
-        (true, true, ReturnedCount::Multiple) => {
+        (true, true, FfiReturnType::MultipleVal) => {
             parse_quote! {{
                 let re = self.#callee(#args);
                 Box::pin( re )
+            }}
+        }
+        (_, _, FfiReturnType::AlreadyBoxed) => {
+            parse_quote! {{
+                self.#callee(#args)
             }}
         }
         (true, _, _) => panic!("async func can only return RuntimeResult<Vec<GosValue>>>"),
@@ -212,9 +218,9 @@ fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {
     wrapper
 }
 
-fn get_return_type_attributes(rt: &ReturnType) -> (bool, ReturnedCount) {
+fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
     match rt {
-        ReturnType::Default => (false, ReturnedCount::Zero),
+        ReturnType::Default => (false, FfiReturnType::ZeroVal),
         ReturnType::Type(_, t) => match get_type_name(t) {
             Some(seg) => {
                 let typ_name: &str = &seg.ident.to_string();
@@ -223,15 +229,16 @@ fn get_return_type_attributes(rt: &ReturnType) -> (bool, ReturnedCount) {
                         Some(seg) => {
                             let typ_name: &str = &seg.ident.to_string();
                             match typ_name {
-                                "Vec" => (true, ReturnedCount::Multiple), // todo: futher validation
-                                "GosValue" => (true, ReturnedCount::One),
+                                "Vec" => (true, FfiReturnType::MultipleVal), // todo: futher validation
+                                "GosValue" => (true, FfiReturnType::OneVal),
                                 _ => type_panic!(),
                             }
                         }
-                        None => (true, ReturnedCount::Zero), // todo: futher validation
+                        None => (true, FfiReturnType::ZeroVal), // todo: futher validation
                     },
-                    "Vec" => (false, ReturnedCount::Multiple), // todo: futher validation
-                    "GosValue" => (false, ReturnedCount::One),
+                    "Vec" => (false, FfiReturnType::MultipleVal), // todo: futher validation
+                    "GosValue" => (false, FfiReturnType::OneVal), // todo: futher validation
+                    "Pin" => (false, FfiReturnType::AlreadyBoxed), // todo: futher validation
                     _ => type_panic!(),
                 }
             }

@@ -1,13 +1,11 @@
 #![macro_use]
-use crate::value::RuntimeResult;
-
 use super::channel::Channel;
 use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
-use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount};
+use super::value::{rcount_mark_and_queue, GosValue, RCQueue, RCount, RuntimeResult};
 use slotmap::{new_key_type, DenseSlotMap, KeyData};
 use std::any::Any;
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -19,6 +17,7 @@ use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::ops::Index;
+use std::ptr;
 use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 128;
@@ -998,17 +997,6 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn set_local_ref_type(&self, val: GosValue) {
-        match self {
-            Self::Struct(v, _) => {
-                let mref: &mut StructObj = &mut v.0.borrow_mut();
-                *mref = val.try_as_struct().unwrap().0.borrow().clone();
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
     pub fn as_user_data(&self) -> &Rc<dyn UserData> {
         match self {
             Self::UserData(ud) => ud,
@@ -1085,6 +1073,42 @@ impl PointerObj {
                 GosValue::Uint(i)
             }
             // todo: report error instead of crash?
+            PointerObj::Released => unreachable!(),
+        }
+    }
+
+    /// set_value is not used by VM, it's for FFI
+    pub fn set_value(&self, val: GosValue, stack: &mut Stack, pkgs: &PackageObjs, gcv: &GcoVec) {
+        match self {
+            PointerObj::UpVal(uv) => uv.set_value(val, stack),
+            PointerObj::Struct(s, _) => {
+                *s.0.borrow_mut() = val
+                    .unwrap_named()
+                    .copy_semantic(gcv)
+                    .as_struct()
+                    .0
+                    .borrow()
+                    .clone()
+            }
+            PointerObj::Array(a, _) => a.0.set_from(&val.as_array().0),
+            PointerObj::Slice(s, _) => s.0.set_from(&val.as_slice().0),
+            PointerObj::Map(m, _) => *m.0.borrow_data_mut() = val.as_map().0.borrow_data().clone(),
+            PointerObj::SliceMember(s, index) => {
+                let vborrow = s.0.borrow();
+                let target: &mut GosValue =
+                    &mut vborrow[s.0.begin() + *index as usize].borrow_mut();
+                *target = val.copy_semantic(gcv);
+            }
+            PointerObj::StructField(s, index) => {
+                let target: &mut GosValue = &mut s.0.borrow_mut().fields[*index as usize];
+                *target = val.copy_semantic(gcv);
+            }
+            PointerObj::PkgMember(p, index) => {
+                let target: &mut GosValue = &mut pkgs[*p].member_mut(*index);
+                *target = val.copy_semantic(gcv);
+            }
+            // todo: report error instead of crash
+            PointerObj::UserData(_) => unreachable!(),
             PointerObj::Released => unreachable!(),
         }
     }
@@ -1215,6 +1239,7 @@ impl ValueDesc {
         }
     }
 
+    #[inline]
     pub fn clone_with_stack(&self, stack: Weak<RefCell<Stack>>, stack_base: OpIndex) -> ValueDesc {
         ValueDesc {
             func: self.func,
@@ -1223,6 +1248,28 @@ impl ValueDesc {
             is_up_value: self.is_up_value,
             stack: stack,
             stack_base: stack_base,
+        }
+    }
+
+    #[inline]
+    pub fn load(&self, stack: &Stack) -> GosValue {
+        let index = (self.stack_base + self.index) as usize;
+        let uv_stack = self.stack.upgrade().unwrap();
+        if ptr::eq(uv_stack.as_ptr(), stack) {
+            stack.get_with_type(index, self.typ)
+        } else {
+            uv_stack.borrow().get_with_type(index, self.typ)
+        }
+    }
+
+    #[inline]
+    pub fn store(&self, val: GosValue, stack: &mut Stack) {
+        let index = (self.stack_base + self.index) as usize;
+        let uv_stack = self.stack.upgrade().unwrap();
+        if ptr::eq(uv_stack.as_ptr(), stack) {
+            stack.set(index, val);
+        } else {
+            uv_stack.borrow_mut().set(index, val);
         }
     }
 }
@@ -1280,8 +1327,17 @@ impl UpValue {
 
     pub fn value(&self, stack: &Stack) -> GosValue {
         match &self.inner.borrow() as &UpValueState {
-            UpValueState::Open(desc) => stack.load_upvalue(desc),
+            UpValueState::Open(desc) => desc.load(stack),
             UpValueState::Closed(val) => val.clone(),
+        }
+    }
+
+    pub fn set_value(&self, val: GosValue, stack: &mut Stack) {
+        match &mut self.inner.borrow_mut() as &mut UpValueState {
+            UpValueState::Open(desc) => desc.store(val, stack),
+            UpValueState::Closed(v) => {
+                *v = val;
+            }
         }
     }
 

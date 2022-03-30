@@ -31,6 +31,7 @@ type Once struct {
 // without calling f.
 //
 func (o *Once) Do(f func()) {
+    // goscript: it's ok not to use atomic ops here, right?
 	if o.done {
 		return
 	}

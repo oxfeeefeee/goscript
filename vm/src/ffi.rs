@@ -15,7 +15,7 @@ pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>>;
 pub struct FfiCallCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
-    pub stack: &'a Stack,
+    pub stack: &'a mut Stack,
     pub gcv: &'a GcoVec,
 }
 
@@ -23,7 +23,7 @@ pub struct FfiCallCtx<'a> {
 pub trait Ffi {
     fn call(
         &self,
-        ctx: &FfiCallCtx,
+        ctx: &mut FfiCallCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>>;
 }

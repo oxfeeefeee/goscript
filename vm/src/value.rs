@@ -722,24 +722,24 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, gcos: &GcoVec) -> GosValue {
+    pub fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
         match self {
             GosValue::Slice(s) => {
                 let rc = Rc::new((SliceObj::clone(&s.0), Cell::new(0)));
-                gcos.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
+                gcv.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
                 GosValue::Slice(rc)
             }
             GosValue::Map(m) => {
                 let rc = Rc::new((MapObj::clone(&m.0), Cell::new(0)));
-                gcos.add_weak(GcWeak::Map(Rc::downgrade(&rc)));
+                gcv.add_weak(GcWeak::Map(Rc::downgrade(&rc)));
                 GosValue::Map(rc)
             }
             GosValue::Struct(s) => {
                 let rc = Rc::new((RefCell::clone(&s.0), Cell::new(0)));
-                gcos.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
+                gcv.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
                 GosValue::Struct(rc)
             }
-            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(gcos), v.1))),
+            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(gcv), v.1))),
             _ => self.clone(),
         }
     }

@@ -1,7 +1,6 @@
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::GosMetadata;
-use super::objects::ValueDesc;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -581,9 +580,12 @@ impl Stack {
             }
             PointerObj::Struct(r, _) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_with_type(rhs_s_index, typ);
+                let val = self
+                    .get_with_type(rhs_s_index, typ)
+                    .unwrap_named()
+                    .copy_semantic(gcv);
                 let mref: &mut StructObj = &mut r.0.borrow_mut();
-                *mref = val.try_as_struct().unwrap().0.borrow().clone();
+                *mref = val.as_struct().0.borrow().clone();
             }
             PointerObj::Array(a, _) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
@@ -595,11 +597,11 @@ impl Stack {
                 let val = self.get_with_type(rhs_s_index, typ);
                 r.0.set_from(&val.as_slice().0);
             }
-            PointerObj::Map(r, _) => {
+            PointerObj::Map(m, _) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
                 let val = self.get_with_type(rhs_s_index, typ);
-                let mref: &mut GosHashMap = &mut r.0.borrow_data_mut();
-                *mref = val.try_as_map().unwrap().0.borrow_data().clone();
+                let mref: &mut GosHashMap = &mut m.0.borrow_data_mut();
+                *mref = val.as_map().0.borrow_data().clone();
             }
             PointerObj::SliceMember(s, index) => {
                 let vborrow = s.0.borrow();
@@ -637,17 +639,6 @@ impl Stack {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
             self.push(GosValue::slice_with_val(v, meta, gcos))
-        }
-    }
-
-    #[inline]
-    pub fn load_upvalue(&self, desc: &ValueDesc) -> GosValue {
-        let index = (desc.stack_base + desc.index) as usize;
-        let uv_stack = desc.stack.upgrade().unwrap();
-        if ptr::eq(uv_stack.as_ptr(), self) {
-            self.get_with_type(index, desc.typ)
-        } else {
-            uv_stack.borrow().get_with_type(index, desc.typ)
         }
     }
 

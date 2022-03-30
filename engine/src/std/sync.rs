@@ -12,6 +12,26 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::vec;
 
+macro_rules! create_mutex {
+    ($arg0:expr, $ctx:expr, $typ:tt) => {{
+        let pp = $arg0.as_pointer();
+        let p = pp.deref(&$ctx.stack, &$ctx.vm_objs.packages);
+        if p.is_nil() {
+            let inner = $typ::new();
+            let p = GosValue::new_pointer(PointerObj::UserData(Rc::new(inner.clone())));
+            pp.set_value(p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcv);
+            inner
+        } else {
+            p.as_pointer()
+                .as_user_data()
+                .as_any()
+                .downcast_ref::<$typ>()
+                .unwrap()
+                .clone()
+        }
+    }};
+}
+
 #[derive(Ffi)]
 pub struct Mutex {}
 
@@ -21,15 +41,15 @@ impl Mutex {
         Mutex {}
     }
 
-    fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {
-        let p = PointerObj::UserData(Rc::new(MutexInner::new()));
-        GosValue::new_pointer(p)
-    }
-
-    async fn ffi_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
-        let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
-        mutex.lock().await
+    fn ffi_lock(
+        &self,
+        ctx: &mut FfiCallCtx,
+        args: Vec<GosValue>,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
+        // It'd probably be cleaner if we use interface{} instead of pointer as
+        // the argument, but let's leave it like this to serve as an example.
+        let mutex = create_mutex!(&args[0], ctx, MutexInner);
+        Box::pin((|| async move { mutex.lock().await })())
     }
 
     async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
@@ -86,15 +106,13 @@ impl RWMutex {
         RWMutex {}
     }
 
-    fn ffi_new(&self, _v: Vec<GosValue>) -> GosValue {
-        let p = PointerObj::UserData(Rc::new(RWMutexInner::new()));
-        GosValue::new_pointer(p)
-    }
-
-    async fn ffi_r_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
-        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-        mutex.r_lock().await
+    fn ffi_r_lock(
+        &self,
+        ctx: &mut FfiCallCtx,
+        args: Vec<GosValue>,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
+        let mutex = create_mutex!(&args[0], ctx, RWMutexInner);
+        Box::pin((|| async move { mutex.r_lock().await })())
     }
 
     async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
@@ -103,10 +121,13 @@ impl RWMutex {
         mutex.r_unlock().await
     }
 
-    async fn ffi_w_lock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
-        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
-        mutex.w_lock().await
+    fn ffi_w_lock(
+        &self,
+        ctx: &mut FfiCallCtx,
+        args: Vec<GosValue>,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
+        let mutex = create_mutex!(&args[0], ctx, RWMutexInner);
+        Box::pin((|| async move { mutex.w_lock().await })())
     }
 
     async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
