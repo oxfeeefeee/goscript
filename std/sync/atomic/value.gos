@@ -1,0 +1,14 @@
+package atomic
+
+// Load and Store are innately atomic in Goscript
+type Value struct {
+    val interface{}
+}
+
+func (v *Value) Load() interface{} {
+    return v.val
+}
+
+func (v *Value) Store(val interface{}) {
+    v.val = val
+}

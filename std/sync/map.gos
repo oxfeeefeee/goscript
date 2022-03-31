@@ -1,6 +1,6 @@
 package sync
 
-// map operations in goscript are atomic
+// Map operations in Goscript are innately atomic
 
 type Map struct {
     data map[interface{}]interface{}

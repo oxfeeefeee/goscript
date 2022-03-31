@@ -1,10 +1,8 @@
 package sync
 
-// todo: a more sophisticated version
-
-
 type Pool struct {
     shared []interface{}
+    lock RWMutex
     // New optionally specifies a function to generate
 	// a value when Get would otherwise return nil.
 	// It may not be changed concurrently with calls to Get.
@@ -12,11 +10,15 @@ type Pool struct {
 }
 
 func (p *Pool) Put(x interface{}) {
+    p.lock.Lock()
     p.shared = append(p.shared, x)
+    p.lock.Unlock()
 }
 
 
 func (p *Pool) Get() interface{} {
+    p.lock.RLock()
+    defer p.lock.RUnlock()
     l := len(p.shared)
     var x interface{}
     if l > 0 {
