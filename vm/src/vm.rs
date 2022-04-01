@@ -554,7 +554,8 @@ impl<'a> Fiber<'a> {
                         match inst.t0() {
                             ValueType::Interface => {
                                 let iface = ifaces[mapping as usize].clone();
-                                let under = stack.get_with_type(target_index, inst.t1());
+                                let under =
+                                    stack.copy_semantic_with_type(target_index, inst.t1(), gcv);
                                 let val = match &objs.metas[iface.0.as_non_ptr()] {
                                     MetadataType::Named(_, md) => GosValue::Named(Box::new((
                                         GosValue::new_iface(

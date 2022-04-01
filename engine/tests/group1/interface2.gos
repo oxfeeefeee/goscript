@@ -1,5 +1,6 @@
 package main
 
+import "fmt2"
 
 type geometry interface {
     area() float64
@@ -18,7 +19,7 @@ func (r rect) area() float64 {
     return r.width * r.height
 }
 
-func main() {
+func test1() {
 
     //a := geometry(nil)
     var b geometry = (geometry)(nil)
@@ -28,4 +29,35 @@ func main() {
     var r *rect
     b = r
     assert(b != nil)
+}
+
+
+////////////////////////////////////
+
+type I interface {
+	printVal()
+}
+
+type S struct {
+	i int
+}
+
+func (s S) printVal() {
+    assert(s.i == 0)
+	fmt2.Println(s.i)
+}
+
+func test2() {
+	var i I
+
+	var s S
+	i = s
+	s.i = 9
+	i.printVal()
+}
+
+
+func main() {
+    test1()
+    test2()
 }

@@ -342,6 +342,15 @@ impl Stack {
     }
 
     #[inline]
+    pub fn copy_semantic_with_type(&self, index: usize, t: ValueType, gcv: &GcoVec) -> GosValue {
+        if t.copyable() {
+            self.get_c(index).v128(t)
+        } else {
+            self.get_rc(index).copy_semantic(gcv)
+        }
+    }
+
+    #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) -> ValueType {
         let (v, t) = GosValue64::from_v128(&val);
         if t != ValueType::Nil {

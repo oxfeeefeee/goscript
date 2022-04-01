@@ -164,7 +164,7 @@ func testSet() {
     assert(v.Index(1).Int() == 888)
 
     bv0.SetString("kkk")
-    assert(bbb.A == "kkk")
+    assert(bbb.A == "")
     
     {
         b := new([]byte)
