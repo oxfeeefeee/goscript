@@ -1403,7 +1403,7 @@ impl<'a> Fiber<'a> {
                         stack.push(val);
                     }
                     Opcode::LEN => {
-                        let l = match &stack.pop_with_type(inst.t0()) {
+                        let l = match &stack.pop_with_type(inst.t0()).unwrap_named_ref() {
                             GosValue::Slice(slice) => slice.0.len(),
                             GosValue::Map(map) => map.0.len(),
                             GosValue::Str(sval) => sval.len(),
@@ -1413,7 +1413,7 @@ impl<'a> Fiber<'a> {
                         stack.push(GosValue::Int(l as isize));
                     }
                     Opcode::CAP => {
-                        let l = match &stack.pop_with_type(inst.t0()) {
+                        let l = match &stack.pop_with_type(inst.t0()).unwrap_named_ref() {
                             GosValue::Slice(slice) => slice.0.cap(),
                             GosValue::Channel(chan) => chan.cap(),
                             _ => unreachable!(),
@@ -1422,7 +1422,8 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::APPEND => {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
-                        let a = stack.get_with_type(index, ValueType::Slice);
+                        let a = stack.get_with_type(index, inst.t0());
+                        let a = a.unwrap_named();
                         let vala = a.as_slice();
                         match inst.t2() {
                             ValueType::FlagA => unreachable!(),
@@ -1457,7 +1458,8 @@ impl<'a> Fiber<'a> {
                             _ => ValueType::Slice,
                         };
                         let index = Stack::offset(stack.len(), -2);
-                        let a = stack.get_with_type(index, ValueType::Slice);
+                        let a = stack.get_with_type(index, inst.t0());
+                        let a = a.unwrap_named();
                         let b = stack.pop_with_type(t2);
                         let vala = a.as_slice();
                         let count = if t2 == ValueType::Str {
@@ -1476,10 +1478,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::DELETE => {
                         let key = &stack.pop_with_type(inst.t1());
-                        let mut map = &stack.pop_with_type(inst.t0());
-                        if inst.t0() == ValueType::Named {
-                            map = &map.as_named().0;
-                        }
+                        let map = &stack.pop_with_type(inst.t0()).unwrap_named();
                         map.as_map().0.delete(key);
                     }
                     Opcode::CLOSE => {
