@@ -130,12 +130,12 @@ impl<'a> EntryGen<'a> {
         pkg_pairs.patch_index(self.ast_objs, &mut self.objects);
         call_helper.patch_call(&mut self.objects);
         branch_helper.patch_go_tos(&mut self.objects.functions);
-        ByteCode {
-            objects: self.objects,
-            packages: self.packages,
-            ifaces: self.iface_mapping.into_result(),
-            entry: entry,
-        }
+        ByteCode::new(
+            self.objects,
+            self.packages,
+            self.iface_mapping.result(),
+            entry,
+        )
     }
 }
 

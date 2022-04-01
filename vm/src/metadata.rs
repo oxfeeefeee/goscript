@@ -1,6 +1,6 @@
 use super::gc::GcoVec;
 use super::instruction::{OpIndex, ValueType};
-use super::objects::{FunctionKey, MetadataKey, MetadataObjs, StructObj, VMObjects};
+use super::objects::{FunctionKey, IfaceBinding, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -243,7 +243,6 @@ impl GosMetadata {
         }
     }
 
-    // todo: change name
     #[inline]
     pub fn as_non_ptr(&self) -> MetadataKey {
         match self {
@@ -252,7 +251,6 @@ impl GosMetadata {
         }
     }
 
-    // todo: change name
     #[inline]
     pub fn unwrap_non_ptr(&self) -> (MetadataKey, MetaCategory) {
         match self {
@@ -464,6 +462,40 @@ impl GosMetadata {
         }
     }
 
+    /// Depth-first search for method by name
+    pub fn get_iface_binding(&self, name: &String, metas: &MetadataObjs) -> Option<IfaceBinding> {
+        let (mkey, _) = self.unwrap_non_ptr_or_prt1();
+        match &metas[mkey] {
+            MetadataType::Named(m, underlying) => match m.mapping.get(name) {
+                Some(&i) => Some(IfaceBinding::Struct(m.members[i as usize].clone(), None)),
+                None => underlying.get_iface_binding(name, metas),
+            },
+            MetadataType::Interface(fields) => fields
+                .mapping
+                .get(name)
+                .map(|x| IfaceBinding::Iface(*x, None)),
+            MetadataType::Struct(fields, _) => {
+                for (i, f) in fields.fields.iter().enumerate() {
+                    if let Some(mut re) = f.0.get_iface_binding(name, metas) {
+                        let indices = match &mut re {
+                            IfaceBinding::Struct(_, indices) | IfaceBinding::Iface(_, indices) => {
+                                indices
+                            }
+                        };
+                        if let Some(x) = indices {
+                            x.push(i)
+                        } else {
+                            *indices = Some(vec![i]);
+                        }
+                        return Some(re);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
     #[inline]
     pub fn get_method(&self, index: OpIndex, metas: &MetadataObjs) -> Rc<RefCell<MethodDesc>> {
         let k = self.recv_meta_key();
@@ -533,20 +565,6 @@ impl Fields {
             fields: fields,
             mapping: mapping,
         }
-    }
-
-    #[inline]
-    pub fn iface_named_mapping(&self, named_obj: &Methods) -> Vec<Rc<RefCell<MethodDesc>>> {
-        let default = Rc::new(RefCell::new(MethodDesc {
-            pointer_recv: false,
-            func: None,
-        }));
-        let mut result = vec![default; self.fields.len()];
-        for (n, i) in self.mapping.iter() {
-            let f = &named_obj.members[named_obj.mapping[n] as usize];
-            result[*i as usize] = f.clone();
-        }
-        result
     }
 
     #[inline]

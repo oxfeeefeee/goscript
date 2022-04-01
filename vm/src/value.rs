@@ -391,16 +391,13 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(
-        fkey: FunctionKey,
-        fobjs: &FunctionObjs, /*, gcobjs: &mut GcoVec todo! */
-    ) -> GosValue {
+    pub fn new_static_closure(fkey: FunctionKey, fobjs: &FunctionObjs) -> GosValue {
         let val = ClosureObj::new_gos(fkey, fobjs, None);
         GosValue::Closure(Rc::new((RefCell::new(val), Cell::new(0))))
     }
 
     #[inline]
-    pub fn new_runtime_closure(clsobj: ClosureObj, gcobjs: &GcoVec) -> GosValue {
+    pub fn new_closure(clsobj: ClosureObj, gcobjs: &GcoVec) -> GosValue {
         let v = GosValue::Closure(Rc::new((RefCell::new(clsobj), Cell::new(0))));
         gcobjs.add(&v);
         v

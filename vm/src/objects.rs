@@ -604,7 +604,7 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    fn borrow_all_data_mut(&self) -> std::cell::RefMut<GosVec> {
+    pub fn borrow_all_data_mut(&self) -> std::cell::RefMut<GosVec> {
         self.vec.as_ref().unwrap().borrow_mut()
     }
 
@@ -705,6 +705,16 @@ impl StructObj {
             .0
             .is_exported(index)
     }
+
+    pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
+        let mut cur_val: GosValue = struct_;
+        for &i in indices.iter() {
+            let s = &cur_val.unwrap_named_ref().as_struct().0;
+            let v = s.borrow().fields[i].clone();
+            cur_val = v;
+        }
+        cur_val
+    }
 }
 
 impl Eq for StructObj {}
@@ -761,11 +771,86 @@ impl UnderlyingFfi {
     }
 }
 
+/// Info about how to invoke a method of the underlying value
+/// of an interface
+#[derive(Clone, Debug)]
+pub enum IfaceBinding {
+    Struct(Rc<RefCell<MethodDesc>>, Option<Vec<usize>>),
+    Iface(usize, Option<Vec<usize>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum Binding4Runtime {
+    Struct(FunctionKey, Option<Vec<usize>>),
+    Iface(usize, Option<Vec<usize>>),
+}
+
+impl From<IfaceBinding> for Binding4Runtime {
+    fn from(item: IfaceBinding) -> Binding4Runtime {
+        match item {
+            IfaceBinding::Struct(f, indices) => {
+                Binding4Runtime::Struct(f.borrow().func.unwrap(), indices)
+            }
+            IfaceBinding::Iface(a, b) => Binding4Runtime::Iface(a, b),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum IfaceUnderlying {
     None,
-    Gos(GosValue, Option<Rc<Vec<FunctionKey>>>),
+    Gos(GosValue, Option<Vec<Binding4Runtime>>),
     Ffi(UnderlyingFfi),
+}
+
+impl IfaceUnderlying {
+    pub fn bind_method(
+        &self,
+        index: usize,
+        funcs: &FunctionObjs,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<GosValue> {
+        match self {
+            IfaceUnderlying::Gos(obj, b) => {
+                let binding = &b.as_ref().unwrap()[index];
+                match binding {
+                    Binding4Runtime::Struct(func, indices) => {
+                        let obj = match indices {
+                            None => obj.copy_semantic(gcv),
+                            Some(inds) => {
+                                StructObj::get_embeded(obj.clone(), inds).copy_semantic(gcv)
+                            }
+                        };
+                        let cls = ClosureObj::new_gos(*func, &funcs, Some(obj));
+                        Ok(GosValue::new_closure(cls, gcv))
+                    }
+                    Binding4Runtime::Iface(i, indices) => {
+                        let bind = |obj: &GosValue| {
+                            obj.unwrap_named_ref()
+                                .as_interface()
+                                .borrow()
+                                .underlying
+                                .bind_method(*i, funcs, gcv)
+                        };
+                        match indices {
+                            None => bind(obj),
+                            Some(inds) => bind(&StructObj::get_embeded(obj.clone(), inds)),
+                        }
+                    }
+                }
+            }
+            IfaceUnderlying::Ffi(ffi) => {
+                let (name, meta) = ffi.methods[index].clone();
+                let cls = FfiClosureObj {
+                    ffi: ffi.ffi_obj.clone(),
+                    func_name: name,
+                    meta: meta,
+                };
+                Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcv))
+            }
+            IfaceUnderlying::None => Err("access nil interface".to_owned()),
+        }
+    }
 }
 
 impl Eq for IfaceUnderlying {}

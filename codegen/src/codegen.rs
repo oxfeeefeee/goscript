@@ -58,6 +58,14 @@ macro_rules! def_ident_unique_key {
     };
 }
 
+#[allow(unused_macros)]
+macro_rules! dbg_tc {
+    ($obj:expr, $self_:expr) => {
+        let d = goscript_types::Displayer::new($obj, Some($self_.ast_objs), Some($self_.tc_objs));
+        println!("{}", d);
+    };
+}
+
 enum ReceiverPreprocess {
     Default,
     Ref,   // take ref of receiver before binding method
@@ -1301,7 +1309,7 @@ impl<'a> CodeGen<'a> {
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
             String::new(),
-            GosValue::new_closure(fkey, &self.objects.functions),
+            GosValue::new_static_closure(fkey, &self.objects.functions),
         );
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
@@ -1850,7 +1858,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let tc_type = self.t.get_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
-        let cls = GosValue::new_closure(fkey, &self.objects.functions);
+        let cls = GosValue::new_static_closure(fkey, &self.objects.functions);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];

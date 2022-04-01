@@ -83,8 +83,31 @@ fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> GosValue {
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
-    pub ifaces: Vec<(GosMetadata, Option<Rc<Vec<FunctionKey>>>)>,
+    pub ifaces: Vec<(GosMetadata, Option<Vec<Binding4Runtime>>)>,
     pub entry: FunctionKey,
+}
+
+impl ByteCode {
+    pub fn new(
+        objects: Pin<Box<VMObjects>>,
+        packages: Vec<PackageKey>,
+        ifaces: Vec<(GosMetadata, Option<Vec<IfaceBinding>>)>,
+        entry: FunctionKey,
+    ) -> ByteCode {
+        let ifaces = ifaces
+            .into_iter()
+            .map(|(meta, binding)| {
+                let binding = binding.map(|v| v.into_iter().map(|x| x.into()).collect());
+                (meta, binding)
+            })
+            .collect();
+        ByteCode {
+            objects: objects,
+            packages: packages,
+            ifaces: ifaces,
+            entry: entry,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -234,7 +257,7 @@ impl<'a> Context<'a> {
     }
 
     fn new_entry_frame(&self, entry: FunctionKey) -> CallFrame {
-        let cls = GosValue::new_closure(entry, &self.code.objects.functions);
+        let cls = GosValue::new_static_closure(entry, &self.code.objects.functions);
         CallFrame::with_closure(cls.as_closure().clone(), 0)
     }
 
@@ -435,36 +458,17 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::BIND_INTERFACE_METHOD => {
                         let val = stack.pop_with_type(inst.t0()).unwrap_named();
+                        let index = inst.imm() as usize;
                         let borrowed = val.as_interface().borrow();
-                        let cls = match borrowed.underlying() {
-                            IfaceUnderlying::Gos(val, funcs) => {
-                                let func = funcs.as_ref().unwrap()[inst.imm() as usize];
-                                let cls = ClosureObj::new_gos(
-                                    func,
-                                    &objs.functions,
-                                    Some(val.copy_semantic(gcv)),
-                                );
-                                GosValue::Closure(Rc::new((RefCell::new(cls), Cell::new(0))))
+                        match borrowed
+                            .underlying()
+                            .bind_method(index, &objs.functions, gcv)
+                        {
+                            Ok(cls) => stack.push(cls),
+                            Err(e) => {
+                                go_panic_str!(panic, metadata, e, frame, code);
                             }
-                            IfaceUnderlying::Ffi(ffi) => {
-                                let (name, meta) = ffi.methods[inst.imm() as usize].clone();
-                                let cls = FfiClosureObj {
-                                    ffi: ffi.ffi_obj.clone(),
-                                    func_name: name,
-                                    meta: meta,
-                                };
-                                GosValue::Closure(Rc::new((
-                                    RefCell::new(ClosureObj::new_ffi(cls)),
-                                    Cell::new(0),
-                                )))
-                            }
-                            IfaceUnderlying::None => {
-                                let msg = "access nil interface".to_owned();
-                                go_panic_str!(panic, metadata, msg, frame, code);
-                                continue;
-                            }
-                        };
-                        stack.push(cls);
+                        }
                     }
                     Opcode::STORE_FIELD => {
                         let (rhs_index, _) = inst.imm824();
@@ -1209,7 +1213,7 @@ impl<'a> Fiber<'a> {
                                     }
                                     frame = self.frames.last_mut().unwrap();
                                 }
-                                GosValue::new_runtime_closure(val, gcv)
+                                GosValue::new_closure(val, gcv)
                             }
                             GosValue::Metadata(md) => {
                                 let is_named = inst.t1() == ValueType::Named;
