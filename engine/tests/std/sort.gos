@@ -1,0 +1,41 @@
+package main
+
+import (
+	"sort"
+    "fmt2"
+)
+
+
+func main() {
+    family := []struct {
+        Name string
+        Age  int
+    }{
+        {"Alice", 23},
+        {"David", 2},
+        {"Eve", 2},
+        {"Bob", 25},
+    }
+
+    // Sort by age, keeping original order or equal elements.
+    sort.SliceStable(family, func(i, j int) bool {
+        return family[i].Age < family[j].Age
+    })
+    assert(family[1].Name == "Eve")
+    assert(family[3].Name == "Bob")
+    fmt2.Println(family)
+
+    sort.Slice(family, func(i, j int) bool {
+        return family[i].Name < family[j].Name
+    })
+    assert(family[0].Name == "Alice")
+    assert(family[3].Name == "Eve")
+    fmt2.Println(family)
+
+    t := []string{"a", "b", "c","z", "y", "x"}
+    sort.Strings(t)
+    assert(t[0] == "a")
+    assert(t[len(t)-1] == "z")
+    fmt2.Println(t)
+    
+}

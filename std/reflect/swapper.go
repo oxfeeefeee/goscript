@@ -9,5 +9,7 @@ package reflect
 //
 // Swapper panics if the provided interface is not a slice.
 func Swapper(slice interface{}) func(i, j int) {
-	panic("not implemented")
+	return func(i, j int) {
+		native.swap(slice, i, j)
+	}
 }

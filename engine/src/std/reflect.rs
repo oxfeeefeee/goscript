@@ -223,6 +223,24 @@ impl Reflect {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_pointer(ctx, val)
     }
+
+    fn ffi_swap(&self, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let mut iter = args.into_iter();
+        let arg0 = iter.next();
+        let arg1 = iter.next();
+        let arg2 = iter.next();
+        let iface = arg0.as_ref().unwrap().as_interface().borrow();
+        let mut vec = iface
+            .underlying_value()
+            .unwrap()
+            .as_slice()
+            .0
+            .borrow_all_data_mut();
+        let a = arg1.as_ref().unwrap().as_int();
+        let b = arg2.as_ref().unwrap().as_int();
+        vec.swap(*a as usize, *b as usize);
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug)]

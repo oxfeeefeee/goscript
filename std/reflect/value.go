@@ -46,6 +46,8 @@ type ffiReflect interface {
 	set_uint(p unsafe.Pointer, x uint64)
 	set_pointer(p unsafe.Pointer, x unsafe.Pointer)
 	set_string(p unsafe.Pointer, x string)
+
+	swap(slice interface{}, i int, j int)
 }
 
 // Value is the reflection interface to a Go value.

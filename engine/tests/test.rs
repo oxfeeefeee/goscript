@@ -331,6 +331,14 @@ fn test_std_time() {
 }
 
 #[test]
+fn test_std_sort() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/sort.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 
