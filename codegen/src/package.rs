@@ -34,10 +34,6 @@ impl PkgVarPairs {
         self.data.append(&mut other.data);
     }
 
-    pub fn append_from_util(&mut self, util: &mut PkgHelper) {
-        self.append(&mut util.pairs)
-    }
-
     /// patch_index sets correct var index of packages to the placeholder of
     /// previously generated code
     pub fn patch_index(&self, ast_objs: &AstObjects, vmo: &mut VMObjects) {
@@ -62,7 +58,7 @@ pub struct PkgHelper<'a> {
     ast_objs: &'a AstObjects,
     pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
     pkgs: &'a Vec<PackageKey>,
-    pairs: PkgVarPairs,
+    pairs: &'a mut PkgVarPairs,
 }
 
 impl<'a> PkgHelper<'a> {
@@ -71,13 +67,14 @@ impl<'a> PkgHelper<'a> {
         tc_objs: &'a TCObjects,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
+        pkg_pairs: &'a mut PkgVarPairs,
     ) -> PkgHelper<'a> {
         PkgHelper {
             tc_objs: tc_objs,
             ast_objs: ast_objs,
             pkg_indices: pkg_indices,
             pkgs: pkgs,
-            pairs: PkgVarPairs::new(),
+            pairs: pkg_pairs,
         }
     }
 
@@ -96,7 +93,7 @@ impl<'a> PkgHelper<'a> {
         }
     }
 
-    pub fn get_vm_pkg(&self, tcpkg: TCPackageKey) -> PackageKey {
+    pub fn get_vm_pkg_key(&self, tcpkg: TCPackageKey) -> PackageKey {
         let index = self.pkg_indices[&tcpkg];
         self.pkgs[index as usize]
     }

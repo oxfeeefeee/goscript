@@ -1,5 +1,4 @@
 use slotmap::KeyData;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
@@ -82,7 +81,7 @@ pub struct CodeGen<'a> {
     iface_mapping: &'a mut IfaceMapping,
     call_helper: &'a mut CallHelper,
     branch_helper: &'a mut BranchHelper,
-    pkg_helper: PkgHelper<'a>,
+    pkg_helper: &'a mut PkgHelper<'a>,
 
     pkg_key: PackageKey,
     func_stack: Vec<FunctionKey>,
@@ -101,8 +100,7 @@ impl<'a> CodeGen<'a> {
         mapping: &'a mut IfaceMapping,
         call_helper: &'a mut CallHelper,
         branch_helper: &'a mut BranchHelper,
-        pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
-        pkgs: &'a Vec<PackageKey>,
+        pkg_helper: &'a mut PkgHelper<'a>,
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
@@ -116,7 +114,7 @@ impl<'a> CodeGen<'a> {
             iface_mapping: mapping,
             call_helper: call_helper,
             branch_helper: branch_helper,
-            pkg_helper: PkgHelper::new(asto, tco, pkg_indices, pkgs),
+            pkg_helper: pkg_helper,
             pkg_key: pkg,
             func_stack: Vec::new(),
             func_t_stack: Vec::new(),
@@ -302,8 +300,7 @@ impl<'a> CodeGen<'a> {
                         let pos = self.ast_objs.idents[sexpr.sel].pos;
                         match self.t.try_get_pkg_key(&sexpr.expr) {
                             Some(key) => {
-                                let pkg = self.pkg_helper.get_vm_pkg(key);
-                                //let t = self.t.get_use_value_type(sexpr.sel);
+                                let pkg = self.pkg_helper.get_vm_pkg_key(key);
                                 (
                                     // the true index will be calculated later
                                     LeftHandSide::Primitive(EntIndex::PackageMember(
@@ -1390,7 +1387,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
         let pos = Some(expr.pos(&self.ast_objs));
         if let Some(key) = self.t.try_get_pkg_key(expr) {
-            let pkg = self.pkg_helper.get_vm_pkg(key);
+            let pkg = self.pkg_helper.get_vm_pkg_key(key);
             let t = self.t.get_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
@@ -1642,7 +1639,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 }
                 Expr::Selector(sexpr) => match self.t.try_get_pkg_key(&sexpr.expr) {
                     Some(key) => {
-                        let pkey = self.pkg_helper.get_vm_pkg(key);
+                        let pkey = self.pkg_helper.get_vm_pkg_key(key);
                         let func = current_func_mut!(self);
                         func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
                         func.emit_raw_inst(key_to_u64(pkey), pos);

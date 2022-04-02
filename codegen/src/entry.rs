@@ -4,7 +4,7 @@ use super::call::CallHelper;
 use super::codegen::CodeGen;
 use super::emit::{CallStyle, Emitter};
 use super::interface::IfaceMapping;
-use super::package::PkgVarPairs;
+use super::package::{PkgHelper, PkgVarPairs};
 use super::types::TypeCache;
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
@@ -102,6 +102,13 @@ impl<'a> EntryGen<'a> {
         let mut call_helper = CallHelper::new();
         let mut branch_helper = BranchHelper::new();
         for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
+            let mut pkg_helper = PkgHelper::new(
+                self.ast_objs,
+                self.tc_objs,
+                &self.pkg_indices,
+                &self.packages,
+                &mut pkg_pairs,
+            );
             let mut cgen = CodeGen::new(
                 &mut self.objects,
                 self.ast_objs,
@@ -112,13 +119,11 @@ impl<'a> EntryGen<'a> {
                 &mut self.iface_mapping,
                 &mut call_helper,
                 &mut branch_helper,
-                &self.pkg_indices,
-                &self.packages,
+                &mut pkg_helper,
                 self.packages[i],
                 self.blank_ident,
             );
             cgen.gen_with_files(&ti.ast_files, *tcpkg, i as OpIndex);
-            pkg_pairs.append_from_util(cgen.pkg_helper());
         }
         let index = main_pkg_idx.unwrap();
         let entry = self.gen_entry_func(
