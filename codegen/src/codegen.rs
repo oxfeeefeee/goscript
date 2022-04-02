@@ -151,7 +151,8 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        let entity_key = use_ident_unique_key!(self, *ident);
+        let okey = self.t.get_use_object(*ident);
+        let entity_key: KeyData = okey.into();
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
             return index;
@@ -181,7 +182,7 @@ impl<'a> CodeGen<'a> {
             return index;
         }
         // 3. must be package member
-        EntIndex::PackageMember(self.pkg_key, (*ident).into())
+        self.pkg_helper.get_member_index(okey, *ident)
     }
 
     fn add_local_or_resolve_ident(
@@ -300,7 +301,7 @@ impl<'a> CodeGen<'a> {
                         let pos = self.ast_objs.idents[sexpr.sel].pos;
                         match self.t.try_get_pkg_key(&sexpr.expr) {
                             Some(key) => {
-                                let pkg = self.pkg_helper.get_vm_pkg_key(key);
+                                let pkg = self.pkg_helper.get_runtime_key(key);
                                 (
                                     // the true index will be calculated later
                                     LeftHandSide::Primitive(EntIndex::PackageMember(
@@ -1387,7 +1388,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
         let pos = Some(expr.pos(&self.ast_objs));
         if let Some(key) = self.t.try_get_pkg_key(expr) {
-            let pkg = self.pkg_helper.get_vm_pkg_key(key);
+            let pkg = self.pkg_helper.get_runtime_key(key);
             let t = self.t.get_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
@@ -1639,7 +1640,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 }
                 Expr::Selector(sexpr) => match self.t.try_get_pkg_key(&sexpr.expr) {
                     Some(key) => {
-                        let pkey = self.pkg_helper.get_vm_pkg_key(key);
+                        let pkey = self.pkg_helper.get_runtime_key(key);
                         let func = current_func_mut!(self);
                         func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
                         func.emit_raw_inst(key_to_u64(pkey), pos);

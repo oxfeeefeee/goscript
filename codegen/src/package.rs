@@ -3,7 +3,7 @@ use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
-use goscript_types::{PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
 use goscript_vm::instruction::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
@@ -93,9 +93,14 @@ impl<'a> PkgHelper<'a> {
         }
     }
 
-    pub fn get_vm_pkg_key(&self, tcpkg: TCPackageKey) -> PackageKey {
+    pub fn get_runtime_key(&self, tcpkg: TCPackageKey) -> PackageKey {
         let index = self.pkg_indices[&tcpkg];
         self.pkgs[index as usize]
+    }
+
+    pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> EntIndex {
+        let pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
+        EntIndex::PackageMember(self.get_runtime_key(pkg), ident.into())
     }
 
     /// recode information so that we can patch_index, when codegen is done

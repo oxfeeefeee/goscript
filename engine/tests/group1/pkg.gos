@@ -1,7 +1,9 @@
 package main
 
 
-//import "math"
+import (
+  . "fmt2"
+)
     
 
 const k = i + 1
@@ -44,7 +46,7 @@ const (
 	Struct
 	UnsafePointer
 )
-/*
+
 var kindNames = []string{
 	Invalid:       "invalid",
 	Bool:          "bool",
@@ -73,25 +75,13 @@ var kindNames = []string{
 	String:        "string",
 	Struct:        "struct",
 	UnsafePointer: "unsafe.Pointer",
-}*/
+}
 
-func main() {
-    /*
-    var pi2 = math.Pi2
-    var pi = math.Pi
-    _ = pi
-    _ = pi2
-    assert(k == 8)
-    assert(b == 16)
-    assert(math.Plus4(b + math.V2 + math.C2) == 24)
-    math.V2 += 2
-    assert(math.Plus4(b + math.V2 + math.C2) == 28)
-    */
-
+func test1() {
     _, j := fa()
     assert(j == 7)
 
-    //assert(kindNames[2] == "int")
+    assert(kindNames[2] == "int")
 }
 
 func fa () (int, int) {
@@ -101,4 +91,13 @@ func fa () (int, int) {
 
 func fb() int {
 	return 8
+}
+
+func test2() {
+	Println("Hello, World!")
+}
+
+func main() {
+	test1()
+	test2()
 }
