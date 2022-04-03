@@ -16,7 +16,7 @@ mod returns;
 mod stmt;
 mod typexpr;
 
-pub use check::Checker;
 pub use check::TypeInfo;
+pub use check::{Checker, FilesContext};
 pub use interface::{IfaceInfo, MethodInfo};
 pub use resolver::DeclInfo;

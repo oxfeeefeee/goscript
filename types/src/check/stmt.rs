@@ -363,7 +363,7 @@ impl<'a> Checker<'a> {
                 let pos = e.pos(self.ast_objs);
                 seen.insert(t, pos);
                 if let Some(t) = t {
-                    self.type_assertion(Some(pos), x, xtype, t);
+                    self.type_assertion(Some(pos), x, xtype, t, fctx);
                 }
                 Some(t)
             })

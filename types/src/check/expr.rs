@@ -488,11 +488,13 @@ impl<'a> Checker<'a> {
     ) {
         // spec: "In any comparison, the first operand must be assignable
         // to the type of the second operand, or vice versa."
+        let (xtype, ytype) = (x.typ.unwrap(), y.typ.unwrap());
+        let assignable =
+            x.assignable_to(ytype, None, self, fctx) || y.assignable_to(xtype, None, self, fctx);
         let o = &self.tc_objs;
         let u = o.universe();
-        let (xtype, ytype) = (x.typ.unwrap(), y.typ.unwrap());
-        let (xtval, ytval) = (self.otype(xtype), self.otype(ytype));
-        let emsg = if x.assignable_to(ytype, None, o) || y.assignable_to(xtype, None, o) {
+        let emsg = if assignable {
+            let (xtval, ytval) = (self.otype(xtype), self.otype(ytype));
             let defined = match op {
                 Token::EQL | Token::NEQ => {
                     (xtval.comparable(o) && ytval.comparable(o))
@@ -1483,7 +1485,7 @@ impl<'a> Checker<'a> {
                 if t == self.invalid_type() {
                     return on_err(x);
                 }
-                self.type_assertion(None, x, xtype, t);
+                self.type_assertion(None, x, xtype, t, fctx);
                 x.mode = OperandMode::CommaOk;
                 x.typ = Some(t)
             }
@@ -1553,8 +1555,15 @@ impl<'a> Checker<'a> {
     }
 
     /// type_assertion checks that x.(T) is legal; xtyp must be the type of x.
-    pub fn type_assertion(&self, pos: Option<Pos>, x: &mut Operand, xtype: TypeKey, t: TypeKey) {
-        if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self.tc_objs) {
+    pub fn type_assertion(
+        &mut self,
+        pos: Option<Pos>,
+        x: &mut Operand,
+        xtype: TypeKey,
+        t: TypeKey,
+        fctx: &mut FilesContext,
+    ) {
+        if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self, fctx) {
             let dx = self.new_dis(x);
             self.error(
                 pos.unwrap_or_else(|| dx.pos()),

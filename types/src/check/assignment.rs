@@ -71,7 +71,7 @@ impl<'a> Checker<'a> {
         }
 
         let mut reason = String::new();
-        if !x.assignable_to(t.unwrap(), Some(&mut reason), self.tc_objs) {
+        if !x.assignable_to(t.unwrap(), Some(&mut reason), self, fctx) {
             let xd = self.new_dis(x);
             let td = self.new_dis(t.as_ref().unwrap());
             if reason.is_empty() {

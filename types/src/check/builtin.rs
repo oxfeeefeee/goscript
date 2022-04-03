@@ -148,11 +148,7 @@ impl<'a> Checker<'a> {
                 // This form appends the bytes of the string.
                 if nargs == 2
                     && call.ellipsis.is_some()
-                    && x.assignable_to(
-                        *self.tc_objs.universe().slice_of_bytes(),
-                        None,
-                        self.tc_objs,
-                    )
+                    && x.assignable_to(*self.tc_objs.universe().slice_of_bytes(), None, self, fctx)
                 {
                     unpack_result.as_ref().unwrap().get(self, x, 1, fctx);
                     if x.invalid() {
@@ -447,7 +443,7 @@ impl<'a> Checker<'a> {
                         if x.invalid() {
                             return false;
                         }
-                        if !x.assignable_to(key, None, self.tc_objs) {
+                        if !x.assignable_to(key, None, self, fctx) {
                             let xd = self.new_dis(x);
                             let td = self.new_dis(&key);
                             self.invalid_arg(

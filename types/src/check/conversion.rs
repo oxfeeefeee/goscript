@@ -37,7 +37,7 @@ impl<'a> Checker<'a> {
             } else {
                 false
             }
-        } else if self.convertable_to(x, t) {
+        } else if self.convertable_to(x, t, fctx) {
             // non-constant conversion
             x.mode = OperandMode::Value;
             true
@@ -63,6 +63,7 @@ impl<'a> Checker<'a> {
             //   not []byte as type for the constant "foo").
             // - Keep untyped nil for untyped nil arguments.
             // - For integer to string conversions, keep the argument type.
+            let o = &self.tc_objs;
             let final_t = if typ::is_interface(t, o) || const_arg && !typ::is_const_type(t, o) {
                 typ::untyped_default_type(xtype, o)
             } else if typ::is_integer(xtype, o) && typ::is_string(t, o) {
@@ -79,13 +80,13 @@ impl<'a> Checker<'a> {
     // convertible_to returns if x is convertable to t.
     // The check parameter may be nil if convertibleTo is invoked through an
     // exported API call, i.e., when all methods have been type-checked.
-    pub fn convertable_to(&self, x: &Operand, t: TypeKey) -> bool {
-        let o = &self.tc_objs;
+    pub fn convertable_to(&mut self, x: &Operand, t: TypeKey, fctx: &mut FilesContext) -> bool {
         // "x is assignable to t"
-        if x.assignable_to(t, None, o) {
+        if x.assignable_to(t, None, self, fctx) {
             return true;
         }
 
+        let o = &self.tc_objs;
         // "x's type and t have identical underlying types if tags are ignored"
         let v = x.typ.unwrap();
         let vu = typ::underlying_type(v, o);

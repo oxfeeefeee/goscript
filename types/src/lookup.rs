@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::check::{Checker, FilesContext};
 use super::obj;
 use super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::selection::*;
@@ -237,7 +238,13 @@ pub fn lookup_field_or_method(
 
 /// assertable_to reports whether a value of type iface can be asserted to have type t.
 /// It returns None as affirmative answer. See docs for missing_method for more info
-pub fn assertable_to(iface: TypeKey, t: TypeKey, objs: &TCObjects) -> Option<(ObjKey, bool)> {
+pub fn assertable_to(
+    iface: TypeKey,
+    t: TypeKey,
+    checker: &mut Checker,
+    fctx: &mut FilesContext,
+) -> Option<(ObjKey, bool)> {
+    let objs = &checker.tc_objs;
     // no static check is required if T is an interface
     // spec: "If T is an interface type, x.(T) asserts that the
     //        dynamic type of x implements the interface T."
@@ -245,7 +252,7 @@ pub fn assertable_to(iface: TypeKey, t: TypeKey, objs: &TCObjects) -> Option<(Ob
     if !strict && objs.types[t].is_interface(objs) {
         return None;
     }
-    missing_method(t, iface, false, objs)
+    missing_method(t, iface, false, checker, fctx)
 }
 
 /// try_deref dereferences t if it is a *Pointer and returns its base.
@@ -321,8 +328,10 @@ pub fn missing_method(
     t: TypeKey,
     intf: TypeKey,
     static_: bool,
-    objs: &TCObjects,
+    checker: &mut Checker,
+    fctx: &mut FilesContext,
 ) -> Option<(ObjKey, bool)> {
+    let objs = &checker.tc_objs;
     let ival = &objs.types[intf].try_as_interface().unwrap();
     if ival.is_empty() {
         return None;
@@ -346,19 +355,35 @@ pub fn missing_method(
         }
         return None;
     }
+
     // A concrete type implements 'intf' if it implements all methods of 'intf'.
-    for fkey in ival.all_methods().as_ref().unwrap().iter() {
-        let fval = &objs.lobjs[*fkey];
-        match lookup_field_or_method(t, false, fval.pkg(), fval.name(), objs) {
+    let all_methods: Vec<ObjKey> = ival
+        .all_methods()
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|x| *x)
+        .collect();
+
+    for fkey in all_methods {
+        let fval = &checker.tc_objs.lobjs[fkey];
+        match lookup_field_or_method(t, false, fval.pkg(), fval.name(), checker.tc_objs) {
             LookupResult::Entry(okey, _, _) => {
-                let result_obj = &objs.lobjs[okey];
-                if !result_obj.entity_type().is_func() {
-                    return Some((*fkey, false));
-                } else if !typ::identical_o(fval.typ(), result_obj.typ(), objs) {
-                    return Some((*fkey, true));
+                if !checker.tc_objs.lobjs[okey].entity_type().is_func() {
+                    return Some((fkey, false));
+                } else {
+                    let x_type = fval.typ();
+
+                    // methods may not have a fully set up signature yet
+                    checker.obj_decl(okey, None, fctx);
+                    let y_type = checker.tc_objs.lobjs[okey].typ();
+
+                    if !typ::identical_o(x_type, y_type, checker.tc_objs) {
+                        return Some((fkey, true));
+                    }
                 }
             }
-            _ => return Some((*fkey, false)),
+            _ => return Some((fkey, false)),
         }
     }
     None

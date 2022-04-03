@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use super::check::{Checker, FilesContext};
 use super::constant;
 use super::lookup::missing_method;
 use super::objects::{TCObjects, TypeKey};
@@ -120,7 +121,14 @@ impl Operand {
     /// assignable_to returns whether self is assignable to a variable of type 't'.
     /// If the result is false and a non-None reason is provided, it may be set
     /// to a more detailed explanation of the failure.
-    pub fn assignable_to(&self, t: TypeKey, reason: Option<&mut String>, objs: &TCObjects) -> bool {
+    pub fn assignable_to(
+        &self,
+        t: TypeKey,
+        reason: Option<&mut String>,
+        checker: &mut Checker,
+        fctx: &mut FilesContext,
+    ) -> bool {
+        let objs = &checker.tc_objs;
         let u = objs.universe();
         if self.invalid() || t == u.types()[&BasicType::Invalid] {
             return true; // avoid spurious errors
@@ -173,15 +181,16 @@ impl Operand {
         }
 
         // 'left' is an interface and 'right' implements 'left'
-        if let Some(_) = ut_left.try_as_interface() {
-            if let Some((m, wrong_type)) = missing_method(k_right, ut_key_left, true, objs) {
+        if ut_left.try_as_interface().is_some() {
+            if let Some((m, wrong_type)) = missing_method(k_right, ut_key_left, true, checker, fctx)
+            {
                 if let Some(re) = reason {
                     let msg = if wrong_type {
                         "wrong type for method"
                     } else {
                         "missing method"
                     };
-                    *re = format!("{} {}", msg, objs.lobjs[m].name());
+                    *re = format!("{} {}", msg, checker.tc_objs.lobjs[m].name());
                 }
                 return false;
             }
