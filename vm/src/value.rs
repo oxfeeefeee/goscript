@@ -258,6 +258,7 @@ pub enum GosValue {
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
     Pointer(Box<PointerObj>),
+    UnsafePtr(Rc<dyn UnsafePtr>),
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
     Slice(Rc<(SliceObj, RCount)>),
     Map(Rc<(MapObj, RCount)>),
@@ -557,6 +558,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn as_unsafe_ptr(&self) -> &Rc<dyn UnsafePtr> {
+        unwrap_gos_val!(UnsafePtr, self)
+    }
+
+    #[inline]
     pub fn as_named(&self) -> &Box<(GosValue, GosMetadata)> {
         unwrap_gos_val!(Named, self)
     }
@@ -666,6 +672,7 @@ impl GosValue {
             GosValue::Str(_) => ValueType::Str,
             GosValue::Array(_) => ValueType::Array,
             GosValue::Pointer(_) => ValueType::Pointer,
+            GosValue::UnsafePtr(_) => ValueType::UnsafePtr,
             GosValue::Closure(_) => ValueType::Closure,
             GosValue::Slice(_) => ValueType::Slice,
             GosValue::Map(_) => ValueType::Map,
@@ -704,7 +711,8 @@ impl GosValue {
             GosValue::Complex128(_) => objs.metadata.mcomplex128,
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.0.meta,
-            GosValue::Pointer(b) => b.point_to_meta(objs, stack).ptr_to(),
+            GosValue::Pointer(p) => p.point_to_meta(objs, stack).ptr_to(),
+            GosValue::UnsafePtr(_) => objs.metadata.unsafe_ptr,
             GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,
@@ -841,6 +849,7 @@ impl GosValue {
         match &self {
             GosValue::Array(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Pointer(obj) => obj.ref_sub_one(),
+            GosValue::UnsafePtr(obj) => obj.ref_sub_one(),
             GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Slice(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
@@ -856,6 +865,7 @@ impl GosValue {
         match &self {
             GosValue::Array(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Pointer(obj) => obj.mark_dirty(queue),
+            GosValue::UnsafePtr(obj) => obj.mark_dirty(queue),
             GosValue::Closure(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Slice(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
@@ -913,6 +923,7 @@ impl Clone for GosValue {
             GosValue::Str(v) => GosValue::Str(v.clone()),
             GosValue::Array(v) => GosValue::Array(v.clone()),
             GosValue::Pointer(v) => GosValue::Pointer(v.clone()),
+            GosValue::UnsafePtr(v) => GosValue::UnsafePtr(v.clone()),
             GosValue::Closure(v) => GosValue::Closure(v.clone()),
             GosValue::Slice(v) => GosValue::Slice(v.clone()),
             GosValue::Map(v) => GosValue::Map(v.clone()),
@@ -956,6 +967,7 @@ impl PartialEq for GosValue {
             (Self::Str(x), Self::Str(y)) => *x == *y,
             (Self::Array(x), Self::Array(y)) => x.0 == y.0,
             (Self::Pointer(x), Self::Pointer(y)) => x == y,
+            (Self::UnsafePtr(x), Self::UnsafePtr(y)) => x.eq(&**y),
             (Self::Closure(x), Self::Closure(y)) => Rc::ptr_eq(x, y),
             (Self::Slice(x), Self::Slice(y)) => Rc::ptr_eq(x, y),
             (Self::Map(x), Self::Map(y)) => Rc::ptr_eq(x, y),
@@ -1018,6 +1030,7 @@ impl Hash for GosValue {
             GosValue::Pointer(p) => {
                 PointerObj::hash(&p, state);
             }
+            GosValue::UnsafePtr(p) => Rc::as_ptr(p).hash(state),
             GosValue::Named(n) => n.0.hash(state),
             _ => unreachable!(),
         }
@@ -1074,6 +1087,7 @@ impl Display for GosValue {
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
             GosValue::Array(a) => write!(f, "{}", a.0),
             GosValue::Pointer(p) => p.fmt(f),
+            GosValue::UnsafePtr(p) => write!(f, "{:p}", Rc::as_ptr(&p)),
             GosValue::Closure(_) => f.write_str("<closure>"),
             GosValue::Slice(s) => write!(f, "{}", s.0),
             GosValue::Map(m) => write!(f, "{}", m.0),

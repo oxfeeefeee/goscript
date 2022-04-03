@@ -570,7 +570,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Complex64 => ValueType::Complex64,
                 BasicType::Complex128 => ValueType::Complex128,
                 BasicType::Str | BasicType::UntypedString => ValueType::Str,
-                BasicType::UnsafePointer => ValueType::Pointer,
+                BasicType::UnsafePointer => ValueType::UnsafePtr,
                 BasicType::UntypedNil => ValueType::Nil,
                 _ => {
                     dbg!(detail.typ());

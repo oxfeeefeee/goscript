@@ -265,6 +265,7 @@ pub enum ValueType {
     // maps, slices, channels and function types
     Nil,
     Pointer,
+    UnsafePtr,
     Closure,
     Slice,
     Map,

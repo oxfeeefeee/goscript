@@ -627,7 +627,6 @@ impl Stack {
                 self.store_val(target, rhs_index, typ, gcv);
             }
             // todo: report error instead of crash
-            PointerObj::UserData(_) => unreachable!(),
             PointerObj::Released => unreachable!(),
         };
     }

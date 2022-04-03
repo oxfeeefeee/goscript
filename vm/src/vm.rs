@@ -648,12 +648,15 @@ impl<'a> Fiber<'a> {
                                 let v = GosValue::channel_with_chan(meta, chan);
                                 stack.set(target_index, v);
                             }
+                            ValueType::UnsafePtr => {
+                                unimplemented!()
+                            }
                             ValueType::UintPtr => match inst.t1() {
-                                ValueType::Pointer => {
+                                ValueType::UnsafePtr => {
                                     let v = stack.pop_rc();
-                                    let ud = v.as_pointer().as_user_data();
+                                    let up = v.as_unsafe_ptr();
                                     stack.push(GosValue::UintPtr(
-                                        Rc::as_ptr(ud) as *const () as usize
+                                        Rc::as_ptr(up) as *const () as usize
                                     ));
                                 }
                                 _ => stack.get_c_mut(target_index).to_uint_ptr(inst.t1()),

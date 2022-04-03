@@ -4,7 +4,7 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use futures_lite::future;
-use goscript_vm::value::{GosValue, PointerObj, RuntimeResult, UserData};
+use goscript_vm::value::{GosValue, RuntimeResult, UnsafePtr};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
@@ -18,12 +18,11 @@ macro_rules! create_mutex {
         let p = pp.deref(&$ctx.stack, &$ctx.vm_objs.packages);
         if p.is_nil() {
             let inner = $typ::new();
-            let p = GosValue::new_pointer(PointerObj::UserData(Rc::new(inner.clone())));
+            let p = GosValue::UnsafePtr(Rc::new(inner.clone()));
             pp.set_value(p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcv);
             inner
         } else {
-            p.as_pointer()
-                .as_user_data()
+            p.as_unsafe_ptr()
                 .as_any()
                 .downcast_ref::<$typ>()
                 .unwrap()
@@ -53,7 +52,7 @@ impl Mutex {
     }
 
     async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
+        let ud = args[0].as_unsafe_ptr();
         let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
         mutex.unlock().await
     }
@@ -64,7 +63,7 @@ struct MutexInner {
     locked: Rc<Cell<bool>>,
 }
 
-impl UserData for MutexInner {
+impl UnsafePtr for MutexInner {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -116,7 +115,7 @@ impl RWMutex {
     }
 
     async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
+        let ud = args[0].as_unsafe_ptr();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.r_unlock().await
     }
@@ -131,7 +130,7 @@ impl RWMutex {
     }
 
     async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_pointer().as_user_data();
+        let ud = args[0].as_unsafe_ptr();
         let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
         mutex.w_unlock().await
     }
@@ -192,7 +191,7 @@ pub struct RWMutexInner {
     data: Rc<RefCell<RWMutexData>>,
 }
 
-impl UserData for RWMutexInner {
+impl UnsafePtr for RWMutexInner {
     fn as_any(&self) -> &dyn Any {
         self
     }

@@ -1004,37 +1004,6 @@ impl ChannelObj {
 // ----------------------------------------------------------------------------
 // PointerObj
 
-/// User data handle
-///
-pub trait UserData {
-    /// For downcasting
-    fn as_any(&self) -> &dyn Any;
-
-    fn eq(&self, _: &dyn UserData) -> bool {
-        false
-    }
-
-    /// Returns true if the user data can make reference cycles, so that GC can
-    fn can_make_cycle(&self) -> bool {
-        false
-    }
-
-    /// for gc
-    fn ref_sub_one(&self) {}
-
-    /// for gc
-    fn mark_dirty(&self, _: &mut RCQueue) {}
-
-    /// If can_make_cycle returns true, implement this to break cycle
-    fn break_cycle(&self) {}
-}
-
-impl std::fmt::Debug for dyn UserData {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", "user data")
-    }
-}
-
 /// Logically there are 4 types of pointers, they point to:
 /// - local
 /// - slice member
@@ -1055,7 +1024,6 @@ pub enum PointerObj {
     Map(Rc<(MapObj, RCount)>, GosMetadata),
     SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
-    UserData(Rc<dyn UserData>),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -1079,14 +1047,6 @@ impl PointerObj {
     pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
         let slice = GosValue::slice_with_array(val, 0, -1, gcv);
         PointerObj::SliceMember(slice.as_slice().clone(), i)
-    }
-
-    #[inline]
-    pub fn as_user_data(&self) -> &Rc<dyn UserData> {
-        match self {
-            Self::UserData(ud) => ud,
-            _ => unreachable!(),
-        }
     }
 
     #[inline]
@@ -1126,7 +1086,6 @@ impl PointerObj {
             PointerObj::PkgMember(pkey, index) => {
                 objs.packages[*pkey].member(*index).meta(objs, stack)
             }
-            PointerObj::UserData(_) => objs.metadata.unsafe_ptr,
             PointerObj::Released => unreachable!(),
         }
     }
@@ -1153,10 +1112,11 @@ impl PointerObj {
             PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
             PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
             PointerObj::PkgMember(pkg, index) => pkgs[*pkg].member(*index).clone(),
+            /*
             PointerObj::UserData(ud) => {
                 let i = Rc::as_ptr(ud) as *const () as usize;
                 GosValue::Uint(i)
-            }
+            } */
             // todo: report error instead of crash?
             PointerObj::Released => unreachable!(),
         }
@@ -1193,7 +1153,6 @@ impl PointerObj {
                 *target = val.copy_semantic(gcv);
             }
             // todo: report error instead of crash
-            PointerObj::UserData(_) => unreachable!(),
             PointerObj::Released => unreachable!(),
         }
     }
@@ -1207,7 +1166,6 @@ impl PointerObj {
             PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
             PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
             PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
-            PointerObj::UserData(ud) => ud.ref_sub_one(),
             _ => {}
         };
     }
@@ -1221,7 +1179,6 @@ impl PointerObj {
             PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
-            PointerObj::UserData(ud) => ud.mark_dirty(queue),
             _ => {}
         };
     }
@@ -1240,7 +1197,6 @@ impl PartialEq for PointerObj {
             (Self::Map(x, _), Self::Map(y, _)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
-            (Self::UserData(udx), Self::UserData(udy)) => udx.eq(&**udy),
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
             _ => false,
         }
@@ -1267,7 +1223,6 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
-            Self::UserData(ud) => Rc::as_ptr(ud).hash(state),
             Self::Released => unreachable!(),
         }
     }
@@ -1276,17 +1231,94 @@ impl Hash for PointerObj {
 impl Display for PointerObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UpVal(uv) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&uv.inner))),
-            Self::Struct(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
-            Self::Array(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
-            Self::Slice(s, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&s))),
-            Self::Map(m, _) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&m))),
-            Self::SliceMember(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
-            Self::StructField(s, i) => f.write_fmt(format_args!("{:p}i{}", Rc::as_ptr(&s), i)),
-            Self::PkgMember(p, i) => f.write_fmt(format_args!("{:x}i{}", key_to_u64(*p), i)),
-            Self::UserData(ud) => f.write_fmt(format_args!("{:p}", Rc::as_ptr(&ud))),
+            Self::UpVal(uv) => write!(f, "{:p}", Rc::as_ptr(&uv.inner)),
+            Self::Struct(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Array(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Slice(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Map(m, _) => write!(f, "{:p}", Rc::as_ptr(&m)),
+            Self::SliceMember(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
+            Self::StructField(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
+            Self::PkgMember(p, i) => write!(f, "{:x}i{}", key_to_u64(*p), i),
             Self::Released => f.write_str("released!!!"),
         }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// UnsafePtrObj
+
+pub trait UnsafePtr {
+    /// For downcasting
+    fn as_any(&self) -> &dyn Any;
+
+    fn eq(&self, _: &dyn UnsafePtr) -> bool {
+        false
+    }
+
+    /// for gc
+    fn ref_sub_one(&self) {}
+
+    /// for gc
+    fn mark_dirty(&self, _: &mut RCQueue) {}
+
+    /// Returns true if the user data can make reference cycles, so that GC can
+    fn can_make_cycle(&self) -> bool {
+        false
+    }
+
+    /// If can_make_cycle returns true, implement this to break cycle
+    fn break_cycle(&self) {}
+}
+
+impl std::fmt::Debug for dyn UnsafePtr {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", "unsafe pointer")
+    }
+}
+
+/// PointerHandle is used when converting a runtime pointer to a unsafe.Pointer
+#[derive(Debug, Clone)]
+pub struct PointerHandle {
+    ptr: PointerObj,
+}
+
+impl UnsafePtr for PointerHandle {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn eq(&self, other: &dyn UnsafePtr) -> bool {
+        let a = self.as_any().downcast_ref::<PointerHandle>();
+        let b = other.as_any().downcast_ref::<PointerHandle>();
+        match b {
+            Some(h) => h.ptr == a.unwrap().ptr,
+            None => false,
+        }
+    }
+
+    /// for gc
+    fn ref_sub_one(&self) {
+        self.ptr.ref_sub_one()
+    }
+
+    /// for gc
+    fn mark_dirty(&self, q: &mut RCQueue) {
+        self.ptr.mark_dirty(q)
+    }
+}
+
+impl PointerHandle {
+    pub fn from_pointer(ptr: GosValue) -> GosValue {
+        let p = match ptr {
+            GosValue::Pointer(p) => *p,
+            _ => unreachable!(),
+        };
+        let handle = PointerHandle { ptr: p };
+        GosValue::UnsafePtr(Rc::new(handle))
+    }
+
+    pub fn to_pointer(self) -> GosValue {
+        GosValue::new_pointer(self.ptr)
     }
 }
 

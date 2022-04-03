@@ -3,7 +3,7 @@ use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::GosMetadata;
 use goscript_vm::objects::*;
-use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UserData};
+use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UnsafePtr};
 use std::any::Any;
 use std::cell::RefCell;
 use std::future::Future;
@@ -14,11 +14,8 @@ use std::rc::Rc;
 macro_rules! arg_as {
     ($arg:expr, $t:ty) => {{
         match $arg {
-            GosValue::Pointer(p) => match p as &PointerObj {
-                PointerObj::UserData(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
-                _ => Err("reflect: expect UserData".to_owned()),
-            },
-            _ => Err("reflect: expect pointer".to_owned()),
+            GosValue::UnsafePtr(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
+            _ => Err("reflect: expect UnsafePtr".to_owned()),
         }
     }};
 }
@@ -43,12 +40,12 @@ macro_rules! err_set_val_type {
 
 #[inline]
 fn wrap_std_val(v: GosValue) -> GosValue {
-    GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::new(v))))
+    GosValue::UnsafePtr(Rc::new(StdValue::new(v)))
 }
 
 #[inline]
 fn wrap_ptr_std_val(p: Box<PointerObj>) -> GosValue {
-    GosValue::new_pointer(PointerObj::UserData(Rc::new(StdValue::Pointer(p))))
+    GosValue::UnsafePtr(Rc::new(StdValue::Pointer(p)))
 }
 
 #[inline]
@@ -88,7 +85,7 @@ enum GosKind {
     Slice,
     String,
     Struct,
-    UnsafePointer,
+    UnsafePtr,
 }
 
 #[derive(Ffi)]
@@ -249,7 +246,7 @@ enum StdValue {
     Pointer(Box<PointerObj>),
 }
 
-impl UserData for StdValue {
+impl UnsafePtr for StdValue {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -571,12 +568,12 @@ struct StdType {
     mobjs: *const MetadataObjs,
 }
 
-impl UserData for StdType {
+impl UnsafePtr for StdType {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    fn eq(&self, other: &dyn UserData) -> bool {
+    fn eq(&self, other: &dyn UnsafePtr) -> bool {
         match other.as_any().downcast_ref::<StdType>() {
             Some(other_type) => {
                 let objs = meta_objs(self.mobjs);
@@ -623,20 +620,15 @@ impl StdType {
             ValueType::Closure => GosKind::Func,
             ValueType::Interface => GosKind::Interface,
             ValueType::Map => GosKind::Map,
-            ValueType::Pointer => {
-                let ptr: &PointerObj = &*val.as_pointer();
-                match ptr {
-                    PointerObj::UserData(_) => GosKind::UnsafePointer,
-                    _ => GosKind::Ptr,
-                }
-            }
+            ValueType::Pointer => GosKind::Ptr,
+            ValueType::UnsafePtr => GosKind::UnsafePtr,
             ValueType::Slice => GosKind::Slice,
             ValueType::Str => GosKind::String,
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };
         (
-            GosValue::new_pointer(PointerObj::UserData(Rc::new(typ))),
+            GosValue::UnsafePtr(Rc::new(typ)),
             GosValue::Uint(kind as usize),
         )
     }
@@ -653,7 +645,7 @@ struct StdMapIter {
     inner: RefCell<StdMapIterInner>,
 }
 
-impl UserData for StdMapIter {
+impl UnsafePtr for StdMapIter {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -670,7 +662,7 @@ impl StdMapIter {
                 item: None,
             }),
         };
-        GosValue::new_pointer(PointerObj::UserData(Rc::new(smi)))
+        GosValue::UnsafePtr(Rc::new(smi))
     }
 
     fn next(&self) -> GosValue {
