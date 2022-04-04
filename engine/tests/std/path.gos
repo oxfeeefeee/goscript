@@ -1,0 +1,68 @@
+package main
+
+import (
+	//"path"
+)
+
+type PathTest struct {
+	path, result string
+}
+
+var cleantests = []PathTest{
+	// Already clean
+	{"", "."},
+	{"abc", "abc"},
+	{"abc/def", "abc/def"},
+	{"a/b/c", "a/b/c"},
+	{".", "."},
+	{"..", ".."},
+	{"../..", "../.."},
+	{"../../abc", "../../abc"},
+	{"/abc", "/abc"},
+	{"/", "/"},
+
+	// Remove trailing slash
+	{"abc/", "abc"},
+	{"abc/def/", "abc/def"},
+	{"a/b/c/", "a/b/c"},
+	{"./", "."},
+	{"../", ".."},
+	{"../../", "../.."},
+	{"/abc/", "/abc"},
+
+	// Remove doubled slash
+	{"abc//def//ghi", "abc/def/ghi"},
+	{"//abc", "/abc"},
+	{"///abc", "/abc"},
+	{"//abc//", "/abc"},
+	{"abc//", "abc"},
+
+	// Remove . elements
+	{"abc/./def", "abc/def"},
+	{"/./abc/def", "/abc/def"},
+	{"abc/.", "abc"},
+
+	// Remove .. elements
+	{"abc/def/ghi/../jkl", "abc/def/jkl"},
+	{"abc/def/../ghi/../jkl", "abc/jkl"},
+	{"abc/def/..", "abc"},
+	{"abc/def/../..", "."},
+	{"/abc/def/../..", "/"},
+	{"abc/def/../../..", ".."},
+	{"/abc/def/../../..", "/"},
+	{"abc/def/../../../ghi/jkl/../../../mno", "../../mno"},
+
+	// Combinations
+	{"abc/./../def", "def"},
+	{"abc//./../def", "def"},
+	{"abc/../../././../def", "../../def"},
+}
+
+func main() {
+	/*
+	for _, test := range cleantests {
+        assert(path.Clean(test.path) == test.result)
+        assert(path.Clean(test.result) == test.result)
+	}
+	*/
+}

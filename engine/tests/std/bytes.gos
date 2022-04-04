@@ -1,0 +1,17 @@
+package main
+ 
+import (
+    "fmt2"
+    "bytes"
+)
+ 
+func main() {
+    var s string = "Hello World"
+    sb := []byte(s)
+
+    fmt2.Println(bytes.Index(sb, []byte{111,114}))
+     
+    fmt2.Println(sb)  // [72 101 108 108 111 32 87 111 114 108 100]
+     
+    fmt2.Println(string(sb)) // Hello World
+}

@@ -339,9 +339,29 @@ fn test_std_sort() {
 }
 
 #[test]
+fn test_std_path() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/path.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
+fn test_std_bytes() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/bytes.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 
-    let err_cnt = run("./tests/std/temp.gos", false);
+    use std::env;
+
+    println!("{}", env::consts::OS); // Prints the current OS.
+
+    let err_cnt = run("./tests/std/temp.gos", true);
     assert!(err_cnt == 0);
 }
