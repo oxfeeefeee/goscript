@@ -41,7 +41,7 @@ macro_rules! unwrap_gos_val {
 
 macro_rules! union_op_wrap {
     ($a:ident, $b:ident, $name:tt, $op:tt) => {
-        GosValue64{
+        Value64{
             data: V64Union {
             $name: (Wrapping($a.data.$name) $op Wrapping($b.data.$name)).0,
         }}
@@ -50,7 +50,7 @@ macro_rules! union_op_wrap {
 
 macro_rules! union_op {
     ($a:ident, $b:ident, $name:tt, $op:tt) => {
-        GosValue64{
+        Value64{
             data: V64Union {
             $name: $a.data.$name $op $b.data.$name,
         }}
@@ -59,9 +59,9 @@ macro_rules! union_op {
 
 macro_rules! union_shift {
     ($a:ident, $b:ident, $name:tt, $op:tt) => {
-        GosValue64 {
+        Value64 {
             data: V64Union {
-                $name: $a.data.$name.$op($b).unwrap_or(0),
+                $name: $a.data.$name.$op(*$b).unwrap_or(0),
             },
         }
     };
@@ -229,30 +229,32 @@ pub type RuntimeResult<T> = result::Result<T, String>;
 
 // ----------------------------------------------------------------------------
 // GosValue
+
 #[derive(Debug)]
+#[repr(u8)]
 pub enum GosValue {
     Nil(GosMetadata),
-    Bool(bool),
-    Int(isize),
-    Int8(i8),
-    Int16(i16),
-    Int32(i32),
-    Int64(i64),
-    Uint(usize),
-    UintPtr(usize),
-    Uint8(u8),
-    Uint16(u16),
-    Uint32(u32),
-    Uint64(u64),
-    Float32(F32),
-    Float64(F64), // becasue in Go there is no "float", just float64
-    Complex64(F32, F32),
+    Bool(Value64),
+    Int(Value64),
+    Int8(Value64),
+    Int16(Value64),
+    Int32(Value64),
+    Int64(Value64),
+    Uint(Value64),
+    UintPtr(Value64),
+    Uint8(Value64),
+    Uint16(Value64),
+    Uint32(Value64),
+    Uint64(Value64),
+    Float32(Value64),
+    Float64(Value64), // becasue in Go there is no "float", just float64
+    Complex64(Value64),
     Complex128(Box<(F64, F64)>),
 
     // the 3 below are not visible to users, they are "values" not "variables"
     // they are static data, don't use Rc for better performance
-    Function(FunctionKey),
-    Package(PackageKey),
+    Function(Value64),
+    Package(Value64),
     Metadata(GosMetadata),
 
     Str(Rc<StringObj>), // "String" is taken
@@ -273,6 +275,86 @@ impl GosValue {
     #[inline]
     pub fn new_nil() -> GosValue {
         GosValue::Nil(GosMetadata::Untyped)
+    }
+
+    #[inline]
+    pub fn new_bool(b: bool) -> GosValue {
+        GosValue::Bool(Value64::from_bool(b))
+    }
+
+    #[inline]
+    pub fn new_int(i: isize) -> GosValue {
+        GosValue::Int(Value64::from_int(i))
+    }
+
+    #[inline]
+    pub fn new_int8(i: i8) -> GosValue {
+        GosValue::Int8(Value64::from_int8(i))
+    }
+
+    #[inline]
+    pub fn new_int16(i: i16) -> GosValue {
+        GosValue::Int16(Value64::from_int16(i))
+    }
+
+    #[inline]
+    pub fn new_int32(i: i32) -> GosValue {
+        GosValue::Int32(Value64::from_int32(i))
+    }
+
+    #[inline]
+    pub fn new_int64(i: i64) -> GosValue {
+        GosValue::Int64(Value64::from_int64(i))
+    }
+
+    #[inline]
+    pub fn new_uint(u: usize) -> GosValue {
+        GosValue::Uint(Value64::from_uint(u))
+    }
+
+    #[inline]
+    pub fn new_uint_ptr(u: usize) -> GosValue {
+        GosValue::UintPtr(Value64::from_uint_ptr(u))
+    }
+
+    #[inline]
+    pub fn new_uint8(u: u8) -> GosValue {
+        GosValue::Uint8(Value64::from_uint8(u))
+    }
+
+    #[inline]
+    pub fn new_uint16(u: u16) -> GosValue {
+        GosValue::Uint16(Value64::from_uint16(u))
+    }
+
+    #[inline]
+    pub fn new_uint32(u: u32) -> GosValue {
+        GosValue::Uint32(Value64::from_uint32(u))
+    }
+
+    #[inline]
+    pub fn new_uint64(u: u64) -> GosValue {
+        GosValue::Uint64(Value64::from_uint64(u))
+    }
+
+    #[inline]
+    pub fn new_float32(f: F32) -> GosValue {
+        GosValue::Float32(Value64::from_float32(f))
+    }
+
+    #[inline]
+    pub fn new_float64(f: F64) -> GosValue {
+        GosValue::Float64(Value64::from_float64(f))
+    }
+
+    #[inline]
+    pub fn new_complex64(r: F32, i: F32) -> GosValue {
+        GosValue::Float64(Value64::from_complex64(r, i))
+    }
+
+    #[inline]
+    pub fn new_function(f: FunctionKey) -> GosValue {
+        GosValue::Function(Value64::from_function(f))
     }
 
     #[inline]
@@ -380,7 +462,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_function(
+    pub fn new_function_create(
         package: PackageKey,
         meta: GosMetadata,
         objs: &mut VMObjects,
@@ -388,7 +470,7 @@ impl GosValue {
         flag: FuncFlag,
     ) -> GosValue {
         let val = FunctionVal::new(package, meta, objs, gcv, flag);
-        GosValue::Function(objs.functions.insert(val))
+        GosValue::new_function(objs.functions.insert(val))
     }
 
     #[inline]
@@ -436,60 +518,52 @@ impl GosValue {
 
     #[inline]
     pub fn as_bool(&self) -> &bool {
-        unwrap_gos_val!(Bool, self)
+        unwrap_gos_val!(Bool, self).as_bool()
     }
 
     #[inline]
     pub fn as_int(&self) -> &isize {
-        unwrap_gos_val!(Int, self)
+        unwrap_gos_val!(Int, self).as_int()
     }
 
     #[inline]
     pub fn as_uint8(&self) -> &u8 {
-        unwrap_gos_val!(Uint8, self)
+        unwrap_gos_val!(Uint8, self).as_uint8()
     }
 
     #[inline]
     pub fn as_uint32(&self) -> &u32 {
-        unwrap_gos_val!(Uint32, self)
+        unwrap_gos_val!(Uint32, self).as_uint32()
     }
 
     #[inline]
     pub fn as_uint64(&self) -> &u64 {
-        unwrap_gos_val!(Uint64, self)
+        unwrap_gos_val!(Uint64, self).as_uint64()
     }
 
     #[inline]
     pub fn as_int32(&self) -> &i32 {
-        unwrap_gos_val!(Int32, self)
+        unwrap_gos_val!(Int32, self).as_int32()
     }
 
     #[inline]
     pub fn as_int64(&self) -> &i64 {
-        unwrap_gos_val!(Int64, self)
+        unwrap_gos_val!(Int64, self).as_int64()
     }
 
     #[inline]
     pub fn as_int_mut(&mut self) -> &mut isize {
-        unwrap_gos_val!(Int, self)
+        unwrap_gos_val!(Int, self).as_int_mut()
     }
 
     #[inline]
     pub fn as_float32(&self) -> &f32 {
-        unwrap_gos_val!(Float32, self)
+        unwrap_gos_val!(Float32, self).as_float32()
     }
 
     #[inline]
     pub fn as_float64(&self) -> &f64 {
-        unwrap_gos_val!(Float64, self)
-    }
-
-    #[inline]
-    pub fn as_complex64(&self) -> (&F32, &F32) {
-        match self {
-            Self::Complex64(r, i) => (r, i),
-            _ => unreachable!(),
-        }
+        unwrap_gos_val!(Float64, self).as_float64()
     }
 
     #[inline]
@@ -529,12 +603,12 @@ impl GosValue {
 
     #[inline]
     pub fn as_function(&self) -> &FunctionKey {
-        unwrap_gos_val!(Function, self)
+        unwrap_gos_val!(Function, self).as_function()
     }
 
     #[inline]
     pub fn as_package(&self) -> &PackageKey {
-        unwrap_gos_val!(Package, self)
+        unwrap_gos_val!(Package, self).as_package()
     }
 
     #[inline]
@@ -667,7 +741,7 @@ impl GosValue {
             GosValue::Uint64(_) => ValueType::Uint64,
             GosValue::Float32(_) => ValueType::Float32,
             GosValue::Float64(_) => ValueType::Float64,
-            GosValue::Complex64(_, _) => ValueType::Complex64,
+            GosValue::Complex64(_) => ValueType::Complex64,
             GosValue::Complex128(_) => ValueType::Complex128,
             GosValue::Str(_) => ValueType::Str,
             GosValue::Array(_) => ValueType::Array,
@@ -707,7 +781,7 @@ impl GosValue {
             GosValue::Uint64(_) => objs.metadata.muint64,
             GosValue::Float32(_) => objs.metadata.mfloat32,
             GosValue::Float64(_) => objs.metadata.mfloat64,
-            GosValue::Complex64(_, _) => objs.metadata.mcomplex64,
+            GosValue::Complex64(_) => objs.metadata.mcomplex64,
             GosValue::Complex128(_) => objs.metadata.mcomplex128,
             GosValue::Str(_) => objs.metadata.mstr,
             GosValue::Array(a) => a.0.meta,
@@ -752,16 +826,16 @@ impl GosValue {
     #[inline]
     pub fn as_index(&self) -> usize {
         match self {
-            GosValue::Int(i) => *i as usize,
-            GosValue::Int8(i) => *i as usize,
-            GosValue::Int16(i) => *i as usize,
-            GosValue::Int32(i) => *i as usize,
-            GosValue::Int64(i) => *i as usize,
-            GosValue::Uint(i) => *i as usize,
-            GosValue::Uint8(i) => *i as usize,
-            GosValue::Uint16(i) => *i as usize,
-            GosValue::Uint32(i) => *i as usize,
-            GosValue::Uint64(i) => *i as usize,
+            GosValue::Int(i) => *i.as_int() as usize,
+            GosValue::Int8(i) => *i.as_int8() as usize,
+            GosValue::Int16(i) => *i.as_int16() as usize,
+            GosValue::Int32(i) => *i.as_int32() as usize,
+            GosValue::Int64(i) => *i.as_int64() as usize,
+            GosValue::Uint(i) => *i.as_uint() as usize,
+            GosValue::Uint8(i) => *i.as_uint8() as usize,
+            GosValue::Uint16(i) => *i.as_uint16() as usize,
+            GosValue::Uint32(i) => *i.as_uint32() as usize,
+            GosValue::Uint64(i) => *i.as_uint64() as usize,
             GosValue::Named(n) => n.0.as_index(),
             _ => unreachable!(),
         }
@@ -789,7 +863,7 @@ impl GosValue {
                 let index = ind.as_index();
                 s.get_byte(index).map_or_else(
                     || Err(format!("index {} out of range", index)),
-                    |x| Ok(GosValue::Int((*x).into())),
+                    |x| Ok(GosValue::new_int(*x as isize)),
                 )
             }
             GosValue::Array(arr) => {
@@ -810,12 +884,12 @@ impl GosValue {
                 .get(i)
                 .map_or_else(|| Err(format!("index {} out of range", i)), |x| Ok(x)),
             GosValue::Map(map) => {
-                let ind = GosValue::Int(i as isize);
+                let ind = GosValue::new_int(i as isize);
                 Ok(map.0.get(&ind).clone())
             }
             GosValue::Str(s) => s.get_byte(i).map_or_else(
                 || Err(format!("index {} out of range", i)),
-                |x| Ok(GosValue::Int((*x).into())),
+                |x| Ok(GosValue::new_int((*x).into())),
             ),
             GosValue::Array(arr) => arr
                 .0
@@ -833,11 +907,11 @@ impl GosValue {
     pub fn load_field(&self, ind: &GosValue, objs: &VMObjects) -> GosValue {
         match self {
             GosValue::Struct(sval) => match &ind {
-                GosValue::Int(i) => sval.0.borrow().fields[*i as usize].clone(),
+                GosValue::Int(i) => sval.0.borrow().fields[*i.as_int() as usize].clone(),
                 _ => unreachable!(),
             },
-            GosValue::Package(pkey) => {
-                let pkg = &objs.packages[*pkey];
+            GosValue::Package(v) => {
+                let pkg = &objs.packages[*v.as_package()];
                 pkg.member(*ind.as_int() as OpIndex).clone()
             }
             _ => unreachable!(),
@@ -918,7 +992,7 @@ impl Clone for GosValue {
             GosValue::Uint64(v) => GosValue::Uint64(*v),
             GosValue::Float32(v) => GosValue::Float32(*v),
             GosValue::Float64(v) => GosValue::Float64(*v),
-            GosValue::Complex64(r, i) => GosValue::Complex64(*r, *i),
+            GosValue::Complex64(v) => GosValue::Complex64(*v),
             GosValue::Complex128(v) => GosValue::Complex128(v.clone()),
             GosValue::Str(v) => GosValue::Str(v.clone()),
             GosValue::Array(v) => GosValue::Array(v.clone()),
@@ -945,24 +1019,28 @@ impl PartialEq for GosValue {
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
             (Self::Nil(_), Self::Nil(_)) => true,
-            (Self::Bool(x), Self::Bool(y)) => x == y,
-            (Self::Int(x), Self::Int(y)) => x == y,
-            (Self::Int8(x), Self::Int8(y)) => x == y,
-            (Self::Int16(x), Self::Int16(y)) => x == y,
-            (Self::Int32(x), Self::Int32(y)) => x == y,
-            (Self::Int64(x), Self::Int64(y)) => x == y,
-            (Self::Uint(x), Self::Uint(y)) => x == y,
-            (Self::UintPtr(x), Self::UintPtr(y)) => x == y,
-            (Self::Uint8(x), Self::Uint8(y)) => x == y,
-            (Self::Uint16(x), Self::Uint16(y)) => x == y,
-            (Self::Uint32(x), Self::Uint32(y)) => x == y,
-            (Self::Uint64(x), Self::Uint64(y)) => x == y,
-            (Self::Float32(x), Self::Float32(y)) => x == y,
-            (Self::Float64(x), Self::Float64(y)) => x == y,
-            (Self::Complex64(xr, xi), Self::Complex64(yr, yi)) => xr == yr && xi == yi,
+            (Self::Bool(x), Self::Bool(y)) => x.as_bool() == y.as_bool(),
+            (Self::Int(x), Self::Int(y)) => x.as_int() == y.as_int(),
+            (Self::Int8(x), Self::Int8(y)) => x.as_int8() == y.as_int8(),
+            (Self::Int16(x), Self::Int16(y)) => x.as_int16() == y.as_int16(),
+            (Self::Int32(x), Self::Int32(y)) => x.as_int32() == y.as_int32(),
+            (Self::Int64(x), Self::Int64(y)) => x.as_int64() == y.as_int64(),
+            (Self::Uint(x), Self::Uint(y)) => x.as_uint() == y.as_uint(),
+            (Self::UintPtr(x), Self::UintPtr(y)) => x.as_uint_ptr() == y.as_uint_ptr(),
+            (Self::Uint8(x), Self::Uint8(y)) => x.as_uint8() == y.as_uint8(),
+            (Self::Uint16(x), Self::Uint16(y)) => x.as_uint16() == y.as_uint16(),
+            (Self::Uint32(x), Self::Uint32(y)) => x.as_uint32() == y.as_uint32(),
+            (Self::Uint64(x), Self::Uint64(y)) => x.as_uint64() == y.as_uint64(),
+            (Self::Float32(x), Self::Float32(y)) => x.as_float32() == y.as_float32(),
+            (Self::Float64(x), Self::Float64(y)) => x.as_float64() == y.as_float64(),
+            (Self::Complex64(x), Self::Complex64(y)) => {
+                let vx = x.as_complex64();
+                let vy = y.as_complex64();
+                vx.0 == vy.0 && vx.1 == vy.1
+            }
             (Self::Complex128(x), Self::Complex128(y)) => x.0 == y.0 && x.1 == y.1,
-            (Self::Function(x), Self::Function(y)) => x == y,
-            (Self::Package(x), Self::Package(y)) => x == y,
+            (Self::Function(x), Self::Function(y)) => x.as_function() == y.as_function(),
+            (Self::Package(x), Self::Package(y)) => x.as_package() == y.as_package(),
             (Self::Metadata(x), Self::Metadata(y)) => x == y,
             (Self::Str(x), Self::Str(y)) => *x == *y,
             (Self::Array(x), Self::Array(y)) => x.0 == y.0,
@@ -997,25 +1075,26 @@ impl PartialOrd for GosValue {
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self {
-            GosValue::Bool(b) => b.hash(state),
-            GosValue::Int(i) => i.hash(state),
-            GosValue::Int8(i) => i.hash(state),
-            GosValue::Int16(i) => i.hash(state),
-            GosValue::Int32(i) => i.hash(state),
-            GosValue::Int64(i) => i.hash(state),
-            GosValue::Uint(i) => i.hash(state),
-            GosValue::UintPtr(i) => i.hash(state),
-            GosValue::Uint8(i) => i.hash(state),
-            GosValue::Uint16(i) => i.hash(state),
-            GosValue::Uint32(i) => i.hash(state),
-            GosValue::Uint64(i) => i.hash(state),
-            GosValue::Float32(f) => f.to_bits().hash(state),
-            GosValue::Float64(f) => f.to_bits().hash(state),
+            GosValue::Bool(b) => b.as_bool().hash(state),
+            GosValue::Int(i) => i.as_int().hash(state),
+            GosValue::Int8(i) => i.as_int8().hash(state),
+            GosValue::Int16(i) => i.as_int16().hash(state),
+            GosValue::Int32(i) => i.as_int32().hash(state),
+            GosValue::Int64(i) => i.as_int64().hash(state),
+            GosValue::Uint(i) => i.as_uint().hash(state),
+            GosValue::UintPtr(i) => i.as_uint_ptr().hash(state),
+            GosValue::Uint8(i) => i.as_uint8().hash(state),
+            GosValue::Uint16(i) => i.as_uint16().hash(state),
+            GosValue::Uint32(i) => i.as_uint32().hash(state),
+            GosValue::Uint64(i) => i.as_uint64().hash(state),
+            GosValue::Float32(f) => f.as_float32().to_bits().hash(state),
+            GosValue::Float64(f) => f.as_float64().to_bits().hash(state),
             GosValue::Str(s) => s.as_str().hash(state),
             GosValue::Array(a) => a.0.hash(state),
-            GosValue::Complex64(i, r) => {
-                i.hash(state);
-                r.hash(state);
+            GosValue::Complex64(c) => {
+                let cv = c.as_complex64();
+                cv.0.hash(state);
+                cv.1.hash(state);
             }
             GosValue::Complex128(c) => {
                 c.0.hash(state);
@@ -1040,20 +1119,20 @@ impl Hash for GosValue {
 impl Ord for GosValue {
     fn cmp(&self, b: &Self) -> Ordering {
         match (self, b) {
-            (Self::Bool(x), Self::Bool(y)) => x.cmp(y),
-            (Self::Int(x), Self::Int(y)) => x.cmp(y),
-            (Self::Int8(x), Self::Int8(y)) => x.cmp(y),
-            (Self::Int16(x), Self::Int16(y)) => x.cmp(y),
-            (Self::Int32(x), Self::Int32(y)) => x.cmp(y),
-            (Self::Int64(x), Self::Int64(y)) => x.cmp(y),
-            (Self::Uint(x), Self::Uint(y)) => x.cmp(y),
-            (Self::UintPtr(x), Self::UintPtr(y)) => x.cmp(y),
-            (Self::Uint8(x), Self::Uint8(y)) => x.cmp(y),
-            (Self::Uint16(x), Self::Uint16(y)) => x.cmp(y),
-            (Self::Uint32(x), Self::Uint32(y)) => x.cmp(y),
-            (Self::Uint64(x), Self::Uint64(y)) => x.cmp(y),
-            (Self::Float32(x), Self::Float32(y)) => x.cmp(y),
-            (Self::Float64(x), Self::Float64(y)) => x.cmp(y),
+            (Self::Bool(x), Self::Bool(y)) => x.as_bool().cmp(y.as_bool()),
+            (Self::Int(x), Self::Int(y)) => x.as_int().cmp(y.as_int()),
+            (Self::Int8(x), Self::Int8(y)) => x.as_int8().cmp(y.as_int8()),
+            (Self::Int16(x), Self::Int16(y)) => x.as_int16().cmp(y.as_int16()),
+            (Self::Int32(x), Self::Int32(y)) => x.as_int32().cmp(y.as_int32()),
+            (Self::Int64(x), Self::Int64(y)) => x.as_int64().cmp(y.as_int64()),
+            (Self::Uint(x), Self::Uint(y)) => x.as_uint().cmp(y.as_uint()),
+            (Self::UintPtr(x), Self::UintPtr(y)) => x.as_uint_ptr().cmp(y.as_uint_ptr()),
+            (Self::Uint8(x), Self::Uint8(y)) => x.as_uint8().cmp(y.as_uint8()),
+            (Self::Uint16(x), Self::Uint16(y)) => x.as_uint16().cmp(y.as_uint16()),
+            (Self::Uint32(x), Self::Uint32(y)) => x.as_uint32().cmp(y.as_uint32()),
+            (Self::Uint64(x), Self::Uint64(y)) => x.as_uint64().cmp(y.as_uint64()),
+            (Self::Float32(x), Self::Float32(y)) => x.as_float32().cmp(y.as_float32()),
+            (Self::Float64(x), Self::Float64(y)) => x.as_float64().cmp(y.as_float64()),
             (Self::Str(x), Self::Str(y)) => x.cmp(y),
             _ => {
                 dbg!(self, b);
@@ -1067,22 +1146,21 @@ impl Display for GosValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GosValue::Nil(_) => f.write_str("<nil>"),
-            GosValue::Bool(true) => f.write_str("true"),
-            GosValue::Bool(false) => f.write_str("false"),
-            GosValue::Int(i) => write!(f, "{}", i),
-            GosValue::Int8(i) => write!(f, "{}", i),
-            GosValue::Int16(i) => write!(f, "{}", i),
-            GosValue::Int32(i) => write!(f, "{}", i),
-            GosValue::Int64(i) => write!(f, "{}", i),
-            GosValue::Uint(i) => write!(f, "{}", i),
-            GosValue::UintPtr(i) => write!(f, "{}", i),
-            GosValue::Uint8(i) => write!(f, "{}", i),
-            GosValue::Uint16(i) => write!(f, "{}", i),
-            GosValue::Uint32(i) => write!(f, "{}", i),
-            GosValue::Uint64(i) => write!(f, "{}", i),
-            GosValue::Float32(fl) => write!(f, "{}", fl),
-            GosValue::Float64(fl) => write!(f, "{}", fl),
-            GosValue::Complex64(r, i) => write!(f, "({}, {})", r, i),
+            GosValue::Bool(b) => write!(f, "{}", b.as_bool()),
+            GosValue::Int(i) => write!(f, "{}", i.as_int()),
+            GosValue::Int8(i) => write!(f, "{}", i.as_int8()),
+            GosValue::Int16(i) => write!(f, "{}", i.as_int16()),
+            GosValue::Int32(i) => write!(f, "{}", i.as_int32()),
+            GosValue::Int64(i) => write!(f, "{}", i.as_int64()),
+            GosValue::Uint(i) => write!(f, "{}", i.as_uint()),
+            GosValue::UintPtr(i) => write!(f, "{}", i.as_uint_ptr()),
+            GosValue::Uint8(i) => write!(f, "{}", i.as_uint8()),
+            GosValue::Uint16(i) => write!(f, "{}", i.as_uint16()),
+            GosValue::Uint32(i) => write!(f, "{}", i.as_uint32()),
+            GosValue::Uint64(i) => write!(f, "{}", i.as_uint64()),
+            GosValue::Float32(fl) => write!(f, "{}", fl.as_float32()),
+            GosValue::Float64(fl) => write!(f, "{}", fl.as_float64()),
+            GosValue::Complex64(c) => write!(f, "({}, {})", c.as_complex64().0, c.as_complex64().1),
             GosValue::Complex128(b) => write!(f, "({}, {})", b.0, b.1),
             GosValue::Str(s) => f.write_str(s.as_ref().as_str()),
             GosValue::Array(a) => write!(f, "{}", a.0),
@@ -1103,11 +1181,12 @@ impl Display for GosValue {
 }
 
 // ----------------------------------------------------------------------------
-// GosValue64
+// Value64
 // nil is only allowed on the stack as a rhs value
 // never as a lhs var, because when it's assigned to
 // we wouldn't know we should release it or not
 #[derive(Copy, Clone)]
+#[repr(C, align(8))]
 pub union V64Union {
     nil: (),
     ubool: bool,
@@ -1135,153 +1214,168 @@ impl fmt::Debug for V64Union {
     }
 }
 
-/// GosValue64 is a 64bit struct for VM stack to get better performance, when converting
-/// to GosValue64, the type info is lost, Opcode is responsible for providing type info
+/// Value64 is a 64bit struct for VM stack to get better performance, when converting
+/// to Value64, the type info is lost, Opcode is responsible for providing type info
 /// when converting back to GosValue
 #[derive(Copy, Clone, Debug)]
-pub struct GosValue64 {
+#[repr(C)]
+pub struct Value64 {
     data: V64Union,
-    //pub debug_type: ValueType, // to be removed in release build
 }
 
-impl GosValue64 {
+impl Value64 {
     #[inline]
-    pub fn from_v128(v: &GosValue) -> (GosValue64, ValueType) {
+    pub fn from_v128(v: &GosValue) -> (Value64, ValueType) {
         match v {
-            GosValue::Bool(b) => (
-                GosValue64 {
-                    data: V64Union { ubool: *b },
-                },
-                ValueType::Bool,
-            ),
-            GosValue::Int(i) => (
-                GosValue64 {
-                    data: V64Union { int: *i },
-                },
-                ValueType::Int,
-            ),
-            GosValue::Int8(i) => (
-                GosValue64 {
-                    data: V64Union { int8: *i },
-                },
-                ValueType::Int8,
-            ),
-            GosValue::Int16(i) => (
-                GosValue64 {
-                    data: V64Union { int16: *i },
-                },
-                ValueType::Int16,
-            ),
-            GosValue::Int32(i) => (
-                GosValue64 {
-                    data: V64Union { int32: *i },
-                },
-                ValueType::Int32,
-            ),
-            GosValue::Int64(i) => (
-                GosValue64 {
-                    data: V64Union { int64: *i },
-                },
-                ValueType::Int64,
-            ),
-            GosValue::Uint(i) => (
-                GosValue64 {
-                    data: V64Union { uint: *i },
-                },
-                ValueType::Uint,
-            ),
-            GosValue::UintPtr(i) => (
-                GosValue64 {
-                    data: V64Union { uint_ptr: *i },
-                },
-                ValueType::UintPtr,
-            ),
-            GosValue::Uint8(i) => (
-                GosValue64 {
-                    data: V64Union { uint8: *i },
-                },
-                ValueType::Uint8,
-            ),
-            GosValue::Uint16(i) => (
-                GosValue64 {
-                    data: V64Union { uint16: *i },
-                },
-                ValueType::Uint16,
-            ),
-            GosValue::Uint32(i) => (
-                GosValue64 {
-                    data: V64Union { uint32: *i },
-                },
-                ValueType::Uint32,
-            ),
-            GosValue::Uint64(i) => (
-                GosValue64 {
-                    data: V64Union { uint64: *i },
-                },
-                ValueType::Uint64,
-            ),
-            GosValue::Float32(f) => (
-                GosValue64 {
-                    data: V64Union { float32: *f },
-                },
-                ValueType::Float32,
-            ),
-            GosValue::Float64(f) => (
-                GosValue64 {
-                    data: V64Union { float64: *f },
-                },
-                ValueType::Float64,
-            ),
-            GosValue::Complex64(f1, f2) => (
-                GosValue64 {
-                    data: V64Union {
-                        complex64: (*f1, *f2),
-                    },
-                },
-                ValueType::Complex64,
-            ),
-            GosValue::Function(k) => (
-                GosValue64 {
-                    data: V64Union { function: *k },
-                },
-                ValueType::Function,
-            ),
-            GosValue::Package(k) => (
-                GosValue64 {
-                    data: V64Union { package: *k },
-                },
-                ValueType::Package,
-            ),
-            _ => (GosValue64::nil(), ValueType::Nil),
+            GosValue::Bool(b) => (*b, ValueType::Bool),
+            GosValue::Int(i) => (*i, ValueType::Int),
+            GosValue::Int8(i) => (*i, ValueType::Int8),
+            GosValue::Int16(i) => (*i, ValueType::Int16),
+            GosValue::Int32(i) => (*i, ValueType::Int32),
+            GosValue::Int64(i) => (*i, ValueType::Int64),
+            GosValue::Uint(i) => (*i, ValueType::Uint),
+            GosValue::UintPtr(i) => (*i, ValueType::UintPtr),
+            GosValue::Uint8(i) => (*i, ValueType::Uint8),
+            GosValue::Uint16(i) => (*i, ValueType::Uint16),
+            GosValue::Uint32(i) => (*i, ValueType::Uint32),
+            GosValue::Uint64(i) => (*i, ValueType::Uint64),
+            GosValue::Float32(f) => (*f, ValueType::Float32),
+            GosValue::Float64(f) => (*f, ValueType::Float64),
+            GosValue::Complex64(c) => (*c, ValueType::Complex64),
+            GosValue::Function(k) => (*k, ValueType::Function),
+            GosValue::Package(k) => (*k, ValueType::Package),
+            _ => (Value64::nil(), ValueType::Nil),
         }
     }
 
     #[inline]
-    pub fn nil() -> GosValue64 {
-        GosValue64 {
+    pub fn nil() -> Value64 {
+        Value64 {
             data: V64Union { nil: () },
-            //debug_type: ValueType::Nil,
         }
     }
 
     #[inline]
-    pub fn from_bool(b: bool) -> GosValue64 {
-        GosValue64 {
+    pub fn from_bool(b: bool) -> Value64 {
+        Value64 {
             data: V64Union { ubool: b },
-            //debug_type: ValueType::Bool,
         }
     }
 
     #[inline]
-    pub fn from_int(i: isize) -> GosValue64 {
-        GosValue64 {
+    pub fn from_int(i: isize) -> Value64 {
+        Value64 {
             data: V64Union { int: i },
-            //debug_type: ValueType::Int,
         }
     }
 
     #[inline]
-    pub fn from_int32_as(i: i32, t: ValueType) -> GosValue64 {
+    pub fn from_int8(i: i8) -> Value64 {
+        Value64 {
+            data: V64Union { int8: i },
+        }
+    }
+
+    #[inline]
+    pub fn from_int16(i: i16) -> Value64 {
+        Value64 {
+            data: V64Union { int16: i },
+        }
+    }
+
+    #[inline]
+    pub fn from_int32(i: i32) -> Value64 {
+        Value64 {
+            data: V64Union { int32: i },
+        }
+    }
+
+    #[inline]
+    pub fn from_int64(i: i64) -> Value64 {
+        Value64 {
+            data: V64Union { int64: i },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint(u: usize) -> Value64 {
+        Value64 {
+            data: V64Union { uint: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint_ptr(u: usize) -> Value64 {
+        Value64 {
+            data: V64Union { uint_ptr: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint8(u: u8) -> Value64 {
+        Value64 {
+            data: V64Union { uint8: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint16(u: u16) -> Value64 {
+        Value64 {
+            data: V64Union { uint16: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint32(u: u32) -> Value64 {
+        Value64 {
+            data: V64Union { uint32: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_uint64(u: u64) -> Value64 {
+        Value64 {
+            data: V64Union { uint64: u },
+        }
+    }
+
+    #[inline]
+    pub fn from_float32(f: F32) -> Value64 {
+        Value64 {
+            data: V64Union { float32: f },
+        }
+    }
+
+    #[inline]
+    pub fn from_float64(f: F64) -> Value64 {
+        Value64 {
+            data: V64Union { float64: f },
+        }
+    }
+
+    #[inline]
+    pub fn from_complex64(r: F32, i: F32) -> Value64 {
+        Value64 {
+            data: V64Union { complex64: (r, i) },
+        }
+    }
+
+    #[inline]
+    pub fn from_function(f: FunctionKey) -> Value64 {
+        Value64 {
+            data: V64Union { function: f },
+        }
+    }
+
+    #[inline]
+    pub fn from_package(p: PackageKey) -> Value64 {
+        Value64 {
+            data: V64Union { package: p },
+        }
+    }
+
+    #[inline]
+    pub fn from_int32_as(i: i32, t: ValueType) -> Value64 {
         let u = match t {
             ValueType::Int => V64Union { int: i as isize },
             ValueType::Int8 => V64Union { int8: i as i8 },
@@ -1304,90 +1398,121 @@ impl GosValue64 {
             },
             _ => unreachable!(),
         };
-        GosValue64 { data: u }
+        Value64 { data: u }
     }
 
     #[inline]
-    pub fn from_float64(f: F64) -> GosValue64 {
-        GosValue64 {
-            data: V64Union { float64: f },
+    pub fn v128(self, t: ValueType) -> GosValue {
+        match t {
+            ValueType::Bool => GosValue::Bool(self),
+            ValueType::Int => GosValue::Int(self),
+            ValueType::Int8 => GosValue::Int8(self),
+            ValueType::Int16 => GosValue::Int16(self),
+            ValueType::Int32 => GosValue::Int32(self),
+            ValueType::Int64 => GosValue::Int64(self),
+            ValueType::Uint => GosValue::Uint(self),
+            ValueType::UintPtr => GosValue::UintPtr(self),
+            ValueType::Uint8 => GosValue::Uint8(self),
+            ValueType::Uint16 => GosValue::Uint16(self),
+            ValueType::Uint32 => GosValue::Uint32(self),
+            ValueType::Uint64 => GosValue::Uint64(self),
+            ValueType::Float32 => GosValue::Float32(self),
+            ValueType::Float64 => GosValue::Float64(self),
+            ValueType::Complex64 => GosValue::Complex64(self),
+            ValueType::Function => GosValue::Function(self),
+            ValueType::Package => GosValue::Package(self),
+            _ => unreachable!(),
         }
     }
 
     #[inline]
-    pub fn from_complex64(r: F32, i: F32) -> GosValue64 {
-        GosValue64 {
-            data: V64Union { complex64: (r, i) },
-        }
-    }
-
-    /// returns GosValue and increases RC
-    #[inline]
-    pub fn v128(&self, t: ValueType) -> GosValue {
-        unsafe {
-            match t {
-                ValueType::Bool => GosValue::Bool(self.data.ubool),
-                ValueType::Int => GosValue::Int(self.data.int),
-                ValueType::Int8 => GosValue::Int8(self.data.int8),
-                ValueType::Int16 => GosValue::Int16(self.data.int16),
-                ValueType::Int32 => GosValue::Int32(self.data.int32),
-                ValueType::Int64 => GosValue::Int64(self.data.int64),
-                ValueType::Uint => GosValue::Uint(self.data.uint),
-                ValueType::UintPtr => GosValue::UintPtr(self.data.uint_ptr),
-                ValueType::Uint8 => GosValue::Uint8(self.data.uint8),
-                ValueType::Uint16 => GosValue::Uint16(self.data.uint16),
-                ValueType::Uint32 => GosValue::Uint32(self.data.uint32),
-                ValueType::Uint64 => GosValue::Uint64(self.data.uint64),
-                ValueType::Float32 => GosValue::Float32(self.data.float32),
-                ValueType::Float64 => GosValue::Float64(self.data.float64),
-                ValueType::Complex64 => {
-                    GosValue::Complex64(self.data.complex64.0, self.data.complex64.1)
-                }
-                ValueType::Function => GosValue::Function(self.data.function),
-                ValueType::Package => GosValue::Package(self.data.package),
-                _ => unreachable!(),
-            }
-        }
+    pub fn as_bool(&self) -> &bool {
+        unsafe { &self.data.ubool }
     }
 
     #[inline]
-    pub fn get_bool(&self) -> bool {
-        unsafe { self.data.ubool }
+    pub fn as_int(&self) -> &isize {
+        unsafe { &self.data.int }
     }
 
     #[inline]
-    pub fn get_int(&self) -> isize {
-        unsafe { self.data.int }
+    pub fn as_int_mut(&mut self) -> &mut isize {
+        unsafe { &mut self.data.int }
     }
 
     #[inline]
-    pub fn get_int32(&self) -> i32 {
-        unsafe { self.data.int32 }
+    pub fn as_int8(&self) -> &i8 {
+        unsafe { &self.data.int8 }
     }
 
     #[inline]
-    pub fn get_uint(&self) -> usize {
-        unsafe { self.data.uint }
+    pub fn as_int16(&self) -> &i16 {
+        unsafe { &self.data.int16 }
     }
 
     #[inline]
-    pub fn get_uint32(&self) -> u32 {
-        unsafe { self.data.uint32 }
+    pub fn as_int32(&self) -> &i32 {
+        unsafe { &self.data.int32 }
     }
 
     #[inline]
-    pub fn get_float32(&self) -> F32 {
-        unsafe { self.data.float32 }
+    pub fn as_int64(&self) -> &i64 {
+        unsafe { &self.data.int64 }
     }
 
     #[inline]
-    pub fn get_float64(&self) -> F64 {
-        unsafe { self.data.float64 }
+    pub fn as_uint(&self) -> &usize {
+        unsafe { &self.data.uint }
     }
 
     #[inline]
-    pub fn get_complex64(&self) -> (F32, F32) {
-        unsafe { self.data.complex64 }
+    pub fn as_uint_ptr(&self) -> &usize {
+        unsafe { &self.data.uint_ptr }
+    }
+
+    #[inline]
+    pub fn as_uint8(&self) -> &u8 {
+        unsafe { &self.data.uint8 }
+    }
+
+    #[inline]
+    pub fn as_uint16(&self) -> &u16 {
+        unsafe { &self.data.uint16 }
+    }
+
+    #[inline]
+    pub fn as_uint32(&self) -> &u32 {
+        unsafe { &self.data.uint32 }
+    }
+
+    #[inline]
+    pub fn as_uint64(&self) -> &u64 {
+        unsafe { &self.data.uint64 }
+    }
+
+    #[inline]
+    pub fn as_float32(&self) -> &F32 {
+        unsafe { &self.data.float32 }
+    }
+
+    #[inline]
+    pub fn as_float64(&self) -> &F64 {
+        unsafe { &self.data.float64 }
+    }
+
+    #[inline]
+    pub fn as_complex64(&self) -> &(F32, F32) {
+        unsafe { &self.data.complex64 }
+    }
+
+    #[inline]
+    pub fn as_function(&self) -> &FunctionKey {
+        unsafe { &self.data.function }
+    }
+
+    #[inline]
+    pub fn as_package(&self) -> &PackageKey {
+        unsafe { &self.data.package }
     }
 
     #[inline]
@@ -1536,58 +1661,58 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn binary_op_add(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_add(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_float!(t, self, b, +) }
     }
 
     #[inline]
-    pub fn binary_op_sub(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_sub(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_float!(t, self, b, -) }
     }
 
     #[inline]
-    pub fn binary_op_mul(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_mul(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_float!(t, self, b, *) }
     }
 
     #[inline]
-    pub fn binary_op_quo(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_quo(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_float!(t, self, b, /) }
     }
 
     #[inline]
-    pub fn binary_op_rem(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_rem(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_no_wrap!(t, self, b, %) }
     }
 
     #[inline]
-    pub fn binary_op_and(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_and(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_no_wrap!(t, self, b, &) }
     }
 
     #[inline]
-    pub fn binary_op_or(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_or(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_no_wrap!(t, self, b, |) }
     }
 
     #[inline]
-    pub fn binary_op_xor(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
+    pub fn binary_op_xor(&self, b: &Value64, t: ValueType) -> Value64 {
         unsafe { binary_op_int_no_wrap!(t, self, b, ^) }
     }
 
     #[inline]
-    pub fn binary_op_shl(&mut self, b: u32, t: ValueType) {
+    pub fn binary_op_shl(&mut self, b: &u32, t: ValueType) {
         unsafe { shift_int!(t, self, b, checked_shl) }
     }
 
     #[inline]
-    pub fn binary_op_shr(&mut self, b: u32, t: ValueType) {
+    pub fn binary_op_shr(&mut self, b: &u32, t: ValueType) {
         unsafe { shift_int!(t, self, b, checked_shr) }
     }
 
     #[inline]
-    pub fn binary_op_and_not(&self, b: &GosValue64, t: ValueType) -> GosValue64 {
-        GosValue64 {
+    pub fn binary_op_and_not(&self, b: &Value64, t: ValueType) -> Value64 {
+        Value64 {
             //debug_type: t,
             data: unsafe {
                 match t {
@@ -1628,32 +1753,32 @@ impl GosValue64 {
     }
 
     #[inline]
-    pub fn compare_eql(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_eql(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_bool_int_float!(t, a, b, ==) }
     }
 
     #[inline]
-    pub fn compare_neq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_neq(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_bool_int_float!(t, a, b, !=) }
     }
 
     #[inline]
-    pub fn compare_lss(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_lss(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, a, b, <) }
     }
 
     #[inline]
-    pub fn compare_gtr(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_gtr(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, a, b, >) }
     }
 
     #[inline]
-    pub fn compare_leq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_leq(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, a, b, <=) }
     }
 
     #[inline]
-    pub fn compare_geq(a: &GosValue64, b: &GosValue64, t: ValueType) -> bool {
+    pub fn compare_geq(a: &Value64, b: &Value64, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, a, b, >=) }
     }
 }
@@ -1665,23 +1790,6 @@ mod test {
     use std::mem;
 
     #[test]
-    fn test_types() {
-        let _t1: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_owned()),
-            GosValue::Int(100),
-            GosValue::new_str("Denmark".to_owned()),
-            GosValue::Int(10),
-        ];
-
-        let _t2: Vec<GosValue> = vec![
-            GosValue::new_str("Norway".to_owned()),
-            GosValue::Int(100),
-            GosValue::new_str("Denmark".to_owned()),
-            GosValue::Int(10),
-        ];
-    }
-
-    #[test]
     fn test_size() {
         dbg!(mem::size_of::<HashMap<GosValue, GosValue>>());
         dbg!(mem::size_of::<String>());
@@ -1689,7 +1797,7 @@ mod test {
         dbg!(mem::size_of::<SliceObj>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
-        dbg!(mem::size_of::<GosValue64>());
+        dbg!(mem::size_of::<Value64>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

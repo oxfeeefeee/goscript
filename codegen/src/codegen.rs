@@ -750,7 +750,7 @@ impl<'a> CodeGen<'a> {
         let fmeta = self
             .t
             .meta_from_tc(tc_type, &mut self.objects, self.dummy_gcv);
-        let f = GosValue::new_function(
+        let f = GosValue::new_function_create(
             self.pkg_key,
             fmeta,
             self.objects,
@@ -1301,8 +1301,13 @@ impl<'a> CodeGen<'a> {
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.metadata.default_sig;
-        let f =
-            GosValue::new_function(pkey, fmeta, self.objects, self.dummy_gcv, FuncFlag::PkgCtor);
+        let f = GosValue::new_function_create(
+            pkey,
+            fmeta,
+            self.objects,
+            self.dummy_gcv,
+            FuncFlag::PkgCtor,
+        );
         let fkey = *f.as_function();
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
@@ -1371,7 +1376,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let tc_type = self.t.get_node_tc_type(this.id());
         let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let mut emitter = current_func_emitter!(self);
-        let i = emitter.add_const(None, GosValue::Function(fkey));
+        let i = emitter.add_const(None, GosValue::new_function(fkey));
         let pos = Some(flit.body.l_brace);
         emitter.emit_literal(ValueType::Function, None, i.into(), pos);
     }
@@ -1702,11 +1707,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             }
         };
         let (t, t_inner) = self.t.get_expr_value_type_named(expr);
-        let mut emitter = current_func_emitter!(self);
         if code == Opcode::RECV {
-            emitter.f.emit_code_with_type(code, t, pos);
+            current_func_emitter!(self)
+                .f
+                .emit_code_with_type(code, t, pos);
         } else {
-            emitter.emit_ops(code, t, None, t_inner, None, pos);
+            let t_inner = t_inner.map(|x| {
+                let meta = self
+                    .t
+                    .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
+                (x, key_to_u64(meta.as_non_ptr()))
+            });
+            current_func_emitter!(self).emit_ops(code, t, None, t_inner, None, pos);
         }
     }
 
@@ -1751,26 +1763,41 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         self.visit_expr(right);
 
         if let Some(i) = mark {
-            let mut emitter = current_func_emitter!(self);
+            let emitter = current_func_emitter!(self);
             let mut diff = emitter.f.next_code_index() - i - 1;
             if t0 == ValueType::Named {
-                emitter.f.emit_code_with_imm(Opcode::JUMP, 1, pos);
+                let meta = self
+                    .t
+                    .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
+                let m_u64 = Some(key_to_u64(meta.as_non_ptr()));
+                let mut emitter = current_func_emitter!(self);
+                emitter.f.emit_code_with_imm(Opcode::JUMP, 2, pos);
                 diff += 1;
-                emitter.emit_wrap(ValueType::Bool, -1, None, pos);
+                emitter.emit_wrap(ValueType::Bool, -1, m_u64, pos);
             };
-            emitter.f.instruction_mut(i).set_imm(diff as OpIndex);
+            current_func_emitter!(self)
+                .f
+                .instruction_mut(i)
+                .set_imm(diff as OpIndex);
         } else {
             let (t1, t1_inner) = if code == Opcode::SHL || code == Opcode::SHR {
                 self.t.get_expr_value_type_named(right)
             } else {
                 (t0, t0_inner)
             };
-            let mut emitter = current_func_emitter!(self);
             if compare {
                 // don't unwrap named operands of comparisons
-                emitter.f.emit_code_with_type(code, t0, pos);
+                current_func_emitter!(self)
+                    .f
+                    .emit_code_with_type(code, t0, pos);
             } else {
-                emitter.emit_ops(code, t0, Some(t1), t0_inner, t1_inner, pos);
+                let t0_inner = t0_inner.map(|x| {
+                    let meta = self
+                        .t
+                        .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
+                    (x, key_to_u64(meta.as_non_ptr()))
+                });
+                current_func_emitter!(self).emit_ops(code, t0, Some(t1), t0_inner, t1_inner, pos);
             }
         }
     }

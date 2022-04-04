@@ -138,7 +138,7 @@ impl<'a> Emitter<'a> {
             EntIndex::Const(i) => {
                 let done = match self.f.const_val(i).clone() {
                     GosValue::Bool(b) => {
-                        let op = if b {
+                        let op = if *b.as_bool() {
                             Opcode::PUSH_TRUE
                         } else {
                             Opcode::PUSH_FALSE
@@ -146,16 +146,16 @@ impl<'a> Emitter<'a> {
                         self.f.emit_code(op, pos);
                         true
                     }
-                    GosValue::Int(i) => self.try_imm(i, typ, pos),
-                    GosValue::Int8(i) => self.try_imm(i, typ, pos),
-                    GosValue::Int16(i) => self.try_imm(i, typ, pos),
-                    GosValue::Int32(i) => self.try_imm(i, typ, pos),
-                    GosValue::Int64(i) => self.try_imm(i, typ, pos),
-                    GosValue::Uint(i) => self.try_imm(i, typ, pos),
-                    GosValue::Uint8(i) => self.try_imm(i, typ, pos),
-                    GosValue::Uint16(i) => self.try_imm(i, typ, pos),
-                    GosValue::Uint32(i) => self.try_imm(i, typ, pos),
-                    GosValue::Uint64(i) => self.try_imm(i, typ, pos),
+                    GosValue::Int(i) => self.try_imm(*i.as_int(), typ, pos),
+                    GosValue::Int8(i) => self.try_imm(*i.as_int8(), typ, pos),
+                    GosValue::Int16(i) => self.try_imm(*i.as_int16(), typ, pos),
+                    GosValue::Int32(i) => self.try_imm(*i.as_int32(), typ, pos),
+                    GosValue::Int64(i) => self.try_imm(*i.as_int64(), typ, pos),
+                    GosValue::Uint(i) => self.try_imm(*i.as_uint(), typ, pos),
+                    GosValue::Uint8(i) => self.try_imm(*i.as_uint8(), typ, pos),
+                    GosValue::Uint16(i) => self.try_imm(*i.as_uint16(), typ, pos),
+                    GosValue::Uint32(i) => self.try_imm(*i.as_uint32(), typ, pos),
+                    GosValue::Uint64(i) => self.try_imm(*i.as_uint64(), typ, pos),
                     _ => false,
                 };
                 if !done {
@@ -448,7 +448,7 @@ impl<'a> Emitter<'a> {
         code: Opcode,
         t0: ValueType,
         t1: Option<ValueType>,
-        t0_inner: Option<ValueType>,
+        t0_inner: Option<(ValueType, u64)>,
         t1_inner: Option<ValueType>,
         pos: Option<usize>,
     ) {
@@ -461,7 +461,7 @@ impl<'a> Emitter<'a> {
         };
 
         let t0 = match t0_inner {
-            Some(t) => {
+            Some((t, _)) => {
                 let i = t1.map_or(-1, |_| -2);
                 self.emit_unwrap(i, pos);
                 t
@@ -471,8 +471,8 @@ impl<'a> Emitter<'a> {
 
         self.f.emit_code_with_type2(code, t0, t1, pos);
 
-        if let Some(t) = t0_inner {
-            self.emit_wrap(t, -1, None, pos);
+        if let Some((t, meta)) = t0_inner {
+            self.emit_wrap(t, -1, Some(meta), pos);
         }
     }
 }

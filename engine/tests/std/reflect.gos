@@ -242,9 +242,9 @@ func main() {
     testSet() 
 
     
-    i := reflect.TypeOf(get)
-    j := reflect.TypeOf(get2)
-    assert(i == j)
-    fmt2.Println(get2(), get(), i, j, i == j, reflect.ValueOf(get).Pointer())
+    //i := reflect.TypeOf(get)
+    //j := reflect.TypeOf(get2)
+    //assert(i == j)
+    //fmt2.Println(get2(), get(), i, j, i == j, reflect.ValueOf(get).Pointer())
     
 }

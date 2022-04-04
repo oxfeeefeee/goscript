@@ -5,9 +5,9 @@ use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
-use std::mem;
 use std::ptr;
 use std::rc::Rc;
+use std::{mem, panic};
 
 const DEFAULT_SIZE: usize = 10240;
 
@@ -27,7 +27,7 @@ macro_rules! stack_binary_op_shift {
         right.to_uint32($t1);
         $stack
             .get_c_mut($stack.len() - 1)
-            .$op(right.get_uint32(), $t0);
+            .$op(right.as_uint32(), $t0);
     }};
 }
 
@@ -36,7 +36,7 @@ macro_rules! stack_cmp_op {
         let len = $stack.len();
         let a = $stack.get_c(len - 2);
         let b = $stack.get_c(len - 1);
-        *$stack.get_c_mut(len - 2) = GosValue64::from_bool(GosValue64::$op(a, b, $t));
+        *$stack.get_c_mut(len - 2) = Value64::from_bool(Value64::$op(a, b, $t));
         $stack.pop_discard();
     }};
 }
@@ -65,12 +65,12 @@ macro_rules! read_with_ops {
             Opcode::AND_NOT => $lhs.binary_op_and_not($rhs, $t),
             Opcode::SHL => {
                 let mut v = $lhs.clone();
-                v.binary_op_shl($shift_rhs.get_uint32(), $t);
+                v.binary_op_shl($shift_rhs.as_uint32(), $t);
                 v
             }
             Opcode::SHR => {
                 let mut v = $lhs.clone();
-                v.binary_op_shr($shift_rhs.get_uint32(), $t);
+                v.binary_op_shr($shift_rhs.as_uint32(), $t);
                 v
             }
             _ => unreachable!(),
@@ -98,9 +98,10 @@ macro_rules! store_local_val {
     }};
 }
 
+// NOTE! the type-tag of copyable values are not properly maintained
+// Make sure non-copyable data are properly released
 pub struct Stack {
-    c: Vec<GosValue64>,
-    rc: Vec<GosValue>,
+    v: Vec<GosValue>,
     cursor: usize,
     max: usize,
 }
@@ -114,14 +115,9 @@ impl Display for Stack {
 impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[stack] cursor: {}\n", self.cursor)?;
-        f.write_str("======c  top=======\n")?;
-        for i in 0..(self.cursor + 1) {
-            write!(f, "{}\n", self.c[i].get_uint())?;
-        }
-        f.write_str("======c  botton====\n")?;
         f.write_str("=====rc  top=======\n")?;
         for i in 0..(self.cursor + 1) {
-            write!(f, "{}\n", &self.rc[i])?;
+            write!(f, "{}\n", &self.v[i])?;
         }
         f.write_str("=====rc  botton====\n")
     }
@@ -130,62 +126,50 @@ impl fmt::Debug for Stack {
 impl Stack {
     pub fn new() -> Stack {
         Stack {
-            c: vec![GosValue64::nil(); DEFAULT_SIZE],
-            rc: vec![GosValue::new_nil(); DEFAULT_SIZE],
+            v: vec![GosValue::new_nil(); DEFAULT_SIZE],
             cursor: 0,
             max: DEFAULT_SIZE - 1,
         }
     }
 
-    pub fn with_data(mut c: Vec<GosValue64>, mut rc: Vec<GosValue>) -> Stack {
-        let n = c.len();
-        debug_assert!(n == rc.len());
+    pub fn with_data(mut vec: Vec<GosValue>) -> Stack {
+        let n = vec.len();
         let size_to_go = DEFAULT_SIZE - n;
-        c.append(&mut vec![GosValue64::nil(); size_to_go]);
-        rc.append(&mut vec![GosValue::new_nil(); size_to_go]);
+        vec.append(&mut vec![GosValue::new_nil(); size_to_go]);
         Stack {
-            c: c,
-            rc: rc,
+            v: vec,
             cursor: n,
             max: DEFAULT_SIZE - 1,
         }
     }
 
     pub fn move_from(other: &mut Stack, count: usize) -> Stack {
-        let (c, rc) = other.pop_n(count);
-        Stack::with_data(c, rc)
+        let v = other.pop_n(count);
+        Stack::with_data(v)
     }
 
-    pub fn pop_n(&mut self, n: usize) -> (Vec<GosValue64>, Vec<GosValue>) {
+    pub fn pop_n(&mut self, n: usize) -> Vec<GosValue> {
         let begin = self.cursor - n;
         let end = self.cursor;
         self.cursor -= n;
-        let mut c: Vec<GosValue64> = vec![GosValue64::nil(); n];
-        c.copy_from_slice(&self.c[begin..end]);
-        (
-            c,
-            self.rc[begin..end]
-                .iter_mut()
-                .map(|x| std::mem::replace(x, GosValue::new_nil()))
-                .collect(),
-        )
+        self.v[begin..end]
+            .iter_mut()
+            .map(|x| std::mem::replace(x, GosValue::new_nil()))
+            .collect()
     }
 
-    pub fn push_n(&mut self, c: Vec<GosValue64>, rc: Vec<GosValue>) {
-        let n = c.len();
-        debug_assert!(n == rc.len());
+    pub fn push_n(&mut self, vec: Vec<GosValue>) {
+        let n = vec.len();
         let begin = self.cursor;
-        let end = begin + n;
-        self.c[begin..end].copy_from_slice(&c[0..n]);
-        for (i, v) in rc.into_iter().enumerate() {
-            self.rc[begin + i] = v;
+        for (i, val) in vec.into_iter().enumerate() {
+            self.v[begin + i] = val;
         }
         self.cursor += n;
     }
 
     #[inline]
     pub fn push(&mut self, val: GosValue) {
-        let (v, t) = GosValue64::from_v128(&val);
+        let (v, t) = Value64::from_v128(&val);
         if t != ValueType::Nil {
             *self.get_c_mut(self.cursor) = v;
         } else {
@@ -215,21 +199,21 @@ impl Stack {
 
     #[inline]
     pub fn push_bool(&mut self, b: bool) {
-        *self.get_c_mut(self.cursor) = GosValue64::from_bool(b);
+        *self.get_c_mut(self.cursor) = Value64::from_bool(b);
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
     }
 
     #[inline]
     pub fn push_int(&mut self, i: isize) {
-        *self.get_c_mut(self.cursor) = GosValue64::from_int(i);
+        *self.get_c_mut(self.cursor) = Value64::from_int(i);
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
     }
 
     #[inline]
     pub fn push_int32_as(&mut self, i: i32, t: ValueType) {
-        *self.get_c_mut(self.cursor) = GosValue64::from_int32_as(i, t);
+        *self.get_c_mut(self.cursor) = Value64::from_int32_as(i, t);
         self.cursor += 1;
         assert!(self.cursor <= self.max); //todo: expand
     }
@@ -237,15 +221,21 @@ impl Stack {
     #[inline]
     pub fn pop_discard(&mut self) {
         self.cursor -= 1;
+        let mut ret = GosValue::new_nil();
+        std::mem::swap(self.get_rc_mut(self.cursor), &mut ret);
     }
 
     #[inline]
     pub fn pop_discard_n(&mut self, n: usize) {
+        for i in 1..(n + 1) {
+            let mut ret = GosValue::new_nil();
+            std::mem::swap(self.get_rc_mut(self.cursor - i), &mut ret);
+        }
         self.cursor -= n;
     }
 
     #[inline]
-    pub fn pop_c(&mut self) -> GosValue64 {
+    pub fn pop_c(&mut self) -> Value64 {
         self.cursor -= 1;
         self.get_c(self.cursor).clone()
     }
@@ -305,31 +295,31 @@ impl Stack {
     #[inline]
     pub fn pop_bool(&mut self) -> bool {
         self.cursor -= 1;
-        self.get_c(self.cursor).get_bool()
+        *self.get_c(self.cursor).as_bool()
     }
 
     #[inline]
     pub fn pop_int(&mut self) -> isize {
         self.cursor -= 1;
-        self.get_c(self.cursor).get_int()
+        *self.get_c(self.cursor).as_int()
     }
 
     #[inline]
     pub fn pop_int32(&mut self) -> i32 {
         self.cursor -= 1;
-        self.get_c(self.cursor).get_int32()
+        *self.get_c(self.cursor).as_int32()
     }
 
     #[inline]
     pub fn pop_uint(&mut self) -> usize {
         self.cursor -= 1;
-        self.get_c(self.cursor).get_uint()
+        *self.get_c(self.cursor).as_uint()
     }
 
     #[inline]
     pub fn pop_uint32(&mut self) -> u32 {
         self.cursor -= 1;
-        self.get_c(self.cursor).get_uint32()
+        *self.get_c(self.cursor).as_uint32()
     }
 
     #[inline]
@@ -352,22 +342,9 @@ impl Stack {
 
     #[inline]
     pub fn set(&mut self, index: usize, val: GosValue) -> ValueType {
-        let (v, t) = GosValue64::from_v128(&val);
-        if t != ValueType::Nil {
-            *self.get_c_mut(index) = v;
-        } else {
-            *self.get_rc_mut(index) = val;
-        }
+        let t = val.typ();
+        *self.get_rc_mut(index) = val;
         t
-    }
-
-    #[inline]
-    pub fn set_with_type(&mut self, index: usize, val: GosValue64, t: ValueType) {
-        if t.copyable() {
-            *self.get_c_mut(index) = val;
-        } else {
-            *self.get_rc_mut(index) = val.v128(t)
-        }
     }
 
     #[inline]
@@ -378,7 +355,7 @@ impl Stack {
     #[inline]
     pub fn truncate(&mut self, len: usize) {
         assert!(len <= self.cursor);
-        self.cursor = len
+        self.pop_n(self.cursor - len);
     }
 
     #[inline]
@@ -392,15 +369,15 @@ impl Stack {
     pub fn split_off_with_type(&mut self, index: usize, t: ValueType) -> Vec<GosValue> {
         let end = self.cursor;
         self.cursor = index;
-        if t.copyable() {
-            self.c[index..end].iter().map(|x| x.v128(t)).collect()
-        } else {
-            self.rc[index..end].to_vec()
+        let v = self.v[index..end].to_vec();
+        for i in index..end {
+            self.v[i] = GosValue::new_nil();
         }
+        v
     }
 
     #[inline]
-    fn read_copyable(&self, r_index: OpIndex) -> GosValue64 {
+    fn read_copyable(&self, r_index: OpIndex) -> Value64 {
         let rhs_s_index = Stack::offset(self.len(), r_index);
         *self.get_c(rhs_s_index)
     }
@@ -417,11 +394,11 @@ impl Stack {
         if t == ValueType::Named {
             let op = Instruction::index2code(r_index);
             let l = lhs.as_named();
-            let (a, t) = GosValue64::from_v128(&l.0);
+            let (a, t) = Value64::from_v128(&l.0);
             let v = read_with_ops!(
                 op,
                 &a,
-                &GosValue64::from_v128(&self.get_rc(ri).as_named().0).0,
+                &Value64::from_v128(&self.get_rc(ri).as_named().0).0,
                 self.get_c(ri),
                 t
             );
@@ -432,7 +409,7 @@ impl Stack {
     }
 
     #[inline]
-    fn read_copyable_ops(&self, lhs: &GosValue64, r_index: OpIndex, t: ValueType) -> GosValue64 {
+    fn read_copyable_ops(&self, lhs: &Value64, r_index: OpIndex, t: ValueType) -> Value64 {
         let ri = Stack::offset(self.len(), -1);
         let op = Instruction::index2code(r_index);
         read_with_ops!(op, lhs, self.get_c(ri), self.get_c(ri), t)
@@ -448,7 +425,7 @@ impl Stack {
             }
         } else {
             if t.copyable() {
-                self.read_copyable_ops(&GosValue64::from_v128(target).0, r_index, t)
+                self.read_copyable_ops(&Value64::from_v128(target).0, r_index, t)
                     .v128(t)
             } else {
                 self.read_non_copyable_ops(target, r_index, t)
@@ -542,7 +519,7 @@ impl Stack {
         t: ValueType,
         gcos: &GcoVec,
     ) -> RuntimeResult<()> {
-        let index = GosValue::Int(i as isize);
+        let index = GosValue::new_int(i as isize);
         self.store_index(target, &index, r_index, t, gcos)
     }
 
@@ -560,7 +537,7 @@ impl Stack {
             GosValue::Struct(s) => {
                 match key {
                     GosValue::Int(i) => {
-                        let target = &mut s.0.borrow_mut().fields[*i as usize];
+                        let target = &mut s.0.borrow_mut().fields[*i.as_int() as usize];
                         self.store_val(target, r_index, t, gcos);
                     }
                     GosValue::Str(sval) => {
@@ -672,7 +649,10 @@ impl Stack {
             GosValue::Named(n) => {
                 n.as_mut().0 = val;
             }
-            _ => unreachable!(),
+            _ => {
+                dbg!(self.get_rc_mut(i));
+                unreachable!();
+            }
         }
     }
 
@@ -705,7 +685,7 @@ impl Stack {
             let len = self.len();
             let a = self.get_c(len - 2);
             let b = self.get_c(len - 1);
-            GosValue64::compare_eql(a, b, t)
+            Value64::compare_eql(a, b, t)
         } else {
             let a = self.get_rc(self.len() - 2);
             let b = self.get_rc(self.len() - 1);
@@ -845,23 +825,42 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get_c(&self, i: usize) -> &GosValue64 {
-        unsafe { self.c.get_unchecked(i) }
+    pub fn get_c(&self, i: usize) -> &Value64 {
+        let t = self.get_rc(i).typ();
+        if !t.copyable() && t != ValueType::Nil {
+            dbg!(t, self.get_rc(i));
+            panic!("11111");
+        }
+        unsafe {
+            // one word offset from beginning
+            let p: *const usize = mem::transmute(self.v.get_unchecked(i));
+            mem::transmute(p.offset(1))
+        }
     }
 
     #[inline]
-    pub fn get_c_mut(&mut self, i: usize) -> &mut GosValue64 {
-        unsafe { self.c.get_unchecked_mut(i) }
+    pub fn get_c_mut(&mut self, i: usize) -> &mut Value64 {
+        let t = self.get_rc(i).typ();
+        if !t.copyable() && t != ValueType::Nil {
+            dbg!(t);
+            dbg!(self.get_rc(i));
+            panic!("22222");
+        }
+        unsafe {
+            // one word offset from beginning
+            let p: *mut usize = mem::transmute(self.v.get_unchecked_mut(i));
+            mem::transmute(p.offset(1))
+        }
     }
 
     #[inline]
     pub fn get_rc(&self, i: usize) -> &GosValue {
-        unsafe { self.rc.get_unchecked(i) }
+        unsafe { self.v.get_unchecked(i) }
     }
 
     #[inline]
     pub fn get_rc_mut(&mut self, i: usize) -> &mut GosValue {
-        unsafe { self.rc.get_unchecked_mut(i) }
+        unsafe { self.v.get_unchecked_mut(i) }
     }
 
     #[inline]
@@ -877,7 +876,7 @@ impl Stack {
     pub fn clear_rc_garbage(&mut self) {
         let nil = GosValue::new_nil();
         for i in self.cursor..self.max {
-            self.rc[i] = nil.clone();
+            self.v[i] = nil.clone();
         }
     }
 }
@@ -964,7 +963,7 @@ mod test {
     #[test]
     fn test_stack() {
         let mut s = Stack::new();
-        s.push(GosValue::Int(1));
+        //s.push(GosValue::Int(1));
         //assert_eq!(s.pop(), GosValue::Int(1));
 
         s.push(GosValue::new_str("11".to_owned()));

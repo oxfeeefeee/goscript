@@ -203,8 +203,7 @@ impl CallFrame {
 #[derive(Clone, Debug)]
 struct DeferredCall {
     frame: CallFrame,
-    stack_c: Vec<GosValue64>,
-    stack_rc: Vec<GosValue>,
+    vec: Vec<GosValue>,
 }
 
 #[derive(Debug)]
@@ -398,7 +397,7 @@ impl<'a> Fiber<'a> {
                                 }
                             }
                         } else {
-                            stack.push_index_comma_ok(val, &GosValue::Int(index as isize));
+                            stack.push_index_comma_ok(val, &GosValue::new_int(index as isize));
                         }
                     }
                     Opcode::STORE_INDEX => {
@@ -524,11 +523,11 @@ impl<'a> Fiber<'a> {
                         let pkg = &objs.packages[pkg_key];
                         match pkg.init_func(index) {
                             Some(f) => {
-                                stack.push(GosValue::Int32(index + 1));
+                                stack.push(GosValue::new_int32(index + 1));
                                 stack.push(f.clone());
-                                stack.push(GosValue::Bool(true));
+                                stack.push(GosValue::new_bool(true));
                             }
-                            None => stack.push(GosValue::Bool(false)),
+                            None => stack.push(GosValue::new_bool(false)),
                         }
                     }
                     Opcode::STORE_PKG_FIELD => {
@@ -599,7 +598,7 @@ impl<'a> Fiber<'a> {
                                     _ => {
                                         let target = stack.get_c_mut(target_index);
                                         target.to_uint32(inst.t1());
-                                        char_from_u32(target.get_uint32()).to_string()
+                                        char_from_u32(*target.as_uint32()).to_string()
                                     }
                                 };
                                 stack.set(target_index, GosValue::new_str(result));
@@ -611,12 +610,15 @@ impl<'a> Fiber<'a> {
                                         objs.metadata.mint32,
                                         from.as_str()
                                             .chars()
-                                            .map(|x| GosValue::Int32(x as i32))
+                                            .map(|x| GosValue::new_int32(x as i32))
                                             .collect(),
                                     ),
                                     ValueType::Uint8 => (
                                         objs.metadata.muint8,
-                                        from.as_str().bytes().map(|x| GosValue::Uint8(x)).collect(),
+                                        from.as_str()
+                                            .bytes()
+                                            .map(|x| GosValue::new_uint8(x))
+                                            .collect(),
                                     ),
                                     _ => unreachable!(),
                                 };
@@ -655,7 +657,7 @@ impl<'a> Fiber<'a> {
                                 ValueType::UnsafePtr => {
                                     let v = stack.pop_rc();
                                     let up = v.as_unsafe_ptr();
-                                    stack.push(GosValue::UintPtr(
+                                    stack.push(GosValue::new_uint_ptr(
                                         Rc::as_ptr(up) as *const () as usize
                                     ));
                                 }
@@ -740,7 +742,7 @@ impl<'a> Fiber<'a> {
                         let (unwrapped, ok) = unwrap_recv_val!(chan, val, objs.metas, gcv);
                         stack.push(unwrapped);
                         if inst.t1() == ValueType::FlagA {
-                            stack.push(GosValue::Bool(ok));
+                            stack.push(GosValue::new_bool(ok));
                         }
                     }
                     Opcode::REF_UPVALUE => {
@@ -884,11 +886,10 @@ impl<'a> Fiber<'a> {
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagB => {
-                                        let (c, rc) = stack.pop_n(nfunc.param_count());
+                                        let v = stack.pop_n(nfunc.param_count());
                                         let deferred = DeferredCall {
                                             frame: nframe,
-                                            stack_c: c,
-                                            stack_rc: rc,
+                                            vec: v,
                                         };
                                         frame.defer_stack.get_or_insert(vec![]).push(deferred);
                                     }
@@ -929,9 +930,11 @@ impl<'a> Fiber<'a> {
                         //for s in stack.iter() {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
+
                         match inst.t0() {
                             // default case
                             ValueType::Zero => {
+                                frame.on_drop(&stack);
                                 stack.truncate(stack_base + frame.ret_count(objs));
                             }
                             // init_package func
@@ -952,7 +955,7 @@ impl<'a> Fiber<'a> {
                                         // run Opcode::RETURN to check if deferred_stack is empty
                                         frame.pc -= 1;
 
-                                        stack.push_n(call.stack_c, call.stack_rc);
+                                        stack.push_n(call.vec);
                                         let nframe = call.frame;
 
                                         self.frames.push(nframe);
@@ -968,6 +971,7 @@ impl<'a> Fiber<'a> {
                                         continue;
                                     }
                                     None => {
+                                        frame.on_drop(&stack);
                                         stack.truncate(stack_base + frame.ret_count(objs));
                                     }
                                 }
@@ -975,20 +979,12 @@ impl<'a> Fiber<'a> {
                             _ => unreachable!(),
                         }
 
-                        frame.on_drop(&stack);
                         drop(frame);
                         self.frames.pop();
                         frame_height -= 1;
                         if self.frames.is_empty() {
                             dbg!(total_inst);
-                            /* dbg!
-                            let mut s = stats
-                                .iter()
-                                .map(|(&k, &v)| (k, v))
-                                .collect::<Vec<(Opcode, usize)>>();
-                            s.sort_by(|a, b| b.1.cmp(&a.1));
-                            dbg!(s);
-                            */
+
                             result = Result::End;
                             break;
                         }
@@ -1019,14 +1015,14 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::SHORT_CIRCUIT_OR => {
-                        if stack.get_c(stack.len() - 1).get_bool() {
+                        if *stack.get_c(stack.len() - 1).as_bool() {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         } else {
                             stack.pop_discard()
                         }
                     }
                     Opcode::SHORT_CIRCUIT_AND => {
-                        if !stack.get_c(stack.len() - 1).get_bool() {
+                        if !*stack.get_c(stack.len() - 1).as_bool() {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         } else {
                             stack.pop_discard()
@@ -1158,7 +1154,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::IMPORT => {
                         let pkey = pkgs[inst.imm() as usize];
-                        stack.push(GosValue::Bool(!objs.packages[pkey].inited()));
+                        stack.push(GosValue::new_bool(!objs.packages[pkey].inited()));
                     }
                     Opcode::SLICE | Opcode::SLICE_FULL => {
                         let max = if inst_op == Opcode::SLICE_FULL {
@@ -1194,7 +1190,8 @@ impl<'a> Fiber<'a> {
                         let new_val = match param {
                             GosValue::Function(fkey) => {
                                 // NEW a closure
-                                let mut val = ClosureObj::new_gos(*fkey, &objs.functions, None);
+                                let mut val =
+                                    ClosureObj::new_gos(*fkey.as_function(), &objs.functions, None);
                                 if let Some(uvs) = &mut val.uvs {
                                     drop(frame);
                                     for (_, uv) in uvs.iter_mut() {
@@ -1369,14 +1366,14 @@ impl<'a> Fiber<'a> {
                         let t = inst.t0();
                         let val = match t {
                             ValueType::Float32 => {
-                                let i = stack.pop_c().get_float32();
-                                let r = stack.pop_c().get_float32();
-                                GosValue::Complex64(r, i)
+                                let i = stack.pop_c();
+                                let r = stack.pop_c();
+                                GosValue::new_complex64(*r.as_float32(), *i.as_float32())
                             }
                             ValueType::Float64 => {
-                                let i = stack.pop_c().get_float64();
-                                let r = stack.pop_c().get_float64();
-                                GosValue::Complex128(Box::new((r, i)))
+                                let i = stack.pop_c();
+                                let r = stack.pop_c();
+                                GosValue::Complex128(Box::new((*r.as_float64(), *i.as_float64())))
                             }
                             _ => unreachable!(),
                         };
@@ -1385,10 +1382,10 @@ impl<'a> Fiber<'a> {
                     Opcode::REAL => {
                         let val = match inst.t0() {
                             ValueType::Complex64 => {
-                                GosValue::Float32(stack.pop_c().get_complex64().0)
+                                GosValue::new_float32(stack.pop_c().as_complex64().0)
                             }
                             ValueType::Complex128 => {
-                                GosValue::Float64(stack.pop_rc().as_complex128().0)
+                                GosValue::new_float64(stack.pop_rc().as_complex128().0)
                             }
                             _ => unreachable!(),
                         };
@@ -1397,10 +1394,10 @@ impl<'a> Fiber<'a> {
                     Opcode::IMAG => {
                         let val = match inst.t0() {
                             ValueType::Complex64 => {
-                                GosValue::Float32(stack.pop_c().get_complex64().1)
+                                GosValue::new_float32(stack.pop_c().as_complex64().1)
                             }
                             ValueType::Complex128 => {
-                                GosValue::Float64(stack.pop_rc().as_complex128().1)
+                                GosValue::new_float64(stack.pop_rc().as_complex128().1)
                             }
                             _ => unreachable!(),
                         };
@@ -1414,7 +1411,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Channel(chan) => chan.len(),
                             _ => unreachable!(),
                         };
-                        stack.push(GosValue::Int(l as isize));
+                        stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::CAP => {
                         let l = match &stack.pop_with_type(inst.t0()).unwrap_named_ref() {
@@ -1422,7 +1419,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Channel(chan) => chan.cap(),
                             _ => unreachable!(),
                         };
-                        stack.push(GosValue::Int(l as isize));
+                        stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
@@ -1439,7 +1436,7 @@ impl<'a> Fiber<'a> {
                                     .as_str()
                                     .as_bytes()
                                     .iter()
-                                    .map(|x| GosValue::Uint8(*x))
+                                    .map(|x| GosValue::new_uint8(*x))
                                     .collect();
                                 let b_slice = GosValue::slice_with_val(bytes, vala.0.meta, gcv);
                                 stack.push(b_slice);
@@ -1471,7 +1468,7 @@ impl<'a> Fiber<'a> {
                                 .as_str()
                                 .as_bytes()
                                 .iter()
-                                .map(|x| GosValue::Uint8(*x))
+                                .map(|x| GosValue::new_uint8(*x))
                                 .collect();
                             let b_slice = SliceObj::with_data(bytes, vala.0.meta);
                             vala.0.copy_from(&b_slice)
@@ -1499,7 +1496,12 @@ impl<'a> Fiber<'a> {
                         stack.push(val);
                     }
                     Opcode::ASSERT => {
-                        if !stack.pop_bool() {
+                        let ok = match inst.t0() {
+                            ValueType::Named => *stack.pop_rc().unwrap_named().as_bool(),
+                            ValueType::Bool => stack.pop_bool(),
+                            _ => unreachable!(),
+                        };
+                        if !ok {
                             let msg = "Opcode::ASSERT: not true!".to_owned();
                             go_panic_str!(panic, metadata, msg, frame, code);
                         }
