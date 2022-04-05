@@ -502,7 +502,7 @@ impl<'a> TypeLookup<'a> {
                 }
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
-                    match &vm_objs.metas[slice.as_non_ptr()] {
+                    match &vm_objs.metas[slice.key] {
                         MetadataType::SliceOrArray(elem, _) => Some((*slice, elem.clone())),
                         _ => unreachable!(),
                     }
@@ -528,7 +528,7 @@ impl<'a> TypeLookup<'a> {
                 }
                 self.types_cache.insert(typ, md);
                 let underlying = self.meta_from_tc(detail.underlying(), vm_objs, dummy_gcv);
-                let (_, underlying_mut) = vm_objs.metas[md.as_non_ptr()].as_named_mut();
+                let (_, underlying_mut) = vm_objs.metas[md.key].as_named_mut();
                 *underlying_mut = underlying;
                 md
             }

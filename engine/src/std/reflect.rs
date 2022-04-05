@@ -336,7 +336,7 @@ impl StdValue {
         let mobjs = &ctx.vm_objs.metas;
         match val.unwrap_named_ref() {
             GosValue::Slice(s) => {
-                let (m, _) = mobjs[s.0.meta.as_non_ptr()].as_slice_or_array();
+                let (m, _) = mobjs[s.0.meta.key].as_slice_or_array();
                 match m.value_type(mobjs) {
                     ValueType::Uint8 => Ok(val),
                     _ => err_wrong_type!(),
@@ -548,7 +548,7 @@ impl StdValue {
         if meta.value_type(metas) != ValueType::Slice {
             err_wrong_type!()
         } else {
-            let (elem_meta, _) = metas[meta.as_non_ptr()].as_slice_or_array();
+            let (elem_meta, _) = metas[meta.key].as_slice_or_array();
             if elem_meta.value_type(metas) != ValueType::Uint8 {
                 err_wrong_type!()
             } else {

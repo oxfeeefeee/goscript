@@ -192,7 +192,7 @@ impl GosMetadata {
     }
 
     pub fn new_slice_from_array(array: GosMetadata) -> GosMetadata {
-        GosMetadata::new(array.as_non_ptr(), MetaCategory::Default, 0)
+        GosMetadata::new(array.key, MetaCategory::Default, 0)
     }
 
     #[inline]
@@ -208,11 +208,6 @@ impl GosMetadata {
         let mut m = *self;
         m.ptr_depth -= 1;
         m
-    }
-
-    #[inline]
-    pub fn as_non_ptr(&self) -> MetadataKey {
-        self.key
     }
 
     #[inline]
@@ -329,7 +324,7 @@ impl GosMetadata {
         let key = self.recv_meta_key();
         match &metas[GosMetadata::new(key, MetaCategory::Default, 0)
             .underlying(metas)
-            .as_non_ptr()]
+            .key]
         {
             MetadataType::Struct(m, _) => m.mapping[name] as OpIndex,
             _ => unreachable!(),

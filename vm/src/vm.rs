@@ -57,7 +57,7 @@ macro_rules! unwrap_recv_val {
         match $val {
             Some(v) => (v, true),
             None => {
-                let val_meta = $metas[$chan.meta.as_non_ptr()].as_channel().1;
+                let val_meta = $metas[$chan.meta.key].as_channel().1;
                 (val_meta.zero_val(&$metas, $gcv), false)
             }
         }
@@ -555,7 +555,7 @@ impl<'a> Fiber<'a> {
                                 let iface = ifaces[mapping as usize].clone();
                                 let under =
                                     stack.copy_semantic_with_type(target_index, inst.t1(), gcv);
-                                let val = match &objs.metas[iface.0.as_non_ptr()] {
+                                let val = match &objs.metas[iface.0.key] {
                                     MetadataType::Named(_, md) => GosValue::Named(Box::new((
                                         GosValue::new_iface(
                                             *md,
@@ -831,7 +831,7 @@ impl<'a> Fiber<'a> {
                         let call_style = inst.t0();
                         let pack = inst.t1() == ValueType::FlagA;
                         if pack {
-                            let sig = &objs.metas[cls.meta.as_non_ptr()].as_signature();
+                            let sig = &objs.metas[cls.meta.key].as_signature();
                             let (meta, v_meta) = sig.variadic.unwrap();
                             let vt = v_meta.value_type(&objs.metas);
                             let is_ffi = cls.func.is_none();
@@ -898,9 +898,7 @@ impl<'a> Fiber<'a> {
                             }
                             None => {
                                 let call = cls.ffi.as_ref().unwrap();
-                                let ptypes = &objs.metas[call.meta.as_non_ptr()]
-                                    .as_signature()
-                                    .params_type;
+                                let ptypes = &objs.metas[call.meta.key].as_signature().params_type;
                                 let params = stack.pop_with_type_n(ptypes);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
@@ -1318,7 +1316,7 @@ impl<'a> Fiber<'a> {
                         let md = meta_val.as_meta();
                         let is_named = inst.t1() == ValueType::Named;
                         let umd = is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
-                        let metadata = &objs.metas[umd.as_non_ptr()];
+                        let metadata = &objs.metas[umd.key];
                         let val = match metadata {
                             MetadataType::SliceOrArray(vmeta, _) => {
                                 let (cap, len) = match index {
@@ -1513,16 +1511,13 @@ impl<'a> Fiber<'a> {
                         let itype = stack.get_with_type(index, ValueType::Metadata);
                         let name = stack.get_with_type(index + 1, ValueType::Str);
                         let name_str = name.as_str().as_str();
-                        let ptypes = &objs.metas[meta.as_meta().as_non_ptr()]
-                            .as_signature()
-                            .params_type[2..];
+                        let ptypes =
+                            &objs.metas[meta.as_meta().key].as_signature().params_type[2..];
                         let params = stack.pop_with_type_n(ptypes);
                         let v = match self.context.ffi_factory.create_by_name(name_str, params) {
                             Ok(v) => {
                                 let meta = itype.as_meta().underlying(&objs.metas).clone();
-                                let info = objs.metas[meta.as_non_ptr()]
-                                    .as_interface()
-                                    .iface_methods_info();
+                                let info = objs.metas[meta.key].as_interface().iface_methods_info();
                                 GosValue::new_iface(
                                     meta,
                                     IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),

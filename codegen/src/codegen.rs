@@ -887,7 +887,7 @@ impl<'a> CodeGen<'a> {
 
                 let type_to_meta_u64 = |self_: &mut CodeGen, t: TCTypeKey| {
                     let meta = self_.t.meta_from_tc(t, self_.objects, self_.dummy_gcv);
-                    key_to_u64(meta.as_non_ptr())
+                    key_to_u64(meta.key)
                 };
                 let to_is_named =
                     |lookup: &TypeLookup| lookup.value_type_from_tc(tct_to) == ValueType::Named;
@@ -1712,7 +1712,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let meta = self
                     .t
                     .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
-                (x, key_to_u64(meta.as_non_ptr()))
+                (x, key_to_u64(meta.key))
             });
             current_func_emitter!(self).emit_ops(code, t, None, t_inner, None, pos);
         }
@@ -1765,7 +1765,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 let meta = self
                     .t
                     .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
-                let m_u64 = Some(key_to_u64(meta.as_non_ptr()));
+                let m_u64 = Some(key_to_u64(meta.key));
                 let mut emitter = current_func_emitter!(self);
                 emitter.f.emit_code_with_imm(Opcode::JUMP, 2, pos);
                 diff += 1;
@@ -1791,7 +1791,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let meta = self
                         .t
                         .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
-                    (x, key_to_u64(meta.as_non_ptr()))
+                    (x, key_to_u64(meta.key))
                 });
                 current_func_emitter!(self).emit_ops(code, t0, Some(t1), t0_inner, t1_inner, pos);
             }

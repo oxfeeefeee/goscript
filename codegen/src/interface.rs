@@ -51,7 +51,7 @@ impl IfaceMapping {
             return (i, None);
         }
         let struct_ = lookup.meta_from_tc(i_s.1.unwrap(), objs, dummy_gcv);
-        let fields: Vec<&String> = match &objs.metas[i.underlying(&objs.metas).as_non_ptr()] {
+        let fields: Vec<&String> = match &objs.metas[i.underlying(&objs.metas).key] {
             MetadataType::Interface(m) => m.fields.iter().map(|x| &x.1).collect(),
             _ => unreachable!(),
         };

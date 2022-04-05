@@ -700,10 +700,7 @@ pub struct StructObj {
 
 impl StructObj {
     pub fn is_exported(&self, index: usize, metas: &MetadataObjs) -> bool {
-        metas[self.meta.as_non_ptr()]
-            .as_struct()
-            .0
-            .is_exported(index)
+        metas[self.meta.key].as_struct().0.is_exported(index)
     }
 
     pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
@@ -1714,7 +1711,7 @@ impl FunctionVal {
         gcv: &GcoVec,
         flag: FuncFlag,
     ) -> FunctionVal {
-        let s = &objs.metas[meta.as_non_ptr()].as_signature();
+        let s = &objs.metas[meta.key].as_signature();
         let mut returns = vec![];
         for m in s.results.iter() {
             returns.push(zero_val!(m, objs, gcv));
