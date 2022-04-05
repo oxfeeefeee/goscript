@@ -228,7 +228,7 @@ impl Reflect {
         let arg0 = iter.next();
         let arg1 = iter.next();
         let arg2 = iter.next();
-        let iface = arg0.as_ref().unwrap().as_interface().0.borrow();
+        let iface = arg0.as_ref().unwrap().as_interface().borrow();
         let mut vec = iface
             .underlying_value()
             .unwrap()
@@ -264,10 +264,10 @@ impl StdValue {
 
     fn value_of(v: &GosValue) -> GosValue {
         let iface = v.as_interface();
-        let v = match &iface.0.borrow() as &InterfaceObj {
-            InterfaceObj::Gos(v, _) => v.clone(),
+        let v = match &iface.borrow() as &InterfaceObj {
+            InterfaceObj::Gos(v, _, _) => v.clone(),
             // todo: should we return something else?
-            InterfaceObj::Ffi(_) => GosValue::nil_with_meta(iface.1),
+            InterfaceObj::Ffi(_) => GosValue::new_nil(),
         };
         wrap_std_val(v)
     }
@@ -280,10 +280,11 @@ impl StdValue {
     }
 
     fn settable_meta(&self, ctx: &FfiCallCtx) -> RuntimeResult<Meta> {
-        match self {
-            Self::Pointer(p) => Ok(p.point_to_meta(ctx.vm_objs, ctx.stack)),
-            Self::Value(_) => Err("reflect: value not settable".to_owned()),
-        }
+        Err("todo".to_owned())
+        // match self {
+        //     Self::Pointer(p) => Ok(p.point_to_meta(ctx.vm_objs, ctx.stack)),
+        //     Self::Value(_) => Err("reflect: value not settable".to_owned()),
+        // }
     }
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -331,18 +332,20 @@ impl StdValue {
     }
 
     fn bytes_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
-        let mobjs = &ctx.vm_objs.metas;
-        match val.unwrap_named_ref() {
-            GosValue::Slice(s) => {
-                let (m, _) = mobjs[s.1.key].as_slice_or_array();
-                match m.value_type(mobjs) {
-                    ValueType::Uint8 => Ok(val),
-                    _ => err_wrong_type!(),
-                }
-            }
-            _ => err_wrong_type!(),
-        }
+        err_wrong_type!()
+        // todo
+        // let val = self.val(ctx);
+        // let mobjs = &ctx.vm_objs.metas;
+        // match val.unwrap_named_ref() {
+        //     GosValue::Slice(s) => {
+        //         let (m, _) = mobjs[s.1.key].as_slice_or_array();
+        //         match m.value_type(mobjs) {
+        //             ValueType::Uint8 => Ok(val),
+        //             _ => err_wrong_type!(),
+        //         }
+        //     }
+        //     _ => err_wrong_type!(),
+        // }
     }
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
@@ -351,7 +354,6 @@ impl StdValue {
         match val {
             GosValue::Interface(iface) => Ok(wrap_std_val(
                 iface
-                    .0
                     .borrow()
                     .underlying_value()
                     .map(|x| x.clone())
@@ -422,7 +424,7 @@ impl StdValue {
             GosValue::Array(arr) => Ok(arr.0.len()),
             GosValue::Slice(s) => Ok(s.0.len()),
             GosValue::Str(s) => Ok(s.len()),
-            GosValue::Channel(c) => Ok(c.0.len()),
+            GosValue::Channel(c) => Ok(c.len()),
             GosValue::Map(m) => Ok(m.0.len()),
             _ => err_wrong_type!(),
         }
@@ -437,47 +439,49 @@ impl StdValue {
     }
 
     fn can_set(&self, ctx: &FfiCallCtx) -> bool {
-        match self {
-            Self::Value(_) => false,
-            Self::Pointer(p) => match p as &PointerObj {
-                PointerObj::SliceMember(_, _) => true,
-                PointerObj::StructField(s, i) => {
-                    StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas)
-                }
-                PointerObj::UpVal(uv) => !uv.is_open(),
-                _ => false,
-            },
-        }
+        false // todo
+              // match self {
+              //     Self::Value(_) => false,
+              //     Self::Pointer(p) => match p as &PointerObj {
+              //         PointerObj::SliceMember(_, _) => true,
+              //         PointerObj::StructField(s, i) => {
+              //             StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas)
+              //         }
+              //         PointerObj::UpVal(uv) => !uv.is_open(),
+              //         _ => false,
+              //     },
+              // }
     }
 
     fn set(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let err = Err("reflect: value is not settable".to_owned());
-        match self {
-            Self::Value(_) => err,
-            Self::Pointer(p) => match p as &PointerObj {
-                PointerObj::SliceMember(s, i) => {
-                    let vborrow = s.0.borrow();
-                    *vborrow[s.0.begin() + *i as usize].borrow_mut() = val;
-                    Ok(())
-                }
-                PointerObj::StructField(s, i) => {
-                    if StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas) {
-                        s.0.borrow_mut().fields[*i as usize] = val;
-                        Ok(())
-                    } else {
-                        err
-                    }
-                }
-                PointerObj::UpVal(uv) => match &mut uv.inner.borrow_mut() as &mut UpValueState {
-                    UpValueState::Open(_) => err,
-                    UpValueState::Closed(c) => {
-                        *c = val;
-                        Ok(())
-                    }
-                },
-                _ => err,
-            },
-        }
+        err
+        //todo
+        // match self {
+        //     Self::Value(_) => err,
+        //     Self::Pointer(p) => match p as &PointerObj {
+        //         PointerObj::SliceMember(s, i) => {
+        //             let vborrow = s.0.borrow();
+        //             *vborrow[s.0.begin() + *i as usize].borrow_mut() = val;
+        //             Ok(())
+        //         }
+        //         PointerObj::StructField(s, i) => {
+        //             if StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas) {
+        //                 s.0.borrow_mut().fields[*i as usize] = val;
+        //                 Ok(())
+        //             } else {
+        //                 err
+        //             }
+        //         }
+        //         PointerObj::UpVal(uv) => match &mut uv.inner.borrow_mut() as &mut UpValueState {
+        //             UpValueState::Open(_) => err,
+        //             UpValueState::Closed(c) => {
+        //                 *c = val;
+        //                 Ok(())
+        //             }
+        //         },
+        //         _ => err,
+        //     },
     }
 
     fn set_bool(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
@@ -598,7 +602,7 @@ impl StdType {
     }
 
     fn type_of(val: &GosValue, ctx: &FfiCallCtx) -> (GosValue, GosValue) {
-        let m = val.meta(ctx.vm_objs, ctx.stack);
+        let m = ctx.vm_objs.s_meta.none; //val.meta(ctx.vm_objs, ctx.stack);
         let typ = StdType::new(m, &ctx.vm_objs.metas);
         let kind = match m
             .underlying(&ctx.vm_objs.metas)

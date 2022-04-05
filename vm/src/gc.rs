@@ -1,4 +1,3 @@
-use super::metadata::Meta;
 use super::objects::*;
 use super::value::{GosValue, RCQueue, RCount, IRC};
 use std::cell::Ref;
@@ -35,11 +34,11 @@ impl GcoVec {
 
 #[derive(Debug, Clone)]
 pub enum GcWeak {
-    Array(Weak<(ArrayObj, Meta, RCount)>),
+    Array(Weak<(ArrayObj, RCount)>),
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
-    Slice(Weak<(SliceObj, Meta, RCount)>),
-    Map(Weak<(MapObj, Meta, RCount)>),
-    Struct(Weak<(RefCell<StructObj>, Meta, RCount)>),
+    Slice(Weak<(SliceObj, RCount)>),
+    Map(Weak<(MapObj, RCount)>),
+    Struct(Weak<(RefCell<StructObj>, RCount)>),
     // todo:
     // GC doesn't support channel for now, because we can't access the
     // underlying objects (unless we don't use smol::channel and write
@@ -64,7 +63,7 @@ impl GcWeak {
     fn to_gosv(&self) -> Option<GosValue> {
         match &self {
             GcWeak::Array(w) => w.upgrade().map(|v| {
-                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Array(v)
             }),
             GcWeak::Closure(w) => w.upgrade().map(|v| {
@@ -72,15 +71,15 @@ impl GcWeak {
                 GosValue::Closure(v)
             }),
             GcWeak::Slice(w) => w.upgrade().map(|v| {
-                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Slice(v)
             }),
             GcWeak::Map(w) => w.upgrade().map(|v| {
-                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Map(v)
             }),
             GcWeak::Struct(w) => w.upgrade().map(|v| {
-                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Struct(v)
             }),
         }

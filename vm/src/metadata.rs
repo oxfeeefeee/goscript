@@ -278,12 +278,12 @@ impl Meta {
                 MetadataType::SliceOrArray(m, size) => match self.category {
                     MetaCategory::Array => {
                         let val = m.zero_val_impl(mobjs, gcv);
-                        GosValue::array_with_size(*size, &val, *self, gcv)
+                        GosValue::array_with_size(*size, &val, gcv)
                     }
                     MetaCategory::Default => GosValue::nil_with_meta(*self),
                     _ => unreachable!(),
                 },
-                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), *self, gcv),
+                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),
                 MetadataType::Signature(_) => GosValue::nil_with_meta(*self),
                 MetadataType::Map(_, _) => GosValue::nil_with_meta(*self),
                 MetadataType::Interface(_) => GosValue::nil_with_meta(*self),

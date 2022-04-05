@@ -1,6 +1,5 @@
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
-use super::metadata::Meta;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -214,7 +213,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, Meta)> {
+    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
         let ret = self.pop_rc();
         match ret {
             GosValue::Interface(i) => i,
@@ -466,11 +465,6 @@ impl Stack {
                         let target = &mut s.0.borrow_mut().fields[*i.as_int() as usize];
                         self.store_val(target, r_index, t, gcos);
                     }
-                    GosValue::Str(sval) => {
-                        let i = s.1.field_index(sval.as_str(), metas);
-                        let target = &mut s.0.borrow_mut().fields[i as usize];
-                        self.store_val(target, r_index, t, gcos);
-                    }
                     _ => unreachable!(),
                 };
             }
@@ -543,11 +537,11 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(&mut self, index: usize, meta: Meta, t: ValueType, gcos: &GcoVec) {
+    pub fn pack_variadic(&mut self, index: usize, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));
-            self.push(GosValue::slice_with_val(v, meta, gcos))
+            self.push(GosValue::slice_with_val(v, gcos))
         }
     }
 

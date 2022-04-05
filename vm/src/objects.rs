@@ -178,6 +178,7 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Ref
 
 #[derive(Debug)]
 pub struct MapObj {
+    // todo: need compy_semantic for default_val
     default_val: RefCell<GosValue>,
     pub map: Rc<RefCell<GosHashMap>>,
 }
@@ -745,7 +746,7 @@ impl From<IfaceBinding> for Binding4Runtime {
 
 #[derive(Clone, Debug)]
 pub enum InterfaceObj {
-    Gos(GosValue, Option<Vec<Binding4Runtime>>),
+    Gos(GosValue, Meta, Option<Vec<Binding4Runtime>>),
     Ffi(UnderlyingFfi),
 }
 
@@ -757,7 +758,7 @@ impl InterfaceObj {
         gcv: &GcoVec,
     ) -> RuntimeResult<GosValue> {
         match self {
-            InterfaceObj::Gos(obj, b) => {
+            InterfaceObj::Gos(obj, _, b) => {
                 let binding = &b.as_ref().unwrap()[index];
                 match binding {
                     Binding4Runtime::Struct(func, indices) => {
@@ -774,7 +775,6 @@ impl InterfaceObj {
                         let bind = |obj: &GosValue| {
                             obj.unwrap_named_ref()
                                 .as_interface()
-                                .0
                                 .borrow()
                                 .bind_method(*i, funcs, gcv)
                         };
@@ -800,7 +800,7 @@ impl InterfaceObj {
     #[inline]
     pub fn underlying_value(&self) -> Option<&GosValue> {
         match self {
-            Self::Gos(v, _) => Some(v),
+            Self::Gos(v, _, _) => Some(v),
             _ => None,
         }
     }
@@ -808,7 +808,7 @@ impl InterfaceObj {
     /// for gc
     pub fn ref_sub_one(&self) {
         match self {
-            Self::Gos(v, _) => v.ref_sub_one(),
+            Self::Gos(v, _, _) => v.ref_sub_one(),
             _ => {}
         };
     }
@@ -816,7 +816,7 @@ impl InterfaceObj {
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match self {
-            Self::Gos(v, _) => v.mark_dirty(queue),
+            Self::Gos(v, _, _) => v.mark_dirty(queue),
             _ => {}
         };
     }
@@ -828,7 +828,7 @@ impl PartialEq for InterfaceObj {
     #[inline]
     fn eq(&self, other: &InterfaceObj) -> bool {
         match (self, other) {
-            (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
+            (Self::Gos(x, _, _), Self::Gos(y, _, _)) => x == y,
             (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
             _ => false,
         }
@@ -839,7 +839,7 @@ impl Hash for InterfaceObj {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Gos(v, _) => v.hash(state),
+            Self::Gos(v, _, _) => v.hash(state),
             Self::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
         }
     }
@@ -848,7 +848,7 @@ impl Hash for InterfaceObj {
 impl Display for InterfaceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Gos(v, _) => write!(f, "{}", v),
+            Self::Gos(v, _, _) => write!(f, "{}", v),
             Self::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
         }
     }
@@ -859,18 +859,23 @@ impl Display for InterfaceObj {
 
 #[derive(Clone, Debug)]
 pub struct ChannelObj {
+    pub recv_zero: GosValue,
     pub chan: Channel,
 }
 
 impl ChannelObj {
-    pub fn new(cap: usize) -> ChannelObj {
+    pub fn new(cap: usize, recv_zero: GosValue) -> ChannelObj {
         ChannelObj {
             chan: Channel::new(cap),
+            recv_zero: recv_zero,
         }
     }
 
-    pub fn with_chan(chan: Channel) -> ChannelObj {
-        ChannelObj { chan: chan }
+    pub fn with_chan(chan: Channel, recv_zero: GosValue) -> ChannelObj {
+        ChannelObj {
+            chan: chan,
+            recv_zero: recv_zero,
+        }
     }
 
     #[inline]
@@ -913,12 +918,12 @@ impl ChannelObj {
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, Meta, RCount)>, Option<Meta>),
-    Array(Rc<(ArrayObj, Meta, RCount)>, Option<Meta>),
-    Slice(Rc<(SliceObj, Meta, RCount)>, Option<Meta>),
-    Map(Rc<(MapObj, Meta, RCount)>, Option<Meta>),
-    SliceMember(Rc<(SliceObj, Meta, RCount)>, OpIndex),
-    StructField(Rc<(RefCell<StructObj>, Meta, RCount)>, OpIndex),
+    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
+    Array(Rc<(ArrayObj, RCount)>, Option<Meta>),
+    Slice(Rc<(SliceObj, RCount)>, Option<Meta>),
+    Map(Rc<(MapObj, RCount)>, Option<Meta>),
+    SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
+    StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -939,49 +944,9 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn new_array_member(val: &GosValue, i: OpIndex, meta: Meta, gcv: &GcoVec) -> PointerObj {
-        let slice = GosValue::slice_with_array(val, 0, -1, meta, gcv);
+    pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
+        let slice = GosValue::slice_with_array(val, 0, -1, gcv);
         PointerObj::SliceMember(slice.as_slice().clone(), i)
-    }
-
-    #[inline]
-    pub fn point_to_meta(&self, objs: &VMObjects, stack: &Stack) -> Meta {
-        match self {
-            PointerObj::UpVal(uv) => {
-                let state: &UpValueState = &uv.inner.borrow();
-                match state {
-                    UpValueState::Open(d) => stack
-                        .get_with_type(d.index as usize, d.typ)
-                        .meta(objs, stack),
-                    UpValueState::Closed(v) => v.meta(objs, stack),
-                }
-            }
-            PointerObj::Struct(s, named_md) => match named_md {
-                None => s.1,
-                Some(m) => *m,
-            },
-            PointerObj::Array(a, named_md) => match named_md {
-                None => a.1,
-                Some(m) => *m,
-            },
-            PointerObj::Slice(s, named_md) => match named_md {
-                None => s.1,
-                Some(m) => *m,
-            },
-            PointerObj::Map(m, named_md) => match named_md {
-                None => m.1,
-                Some(m) => *m,
-            },
-            PointerObj::StructField(sobj, index) => {
-                sobj.0.borrow().fields[*index as usize].meta(objs, stack)
-            }
-            PointerObj::SliceMember(sobj, index) => {
-                sobj.0.borrow()[*index as usize].borrow().meta(objs, stack)
-            }
-            PointerObj::PkgMember(pkey, index) => {
-                objs.packages[*pkey].member(*index).meta(objs, stack)
-            }
-        }
     }
 
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> GosValue {
@@ -1046,11 +1011,11 @@ impl PointerObj {
     pub fn ref_sub_one(&self) {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
-            PointerObj::Struct(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::Slice(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::Map(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::SliceMember(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::StructField(s, _) => s.2.set(s.2.get() - 1),
+            PointerObj::Struct(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Slice(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
             _ => {}
         };
     }
@@ -1059,11 +1024,11 @@ impl PointerObj {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
-            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.2, queue),
+            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
             _ => {}
         };
     }
