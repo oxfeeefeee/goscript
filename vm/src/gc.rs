@@ -35,7 +35,7 @@ impl GcoVec {
 
 #[derive(Debug, Clone)]
 pub enum GcWeak {
-    Array(Weak<(ArrayObj, RCount)>),
+    Array(Weak<(ArrayObj, Meta, RCount)>),
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
     Slice(Weak<(SliceObj, Meta, RCount)>),
     Map(Weak<(MapObj, RCount)>),
@@ -64,7 +64,7 @@ impl GcWeak {
     fn to_gosv(&self) -> Option<GosValue> {
         match &self {
             GcWeak::Array(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Array(v)
             }),
             GcWeak::Closure(w) => w.upgrade().map(|v| {

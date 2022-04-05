@@ -291,25 +291,22 @@ pub type GosVec = Vec<RefCell<GosValue>>;
 
 #[derive(Debug)]
 pub struct ArrayObj {
-    pub meta: Meta,
     pub vec: Rc<RefCell<GosVec>>,
 }
 
 impl ArrayObj {
-    pub fn with_size(size: usize, val: &GosValue, meta: Meta, gcos: &GcoVec) -> ArrayObj {
+    pub fn with_size(size: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj {
         let mut v = GosVec::with_capacity(size);
         for _ in 0..size {
             v.push(RefCell::new(val.copy_semantic(gcos)))
         }
         ArrayObj {
-            meta: meta,
             vec: Rc::new(RefCell::new(v)),
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>, meta: Meta) -> ArrayObj {
+    pub fn with_data(val: Vec<GosValue>) -> ArrayObj {
         ArrayObj {
-            meta: meta,
             vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
             )),
@@ -382,7 +379,6 @@ impl PartialEq for ArrayObj {
 impl Clone for ArrayObj {
     fn clone(&self) -> Self {
         ArrayObj {
-            meta: self.meta,
             vec: self.vec.clone(),
         }
     }
@@ -973,7 +969,7 @@ impl ChannelObj {
 pub enum PointerObj {
     UpVal(UpValue),
     Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
-    Array(Rc<(ArrayObj, RCount)>, Option<Meta>),
+    Array(Rc<(ArrayObj, Meta, RCount)>, Option<Meta>),
     Slice(Rc<(SliceObj, Meta, RCount)>, Option<Meta>),
     Map(Rc<(MapObj, RCount)>, Option<Meta>),
     SliceMember(Rc<(SliceObj, Meta, RCount)>, OpIndex),
@@ -1020,7 +1016,7 @@ impl PointerObj {
                 Some(m) => *m,
             },
             PointerObj::Array(a, named_md) => match named_md {
-                None => a.0.meta,
+                None => a.1,
                 Some(m) => *m,
             },
             PointerObj::Slice(s, named_md) => match named_md {

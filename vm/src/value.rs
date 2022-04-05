@@ -255,7 +255,7 @@ pub enum GosValue {
     Nil(Option<Meta>),
     Complex128(Box<(F64, F64)>),
     Str(Rc<StringObj>), // "String" is taken
-    Array(Rc<(ArrayObj, RCount)>),
+    Array(Rc<(ArrayObj, Meta, RCount)>),
     Pointer(Box<PointerObj>),
     UnsafePtr(Rc<dyn UnsafePtr>),
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
@@ -417,7 +417,7 @@ impl GosValue {
 
     #[inline]
     pub fn array_with_size(size: usize, val: &GosValue, meta: Meta, gcobjs: &GcoVec) -> GosValue {
-        let arr = Rc::new((ArrayObj::with_size(size, val, meta, gcobjs), Cell::new(0)));
+        let arr = Rc::new((ArrayObj::with_size(size, val, gcobjs), meta, Cell::new(0)));
         let v = GosValue::Array(arr);
         gcobjs.add(&v);
         v
@@ -425,7 +425,7 @@ impl GosValue {
 
     #[inline]
     pub fn array_with_val(val: Vec<GosValue>, meta: Meta, gcobjs: &GcoVec) -> GosValue {
-        let arr = Rc::new((ArrayObj::with_data(val, meta), Cell::new(0)));
+        let arr = Rc::new((ArrayObj::with_data(val), meta, Cell::new(0)));
         let v = GosValue::Array(arr);
         gcobjs.add(&v);
         v
@@ -611,7 +611,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_array(&self) -> &Rc<(ArrayObj, RCount)> {
+    pub fn as_array(&self) -> &Rc<(ArrayObj, Meta, RCount)> {
         unwrap_gos_val!(Array, self)
     }
 
@@ -816,7 +816,7 @@ impl GosValue {
             GosValue::Complex64(_) => objs.s_meta.mcomplex64,
             GosValue::Complex128(_) => objs.s_meta.mcomplex128,
             GosValue::Str(_) => objs.s_meta.mstr,
-            GosValue::Array(a) => a.0.meta,
+            GosValue::Array(a) => a.1,
             GosValue::Pointer(p) => p.point_to_meta(objs, stack).ptr_to(),
             GosValue::UnsafePtr(_) => objs.s_meta.unsafe_ptr,
             GosValue::Closure(c) => c.0.borrow().meta,
@@ -953,7 +953,7 @@ impl GosValue {
     /// for gc
     pub fn ref_sub_one(&self) {
         match &self {
-            GosValue::Array(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Array(obj) => obj.2.set(obj.2.get() - 1),
             GosValue::Pointer(obj) => obj.ref_sub_one(),
             GosValue::UnsafePtr(obj) => obj.ref_sub_one(),
             GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
@@ -969,7 +969,7 @@ impl GosValue {
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
-            GosValue::Array(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Array(obj) => rcount_mark_and_queue(&obj.2, queue),
             GosValue::Pointer(obj) => obj.mark_dirty(queue),
             GosValue::UnsafePtr(obj) => obj.mark_dirty(queue),
             GosValue::Closure(obj) => rcount_mark_and_queue(&obj.1, queue),
@@ -984,7 +984,7 @@ impl GosValue {
 
     pub fn rc(&self) -> IRC {
         match &self {
-            GosValue::Array(obj) => obj.1.get(),
+            GosValue::Array(obj) => obj.2.get(),
             GosValue::Closure(obj) => obj.1.get(),
             GosValue::Slice(obj) => obj.2.get(),
             GosValue::Map(obj) => obj.1.get(),
@@ -995,7 +995,7 @@ impl GosValue {
 
     pub fn set_rc(&self, rc: IRC) {
         match &self {
-            GosValue::Array(obj) => obj.1.set(rc),
+            GosValue::Array(obj) => obj.2.set(rc),
             GosValue::Closure(obj) => obj.1.set(rc),
             GosValue::Slice(obj) => obj.2.set(rc),
             GosValue::Map(obj) => obj.1.set(rc),
