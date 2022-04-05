@@ -630,7 +630,7 @@ impl<'a> Fiber<'a> {
                                 let target = stack.get_rc(target_index);
                                 let pointee = target.as_pointer().deref(stack, &objs.packages);
                                 let pointee = pointee.unwrap_named();
-                                let pointee = if inst.t2() != ValueType::Zero {
+                                let pointee = if inst.t2() != ValueType::Void {
                                     let meta_key = read_imm_key!(code, frame, objs);
                                     let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
                                     GosValue::Named(Box::new((pointee, meta)))
@@ -863,7 +863,7 @@ impl<'a> Fiber<'a> {
                                     nframe.var_ptrs = Some(ptrs);
                                 }
                                 match call_style {
-                                    ValueType::Zero => {
+                                    ValueType::Void => {
                                         // default call
                                         self.frames.push(nframe);
                                         frame_height += 1;
@@ -933,7 +933,7 @@ impl<'a> Fiber<'a> {
 
                         match inst.t0() {
                             // default case
-                            ValueType::Zero => {
+                            ValueType::Void => {
                                 frame.on_drop(&stack);
                                 stack.truncate(stack_base + frame.ret_count(objs));
                             }
@@ -1577,7 +1577,6 @@ impl<'a> Fiber<'a> {
             };
         } //loop
 
-        stack.clear_rc_garbage();
         gc(gcv);
     }
 }

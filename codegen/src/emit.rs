@@ -366,7 +366,7 @@ impl<'a> Emitter<'a> {
 
     pub fn emit_return(&mut self, pkg_index: Option<OpIndex>, pos: Option<usize>) {
         let inst_flag = match self.f.flag {
-            FuncFlag::Default => ValueType::Zero,
+            FuncFlag::Default => ValueType::Void,
             FuncFlag::PkgCtor => ValueType::FlagA,
             FuncFlag::HasDefer => ValueType::FlagB,
         };
@@ -385,7 +385,7 @@ impl<'a> Emitter<'a> {
 
     pub fn emit_call(&mut self, style: CallStyle, pack: bool, pos: Option<usize>) {
         let style_flag = match style {
-            CallStyle::Default => ValueType::Zero,
+            CallStyle::Default => ValueType::Void,
             CallStyle::Async => ValueType::FlagA,
             CallStyle::Defer => ValueType::FlagB,
         };

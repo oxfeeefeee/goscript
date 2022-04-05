@@ -231,9 +231,8 @@ pub type RuntimeResult<T> = result::Result<T, String>;
 // GosValue
 
 #[derive(Debug)]
-#[repr(u8)]
+#[repr(C, u8)]
 pub enum GosValue {
-    Nil(GosMetadata),
     Bool(Value64),
     Int(Value64),
     Int8(Value64),
@@ -247,16 +246,14 @@ pub enum GosValue {
     Uint32(Value64),
     Uint64(Value64),
     Float32(Value64),
-    Float64(Value64), // becasue in Go there is no "float", just float64
+    Float64(Value64),
     Complex64(Value64),
+    Function(Value64), // not visible to users
+    Package(Value64),  // not visible to users
+
+    Metadata(GosMetadata), // not visible to users
+    Nil(GosMetadata),
     Complex128(Box<(F64, F64)>),
-
-    // the 3 below are not visible to users, they are "values" not "variables"
-    // they are static data, don't use Rc for better performance
-    Function(Value64),
-    Package(Value64),
-    Metadata(GosMetadata),
-
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
     Pointer(Box<PointerObj>),
@@ -365,6 +362,57 @@ impl GosValue {
     #[inline]
     pub fn new_pointer(v: PointerObj) -> GosValue {
         GosValue::Pointer(Box::new(v))
+    }
+
+    pub fn int32_as(i: i32, t: ValueType) -> GosValue {
+        match t {
+            ValueType::Int => GosValue::Int(Value64 {
+                data: V64Union { int: i as isize },
+            }),
+            ValueType::Int8 => GosValue::Int8(Value64 {
+                data: V64Union { int8: i as i8 },
+            }),
+            ValueType::Int16 => GosValue::Int16(Value64 {
+                data: V64Union { int16: i as i16 },
+            }),
+            ValueType::Int32 => GosValue::Int32(Value64 {
+                data: V64Union { int32: i as i32 },
+            }),
+            ValueType::Int64 => GosValue::Int64(Value64 {
+                data: V64Union { int64: i as i64 },
+            }),
+            ValueType::Uint => GosValue::Uint(Value64 {
+                data: V64Union { uint: i as usize },
+            }),
+            ValueType::UintPtr => GosValue::UintPtr(Value64 {
+                data: V64Union {
+                    uint_ptr: i as usize,
+                },
+            }),
+            ValueType::Uint8 => GosValue::Uint8(Value64 {
+                data: V64Union { uint8: i as u8 },
+            }),
+            ValueType::Uint16 => GosValue::Uint16(Value64 {
+                data: V64Union { uint16: i as u16 },
+            }),
+            ValueType::Uint32 => GosValue::Uint32(Value64 {
+                data: V64Union { uint32: i as u32 },
+            }),
+            ValueType::Uint64 => GosValue::Uint64(Value64 {
+                data: V64Union { uint64: i as u64 },
+            }),
+            ValueType::Float32 => GosValue::Float32(Value64 {
+                data: V64Union {
+                    float32: F32::from(i as f32),
+                },
+            }),
+            ValueType::Float64 => GosValue::Float64(Value64 {
+                data: V64Union {
+                    float64: F64::from(i as f64),
+                },
+            }),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
@@ -1188,7 +1236,6 @@ impl Display for GosValue {
 #[derive(Copy, Clone)]
 #[repr(C, align(8))]
 pub union V64Union {
-    nil: (),
     ubool: bool,
     int: isize,
     int8: i8,
@@ -1225,33 +1272,26 @@ pub struct Value64 {
 
 impl Value64 {
     #[inline]
-    pub fn from_v128(v: &GosValue) -> (Value64, ValueType) {
+    pub fn from_v128(v: &GosValue) -> Option<(Value64, ValueType)> {
         match v {
-            GosValue::Bool(b) => (*b, ValueType::Bool),
-            GosValue::Int(i) => (*i, ValueType::Int),
-            GosValue::Int8(i) => (*i, ValueType::Int8),
-            GosValue::Int16(i) => (*i, ValueType::Int16),
-            GosValue::Int32(i) => (*i, ValueType::Int32),
-            GosValue::Int64(i) => (*i, ValueType::Int64),
-            GosValue::Uint(i) => (*i, ValueType::Uint),
-            GosValue::UintPtr(i) => (*i, ValueType::UintPtr),
-            GosValue::Uint8(i) => (*i, ValueType::Uint8),
-            GosValue::Uint16(i) => (*i, ValueType::Uint16),
-            GosValue::Uint32(i) => (*i, ValueType::Uint32),
-            GosValue::Uint64(i) => (*i, ValueType::Uint64),
-            GosValue::Float32(f) => (*f, ValueType::Float32),
-            GosValue::Float64(f) => (*f, ValueType::Float64),
-            GosValue::Complex64(c) => (*c, ValueType::Complex64),
-            GosValue::Function(k) => (*k, ValueType::Function),
-            GosValue::Package(k) => (*k, ValueType::Package),
-            _ => (Value64::nil(), ValueType::Nil),
-        }
-    }
-
-    #[inline]
-    pub fn nil() -> Value64 {
-        Value64 {
-            data: V64Union { nil: () },
+            GosValue::Bool(b) => Some((*b, ValueType::Bool)),
+            GosValue::Int(i) => Some((*i, ValueType::Int)),
+            GosValue::Int8(i) => Some((*i, ValueType::Int8)),
+            GosValue::Int16(i) => Some((*i, ValueType::Int16)),
+            GosValue::Int32(i) => Some((*i, ValueType::Int32)),
+            GosValue::Int64(i) => Some((*i, ValueType::Int64)),
+            GosValue::Uint(i) => Some((*i, ValueType::Uint)),
+            GosValue::UintPtr(i) => Some((*i, ValueType::UintPtr)),
+            GosValue::Uint8(i) => Some((*i, ValueType::Uint8)),
+            GosValue::Uint16(i) => Some((*i, ValueType::Uint16)),
+            GosValue::Uint32(i) => Some((*i, ValueType::Uint32)),
+            GosValue::Uint64(i) => Some((*i, ValueType::Uint64)),
+            GosValue::Float32(f) => Some((*f, ValueType::Float32)),
+            GosValue::Float64(f) => Some((*f, ValueType::Float64)),
+            GosValue::Complex64(c) => Some((*c, ValueType::Complex64)),
+            GosValue::Function(k) => Some((*k, ValueType::Function)),
+            GosValue::Package(k) => Some((*k, ValueType::Package)),
+            _ => None,
         }
     }
 
@@ -1798,6 +1838,7 @@ mod test {
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
         dbg!(mem::size_of::<Value64>());
+        dbg!(mem::size_of::<GosMetadata>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

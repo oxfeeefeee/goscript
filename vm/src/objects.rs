@@ -1016,7 +1016,6 @@ impl ChannelObj {
 
 #[derive(Debug, Clone)]
 pub enum PointerObj {
-    Released,
     UpVal(UpValue),
     Struct(Rc<(RefCell<StructObj>, RCount)>, GosMetadata),
     Array(Rc<(ArrayObj, RCount)>, GosMetadata),
@@ -1086,7 +1085,6 @@ impl PointerObj {
             PointerObj::PkgMember(pkey, index) => {
                 objs.packages[*pkey].member(*index).meta(objs, stack)
             }
-            PointerObj::Released => unreachable!(),
         }
     }
 
@@ -1112,13 +1110,6 @@ impl PointerObj {
             PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
             PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
             PointerObj::PkgMember(pkg, index) => pkgs[*pkg].member(*index).clone(),
-            /*
-            PointerObj::UserData(ud) => {
-                let i = Rc::as_ptr(ud) as *const () as usize;
-                GosValue::Uint(i)
-            } */
-            // todo: report error instead of crash?
-            PointerObj::Released => unreachable!(),
         }
     }
 
@@ -1152,8 +1143,6 @@ impl PointerObj {
                 let target: &mut GosValue = &mut pkgs[*p].member_mut(*index);
                 *target = val.copy_semantic(gcv);
             }
-            // todo: report error instead of crash
-            PointerObj::Released => unreachable!(),
         }
     }
 
@@ -1223,7 +1212,6 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
-            Self::Released => unreachable!(),
         }
     }
 }
@@ -1239,7 +1227,6 @@ impl Display for PointerObj {
             Self::SliceMember(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
             Self::StructField(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
             Self::PkgMember(p, i) => write!(f, "{:x}i{}", key_to_u64(*p), i),
-            Self::Released => f.write_str("released!!!"),
         }
     }
 }

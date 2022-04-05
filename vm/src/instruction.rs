@@ -241,8 +241,7 @@ pub const COPYABLE_END: ValueType = ValueType::Package;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
-    Zero, //place holder
-    Bool = 1,
+    Bool,
     Int,
     Int8,
     Int16,
@@ -257,6 +256,7 @@ pub enum ValueType {
     Float32,
     Float64,
     Complex64,
+
     Function,
     Package,
     Metadata,
@@ -264,23 +264,20 @@ pub enum ValueType {
     // Nil is a virtual type representing zero value for pointer, interfaces,
     // maps, slices, channels and function types
     Nil,
+    Complex128,
+    Str,
+    Array,
     Pointer,
     UnsafePtr,
     Closure,
     Slice,
     Map,
     Interface,
-    Channel,
-
-    Complex128,
-    Str,
-    Array,
     Struct,
-
+    Channel,
     Named,
 
-    FfiClosure,
-
+    Void,  //place holder
     FlagA, //not a type, works as a flag in instructions
     FlagB,
     FlagC,
@@ -321,15 +318,12 @@ impl Instruction {
     ) -> Instruction {
         let val = (op as u64) << (8 * 3 + 32);
         let mut inst = Instruction { val: val };
-        if let Some(v) = type0 {
-            inst.val |= (v as u64) << (8 * 2 + 32);
-        }
-        if let Some(v) = type1 {
-            inst.val |= (v as u64) << (8 + 32);
-        }
-        if let Some(v) = type2 {
-            inst.val |= (v as u64) << 32;
-        }
+        let v = type0.unwrap_or(ValueType::Void);
+        inst.val |= (v as u64) << (8 * 2 + 32);
+        let v = type1.unwrap_or(ValueType::Void);
+        inst.val |= (v as u64) << (8 + 32);
+        let v = type2.unwrap_or(ValueType::Void);
+        inst.val |= (v as u64) << 32;
         if let Some(v) = imm {
             inst.set_imm(v);
         }
