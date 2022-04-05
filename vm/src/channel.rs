@@ -162,7 +162,7 @@ impl Selector {
             {
                 match entry {
                     SelectComm::Send(c, val, _) => {
-                        match c.as_channel().chan.try_send(val.clone()) {
+                        match c.as_channel().0.chan.try_send(val.clone()) {
                             Ok(_) => return Ok((i, None)),
                             Err(e) => match e {
                                 async_channel::TrySendError::Full(_) => {}
@@ -172,7 +172,7 @@ impl Selector {
                             },
                         }
                     }
-                    SelectComm::Recv(c, _, _) => match c.as_channel().chan.try_recv() {
+                    SelectComm::Recv(c, _, _) => match c.as_channel().0.chan.try_recv() {
                         Ok(v) => return Ok((i, Some(v))),
                         Err(e) => match e {
                             async_channel::TryRecvError::Empty => {}

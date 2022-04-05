@@ -141,20 +141,10 @@ impl Meta {
         let field_zeros: Vec<GosValue> =
             f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
         let struct_val = StructObj {
-            meta: objs.s_meta.none, // placeholder, will be set below
             fields: field_zeros,
         };
-        let gos_struct = GosValue::new_struct(struct_val, gcv);
-        let key = objs.metas.insert(MetadataType::Struct(f, gos_struct));
-        let gosm = Meta::new(key, MetaCategory::Default, 0);
-        match &mut objs.metas[key] {
-            MetadataType::Struct(_, v) => match v {
-                GosValue::Struct(s) => s.0.borrow_mut().meta = gosm,
-                _ => unreachable!(),
-            },
-            _ => unreachable!(),
-        }
-        gosm
+        let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
+        Meta::new(key, MetaCategory::Default, 0)
     }
 
     pub fn new_sig(
@@ -258,12 +248,12 @@ impl Meta {
     }
 
     #[inline]
-    pub fn zero_val(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
-        self.zero_val_impl(mobjs, gcos)
+    pub fn zero_val(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
+        self.zero_val_impl(mobjs, gcv)
     }
 
     #[inline]
-    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
+    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
         match self.ptr_depth {
             0 => match &mobjs[self.key] {
                 MetadataType::Bool => GosValue::new_bool(false),
@@ -287,19 +277,19 @@ impl Meta {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::SliceOrArray(m, size) => match self.category {
                     MetaCategory::Array => {
-                        let val = m.zero_val_impl(mobjs, gcos);
-                        GosValue::array_with_size(*size, &val, *self, gcos)
+                        let val = m.zero_val_impl(mobjs, gcv);
+                        GosValue::array_with_size(*size, &val, *self, gcv)
                     }
                     MetaCategory::Default => GosValue::Nil(Some(*self)),
                     _ => unreachable!(),
                 },
-                MetadataType::Struct(_, s) => s.copy_semantic(gcos),
+                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), *self, gcv),
                 MetadataType::Signature(_) => GosValue::Nil(Some(*self)),
                 MetadataType::Map(_, _) => GosValue::Nil(Some(*self)),
                 MetadataType::Interface(_) => GosValue::Nil(Some(*self)),
                 MetadataType::Channel(_, _) => GosValue::Nil(Some(*self)),
                 MetadataType::Named(_, gm) => {
-                    let val = gm.zero_val_impl(mobjs, gcos);
+                    let val = gm.zero_val_impl(mobjs, gcv);
                     GosValue::Named(Box::new((val, *gm)))
                 }
                 MetadataType::None => GosValue::Nil(Some(*self)),
@@ -558,7 +548,7 @@ pub enum MetadataType {
     Complex128,
     Str(GosValue),
     SliceOrArray(Meta, usize),
-    Struct(Fields, GosValue),
+    Struct(Fields, StructObj),
     Signature(SigMetadata),
     Map(Meta, Meta),
     Interface(Fields),
@@ -601,7 +591,7 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> (&Fields, &GosValue) {
+    pub fn as_struct(&self) -> (&Fields, &StructObj) {
         match self {
             Self::Struct(f, v) => (f, v),
             _ => unreachable!(),

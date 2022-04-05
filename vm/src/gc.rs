@@ -38,8 +38,8 @@ pub enum GcWeak {
     Array(Weak<(ArrayObj, Meta, RCount)>),
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
     Slice(Weak<(SliceObj, Meta, RCount)>),
-    Map(Weak<(MapObj, RCount)>),
-    Struct(Weak<(RefCell<StructObj>, RCount)>),
+    Map(Weak<(MapObj, Meta, RCount)>),
+    Struct(Weak<(RefCell<StructObj>, Meta, RCount)>),
     // todo:
     // GC doesn't support channel for now, because we can't access the
     // underlying objects (unless we don't use smol::channel and write
@@ -76,11 +76,11 @@ impl GcWeak {
                 GosValue::Slice(v)
             }),
             GcWeak::Map(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Map(v)
             }),
             GcWeak::Struct(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Struct(v)
             }),
         }

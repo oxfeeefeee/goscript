@@ -228,7 +228,7 @@ impl Reflect {
         let arg0 = iter.next();
         let arg1 = iter.next();
         let arg2 = iter.next();
-        let iface = arg0.as_ref().unwrap().as_interface().borrow();
+        let iface = arg0.as_ref().unwrap().as_interface().0.borrow();
         let mut vec = iface
             .underlying_value()
             .unwrap()
@@ -263,12 +263,12 @@ impl StdValue {
     }
 
     fn value_of(v: &GosValue) -> GosValue {
-        let iface = v.as_interface().borrow();
-        let v = match &iface.underlying() {
+        let iface = v.as_interface();
+        let v = match &iface.0.borrow().underlying() {
             IfaceUnderlying::Gos(v, _) => v.clone(),
             // todo: should we return something else?
-            IfaceUnderlying::Ffi(_) => GosValue::Nil(Some(iface.meta)),
-            IfaceUnderlying::None => GosValue::Nil(Some(iface.meta)),
+            IfaceUnderlying::Ffi(_) => GosValue::Nil(Some(iface.1)),
+            IfaceUnderlying::None => GosValue::Nil(Some(iface.1)),
         };
         wrap_std_val(v)
     }
@@ -352,6 +352,7 @@ impl StdValue {
         match val {
             GosValue::Interface(iface) => Ok(wrap_std_val(
                 iface
+                    .0
                     .borrow()
                     .underlying_value()
                     .map(|x| x.clone())
@@ -422,7 +423,7 @@ impl StdValue {
             GosValue::Array(arr) => Ok(arr.0.len()),
             GosValue::Slice(s) => Ok(s.0.len()),
             GosValue::Str(s) => Ok(s.len()),
-            GosValue::Channel(c) => Ok(c.len()),
+            GosValue::Channel(c) => Ok(c.0.len()),
             GosValue::Map(m) => Ok(m.0.len()),
             _ => err_wrong_type!(),
         }
@@ -442,7 +443,7 @@ impl StdValue {
             Self::Pointer(p) => match p as &PointerObj {
                 PointerObj::SliceMember(_, _) => true,
                 PointerObj::StructField(s, i) => {
-                    s.0.borrow().is_exported(*i as usize, &ctx.vm_objs.metas)
+                    StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas)
                 }
                 PointerObj::UpVal(uv) => !uv.is_open(),
                 _ => false,
@@ -461,7 +462,7 @@ impl StdValue {
                     Ok(())
                 }
                 PointerObj::StructField(s, i) => {
-                    if s.0.borrow().is_exported(*i as usize, &ctx.vm_objs.metas) {
+                    if StructObj::is_exported(*i as usize, &s.1, &ctx.vm_objs.metas) {
                         s.0.borrow_mut().fields[*i as usize] = val;
                         Ok(())
                     } else {

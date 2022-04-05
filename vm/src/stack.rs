@@ -214,7 +214,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
+    pub fn pop_interface(&mut self) -> Rc<(RefCell<InterfaceObj>, Meta)> {
         let ret = self.pop_rc();
         match ret {
             GosValue::Interface(i) => i,
@@ -467,7 +467,7 @@ impl Stack {
                         self.store_val(target, r_index, t, gcos);
                     }
                     GosValue::Str(sval) => {
-                        let i = s.0.borrow().meta.field_index(sval.as_str(), metas);
+                        let i = s.1.field_index(sval.as_str(), metas);
                         let target = &mut s.0.borrow_mut().fields[i as usize];
                         self.store_val(target, r_index, t, gcos);
                     }

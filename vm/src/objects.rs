@@ -178,15 +178,13 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Ref
 
 #[derive(Debug)]
 pub struct MapObj {
-    pub meta: Meta,
     default_val: RefCell<GosValue>,
     pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
-    pub fn new(meta: Meta, default_val: GosValue) -> MapObj {
+    pub fn new(default_val: GosValue) -> MapObj {
         MapObj {
-            meta: meta,
             default_val: RefCell::new(default_val),
             map: Rc::new(RefCell::new(HashMap::new())),
         }
@@ -255,7 +253,6 @@ impl MapObj {
 impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
-            meta: self.meta,
             default_val: self.default_val.clone(),
             map: self.map.clone(),
         }
@@ -648,13 +645,12 @@ impl<'a> Index<usize> for SliceRef<'a> {
 
 #[derive(Clone, Debug)]
 pub struct StructObj {
-    pub meta: Meta,
     pub fields: Vec<GosValue>,
 }
 
 impl StructObj {
-    pub fn is_exported(&self, index: usize, metas: &MetadataObjs) -> bool {
-        metas[self.meta.key].as_struct().0.is_exported(index)
+    pub fn is_exported(index: usize, meta: &Meta, metas: &MetadataObjs) -> bool {
+        metas[meta.key].as_struct().0.is_exported(index)
     }
 
     pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
@@ -779,6 +775,7 @@ impl IfaceUnderlying {
                         let bind = |obj: &GosValue| {
                             obj.unwrap_named_ref()
                                 .as_interface()
+                                .0
                                 .borrow()
                                 .underlying
                                 .bind_method(*i, funcs, gcv)
@@ -820,16 +817,14 @@ impl PartialEq for IfaceUnderlying {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceObj {
-    pub meta: Meta,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
     underlying: IfaceUnderlying,
 }
 
 impl InterfaceObj {
-    pub fn new(meta: Meta, underlying: IfaceUnderlying) -> InterfaceObj {
+    pub fn new(underlying: IfaceUnderlying) -> InterfaceObj {
         InterfaceObj {
-            meta: meta,
             underlying: underlying,
         }
     }
@@ -909,23 +904,18 @@ impl Display for InterfaceObj {
 
 #[derive(Clone, Debug)]
 pub struct ChannelObj {
-    pub meta: Meta,
     pub chan: Channel,
 }
 
 impl ChannelObj {
-    pub fn new(meta: Meta, cap: usize) -> ChannelObj {
+    pub fn new(cap: usize) -> ChannelObj {
         ChannelObj {
-            meta: meta,
             chan: Channel::new(cap),
         }
     }
 
-    pub fn with_chan(meta: Meta, chan: Channel) -> ChannelObj {
-        ChannelObj {
-            meta: meta,
-            chan: chan,
-        }
+    pub fn with_chan(chan: Channel) -> ChannelObj {
+        ChannelObj { chan: chan }
     }
 
     #[inline]
@@ -968,12 +958,12 @@ impl ChannelObj {
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
+    Struct(Rc<(RefCell<StructObj>, Meta, RCount)>, Option<Meta>),
     Array(Rc<(ArrayObj, Meta, RCount)>, Option<Meta>),
     Slice(Rc<(SliceObj, Meta, RCount)>, Option<Meta>),
-    Map(Rc<(MapObj, RCount)>, Option<Meta>),
+    Map(Rc<(MapObj, Meta, RCount)>, Option<Meta>),
     SliceMember(Rc<(SliceObj, Meta, RCount)>, OpIndex),
-    StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
+    StructField(Rc<(RefCell<StructObj>, Meta, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
 }
 
@@ -1012,7 +1002,7 @@ impl PointerObj {
                 }
             }
             PointerObj::Struct(s, named_md) => match named_md {
-                None => s.0.borrow().meta,
+                None => s.1,
                 Some(m) => *m,
             },
             PointerObj::Array(a, named_md) => match named_md {
@@ -1024,7 +1014,7 @@ impl PointerObj {
                 Some(m) => *m,
             },
             PointerObj::Map(m, named_md) => match named_md {
-                None => m.0.meta,
+                None => m.1,
                 Some(m) => *m,
             },
             PointerObj::StructField(sobj, index) => {
@@ -1101,11 +1091,11 @@ impl PointerObj {
     pub fn ref_sub_one(&self) {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
-            PointerObj::Struct(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Struct(s, _) => s.2.set(s.2.get() - 1),
             PointerObj::Slice(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Map(s, _) => s.2.set(s.2.get() - 1),
             PointerObj::SliceMember(s, _) => s.2.set(s.2.get() - 1),
-            PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::StructField(s, _) => s.2.set(s.2.get() - 1),
             _ => {}
         };
     }
@@ -1114,11 +1104,11 @@ impl PointerObj {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
-            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.2, queue),
             PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.2, queue),
             PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.2, queue),
-            PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.2, queue),
             _ => {}
         };
     }

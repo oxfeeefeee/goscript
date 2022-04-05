@@ -57,7 +57,7 @@ macro_rules! unwrap_recv_val {
         match $val {
             Some(v) => (v, true),
             None => {
-                let val_meta = $metas[$chan.meta.key].as_channel().1;
+                let val_meta = $metas[$chan.1.key].as_channel().1;
                 (val_meta.zero_val(&$metas, $gcv), false)
             }
         }
@@ -458,7 +458,7 @@ impl<'a> Fiber<'a> {
                     Opcode::BIND_INTERFACE_METHOD => {
                         let val = stack.pop_with_type(inst.t0()).unwrap_named();
                         let index = inst.imm() as usize;
-                        let borrowed = val.as_interface().borrow();
+                        let borrowed = val.as_interface().0.borrow();
                         match borrowed
                             .underlying()
                             .bind_method(index, &objs.functions, gcv)
@@ -644,7 +644,7 @@ impl<'a> Fiber<'a> {
                             }
                             ValueType::Channel => {
                                 let target = stack.get_rc(target_index);
-                                let chan = target.as_channel().chan.clone();
+                                let chan = target.as_channel().0.chan.clone();
                                 let meta_key = read_imm_key!(code, frame, objs);
                                 let meta = Meta::new(meta_key, MetaCategory::Default, 0);
                                 let v = GosValue::channel_with_chan(meta, chan);
@@ -727,7 +727,7 @@ impl<'a> Fiber<'a> {
                         let val = stack.pop_with_type(inst.t0());
                         let chan = stack.pop_rc();
                         drop(stack_mut_ref);
-                        let re = chan.as_channel().send(&val).await;
+                        let re = chan.as_channel().0.send(&val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         if let Err(e) = re {
                             go_panic_str!(panic, s_meta, e, frame, code);
@@ -737,7 +737,7 @@ impl<'a> Fiber<'a> {
                         let chan_val = stack.pop_rc();
                         let chan = chan_val.as_channel();
                         drop(stack_mut_ref);
-                        let val = chan.recv().await;
+                        let val = chan.0.recv().await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         let (unwrapped, ok) = unwrap_recv_val!(chan, val, objs.metas, gcv);
                         stack.push(unwrapped);
@@ -1125,7 +1125,7 @@ impl<'a> Fiber<'a> {
                     }
 
                     Opcode::TYPE_ASSERT => {
-                        let val = match stack.pop_interface().borrow().underlying() {
+                        let val = match stack.pop_interface().0.borrow().underlying() {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
@@ -1143,7 +1143,7 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::TYPE => {
-                        let val = match stack.pop_interface().borrow().underlying() {
+                        let val = match stack.pop_interface().0.borrow().underlying() {
                             IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
@@ -1274,8 +1274,8 @@ impl<'a> Fiber<'a> {
                                         }
                                         gosv
                                     }
-                                    MetadataType::Struct(f, zero) => {
-                                        let struct_val = zero.copy_semantic(gcv);
+                                    MetadataType::Struct(f, _) => {
+                                        let struct_val = zero_val!(md, objs, gcv);
                                         let mut sref = struct_val.as_struct().0.borrow_mut();
                                         for _ in 0..count {
                                             let index = stack.pop_uint();
@@ -1411,7 +1411,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Slice(slice) => slice.0.len(),
                             GosValue::Map(map) => map.0.len(),
                             GosValue::Str(sval) => sval.len(),
-                            GosValue::Channel(chan) => chan.len(),
+                            GosValue::Channel(chan) => chan.0.len(),
                             GosValue::Nil(_) => 0,
                             _ => unreachable!(),
                         };
@@ -1420,7 +1420,7 @@ impl<'a> Fiber<'a> {
                     Opcode::CAP => {
                         let l = match &stack.pop_with_type(inst.t0()).unwrap_named_ref() {
                             GosValue::Slice(slice) => slice.0.cap(),
-                            GosValue::Channel(chan) => chan.cap(),
+                            GosValue::Channel(chan) => chan.0.cap(),
                             _ => unreachable!(),
                         };
                         stack.push(GosValue::new_int(l as isize));
@@ -1489,7 +1489,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::CLOSE => {
                         let chan = stack.pop_with_type(ValueType::Channel);
-                        chan.as_channel().close();
+                        chan.as_channel().0.close();
                     }
                     Opcode::PANIC => {
                         let val = stack.pop_rc();
@@ -1562,7 +1562,7 @@ impl<'a> Fiber<'a> {
 
                         // a hack to make the test case fail
                         if let GosValue::Str(s) =
-                            p.msg.as_interface().borrow().underlying_value().unwrap()
+                            p.msg.as_interface().0.borrow().underlying_value().unwrap()
                         {
                             if s.as_str().starts_with("Opcode::ASSERT") {
                                 panic!("ASSERT");
