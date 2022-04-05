@@ -347,7 +347,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Complex128 => vm_objs.metadata.mcomplex128,
                 BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
                 BasicType::UnsafePointer => vm_objs.metadata.unsafe_ptr,
-                BasicType::UntypedNil => GosMetadata::Untyped,
+                BasicType::UntypedNil => vm_objs.metadata.none,
                 _ => {
                     dbg!(typ);
                     unreachable!()
@@ -426,7 +426,7 @@ impl<'a> TypeLookup<'a> {
                 GosValue::Complex128(Box::new((cr, ci)))
             }
             BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
-            BasicType::UnsafePointer => GosValue::Nil(self.unsafe_ptr_meta.clone()),
+            BasicType::UnsafePointer => GosValue::Nil(Some(self.unsafe_ptr_meta.clone())),
             _ => {
                 dbg!(typ);
                 unreachable!();

@@ -252,7 +252,7 @@ pub enum GosValue {
     Package(Value64),  // not visible to users
 
     Metadata(GosMetadata), // not visible to users
-    Nil(GosMetadata),
+    Nil(Option<GosMetadata>),
     Complex128(Box<(F64, F64)>),
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
@@ -271,7 +271,7 @@ pub enum GosValue {
 impl GosValue {
     #[inline]
     pub fn new_nil() -> GosValue {
-        GosValue::Nil(GosMetadata::Untyped)
+        GosValue::Nil(None)
     }
 
     #[inline]
@@ -814,7 +814,7 @@ impl GosValue {
 
     pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
-            GosValue::Nil(m) => *m,
+            GosValue::Nil(m) => m.unwrap_or(objs.metadata.none),
             GosValue::Bool(_) => objs.metadata.mbool,
             GosValue::Int(_) => objs.metadata.mint,
             GosValue::Int8(_) => objs.metadata.mint8,

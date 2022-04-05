@@ -267,8 +267,8 @@ impl StdValue {
         let v = match &iface.underlying() {
             IfaceUnderlying::Gos(v, _) => v.clone(),
             // todo: should we return something else?
-            IfaceUnderlying::Ffi(_) => GosValue::Nil(iface.meta),
-            IfaceUnderlying::None => GosValue::Nil(iface.meta),
+            IfaceUnderlying::Ffi(_) => GosValue::Nil(Some(iface.meta)),
+            IfaceUnderlying::None => GosValue::Nil(Some(iface.meta)),
         };
         wrap_std_val(v)
     }

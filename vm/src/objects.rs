@@ -1017,10 +1017,10 @@ impl ChannelObj {
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, RCount)>, GosMetadata),
-    Array(Rc<(ArrayObj, RCount)>, GosMetadata),
-    Slice(Rc<(SliceObj, RCount)>, GosMetadata),
-    Map(Rc<(MapObj, RCount)>, GosMetadata),
+    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<GosMetadata>),
+    Array(Rc<(ArrayObj, RCount)>, Option<GosMetadata>),
+    Slice(Rc<(SliceObj, RCount)>, Option<GosMetadata>),
+    Map(Rc<(MapObj, RCount)>, Option<GosMetadata>),
     SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -1030,8 +1030,8 @@ impl PointerObj {
     #[inline]
     pub fn try_new_local(val: &GosValue) -> Option<PointerObj> {
         let (val, meta) = match val {
-            GosValue::Named(n) => (&n.0, n.1),
-            _ => (val, GosMetadata::Untyped),
+            GosValue::Named(n) => (&n.0, Some(n.1)),
+            _ => (val, None),
         };
         match val {
             GosValue::Struct(s) => Some(PointerObj::Struct(s.clone(), meta)),
@@ -1061,20 +1061,20 @@ impl PointerObj {
                 }
             }
             PointerObj::Struct(s, named_md) => match named_md {
-                GosMetadata::Untyped => s.0.borrow().meta,
-                _ => *named_md,
+                None => s.0.borrow().meta,
+                Some(m) => *m,
             },
             PointerObj::Array(a, named_md) => match named_md {
-                GosMetadata::Untyped => a.0.meta,
-                _ => *named_md,
+                None => a.0.meta,
+                Some(m) => *m,
             },
             PointerObj::Slice(s, named_md) => match named_md {
-                GosMetadata::Untyped => s.0.meta,
-                _ => *named_md,
+                None => s.0.meta,
+                Some(m) => *m,
             },
             PointerObj::Map(m, named_md) => match named_md {
-                GosMetadata::Untyped => m.0.meta,
-                _ => *named_md,
+                None => m.0.meta,
+                Some(m) => *m,
             },
             PointerObj::StructField(sobj, index) => {
                 sobj.0.borrow().fields[*index as usize].meta(objs, stack)
@@ -1092,20 +1092,20 @@ impl PointerObj {
         match self {
             PointerObj::UpVal(uv) => uv.value(stack),
             PointerObj::Struct(s, md) => match md {
-                GosMetadata::Untyped => GosValue::Struct(s.clone()),
-                _ => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *md))),
+                None => GosValue::Struct(s.clone()),
+                Some(m) => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *m))),
             },
             PointerObj::Array(a, md) => match md {
-                GosMetadata::Untyped => GosValue::Array(a.clone()),
-                _ => GosValue::Named(Box::new((GosValue::Array(a.clone()), *md))),
+                None => GosValue::Array(a.clone()),
+                Some(m) => GosValue::Named(Box::new((GosValue::Array(a.clone()), *m))),
             },
             PointerObj::Slice(s, md) => match md {
-                GosMetadata::Untyped => GosValue::Slice(s.clone()),
-                _ => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *md))),
+                None => GosValue::Slice(s.clone()),
+                Some(m) => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *m))),
             },
             PointerObj::Map(s, md) => match md {
-                GosMetadata::Untyped => GosValue::Map(s.clone()),
-                _ => GosValue::Named(Box::new((GosValue::Map(s.clone()), *md))),
+                None => GosValue::Map(s.clone()),
+                Some(m) => GosValue::Named(Box::new((GosValue::Map(s.clone()), *m))),
             },
             PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
             PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),

@@ -42,6 +42,7 @@ pub struct Metadata {
     pub unsafe_ptr: GosMetadata,
     pub default_sig: GosMetadata,
     pub empty_iface: GosMetadata,
+    pub none: GosMetadata,
 }
 
 impl Metadata {
@@ -92,6 +93,7 @@ impl Metadata {
                 objs.insert(MetadataType::Interface(Fields::new(vec![], HashMap::new()))),
                 MetaCategory::Default,
             ),
+            none: GosMetadata::NonPtr(objs.insert(MetadataType::None), MetaCategory::Default),
         }
     }
 }
@@ -106,7 +108,6 @@ pub enum MetaCategory {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum GosMetadata {
-    Untyped,
     NonPtr(MetadataKey, MetaCategory),
     Ptr1(MetadataKey, MetaCategory),
     Ptr2(MetadataKey, MetaCategory),
@@ -162,7 +163,7 @@ impl GosMetadata {
         let field_zeros: Vec<GosValue> =
             f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
         let struct_val = StructObj {
-            meta: GosMetadata::Untyped, // placeholder, will be set below
+            meta: objs.metadata.none, // placeholder, will be set below
             fields: field_zeros,
         };
         let gos_struct = GosValue::new_struct(struct_val, gcv);
@@ -208,9 +209,6 @@ impl GosMetadata {
     #[inline]
     pub fn ptr_to(&self) -> GosMetadata {
         match self {
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
             GosMetadata::NonPtr(k, t) => GosMetadata::Ptr1(*k, *t),
             GosMetadata::Ptr1(k, t) => GosMetadata::Ptr2(*k, *t),
             GosMetadata::Ptr2(k, t) => GosMetadata::Ptr3(*k, *t),
@@ -227,9 +225,6 @@ impl GosMetadata {
     #[inline]
     pub fn unptr_to(&self) -> GosMetadata {
         match self {
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
             GosMetadata::NonPtr(_, _) => {
                 unreachable!() /* todo: panic */
             }
@@ -284,9 +279,6 @@ impl GosMetadata {
             GosMetadata::Ptr5(k, c) => GosMetadata::Ptr5(k, convert(c)),
             GosMetadata::Ptr6(k, c) => GosMetadata::Ptr6(k, convert(c)),
             GosMetadata::Ptr7(k, c) => GosMetadata::Ptr7(k, convert(c)),
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
         }
     }
 
@@ -306,9 +298,6 @@ impl GosMetadata {
             GosMetadata::Ptr5(k, c) => GosMetadata::Ptr5(k, convert(c)),
             GosMetadata::Ptr6(k, c) => GosMetadata::Ptr6(k, convert(c)),
             GosMetadata::Ptr7(k, c) => GosMetadata::Ptr7(k, convert(c)),
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
         }
     }
 
@@ -341,13 +330,11 @@ impl GosMetadata {
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel(_, _) => ValueType::Channel,
                     MetadataType::Named(_, _) => ValueType::Named,
+                    MetadataType::None => ValueType::Nil,
                 },
                 MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
                 MetaCategory::Array => ValueType::Array,
             },
-            GosMetadata::Untyped => {
-                unreachable!() /* todo: panic */
-            }
             _ => ValueType::Pointer,
         }
     }
@@ -360,7 +347,6 @@ impl GosMetadata {
     #[inline]
     fn zero_val_impl(&self, mobjs: &MetadataObjs, gcos: &GcoVec) -> GosValue {
         match &self {
-            GosMetadata::Untyped => GosValue::Nil(*self),
             GosMetadata::NonPtr(k, mc) => match &mobjs[*k] {
                 MetadataType::Bool => GosValue::new_bool(false),
                 MetadataType::Int => GosValue::new_int(0),
@@ -390,18 +376,19 @@ impl GosMetadata {
                     _ => unreachable!(),
                 },
                 MetadataType::Struct(_, s) => s.copy_semantic(gcos),
-                MetadataType::Signature(_) => GosValue::Nil(*self),
+                MetadataType::Signature(_) => GosValue::Nil(Some(*self)),
                 MetadataType::Map(_, v) => {
                     GosValue::new_map_nil(*self, v.zero_val_impl(mobjs, gcos), gcos)
                 }
-                MetadataType::Interface(_) => GosValue::Nil(*self),
-                MetadataType::Channel(_, _) => GosValue::Nil(*self),
+                MetadataType::Interface(_) => GosValue::Nil(Some(*self)),
+                MetadataType::Channel(_, _) => GosValue::Nil(Some(*self)),
                 MetadataType::Named(_, gm) => {
                     let val = gm.zero_val_impl(mobjs, gcos);
                     GosValue::Named(Box::new((val, *gm)))
                 }
+                MetadataType::None => GosValue::Nil(Some(*self)),
             },
-            _ => GosValue::Nil(*self),
+            _ => GosValue::Nil(Some(*self)),
         }
     }
 
@@ -532,7 +519,6 @@ impl GosMetadata {
             (Self::Ptr7(ak, ac), Self::Ptr7(bk, bc)) => {
                 Self::semantic_eq_impl(ak, ac, bk, bc, metas)
             }
-            (Self::Untyped, Self::Untyped) => true,
             _ => false,
         }
     }
@@ -711,6 +697,7 @@ pub enum MetadataType {
     Interface(Fields),
     Channel(ChannelType, GosMetadata),
     Named(Methods, GosMetadata),
+    None,
 }
 
 impl MetadataType {
