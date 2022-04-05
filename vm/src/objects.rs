@@ -58,18 +58,18 @@ pub struct VMObjects {
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
-    pub metadata: Metadata,
+    pub s_meta: StaticMeta,
 }
 
 impl VMObjects {
     pub fn new() -> VMObjects {
         let mut metas = DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
-        let md = Metadata::new(&mut metas);
+        let md = StaticMeta::new(&mut metas);
         VMObjects {
             metas: metas,
             functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            metadata: md,
+            s_meta: md,
         }
     }
 }

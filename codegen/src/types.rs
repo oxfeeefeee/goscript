@@ -328,26 +328,26 @@ impl<'a> TypeLookup<'a> {
         self.tc_objs.types[tkey].try_as_basic().map(|x| {
             let typ = x.typ();
             match typ {
-                BasicType::Bool | BasicType::UntypedBool => vm_objs.metadata.mbool,
-                BasicType::Int | BasicType::UntypedInt => vm_objs.metadata.mint,
-                BasicType::Int8 => vm_objs.metadata.mint8,
-                BasicType::Int16 => vm_objs.metadata.mint16,
+                BasicType::Bool | BasicType::UntypedBool => vm_objs.s_meta.mbool,
+                BasicType::Int | BasicType::UntypedInt => vm_objs.s_meta.mint,
+                BasicType::Int8 => vm_objs.s_meta.mint8,
+                BasicType::Int16 => vm_objs.s_meta.mint16,
                 BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
-                    vm_objs.metadata.mint32
+                    vm_objs.s_meta.mint32
                 }
-                BasicType::Int64 => vm_objs.metadata.mint64,
-                BasicType::Uint | BasicType::Uintptr => vm_objs.metadata.muint,
-                BasicType::Uint8 | BasicType::Byte => vm_objs.metadata.muint8,
-                BasicType::Uint16 => vm_objs.metadata.muint16,
-                BasicType::Uint32 => vm_objs.metadata.muint32,
-                BasicType::Uint64 => vm_objs.metadata.muint64,
-                BasicType::Float32 => vm_objs.metadata.mfloat32,
-                BasicType::Float64 | BasicType::UntypedFloat => vm_objs.metadata.mfloat64,
-                BasicType::Complex64 => vm_objs.metadata.mcomplex64,
-                BasicType::Complex128 => vm_objs.metadata.mcomplex128,
-                BasicType::Str | BasicType::UntypedString => vm_objs.metadata.mstr,
-                BasicType::UnsafePointer => vm_objs.metadata.unsafe_ptr,
-                BasicType::UntypedNil => vm_objs.metadata.none,
+                BasicType::Int64 => vm_objs.s_meta.mint64,
+                BasicType::Uint | BasicType::Uintptr => vm_objs.s_meta.muint,
+                BasicType::Uint8 | BasicType::Byte => vm_objs.s_meta.muint8,
+                BasicType::Uint16 => vm_objs.s_meta.muint16,
+                BasicType::Uint32 => vm_objs.s_meta.muint32,
+                BasicType::Uint64 => vm_objs.s_meta.muint64,
+                BasicType::Float32 => vm_objs.s_meta.mfloat32,
+                BasicType::Float64 | BasicType::UntypedFloat => vm_objs.s_meta.mfloat64,
+                BasicType::Complex64 => vm_objs.s_meta.mcomplex64,
+                BasicType::Complex128 => vm_objs.s_meta.mcomplex128,
+                BasicType::Str | BasicType::UntypedString => vm_objs.s_meta.mstr,
+                BasicType::UnsafePointer => vm_objs.s_meta.unsafe_ptr,
+                BasicType::UntypedNil => vm_objs.s_meta.none,
                 _ => {
                     dbg!(typ);
                     unreachable!()
@@ -517,7 +517,7 @@ impl<'a> TypeLookup<'a> {
             }
             Type::Named(detail) => {
                 // generate a Named with dummy underlying to avoid recursion
-                let md = GosMetadata::new_named(vm_objs.metadata.mint, &mut vm_objs.metas);
+                let md = GosMetadata::new_named(vm_objs.s_meta.mint, &mut vm_objs.metas);
                 for key in detail.methods().iter() {
                     let mobj = &self.tc_objs.lobjs[*key];
                     md.add_method(

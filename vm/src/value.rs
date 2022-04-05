@@ -525,7 +525,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_empty_iface(mdata: &Metadata, underlying: GosValue) -> GosValue {
+    pub fn new_empty_iface(mdata: &StaticMeta, underlying: GosValue) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(
             mdata.empty_iface,
             IfaceUnderlying::Gos(underlying, None),
@@ -796,27 +796,27 @@ impl GosValue {
 
     pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
         match self {
-            GosValue::Nil(m) => m.unwrap_or(objs.metadata.none),
-            GosValue::Bool(_) => objs.metadata.mbool,
-            GosValue::Int(_) => objs.metadata.mint,
-            GosValue::Int8(_) => objs.metadata.mint8,
-            GosValue::Int16(_) => objs.metadata.mint16,
-            GosValue::Int32(_) => objs.metadata.mint32,
-            GosValue::Int64(_) => objs.metadata.mint64,
-            GosValue::Uint(_) => objs.metadata.muint,
-            GosValue::UintPtr(_) => objs.metadata.muint_ptr,
-            GosValue::Uint8(_) => objs.metadata.muint8,
-            GosValue::Uint16(_) => objs.metadata.muint16,
-            GosValue::Uint32(_) => objs.metadata.muint32,
-            GosValue::Uint64(_) => objs.metadata.muint64,
-            GosValue::Float32(_) => objs.metadata.mfloat32,
-            GosValue::Float64(_) => objs.metadata.mfloat64,
-            GosValue::Complex64(_) => objs.metadata.mcomplex64,
-            GosValue::Complex128(_) => objs.metadata.mcomplex128,
-            GosValue::Str(_) => objs.metadata.mstr,
+            GosValue::Nil(m) => m.unwrap_or(objs.s_meta.none),
+            GosValue::Bool(_) => objs.s_meta.mbool,
+            GosValue::Int(_) => objs.s_meta.mint,
+            GosValue::Int8(_) => objs.s_meta.mint8,
+            GosValue::Int16(_) => objs.s_meta.mint16,
+            GosValue::Int32(_) => objs.s_meta.mint32,
+            GosValue::Int64(_) => objs.s_meta.mint64,
+            GosValue::Uint(_) => objs.s_meta.muint,
+            GosValue::UintPtr(_) => objs.s_meta.muint_ptr,
+            GosValue::Uint8(_) => objs.s_meta.muint8,
+            GosValue::Uint16(_) => objs.s_meta.muint16,
+            GosValue::Uint32(_) => objs.s_meta.muint32,
+            GosValue::Uint64(_) => objs.s_meta.muint64,
+            GosValue::Float32(_) => objs.s_meta.mfloat32,
+            GosValue::Float64(_) => objs.s_meta.mfloat64,
+            GosValue::Complex64(_) => objs.s_meta.mcomplex64,
+            GosValue::Complex128(_) => objs.s_meta.mcomplex128,
+            GosValue::Str(_) => objs.s_meta.mstr,
             GosValue::Array(a) => a.0.meta,
             GosValue::Pointer(p) => p.point_to_meta(objs, stack).ptr_to(),
-            GosValue::UnsafePtr(_) => objs.metadata.unsafe_ptr,
+            GosValue::UnsafePtr(_) => objs.s_meta.unsafe_ptr,
             GosValue::Closure(c) => c.0.borrow().meta,
             GosValue::Slice(s) => s.0.meta,
             GosValue::Map(m) => m.0.meta,

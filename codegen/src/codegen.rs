@@ -104,7 +104,7 @@ impl<'a> CodeGen<'a> {
         pkg: PackageKey,
         bk: IdentKey,
     ) -> CodeGen<'a> {
-        let unsafe_ptr_meta = vmo.metadata.unsafe_ptr.clone();
+        let unsafe_ptr_meta = vmo.s_meta.unsafe_ptr.clone();
         CodeGen {
             objects: vmo,
             ast_objs: asto,
@@ -1296,7 +1296,7 @@ impl<'a> CodeGen<'a> {
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
-        let fmeta = self.objects.metadata.default_sig;
+        let fmeta = self.objects.s_meta.default_sig;
         let f = GosValue::new_function_create(
             pkey,
             fmeta,

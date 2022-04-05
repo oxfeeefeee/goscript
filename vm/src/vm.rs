@@ -299,7 +299,7 @@ impl<'a> Fiber<'a> {
         let ctx = &self.context;
         let gcv = ctx.gcv;
         let objs: &VMObjects = &ctx.code.objects;
-        let metadata: &Metadata = &objs.metadata;
+        let s_meta: &StaticMeta = &objs.s_meta;
         let pkgs = &ctx.code.packages;
         let ifaces = &ctx.code.ifaces;
         let frame = self.frames.last_mut().unwrap();
@@ -376,7 +376,7 @@ impl<'a> Fiber<'a> {
                             match val.load_index(&ind) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    go_panic_str!(panic, &objs.metadata, e, frame, code);
+                                    go_panic_str!(panic, &objs.s_meta, e, frame, code);
                                 }
                             }
                         } else {
@@ -393,7 +393,7 @@ impl<'a> Fiber<'a> {
                             match val.load_index_int(index) {
                                 Ok(v) => stack.push(v),
                                 Err(e) => {
-                                    go_panic_str!(panic, metadata, e, frame, code);
+                                    go_panic_str!(panic, s_meta, e, frame, code);
                                 }
                             }
                         } else {
@@ -409,7 +409,7 @@ impl<'a> Fiber<'a> {
                             target = &target.as_named().0;
                         }
                         if let Err(e) = stack.store_index(target, &key, rhs_index, inst.t0(), gcv) {
-                            go_panic_str!(panic, metadata, e, frame, code);
+                            go_panic_str!(panic, s_meta, e, frame, code);
                         }
                     }
                     Opcode::STORE_INDEX_IMM => {
@@ -424,7 +424,7 @@ impl<'a> Fiber<'a> {
                         if let Err(e) =
                             stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv)
                         {
-                            go_panic_str!(panic, metadata, e, frame, code);
+                            go_panic_str!(panic, s_meta, e, frame, code);
                         }
                     }
                     Opcode::LOAD_FIELD => {
@@ -465,7 +465,7 @@ impl<'a> Fiber<'a> {
                         {
                             Ok(cls) => stack.push(cls),
                             Err(e) => {
-                                go_panic_str!(panic, metadata, e, frame, code);
+                                go_panic_str!(panic, s_meta, e, frame, code);
                             }
                         }
                     }
@@ -607,14 +607,14 @@ impl<'a> Fiber<'a> {
                                 let from = stack.get_rc(target_index).as_str();
                                 let result = match inst.t2() {
                                     ValueType::Int32 => (
-                                        objs.metadata.mint32,
+                                        objs.s_meta.mint32,
                                         from.as_str()
                                             .chars()
                                             .map(|x| GosValue::new_int32(x as i32))
                                             .collect(),
                                     ),
                                     ValueType::Uint8 => (
-                                        objs.metadata.muint8,
+                                        objs.s_meta.muint8,
                                         from.as_str()
                                             .bytes()
                                             .map(|x| GosValue::new_uint8(x))
@@ -730,7 +730,7 @@ impl<'a> Fiber<'a> {
                         let re = chan.as_channel().send(&val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         if let Err(e) = re {
-                            go_panic_str!(panic, metadata, e, frame, code);
+                            go_panic_str!(panic, s_meta, e, frame, code);
                         }
                     }
                     Opcode::RECV => {
@@ -917,7 +917,7 @@ impl<'a> Fiber<'a> {
                                 match returns {
                                     Ok(result) => stack.append(result),
                                     Err(e) => {
-                                        go_panic_str!(panic, &objs.metadata, e, frame, code);
+                                        go_panic_str!(panic, &objs.s_meta, e, frame, code);
                                     }
                                 }
                             }
@@ -1102,7 +1102,7 @@ impl<'a> Fiber<'a> {
                                 frame.pc = Stack::offset(frame.pc, (blocks - 1) + block_offset);
                             }
                             Err(e) => {
-                                go_panic_str!(panic, &objs.metadata, e, frame, code);
+                                go_panic_str!(panic, &objs.s_meta, e, frame, code);
                             }
                         }
                     }
@@ -1167,7 +1167,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Slice(sl) => {
                                 if max > sl.0.cap() as isize {
                                     let msg = format!("index {} out of range", max).to_string();
-                                    go_panic_str!(panic, metadata, msg, frame, code);
+                                    go_panic_str!(panic, s_meta, msg, frame, code);
                                 }
                                 GosValue::Slice(Rc::new((
                                     sl.0.slice(begin, end, max),
@@ -1501,7 +1501,7 @@ impl<'a> Fiber<'a> {
                         };
                         if !ok {
                             let msg = "Opcode::ASSERT: not true!".to_owned();
-                            go_panic_str!(panic, metadata, msg, frame, code);
+                            go_panic_str!(panic, s_meta, msg, frame, code);
                         }
                     }
                     Opcode::FFI => {
@@ -1524,7 +1524,7 @@ impl<'a> Fiber<'a> {
                                 )
                             }
                             Err(e) => {
-                                go_panic_str!(panic, metadata, e, frame, code);
+                                go_panic_str!(panic, s_meta, e, frame, code);
                                 continue;
                             }
                         };

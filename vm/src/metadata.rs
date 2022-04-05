@@ -21,7 +21,7 @@ pub enum ChannelType {
 }
 
 #[derive(Debug)]
-pub struct Metadata {
+pub struct StaticMeta {
     pub mbool: GosMetadata,
     pub mint: GosMetadata,
     pub mint8: GosMetadata,
@@ -45,9 +45,9 @@ pub struct Metadata {
     pub none: GosMetadata,
 }
 
-impl Metadata {
-    pub fn new(objs: &mut MetadataObjs) -> Metadata {
-        Metadata {
+impl StaticMeta {
+    pub fn new(objs: &mut MetadataObjs) -> StaticMeta {
+        StaticMeta {
             mbool: GosMetadata::with_type(MetadataType::Bool, objs),
             mint: GosMetadata::with_type(MetadataType::Int, objs),
             mint8: GosMetadata::with_type(MetadataType::Int8, objs),
@@ -152,7 +152,7 @@ impl GosMetadata {
         let field_zeros: Vec<GosValue> =
             f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
         let struct_val = StructObj {
-            meta: objs.metadata.none, // placeholder, will be set below
+            meta: objs.s_meta.none, // placeholder, will be set below
             fields: field_zeros,
         };
         let gos_struct = GosValue::new_struct(struct_val, gcv);

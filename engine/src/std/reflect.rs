@@ -558,7 +558,7 @@ impl StdValue {
     }
 
     fn set_pointer(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
-        if self.settable_meta(ctx)? != ctx.vm_objs.metadata.unsafe_ptr {
+        if self.settable_meta(ctx)? != ctx.vm_objs.s_meta.unsafe_ptr {
             err_wrong_type!()
         } else {
             self.set(ctx, val)
