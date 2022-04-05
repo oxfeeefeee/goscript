@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 pub struct IfaceMapping {
     ifaces: Vec<(Meta, Option<Vec<IfaceBinding>>)>,
-    iface_indices: HashMap<(TCTypeKey, Option<TCTypeKey>), OpIndex>,
+    iface_indices: HashMap<(TCTypeKey, TCTypeKey), OpIndex>,
 }
 
 impl IfaceMapping {
@@ -25,7 +25,7 @@ impl IfaceMapping {
 
     pub fn get_index(
         &mut self,
-        i_s: &(TCTypeKey, Option<TCTypeKey>),
+        i_s: &(TCTypeKey, TCTypeKey),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
@@ -41,16 +41,14 @@ impl IfaceMapping {
     }
 
     fn get_binding_info(
-        i_s: &(TCTypeKey, Option<TCTypeKey>),
+        i_s: &(TCTypeKey, TCTypeKey),
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> (Meta, Option<Vec<IfaceBinding>>) {
         let i = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
-        if i_s.1.is_none() {
-            return (i, None);
-        }
-        let struct_ = lookup.meta_from_tc(i_s.1.unwrap(), objs, dummy_gcv);
+
+        let struct_ = lookup.meta_from_tc(i_s.1, objs, dummy_gcv);
         let fields: Vec<&String> = match &objs.metas[i.underlying(&objs.metas).key] {
             MetadataType::Interface(m) => m.fields.iter().map(|x| &x.1).collect(),
             _ => unreachable!(),

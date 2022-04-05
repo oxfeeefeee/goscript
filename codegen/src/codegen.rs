@@ -543,7 +543,7 @@ impl<'a> CodeGen<'a> {
                 } else {
                     total_val
                 };
-            let typ = self.try_cast_to_iface(lhs[i].1, Some(types[i]), rhs_index, *p);
+            let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
@@ -903,7 +903,7 @@ impl<'a> CodeGen<'a> {
                         ValueType::Interface => {
                             if ut_from != ValueType::Nil {
                                 let iface_index = self.iface_mapping.get_index(
-                                    &(tct_to, Some(tct_from)),
+                                    &(tct_to, tct_from),
                                     &mut self.t,
                                     self.objects,
                                     self.dummy_gcv,
@@ -1044,22 +1044,19 @@ impl<'a> CodeGen<'a> {
     fn try_cast_to_iface(
         &mut self,
         lhs: Option<TCTypeKey>,
-        rhs: Option<TCTypeKey>,
+        rhs: TCTypeKey,
         rhs_index: OpIndex,
         pos: usize,
     ) -> ValueType {
         let mut ret_type = None;
         if let Some(t0) = lhs {
             if self.t.underlying_value_type_from_tc(t0) == ValueType::Interface {
-                let to_cast_typ = match rhs {
-                    Some(t1) => {
-                        let vt1 = self.t.underlying_value_type_from_tc(t1);
-                        match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
-                            true => Some(self.t.value_type_from_tc(t1)),
-                            false => None,
-                        }
+                let to_cast_typ = {
+                    let vt1 = self.t.underlying_value_type_from_tc(rhs);
+                    match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
+                        true => Some(self.t.value_type_from_tc(rhs)),
+                        false => None,
                     }
-                    None => Some(ValueType::Slice), // it must be a variadic parameter
                 };
                 if let Some(typ) = to_cast_typ {
                     let index = self.iface_mapping.get_index(
@@ -1080,7 +1077,7 @@ impl<'a> CodeGen<'a> {
                 }
             }
         }
-        ret_type.unwrap_or(self.t.value_type_from_tc(rhs.unwrap()))
+        ret_type.unwrap_or(self.t.value_type_from_tc(rhs))
     }
 
     fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
@@ -1090,19 +1087,14 @@ impl<'a> CodeGen<'a> {
 
         for (i, v) in sig_params[..non_variadic_count].iter().enumerate() {
             let rhs_index = i as OpIndex - params.len() as OpIndex;
-            let rhs = if i == params.len() - 1 && ellipsis {
-                None
-            } else {
-                Some(param_types[i].0)
-            };
-            self.try_cast_to_iface(Some(*v), rhs, rhs_index, param_types[i].1);
+            self.try_cast_to_iface(Some(*v), param_types[i].0, rhs_index, param_types[i].1);
         }
         if !ellipsis {
             if let Some(t) = variadic {
                 if self.t.underlying_value_type_from_tc(t) == ValueType::Interface {
                     for (i, p) in param_types.iter().enumerate().skip(non_variadic_count) {
                         let rhs_index = i as OpIndex - params.len() as OpIndex;
-                        self.try_cast_to_iface(Some(t), Some(p.0), rhs_index, p.1);
+                        self.try_cast_to_iface(Some(t), p.0, rhs_index, p.1);
                     }
                 }
             }
@@ -1139,7 +1131,7 @@ impl<'a> CodeGen<'a> {
             _ => self.visit_expr(expr),
         }
         let t = self.t.get_expr_tc_type(expr);
-        self.try_cast_to_iface(Some(tctype), Some(t), -1, expr.pos(self.ast_objs));
+        self.try_cast_to_iface(Some(tctype), t, -1, expr.pos(self.ast_objs));
     }
 
     fn gen_composite_literal(&mut self, clit: &CompositeLit, tctype: TCTypeKey) {
@@ -1976,7 +1968,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             for (i, typ) in return_types.iter().enumerate() {
                 let index = i as i32 - count;
                 let pos = typ.1;
-                let t = self.try_cast_to_iface(Some(types[i]), Some(typ.0), index, pos);
+                let t = self.try_cast_to_iface(Some(types[i]), typ.0, index, pos);
                 let mut emitter = current_func_emitter!(self);
                 emitter.emit_store(
                     &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
