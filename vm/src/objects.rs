@@ -178,13 +178,13 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Ref
 
 #[derive(Debug)]
 pub struct MapObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     default_val: RefCell<GosValue>,
     pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
-    pub fn new(meta: GosMetadata, default_val: GosValue) -> MapObj {
+    pub fn new(meta: Meta, default_val: GosValue) -> MapObj {
         MapObj {
             meta: meta,
             default_val: RefCell::new(default_val),
@@ -291,12 +291,12 @@ pub type GosVec = Vec<RefCell<GosValue>>;
 
 #[derive(Debug)]
 pub struct ArrayObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     pub vec: Rc<RefCell<GosVec>>,
 }
 
 impl ArrayObj {
-    pub fn with_size(size: usize, val: &GosValue, meta: GosMetadata, gcos: &GcoVec) -> ArrayObj {
+    pub fn with_size(size: usize, val: &GosValue, meta: Meta, gcos: &GcoVec) -> ArrayObj {
         let mut v = GosVec::with_capacity(size);
         for _ in 0..size {
             v.push(RefCell::new(val.copy_semantic(gcos)))
@@ -307,7 +307,7 @@ impl ArrayObj {
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> ArrayObj {
+    pub fn with_data(val: Vec<GosValue>, meta: Meta) -> ArrayObj {
         ArrayObj {
             meta: meta,
             vec: Rc::new(RefCell::new(
@@ -393,7 +393,7 @@ impl Clone for ArrayObj {
 
 #[derive(Debug)]
 pub struct SliceObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     begin: Cell<usize>,
     end: Cell<usize>,
     cap_end: Cell<usize>,
@@ -401,12 +401,7 @@ pub struct SliceObj {
 }
 
 impl<'a> SliceObj {
-    pub fn new(
-        len: usize,
-        cap: usize,
-        meta: GosMetadata,
-        default_val: Option<&GosValue>,
-    ) -> SliceObj {
+    pub fn new(len: usize, cap: usize, meta: Meta, default_val: Option<&GosValue>) -> SliceObj {
         assert!(cap >= len);
         let mut val: GosVec = Vec::with_capacity(cap);
         for _ in 0..cap {
@@ -421,7 +416,7 @@ impl<'a> SliceObj {
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>, meta: GosMetadata) -> SliceObj {
+    pub fn with_data(val: Vec<GosValue>, meta: Meta) -> SliceObj {
         SliceObj {
             meta: meta,
             begin: Cell::from(0),
@@ -434,7 +429,7 @@ impl<'a> SliceObj {
     }
 
     pub fn with_array(arr: &ArrayObj, begin: isize, end: isize) -> SliceObj {
-        let elem_meta = GosMetadata::new_slice_from_array(arr.meta);
+        let elem_meta = Meta::new_slice_from_array(arr.meta);
         let len = arr.len();
         let self_end = len as isize + 1;
         let bi = begin as usize;
@@ -664,7 +659,7 @@ impl<'a> Index<usize> for SliceRef<'a> {
 
 #[derive(Clone, Debug)]
 pub struct StructObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     pub fields: Vec<GosValue>,
 }
 
@@ -726,11 +721,11 @@ impl Display for StructObj {
 #[derive(Clone, Debug)]
 pub struct UnderlyingFfi {
     pub ffi_obj: Rc<RefCell<dyn Ffi>>,
-    pub methods: Vec<(String, GosMetadata)>,
+    pub methods: Vec<(String, Meta)>,
 }
 
 impl UnderlyingFfi {
-    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, GosMetadata)>) -> UnderlyingFfi {
+    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, Meta)>) -> UnderlyingFfi {
         UnderlyingFfi {
             ffi_obj: obj,
             methods: methods,
@@ -836,14 +831,14 @@ impl PartialEq for IfaceUnderlying {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     // the Named object behind the interface
     // mapping from interface's methods to object's methods
     underlying: IfaceUnderlying,
 }
 
 impl InterfaceObj {
-    pub fn new(meta: GosMetadata, underlying: IfaceUnderlying) -> InterfaceObj {
+    pub fn new(meta: Meta, underlying: IfaceUnderlying) -> InterfaceObj {
         InterfaceObj {
             meta: meta,
             underlying: underlying,
@@ -925,19 +920,19 @@ impl Display for InterfaceObj {
 
 #[derive(Clone, Debug)]
 pub struct ChannelObj {
-    pub meta: GosMetadata,
+    pub meta: Meta,
     pub chan: Channel,
 }
 
 impl ChannelObj {
-    pub fn new(meta: GosMetadata, cap: usize) -> ChannelObj {
+    pub fn new(meta: Meta, cap: usize) -> ChannelObj {
         ChannelObj {
             meta: meta,
             chan: Channel::new(cap),
         }
     }
 
-    pub fn with_chan(meta: GosMetadata, chan: Channel) -> ChannelObj {
+    pub fn with_chan(meta: Meta, chan: Channel) -> ChannelObj {
         ChannelObj {
             meta: meta,
             chan: chan,
@@ -984,10 +979,10 @@ impl ChannelObj {
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<GosMetadata>),
-    Array(Rc<(ArrayObj, RCount)>, Option<GosMetadata>),
-    Slice(Rc<(SliceObj, RCount)>, Option<GosMetadata>),
-    Map(Rc<(MapObj, RCount)>, Option<GosMetadata>),
+    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
+    Array(Rc<(ArrayObj, RCount)>, Option<Meta>),
+    Slice(Rc<(SliceObj, RCount)>, Option<Meta>),
+    Map(Rc<(MapObj, RCount)>, Option<Meta>),
     SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -1016,7 +1011,7 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn point_to_meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
+    pub fn point_to_meta(&self, objs: &VMObjects, stack: &Stack) -> Meta {
         match self {
             PointerObj::UpVal(uv) => {
                 let state: &UpValueState = &uv.inner.borrow();
@@ -1455,7 +1450,7 @@ impl WeakUpValue {
 pub struct FfiClosureObj {
     pub ffi: Rc<RefCell<dyn Ffi>>,
     pub func_name: String,
-    pub meta: GosMetadata,
+    pub meta: Meta,
 }
 
 #[derive(Clone, Debug)]
@@ -1466,7 +1461,7 @@ pub struct ClosureObj {
 
     pub ffi: Option<Box<FfiClosureObj>>,
 
-    pub meta: GosMetadata,
+    pub meta: Meta,
 }
 
 impl ClosureObj {
@@ -1628,7 +1623,7 @@ pub enum EntIndex {
     UpValue(OpIndex),
     PackageMember(PackageKey, KeyData),
     BuiltInVal(Opcode), // built-in identifiers
-    TypeMeta(GosMetadata),
+    TypeMeta(Meta),
     Blank,
 }
 
@@ -1657,7 +1652,7 @@ pub enum FuncFlag {
 #[derive(Clone, Debug)]
 pub struct FunctionVal {
     pub package: PackageKey,
-    pub meta: GosMetadata,
+    pub meta: Meta,
     code: Vec<Instruction>,
     pos: Vec<Option<usize>>,
     pub consts: Vec<GosValue>,
@@ -1676,7 +1671,7 @@ pub struct FunctionVal {
 impl FunctionVal {
     pub fn new(
         package: PackageKey,
-        meta: GosMetadata,
+        meta: Meta,
         objs: &VMObjects,
         gcv: &GcoVec,
         flag: FuncFlag,

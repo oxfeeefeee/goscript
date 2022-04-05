@@ -1,6 +1,6 @@
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
-use super::metadata::GosMetadata;
+use super::metadata::Meta;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
@@ -543,7 +543,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(&mut self, index: usize, meta: GosMetadata, t: ValueType, gcos: &GcoVec) {
+    pub fn pack_variadic(&mut self, index: usize, meta: Meta, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index, t));

@@ -251,8 +251,8 @@ pub enum GosValue {
     Function(Value64), // not visible to users
     Package(Value64),  // not visible to users
 
-    Metadata(GosMetadata), // not visible to users
-    Nil(Option<GosMetadata>),
+    Metadata(Meta), // not visible to users
+    Nil(Option<Meta>),
     Complex128(Box<(F64, F64)>),
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
@@ -265,7 +265,7 @@ pub enum GosValue {
     Struct(Rc<(RefCell<StructObj>, RCount)>),
     Channel(Rc<ChannelObj>),
 
-    Named(Box<(GosValue, GosMetadata)>),
+    Named(Box<(GosValue, Meta)>),
 }
 
 impl GosValue {
@@ -416,12 +416,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn array_with_size(
-        size: usize,
-        val: &GosValue,
-        meta: GosMetadata,
-        gcobjs: &GcoVec,
-    ) -> GosValue {
+    pub fn array_with_size(size: usize, val: &GosValue, meta: Meta, gcobjs: &GcoVec) -> GosValue {
         let arr = Rc::new((ArrayObj::with_size(size, val, meta, gcobjs), Cell::new(0)));
         let v = GosValue::Array(arr);
         gcobjs.add(&v);
@@ -429,7 +424,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn array_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
+    pub fn array_with_val(val: Vec<GosValue>, meta: Meta, gcobjs: &GcoVec) -> GosValue {
         let arr = Rc::new((ArrayObj::with_data(val, meta), Cell::new(0)));
         let v = GosValue::Array(arr);
         gcobjs.add(&v);
@@ -440,7 +435,7 @@ impl GosValue {
     pub fn new_slice(
         len: usize,
         cap: usize,
-        meta: GosMetadata,
+        meta: Meta,
         dval: Option<&GosValue>,
         gcobjs: &GcoVec,
     ) -> GosValue {
@@ -459,7 +454,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn slice_with_val(val: Vec<GosValue>, meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
+    pub fn slice_with_val(val: Vec<GosValue>, meta: Meta, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((SliceObj::with_data(val, meta), Cell::new(0)));
         let v = GosValue::Slice(s);
         gcobjs.add(&v);
@@ -478,7 +473,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
+    pub fn new_map(meta: Meta, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((MapObj::new(meta, default_val), Cell::new(0)));
         let v = GosValue::Map(val);
         gcobjs.add(&v);
@@ -496,7 +491,7 @@ impl GosValue {
     #[inline]
     pub fn new_function_create(
         package: PackageKey,
-        meta: GosMetadata,
+        meta: Meta,
         objs: &mut VMObjects,
         gcv: &GcoVec,
         flag: FuncFlag,
@@ -519,7 +514,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_iface(meta: GosMetadata, underlying: IfaceUnderlying) -> GosValue {
+    pub fn new_iface(meta: Meta, underlying: IfaceUnderlying) -> GosValue {
         let val = Rc::new(RefCell::new(InterfaceObj::new(meta, underlying)));
         GosValue::Interface(val)
     }
@@ -534,18 +529,18 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_channel(meta: GosMetadata, cap: usize) -> GosValue {
+    pub fn new_channel(meta: Meta, cap: usize) -> GosValue {
         GosValue::Channel(Rc::new(ChannelObj::new(meta, cap)))
     }
 
     #[inline]
-    pub fn channel_with_chan(meta: GosMetadata, chan: Channel) -> GosValue {
+    pub fn channel_with_chan(meta: Meta, chan: Channel) -> GosValue {
         GosValue::Channel(Rc::new(ChannelObj::with_chan(meta, chan)))
     }
 
     #[inline]
     pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(GosMetadata::with_type(t, metas))
+        GosValue::Metadata(Meta::with_type(t, metas))
     }
 
     #[inline]
@@ -654,7 +649,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_meta(&self) -> &GosMetadata {
+    pub fn as_meta(&self) -> &Meta {
         unwrap_gos_val!(Metadata, self)
     }
 
@@ -669,7 +664,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Box<(GosValue, GosMetadata)> {
+    pub fn as_named(&self) -> &Box<(GosValue, Meta)> {
         unwrap_gos_val!(Named, self)
     }
 
@@ -794,7 +789,7 @@ impl GosValue {
         self.typ() == other.typ() && self == other
     }
 
-    pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> GosMetadata {
+    pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> Meta {
         match self {
             GosValue::Nil(m) => m.unwrap_or(objs.s_meta.none),
             GosValue::Bool(_) => objs.s_meta.mbool,
@@ -1820,7 +1815,7 @@ mod test {
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
         dbg!(mem::size_of::<Value64>());
-        dbg!(mem::size_of::<GosMetadata>());
+        dbg!(mem::size_of::<Meta>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

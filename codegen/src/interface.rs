@@ -7,7 +7,7 @@ use goscript_vm::objects::{IfaceBinding, VMObjects};
 use std::collections::HashMap;
 
 pub struct IfaceMapping {
-    ifaces: Vec<(GosMetadata, Option<Vec<IfaceBinding>>)>,
+    ifaces: Vec<(Meta, Option<Vec<IfaceBinding>>)>,
     iface_indices: HashMap<(TCTypeKey, Option<TCTypeKey>), OpIndex>,
 }
 
@@ -19,7 +19,7 @@ impl IfaceMapping {
         }
     }
 
-    pub fn result(self) -> Vec<(GosMetadata, Option<Vec<IfaceBinding>>)> {
+    pub fn result(self) -> Vec<(Meta, Option<Vec<IfaceBinding>>)> {
         self.ifaces
     }
 
@@ -45,7 +45,7 @@ impl IfaceMapping {
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> (GosMetadata, Option<Vec<IfaceBinding>>) {
+    ) -> (Meta, Option<Vec<IfaceBinding>>) {
         let i = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
         if i_s.1.is_none() {
             return (i, None);

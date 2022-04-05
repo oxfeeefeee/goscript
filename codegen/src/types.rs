@@ -12,7 +12,7 @@ use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 
-pub type TypeCache = HashMap<TCTypeKey, GosMetadata>;
+pub type TypeCache = HashMap<TCTypeKey, Meta>;
 
 #[derive(PartialEq)]
 pub enum SelectionType {
@@ -25,7 +25,7 @@ pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
     types_cache: &'a mut TypeCache,
-    unsafe_ptr_meta: GosMetadata,
+    unsafe_ptr_meta: Meta,
 }
 
 impl<'a> TypeLookup<'a> {
@@ -33,7 +33,7 @@ impl<'a> TypeLookup<'a> {
         tc_objs: &'a TCObjects,
         ti: &'a TypeInfo,
         cache: &'a mut TypeCache,
-        u_p_meta: GosMetadata,
+        u_p_meta: Meta,
     ) -> TypeLookup<'a> {
         TypeLookup {
             tc_objs: tc_objs,
@@ -176,7 +176,7 @@ impl<'a> TypeLookup<'a> {
         id: NodeId,
         objects: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> GosMetadata {
+    ) -> Meta {
         let tv = self.ti.types.get(&id).unwrap();
         let md = self.meta_from_tc(tv.typ, objects, dummy_gcv);
         if tv.mode == OperandMode::TypeExpr {
@@ -234,7 +234,7 @@ impl<'a> TypeLookup<'a> {
         ikey: IdentKey,
         objects: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> GosMetadata {
+    ) -> Meta {
         self.meta_from_tc(self.get_def_tc_type(ikey), objects, dummy_gcv)
     }
 
@@ -276,7 +276,7 @@ impl<'a> TypeLookup<'a> {
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> GosMetadata {
+    ) -> Meta {
         if !self.types_cache.contains_key(&typ) {
             let val = self.meta_from_tc_impl(typ, vm_objs, dummy_gcv);
             self.types_cache.insert(typ, val);
@@ -320,11 +320,7 @@ impl<'a> TypeLookup<'a> {
     }
 
     // returns vm_type(metadata) for the tc_type
-    pub fn basic_type_from_tc(
-        &self,
-        tkey: TCTypeKey,
-        vm_objs: &mut VMObjects,
-    ) -> Option<GosMetadata> {
+    pub fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> Option<Meta> {
         self.tc_objs.types[tkey].try_as_basic().map(|x| {
             let typ = x.typ();
             match typ {
@@ -440,30 +436,30 @@ impl<'a> TypeLookup<'a> {
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> GosMetadata {
+    ) -> Meta {
         match &self.tc_objs.types[typ] {
             Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs).unwrap(),
             Type::Array(detail) => {
                 let elem = self.meta_from_tc_impl(detail.elem(), vm_objs, dummy_gcv);
-                GosMetadata::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
+                Meta::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
             }
             Type::Slice(detail) => {
                 let el_type = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
-                GosMetadata::new_slice(el_type, &mut vm_objs.metas)
+                Meta::new_slice(el_type, &mut vm_objs.metas)
             }
             Type::Map(detail) => {
                 let ktype = self.meta_from_tc(detail.key(), vm_objs, dummy_gcv);
                 let vtype = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
-                GosMetadata::new_map(ktype, vtype, &mut vm_objs.metas)
+                Meta::new_map(ktype, vtype, &mut vm_objs.metas)
             }
             Type::Struct(detail) => {
                 let fields = self.get_fields(detail.fields(), vm_objs, dummy_gcv);
-                GosMetadata::new_struct(fields, vm_objs, dummy_gcv)
+                Meta::new_struct(fields, vm_objs, dummy_gcv)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
                 let fields = self.get_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcv);
-                GosMetadata::new_interface(fields, &mut vm_objs.metas)
+                Meta::new_interface(fields, &mut vm_objs.metas)
             }
             Type::Chan(detail) => {
                 let typ = match detail.dir() {
@@ -472,10 +468,10 @@ impl<'a> TypeLookup<'a> {
                     ChanDir::SendRecv => ChannelType::SendRecv,
                 };
                 let vmeta = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
-                GosMetadata::new_channel(typ, vmeta, &mut vm_objs.metas)
+                Meta::new_channel(typ, vmeta, &mut vm_objs.metas)
             }
             Type::Signature(detail) => {
-                let mut convert = |tuple_key| -> Vec<GosMetadata> {
+                let mut convert = |tuple_key| -> Vec<Meta> {
                     self.tc_objs.types[tuple_key]
                         .try_as_tuple()
                         .unwrap()
@@ -509,7 +505,7 @@ impl<'a> TypeLookup<'a> {
                 } else {
                     None
                 };
-                GosMetadata::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
+                Meta::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
             }
             Type::Pointer(detail) => {
                 let inner = self.meta_from_tc(detail.base(), vm_objs, dummy_gcv);
@@ -517,7 +513,7 @@ impl<'a> TypeLookup<'a> {
             }
             Type::Named(detail) => {
                 // generate a Named with dummy underlying to avoid recursion
-                let md = GosMetadata::new_named(vm_objs.s_meta.mint, &mut vm_objs.metas);
+                let md = Meta::new_named(vm_objs.s_meta.mint, &mut vm_objs.metas);
                 for key in detail.methods().iter() {
                     let mobj = &self.tc_objs.lobjs[*key];
                     md.add_method(

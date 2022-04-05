@@ -83,7 +83,7 @@ fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> GosValue {
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
-    pub ifaces: Vec<(GosMetadata, Option<Vec<Binding4Runtime>>)>,
+    pub ifaces: Vec<(Meta, Option<Vec<Binding4Runtime>>)>,
     pub entry: FunctionKey,
 }
 
@@ -91,7 +91,7 @@ impl ByteCode {
     pub fn new(
         objects: Pin<Box<VMObjects>>,
         packages: Vec<PackageKey>,
-        ifaces: Vec<(GosMetadata, Option<Vec<IfaceBinding>>)>,
+        ifaces: Vec<(Meta, Option<Vec<IfaceBinding>>)>,
         entry: FunctionKey,
     ) -> ByteCode {
         let ifaces = ifaces
@@ -632,7 +632,7 @@ impl<'a> Fiber<'a> {
                                 let pointee = pointee.unwrap_named();
                                 let pointee = if inst.t2() != ValueType::Void {
                                     let meta_key = read_imm_key!(code, frame, objs);
-                                    let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
+                                    let meta = Meta::new(meta_key, MetaCategory::Default, 0);
                                     GosValue::Named(Box::new((pointee, meta)))
                                 } else {
                                     pointee
@@ -646,7 +646,7 @@ impl<'a> Fiber<'a> {
                                 let target = stack.get_rc(target_index);
                                 let chan = target.as_channel().chan.clone();
                                 let meta_key = read_imm_key!(code, frame, objs);
-                                let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
+                                let meta = Meta::new(meta_key, MetaCategory::Default, 0);
                                 let v = GosValue::channel_with_chan(meta, chan);
                                 stack.set(target_index, v);
                             }
@@ -695,7 +695,7 @@ impl<'a> Fiber<'a> {
                             stack.wrap_restore_named(i, inst.t0());
                         } else {
                             let meta_key = read_imm_key!(code, frame, objs);
-                            let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
+                            let meta = Meta::new(meta_key, MetaCategory::Default, 0);
                             *stack.get_rc_mut(i) = GosValue::Named(Box::new((
                                 stack.get_with_type(i, inst.t0()),
                                 meta,

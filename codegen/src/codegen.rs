@@ -741,7 +741,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_func_def(
         &mut self,
-        tc_type: TCTypeKey, // GosMetadata,
+        tc_type: TCTypeKey, // Meta,
         fkey: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
@@ -1248,10 +1248,10 @@ impl<'a> CodeGen<'a> {
     fn gen_load_embedded_member(
         &mut self,
         indices: &[usize],
-        mdata: GosMetadata,
+        mdata: Meta,
         typ: ValueType,
         pos: Option<usize>,
-    ) -> (GosMetadata, ValueType) {
+    ) -> (Meta, ValueType) {
         let mut lhs_meta = mdata;
         let mut lhs_type = typ;
         for &i in indices.iter() {
@@ -1263,7 +1263,7 @@ impl<'a> CodeGen<'a> {
         (lhs_meta, lhs_type)
     }
 
-    fn get_embedded_member_meta(&self, parent: &GosMetadata, index: usize) -> GosMetadata {
+    fn get_embedded_member_meta(&self, parent: &Meta, index: usize) -> Meta {
         match &self.objects.metas[parent.key] {
             MetadataType::Named(_, m) => self.objects.metas[m.key].as_struct().0.fields[index].0,
             MetadataType::Struct(f, _) => f.fields[index].0,

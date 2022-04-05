@@ -1,7 +1,7 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
-use goscript_vm::metadata::GosMetadata;
+use goscript_vm::metadata::Meta;
 use goscript_vm::objects::*;
 use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UnsafePtr};
 use std::any::Any;
@@ -280,7 +280,7 @@ impl StdValue {
         }
     }
 
-    fn settable_meta(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosMetadata> {
+    fn settable_meta(&self, ctx: &FfiCallCtx) -> RuntimeResult<Meta> {
         match self {
             Self::Pointer(p) => Ok(p.point_to_meta(ctx.vm_objs, ctx.stack)),
             Self::Value(_) => Err("reflect: value not settable".to_owned()),
@@ -568,7 +568,7 @@ impl StdValue {
 
 #[derive(Clone, Debug)]
 struct StdType {
-    meta: GosMetadata,
+    meta: Meta,
     mobjs: *const MetadataObjs,
 }
 
@@ -589,7 +589,7 @@ impl UnsafePtr for StdType {
 }
 
 impl StdType {
-    fn new(m: GosMetadata, objs: &MetadataObjs) -> StdType {
+    fn new(m: Meta, objs: &MetadataObjs) -> StdType {
         StdType {
             meta: m,
             mobjs: objs,

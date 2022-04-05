@@ -22,59 +22,56 @@ pub enum ChannelType {
 
 #[derive(Debug)]
 pub struct StaticMeta {
-    pub mbool: GosMetadata,
-    pub mint: GosMetadata,
-    pub mint8: GosMetadata,
-    pub mint16: GosMetadata,
-    pub mint32: GosMetadata,
-    pub mint64: GosMetadata,
-    pub muint: GosMetadata,
-    pub muint_ptr: GosMetadata,
-    pub muint8: GosMetadata,
-    pub muint16: GosMetadata,
-    pub muint32: GosMetadata,
-    pub muint64: GosMetadata,
-    pub mfloat32: GosMetadata,
-    pub mfloat64: GosMetadata,
-    pub mcomplex64: GosMetadata,
-    pub mcomplex128: GosMetadata,
-    pub mstr: GosMetadata,
-    pub unsafe_ptr: GosMetadata,
-    pub default_sig: GosMetadata,
-    pub empty_iface: GosMetadata,
-    pub none: GosMetadata,
+    pub mbool: Meta,
+    pub mint: Meta,
+    pub mint8: Meta,
+    pub mint16: Meta,
+    pub mint32: Meta,
+    pub mint64: Meta,
+    pub muint: Meta,
+    pub muint_ptr: Meta,
+    pub muint8: Meta,
+    pub muint16: Meta,
+    pub muint32: Meta,
+    pub muint64: Meta,
+    pub mfloat32: Meta,
+    pub mfloat64: Meta,
+    pub mcomplex64: Meta,
+    pub mcomplex128: Meta,
+    pub mstr: Meta,
+    pub unsafe_ptr: Meta,
+    pub default_sig: Meta,
+    pub empty_iface: Meta,
+    pub none: Meta,
 }
 
 impl StaticMeta {
     pub fn new(objs: &mut MetadataObjs) -> StaticMeta {
         StaticMeta {
-            mbool: GosMetadata::with_type(MetadataType::Bool, objs),
-            mint: GosMetadata::with_type(MetadataType::Int, objs),
-            mint8: GosMetadata::with_type(MetadataType::Int8, objs),
-            mint16: GosMetadata::with_type(MetadataType::Int16, objs),
-            mint32: GosMetadata::with_type(MetadataType::Int32, objs),
-            mint64: GosMetadata::with_type(MetadataType::Int64, objs),
-            muint: GosMetadata::with_type(MetadataType::Uint, objs),
-            muint_ptr: GosMetadata::with_type(MetadataType::UintPtr, objs),
-            muint8: GosMetadata::with_type(MetadataType::Uint8, objs),
-            muint16: GosMetadata::with_type(MetadataType::Uint16, objs),
-            muint32: GosMetadata::with_type(MetadataType::Uint32, objs),
-            muint64: GosMetadata::with_type(MetadataType::Uint64, objs),
-            mfloat32: GosMetadata::with_type(MetadataType::Float32, objs),
-            mfloat64: GosMetadata::with_type(MetadataType::Float64, objs),
-            mcomplex64: GosMetadata::with_type(MetadataType::Complex64, objs),
-            mcomplex128: GosMetadata::with_type(MetadataType::Complex128, objs),
-            mstr: GosMetadata::with_type(MetadataType::Str(GosValue::new_str("".to_owned())), objs),
-            unsafe_ptr: GosMetadata::new(objs.insert(MetadataType::Uint), MetaCategory::Default, 1),
-            default_sig: GosMetadata::with_type(
-                MetadataType::Signature(SigMetadata::default()),
-                objs,
-            ),
-            empty_iface: GosMetadata::with_type(
+            mbool: Meta::with_type(MetadataType::Bool, objs),
+            mint: Meta::with_type(MetadataType::Int, objs),
+            mint8: Meta::with_type(MetadataType::Int8, objs),
+            mint16: Meta::with_type(MetadataType::Int16, objs),
+            mint32: Meta::with_type(MetadataType::Int32, objs),
+            mint64: Meta::with_type(MetadataType::Int64, objs),
+            muint: Meta::with_type(MetadataType::Uint, objs),
+            muint_ptr: Meta::with_type(MetadataType::UintPtr, objs),
+            muint8: Meta::with_type(MetadataType::Uint8, objs),
+            muint16: Meta::with_type(MetadataType::Uint16, objs),
+            muint32: Meta::with_type(MetadataType::Uint32, objs),
+            muint64: Meta::with_type(MetadataType::Uint64, objs),
+            mfloat32: Meta::with_type(MetadataType::Float32, objs),
+            mfloat64: Meta::with_type(MetadataType::Float64, objs),
+            mcomplex64: Meta::with_type(MetadataType::Complex64, objs),
+            mcomplex128: Meta::with_type(MetadataType::Complex128, objs),
+            mstr: Meta::with_type(MetadataType::Str(GosValue::new_str("".to_owned())), objs),
+            unsafe_ptr: Meta::new(objs.insert(MetadataType::Uint), MetaCategory::Default, 1),
+            default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
+            empty_iface: Meta::with_type(
                 MetadataType::Interface(Fields::new(vec![], HashMap::new())),
                 objs,
             ),
-            none: GosMetadata::with_type(MetadataType::None, objs),
+            none: Meta::with_type(MetadataType::None, objs),
         }
     }
 }
@@ -88,16 +85,16 @@ pub enum MetaCategory {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct GosMetadata {
+pub struct Meta {
     pub key: MetadataKey,
     pub category: MetaCategory,
     pub ptr_depth: usize,
 }
 
-impl GosMetadata {
+impl Meta {
     #[inline]
-    pub fn new(key: MetadataKey, category: MetaCategory, pdepth: usize) -> GosMetadata {
-        GosMetadata {
+    pub fn new(key: MetadataKey, category: MetaCategory, pdepth: usize) -> Meta {
+        Meta {
             key: key,
             category: category,
             ptr_depth: pdepth,
@@ -105,14 +102,14 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn with_type(v: MetadataType, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::new(metas.insert(v), MetaCategory::Default, 0)
+    pub fn with_type(v: MetadataType, metas: &mut MetadataObjs) -> Meta {
+        Meta::new(metas.insert(v), MetaCategory::Default, 0)
     }
 
     #[inline]
-    pub fn new_array(elem_meta: GosMetadata, size: usize, metas: &mut MetadataObjs) -> GosMetadata {
+    pub fn new_array(elem_meta: Meta, size: usize, metas: &mut MetadataObjs) -> Meta {
         let t = MetadataType::SliceOrArray(elem_meta, size);
-        GosMetadata {
+        Meta {
             key: metas.insert(t),
             category: MetaCategory::Array,
             ptr_depth: 0,
@@ -120,35 +117,27 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn new_slice(val_meta: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::with_type(MetadataType::SliceOrArray(val_meta, 0), metas)
+    pub fn new_slice(val_meta: Meta, metas: &mut MetadataObjs) -> Meta {
+        Meta::with_type(MetadataType::SliceOrArray(val_meta, 0), metas)
     }
 
     #[inline]
-    pub fn new_map(
-        kmeta: GosMetadata,
-        vmeta: GosMetadata,
-        metas: &mut MetadataObjs,
-    ) -> GosMetadata {
-        GosMetadata::with_type(MetadataType::Map(kmeta, vmeta), metas)
+    pub fn new_map(kmeta: Meta, vmeta: Meta, metas: &mut MetadataObjs) -> Meta {
+        Meta::with_type(MetadataType::Map(kmeta, vmeta), metas)
     }
 
     #[inline]
-    pub fn new_interface(fields: Fields, metas: &mut MetadataObjs) -> GosMetadata {
-        GosMetadata::with_type(MetadataType::Interface(fields), metas)
+    pub fn new_interface(fields: Fields, metas: &mut MetadataObjs) -> Meta {
+        Meta::with_type(MetadataType::Interface(fields), metas)
     }
 
     #[inline]
-    pub fn new_channel(
-        typ: ChannelType,
-        val_meta: GosMetadata,
-        metas: &mut MetadataObjs,
-    ) -> GosMetadata {
-        GosMetadata::with_type(MetadataType::Channel(typ, val_meta), metas)
+    pub fn new_channel(typ: ChannelType, val_meta: Meta, metas: &mut MetadataObjs) -> Meta {
+        Meta::with_type(MetadataType::Channel(typ, val_meta), metas)
     }
 
     #[inline]
-    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> GosMetadata {
+    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> Meta {
         let field_zeros: Vec<GosValue> =
             f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
         let struct_val = StructObj {
@@ -157,7 +146,7 @@ impl GosMetadata {
         };
         let gos_struct = GosValue::new_struct(struct_val, gcv);
         let key = objs.metas.insert(MetadataType::Struct(f, gos_struct));
-        let gosm = GosMetadata::new(key, MetaCategory::Default, 0);
+        let gosm = Meta::new(key, MetaCategory::Default, 0);
         match &mut objs.metas[key] {
             MetadataType::Struct(_, v) => match v {
                 GosValue::Struct(s) => s.0.borrow_mut().meta = gosm,
@@ -169,12 +158,12 @@ impl GosMetadata {
     }
 
     pub fn new_sig(
-        recv: Option<GosMetadata>,
-        params: Vec<GosMetadata>,
-        results: Vec<GosMetadata>,
-        variadic: Option<(GosMetadata, GosMetadata)>,
+        recv: Option<Meta>,
+        params: Vec<Meta>,
+        results: Vec<Meta>,
+        variadic: Option<(Meta, Meta)>,
         metas: &mut MetadataObjs,
-    ) -> GosMetadata {
+    ) -> Meta {
         let ptypes = params.iter().map(|x| x.value_type(metas)).collect();
         let t = MetadataType::Signature(SigMetadata {
             recv: recv,
@@ -183,27 +172,27 @@ impl GosMetadata {
             variadic: variadic,
             params_type: ptypes,
         });
-        GosMetadata::with_type(t, metas)
+        Meta::with_type(t, metas)
     }
 
-    pub fn new_named(underlying: GosMetadata, metas: &mut MetadataObjs) -> GosMetadata {
+    pub fn new_named(underlying: Meta, metas: &mut MetadataObjs) -> Meta {
         //debug_assert!(underlying.value_type(metas) != ValueType::Named);
-        GosMetadata::with_type(MetadataType::Named(Methods::new(), underlying), metas)
+        Meta::with_type(MetadataType::Named(Methods::new(), underlying), metas)
     }
 
-    pub fn new_slice_from_array(array: GosMetadata) -> GosMetadata {
-        GosMetadata::new(array.key, MetaCategory::Default, 0)
+    pub fn new_slice_from_array(array: Meta) -> Meta {
+        Meta::new(array.key, MetaCategory::Default, 0)
     }
 
     #[inline]
-    pub fn ptr_to(&self) -> GosMetadata {
+    pub fn ptr_to(&self) -> Meta {
         let mut m = *self;
         m.ptr_depth += 1;
         m
     }
 
     #[inline]
-    pub fn unptr_to(&self) -> GosMetadata {
+    pub fn unptr_to(&self) -> Meta {
         assert!(self.ptr_depth > 0);
         let mut m = *self;
         m.ptr_depth -= 1;
@@ -211,7 +200,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn into_type_category(mut self) -> GosMetadata {
+    pub fn into_type_category(mut self) -> Meta {
         self.category = match self.category {
             MetaCategory::Default => MetaCategory::Type,
             MetaCategory::Array => MetaCategory::ArrayType,
@@ -221,7 +210,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn into_value_category(mut self) -> GosMetadata {
+    pub fn into_value_category(mut self) -> Meta {
         self.category = match self.category {
             MetaCategory::Type => MetaCategory::Default,
             MetaCategory::ArrayType => MetaCategory::Array,
@@ -322,7 +311,7 @@ impl GosMetadata {
     #[inline]
     pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let key = self.recv_meta_key();
-        match &metas[GosMetadata::new(key, MetaCategory::Default, 0)
+        match &metas[Meta::new(key, MetaCategory::Default, 0)
             .underlying(metas)
             .key]
         {
@@ -332,7 +321,7 @@ impl GosMetadata {
     }
 
     #[inline]
-    pub fn underlying(&self, metas: &MetadataObjs) -> GosMetadata {
+    pub fn underlying(&self, metas: &MetadataObjs) -> Meta {
         match &metas[self.key] {
             MetadataType::Named(_, u) => *u,
             _ => *self,
@@ -422,16 +411,13 @@ impl GosMetadata {
 
 #[derive(Debug, Clone)]
 pub struct Fields {
-    pub fields: Vec<(GosMetadata, String, bool)>,
+    pub fields: Vec<(Meta, String, bool)>,
     pub mapping: HashMap<String, usize>,
 }
 
 impl Fields {
     #[inline]
-    pub fn new(
-        fields: Vec<(GosMetadata, String, bool)>,
-        mapping: HashMap<String, usize>,
-    ) -> Fields {
+    pub fn new(fields: Vec<(Meta, String, bool)>, mapping: HashMap<String, usize>) -> Fields {
         Fields {
             fields: fields,
             mapping: mapping,
@@ -443,7 +429,7 @@ impl Fields {
         self.fields[i].2
     }
 
-    pub fn iface_methods_info(&self) -> Vec<(String, GosMetadata)> {
+    pub fn iface_methods_info(&self) -> Vec<(String, Meta)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
             ret.push((String::new(), f.0));
@@ -490,10 +476,10 @@ impl Methods {
 
 #[derive(Debug, Clone)]
 pub struct SigMetadata {
-    pub recv: Option<GosMetadata>,
-    pub params: Vec<GosMetadata>,
-    pub results: Vec<GosMetadata>,
-    pub variadic: Option<(GosMetadata, GosMetadata)>,
+    pub recv: Option<Meta>,
+    pub params: Vec<Meta>,
+    pub results: Vec<Meta>,
+    pub variadic: Option<(Meta, Meta)>,
     pub params_type: Vec<ValueType>, // for calling FFI
 }
 
@@ -571,13 +557,13 @@ pub enum MetadataType {
     Complex64,
     Complex128,
     Str(GosValue),
-    SliceOrArray(GosMetadata, usize),
+    SliceOrArray(Meta, usize),
     Struct(Fields, GosValue),
     Signature(SigMetadata),
-    Map(GosMetadata, GosMetadata),
+    Map(Meta, Meta),
     Interface(Fields),
-    Channel(ChannelType, GosMetadata),
-    Named(Methods, GosMetadata),
+    Channel(ChannelType, Meta),
+    Named(Methods, Meta),
     None,
 }
 
@@ -599,7 +585,7 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_channel(&self) -> (&ChannelType, &GosMetadata) {
+    pub fn as_channel(&self) -> (&ChannelType, &Meta) {
         match self {
             Self::Channel(t, m) => (t, m),
             _ => unreachable!(),
@@ -607,7 +593,7 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_slice_or_array(&self) -> (&GosMetadata, &usize) {
+    pub fn as_slice_or_array(&self) -> (&Meta, &usize) {
         match self {
             Self::SliceOrArray(m, s) => (m, s),
             _ => unreachable!(),
@@ -623,7 +609,7 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_named_mut(&mut self) -> (&mut Methods, &mut GosMetadata) {
+    pub fn as_named_mut(&mut self) -> (&mut Methods, &mut Meta) {
         match self {
             Self::Named(meth, meta) => (meth, meta),
             _ => unreachable!(),

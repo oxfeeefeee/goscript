@@ -4,13 +4,13 @@
 ///
 ///
 use goscript_vm::instruction::{Instruction, OpIndex};
-use goscript_vm::metadata::GosMetadata;
+use goscript_vm::metadata::Meta;
 use goscript_vm::value::{key_to_u64, FunctionKey, VMObjects};
 
 struct CallPoint {
     func: FunctionKey,
     point: usize,
-    meta: GosMetadata,
+    meta: Meta,
     index: OpIndex,
 }
 
@@ -23,7 +23,7 @@ impl CallHelper {
         CallHelper { calls: vec![] }
     }
 
-    pub fn add_call(&mut self, func: FunctionKey, point: usize, meta: GosMetadata, index: OpIndex) {
+    pub fn add_call(&mut self, func: FunctionKey, point: usize, meta: Meta, index: OpIndex) {
         let p = CallPoint {
             func,
             point,
