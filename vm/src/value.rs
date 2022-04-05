@@ -521,15 +521,15 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_iface(meta: Meta, underlying: IfaceUnderlying) -> GosValue {
-        let val = Rc::new((RefCell::new(InterfaceObj::new(underlying)), meta));
+    pub fn new_iface(meta: Meta, obj: InterfaceObj) -> GosValue {
+        let val = Rc::new((RefCell::new(obj), meta));
         GosValue::Interface(val)
     }
 
     #[inline]
     pub fn new_empty_iface(mdata: &StaticMeta, underlying: GosValue) -> GosValue {
         let val = Rc::new((
-            RefCell::new(InterfaceObj::new(IfaceUnderlying::Gos(underlying, None))),
+            RefCell::new(InterfaceObj::Gos(underlying, None)),
             mdata.empty_iface,
         ));
         GosValue::Interface(val)
@@ -750,7 +750,6 @@ impl GosValue {
         match &self {
             GosValue::Nil(_) => true,
             GosValue::Named(n) => n.0.is_nil(),
-            GosValue::Interface(iface) => iface.0.borrow().is_nil(),
             _ => false,
         }
     }

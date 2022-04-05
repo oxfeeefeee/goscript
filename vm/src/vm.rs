@@ -459,10 +459,7 @@ impl<'a> Fiber<'a> {
                         let val = stack.pop_with_type(inst.t0()).unwrap_named();
                         let index = inst.imm() as usize;
                         let borrowed = val.as_interface().0.borrow();
-                        match borrowed
-                            .underlying()
-                            .bind_method(index, &objs.functions, gcv)
-                        {
+                        match borrowed.bind_method(index, &objs.functions, gcv) {
                             Ok(cls) => stack.push(cls),
                             Err(e) => {
                                 go_panic_str!(panic, s_meta, e, frame, code);
@@ -557,15 +554,12 @@ impl<'a> Fiber<'a> {
                                     stack.copy_semantic_with_type(target_index, inst.t1(), gcv);
                                 let val = match &objs.metas[iface.0.key] {
                                     MetadataType::Named(_, md) => GosValue::Named(Box::new((
-                                        GosValue::new_iface(
-                                            *md,
-                                            IfaceUnderlying::Gos(under, iface.1),
-                                        ),
+                                        GosValue::new_iface(*md, InterfaceObj::Gos(under, iface.1)),
                                         iface.0,
                                     ))),
                                     MetadataType::Interface(_) => GosValue::new_iface(
                                         iface.0,
-                                        IfaceUnderlying::Gos(under, iface.1),
+                                        InterfaceObj::Gos(under, iface.1),
                                     ),
                                     _ => unreachable!(),
                                 };
@@ -1125,8 +1119,8 @@ impl<'a> Fiber<'a> {
                     }
 
                     Opcode::TYPE_ASSERT => {
-                        let val = match stack.pop_interface().0.borrow().underlying() {
-                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
+                        let val = match &stack.pop_interface().0.borrow() as &InterfaceObj {
+                            InterfaceObj::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
                         let meta = GosValue::Metadata(val.meta(objs, stack));
@@ -1143,8 +1137,8 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::TYPE => {
-                        let val = match stack.pop_interface().0.borrow().underlying() {
-                            IfaceUnderlying::Gos(v, _) => v.copy_semantic(gcv),
+                        let val = match &stack.pop_interface().0.borrow() as &InterfaceObj {
+                            InterfaceObj::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
                         stack.push(GosValue::Metadata(val.meta(objs, stack)));
@@ -1527,7 +1521,7 @@ impl<'a> Fiber<'a> {
                                 let info = objs.metas[meta.key].as_interface().iface_methods_info();
                                 GosValue::new_iface(
                                     meta,
-                                    IfaceUnderlying::Ffi(UnderlyingFfi::new(v, info)),
+                                    InterfaceObj::Ffi(UnderlyingFfi::new(v, info)),
                                 )
                             }
                             Err(e) => {

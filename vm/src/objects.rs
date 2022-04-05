@@ -744,13 +744,12 @@ impl From<IfaceBinding> for Binding4Runtime {
 }
 
 #[derive(Clone, Debug)]
-pub enum IfaceUnderlying {
-    None,
+pub enum InterfaceObj {
     Gos(GosValue, Option<Vec<Binding4Runtime>>),
     Ffi(UnderlyingFfi),
 }
 
-impl IfaceUnderlying {
+impl InterfaceObj {
     pub fn bind_method(
         &self,
         index: usize,
@@ -758,7 +757,7 @@ impl IfaceUnderlying {
         gcv: &GcoVec,
     ) -> RuntimeResult<GosValue> {
         match self {
-            IfaceUnderlying::Gos(obj, b) => {
+            InterfaceObj::Gos(obj, b) => {
                 let binding = &b.as_ref().unwrap()[index];
                 match binding {
                     Binding4Runtime::Struct(func, indices) => {
@@ -777,7 +776,6 @@ impl IfaceUnderlying {
                                 .as_interface()
                                 .0
                                 .borrow()
-                                .underlying
                                 .bind_method(*i, funcs, gcv)
                         };
                         match indices {
@@ -787,7 +785,7 @@ impl IfaceUnderlying {
                     }
                 }
             }
-            IfaceUnderlying::Ffi(ffi) => {
+            InterfaceObj::Ffi(ffi) => {
                 let (name, meta) = ffi.methods[index].clone();
                 let cls = FfiClosureObj {
                     ffi: ffi.ffi_obj.clone(),
@@ -796,74 +794,29 @@ impl IfaceUnderlying {
                 };
                 Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcv))
             }
-            IfaceUnderlying::None => Err("access nil interface".to_owned()),
         }
-    }
-}
-
-impl Eq for IfaceUnderlying {}
-
-impl PartialEq for IfaceUnderlying {
-    #[inline]
-    fn eq(&self, other: &IfaceUnderlying) -> bool {
-        match (self, other) {
-            (Self::None, Self::None) => true,
-            (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
-            (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
-            _ => false,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct InterfaceObj {
-    // the Named object behind the interface
-    // mapping from interface's methods to object's methods
-    underlying: IfaceUnderlying,
-}
-
-impl InterfaceObj {
-    pub fn new(underlying: IfaceUnderlying) -> InterfaceObj {
-        InterfaceObj {
-            underlying: underlying,
-        }
-    }
-
-    #[inline]
-    pub fn underlying(&self) -> &IfaceUnderlying {
-        &self.underlying
-    }
-
-    #[inline]
-    pub fn set_underlying(&mut self, v: IfaceUnderlying) {
-        self.underlying = v;
     }
 
     #[inline]
     pub fn underlying_value(&self) -> Option<&GosValue> {
-        match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => Some(v),
+        match self {
+            Self::Gos(v, _) => Some(v),
             _ => None,
         }
     }
 
-    #[inline]
-    pub fn is_nil(&self) -> bool {
-        self.underlying() == &IfaceUnderlying::None
-    }
-
     /// for gc
     pub fn ref_sub_one(&self) {
-        match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => v.ref_sub_one(),
+        match self {
+            Self::Gos(v, _) => v.ref_sub_one(),
             _ => {}
         };
     }
 
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
-        match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => v.mark_dirty(queue),
+        match self {
+            Self::Gos(v, _) => v.mark_dirty(queue),
             _ => {}
         };
     }
@@ -874,27 +827,29 @@ impl Eq for InterfaceObj {}
 impl PartialEq for InterfaceObj {
     #[inline]
     fn eq(&self, other: &InterfaceObj) -> bool {
-        self.underlying() == other.underlying()
+        match (self, other) {
+            (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
+            (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
+            _ => false,
+        }
     }
 }
 
 impl Hash for InterfaceObj {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => v.hash(state),
-            IfaceUnderlying::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
-            IfaceUnderlying::None => 0.hash(state),
+        match self {
+            Self::Gos(v, _) => v.hash(state),
+            Self::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
         }
     }
 }
 
 impl Display for InterfaceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.underlying() {
-            IfaceUnderlying::Gos(v, _) => write!(f, "{}", v),
-            IfaceUnderlying::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
-            IfaceUnderlying::None => f.write_str("<nil>"),
+        match self {
+            Self::Gos(v, _) => write!(f, "{}", v),
+            Self::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
         }
     }
 }

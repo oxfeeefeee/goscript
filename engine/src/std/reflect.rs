@@ -3,7 +3,7 @@ use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::Meta;
 use goscript_vm::objects::*;
-use goscript_vm::value::{GosValue, IfaceUnderlying, PointerObj, UnsafePtr};
+use goscript_vm::value::{GosValue, InterfaceObj, PointerObj, UnsafePtr};
 use std::any::Any;
 use std::cell::RefCell;
 use std::future::Future;
@@ -264,11 +264,10 @@ impl StdValue {
 
     fn value_of(v: &GosValue) -> GosValue {
         let iface = v.as_interface();
-        let v = match &iface.0.borrow().underlying() {
-            IfaceUnderlying::Gos(v, _) => v.clone(),
+        let v = match &iface.0.borrow() as &InterfaceObj {
+            InterfaceObj::Gos(v, _) => v.clone(),
             // todo: should we return something else?
-            IfaceUnderlying::Ffi(_) => GosValue::Nil(Some(iface.1)),
-            IfaceUnderlying::None => GosValue::Nil(Some(iface.1)),
+            InterfaceObj::Ffi(_) => GosValue::Nil(Some(iface.1)),
         };
         wrap_std_val(v)
     }
