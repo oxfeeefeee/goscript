@@ -423,7 +423,7 @@ impl<'a> CodeGen<'a> {
                 let mut types = Vec::with_capacity(lhs.len());
                 for (_, _, pos) in lhs.iter() {
                     let mut emitter = current_func_emitter!(self);
-                    let i = emitter.add_const(None, GosValue::Metadata(meta));
+                    let i = emitter.add_const(None, GosValue::new_metadata(meta));
                     emitter.emit_push_zero_val(i.into(), Some(*pos));
                     types.push(t);
                 }
@@ -1020,7 +1020,7 @@ impl<'a> CodeGen<'a> {
         let t = self.t.get_expr_tc_type(typ.as_ref().unwrap());
         let meta = self.t.meta_from_tc(t, self.objects, self.dummy_gcv);
         let func = current_func_mut!(self);
-        let index = func.add_const(None, GosValue::Metadata(meta));
+        let index = func.add_const(None, GosValue::new_metadata(meta));
         let pos = expr.pos(self.ast_objs);
         func.emit_code_with_flag_imm(Opcode::TYPE_ASSERT, comma_ok, index.into(), Some(pos));
     }
@@ -1224,7 +1224,7 @@ impl<'a> CodeGen<'a> {
         );
 
         let mut emitter = current_func_emitter!(self);
-        let i = emitter.add_const(None, GosValue::Metadata(meta));
+        let i = emitter.add_const(None, GosValue::new_metadata(meta));
         emitter.emit_literal(ValueType::Metadata, Some(vt), i.into(), pos);
     }
 
@@ -1854,7 +1854,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     let m = self
                         .t
                         .gen_def_type_meta(ts.name, self.objects, self.dummy_gcv);
-                    self.current_func_add_const_def(&ts.name, GosValue::Metadata(m));
+                    self.current_func_add_const_def(&ts.name, GosValue::new_metadata(m));
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {

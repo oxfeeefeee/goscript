@@ -184,7 +184,7 @@ impl<'a> Emitter<'a> {
             }
             EntIndex::BuiltInVal(op) => self.f.emit_code(op, pos),
             EntIndex::TypeMeta(m) => {
-                let i = self.f.add_const(None, GosValue::Metadata(m));
+                let i = self.f.add_const(None, GosValue::Metadata(Box::new(m)));
                 self.emit_load(i, None, ValueType::Metadata, pos);
             }
             EntIndex::Blank => unreachable!(),

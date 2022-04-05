@@ -75,7 +75,7 @@ func t(size int) {
 func main() {
     //j := 10
     s := "ZnVuYyBsb25nZXN0UGFsaW5kcm9tZShzIHN0cmaabbaabbaabbluZykgc3RyaW5nIHsKICAgIGlmIGxlbihzKSA8PSAxIHsKICAgICAgICByZXR1cm4gcwogICAgfQogICAgCiAgICB0YWJsZSA6PaaabbbaaabbbaaaSBtYWtlKFtdW11ib29"
-    for i := 0; i < 0; i++ {
+    for i := 0; i < 5; i++ {
         s = s + s
         
         //j += j

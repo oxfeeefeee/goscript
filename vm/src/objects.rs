@@ -1197,7 +1197,7 @@ impl PointerHandle {
             _ => unreachable!(),
         };
         let handle = PointerHandle { ptr: p };
-        GosValue::UnsafePtr(Rc::new(handle))
+        GosValue::UnsafePtr(Box::new(Rc::new(handle)))
     }
 
     pub fn to_pointer(self) -> GosValue {

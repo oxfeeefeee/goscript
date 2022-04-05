@@ -86,9 +86,9 @@ pub enum MetaCategory {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Meta {
-    pub key: MetadataKey,
     pub category: MetaCategory,
     pub ptr_depth: u8,
+    pub key: MetadataKey,
 }
 
 impl Meta {
@@ -280,21 +280,21 @@ impl Meta {
                         let val = m.zero_val_impl(mobjs, gcv);
                         GosValue::array_with_size(*size, &val, *self, gcv)
                     }
-                    MetaCategory::Default => GosValue::Nil(Some(*self)),
+                    MetaCategory::Default => GosValue::nil_with_meta(*self),
                     _ => unreachable!(),
                 },
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), *self, gcv),
-                MetadataType::Signature(_) => GosValue::Nil(Some(*self)),
-                MetadataType::Map(_, _) => GosValue::Nil(Some(*self)),
-                MetadataType::Interface(_) => GosValue::Nil(Some(*self)),
-                MetadataType::Channel(_, _) => GosValue::Nil(Some(*self)),
+                MetadataType::Signature(_) => GosValue::nil_with_meta(*self),
+                MetadataType::Map(_, _) => GosValue::nil_with_meta(*self),
+                MetadataType::Interface(_) => GosValue::nil_with_meta(*self),
+                MetadataType::Channel(_, _) => GosValue::nil_with_meta(*self),
                 MetadataType::Named(_, gm) => {
                     let val = gm.zero_val_impl(mobjs, gcv);
                     GosValue::Named(Box::new((val, *gm)))
                 }
-                MetadataType::None => GosValue::Nil(Some(*self)),
+                MetadataType::None => GosValue::nil_with_meta(*self),
             },
-            _ => GosValue::Nil(Some(*self)),
+            _ => GosValue::nil_with_meta(*self),
         }
     }
 

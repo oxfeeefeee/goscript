@@ -251,13 +251,13 @@ pub enum GosValue {
     Function(Value64), // not visible to users
     Package(Value64),  // not visible to users
 
-    Metadata(Meta), // not visible to users
-    Nil(Option<Meta>),
+    Metadata(Box<Meta>), // not visible to users
+    Nil(Option<Box<Meta>>),
     Complex128(Box<(F64, F64)>),
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, Meta, RCount)>),
     Pointer(Box<PointerObj>),
-    UnsafePtr(Rc<dyn UnsafePtr>),
+    UnsafePtr(Box<Rc<dyn UnsafePtr>>),
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
     Slice(Rc<(SliceObj, Meta, RCount)>),
     Map(Rc<(MapObj, Meta, RCount)>),
@@ -272,6 +272,11 @@ impl GosValue {
     #[inline]
     pub fn new_nil() -> GosValue {
         GosValue::Nil(None)
+    }
+
+    #[inline]
+    pub fn nil_with_meta(m: Meta) -> GosValue {
+        GosValue::Nil(Some(Box::new(m)))
     }
 
     #[inline]
@@ -362,6 +367,11 @@ impl GosValue {
     #[inline]
     pub fn new_pointer(v: PointerObj) -> GosValue {
         GosValue::Pointer(Box::new(v))
+    }
+
+    #[inline]
+    pub fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
+        GosValue::UnsafePtr(Box::new(Rc::new(p)))
     }
 
     pub fn int32_as(i: i32, t: ValueType) -> GosValue {
@@ -546,8 +556,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(Meta::with_type(t, metas))
+    pub fn new_metadata(meta: Meta) -> GosValue {
+        GosValue::Metadata(Box::new(meta))
     }
 
     #[inline]
@@ -656,7 +666,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_meta(&self) -> &Meta {
+    pub fn as_meta(&self) -> &Box<Meta> {
         unwrap_gos_val!(Metadata, self)
     }
 
@@ -797,7 +807,7 @@ impl GosValue {
 
     pub fn meta(&self, objs: &VMObjects, stack: &Stack) -> Meta {
         match self {
-            GosValue::Nil(m) => m.unwrap_or(objs.s_meta.none),
+            GosValue::Nil(m) => m.as_ref().map_or(objs.s_meta.none, |x| **x),
             GosValue::Bool(_) => objs.s_meta.mbool,
             GosValue::Int(_) => objs.s_meta.mint,
             GosValue::Int8(_) => objs.s_meta.mint8,
@@ -1008,7 +1018,7 @@ impl Clone for GosValue {
     #[inline(always)]
     fn clone(&self) -> Self {
         match self {
-            GosValue::Nil(m) => GosValue::Nil(*m),
+            GosValue::Nil(m) => GosValue::Nil(m.clone()),
             GosValue::Bool(v) => GosValue::Bool(*v),
             GosValue::Int(v) => GosValue::Int(*v),
             GosValue::Int8(v) => GosValue::Int8(*v),
@@ -1037,7 +1047,7 @@ impl Clone for GosValue {
             GosValue::Channel(v) => GosValue::Channel(v.clone()),
             GosValue::Function(v) => GosValue::Function(*v),
             GosValue::Package(v) => GosValue::Package(*v),
-            GosValue::Metadata(v) => GosValue::Metadata(*v),
+            GosValue::Metadata(v) => GosValue::Metadata(v.clone()),
             GosValue::Named(v) => GosValue::Named(v.clone()),
         }
     }
@@ -1076,7 +1086,7 @@ impl PartialEq for GosValue {
             (Self::Str(x), Self::Str(y)) => *x == *y,
             (Self::Array(x), Self::Array(y)) => x.0 == y.0,
             (Self::Pointer(x), Self::Pointer(y)) => x == y,
-            (Self::UnsafePtr(x), Self::UnsafePtr(y)) => x.eq(&**y),
+            (Self::UnsafePtr(x), Self::UnsafePtr(y)) => x.eq(&***y),
             (Self::Closure(x), Self::Closure(y)) => Rc::ptr_eq(x, y),
             (Self::Slice(x), Self::Slice(y)) => Rc::ptr_eq(x, y),
             (Self::Map(x), Self::Map(y)) => Rc::ptr_eq(x, y),
@@ -1819,11 +1829,14 @@ mod test {
         dbg!(mem::size_of::<HashMap<GosValue, GosValue>>());
         dbg!(mem::size_of::<String>());
         dbg!(mem::size_of::<Rc<String>>());
+        dbg!(mem::size_of::<Box<Rc<dyn UnsafePtr>>>());
         dbg!(mem::size_of::<SliceObj>());
         dbg!(mem::size_of::<RefCell<GosValue>>());
         dbg!(mem::size_of::<GosValue>());
         dbg!(mem::size_of::<Value64>());
         dbg!(mem::size_of::<Meta>());
+        dbg!(mem::size_of::<Box<Meta>>());
+        dbg!(mem::size_of::<Option<Box<Meta>>>());
 
         let mut h: HashMap<isize, isize> = HashMap::new();
         h.insert(0, 1);

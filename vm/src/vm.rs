@@ -1123,9 +1123,9 @@ impl<'a> Fiber<'a> {
                             InterfaceObj::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
-                        let meta = GosValue::Metadata(val.meta(objs, stack));
+                        let meta = val.meta(objs, stack);
                         stack.push(val);
-                        let ok = &consts[inst.imm() as usize] == &meta;
+                        let ok = &**consts[inst.imm() as usize].as_meta() == &meta;
                         let do_try = inst.t2_as_index() > 0;
                         if !do_try {
                             if !ok {
@@ -1141,7 +1141,7 @@ impl<'a> Fiber<'a> {
                             InterfaceObj::Gos(v, _) => v.copy_semantic(gcv),
                             _ => GosValue::new_nil(),
                         };
-                        stack.push(GosValue::Metadata(val.meta(objs, stack)));
+                        stack.push(GosValue::Metadata(Box::new(val.meta(objs, stack))));
                         if inst.t2_as_index() > 0 {
                             let index = inst.imm();
                             let s_index = Stack::offset(stack_base, index);
@@ -1217,7 +1217,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Metadata(md) => {
                                 let is_named = inst.t1() == ValueType::Named;
                                 let umd =
-                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
+                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(**md);
                                 let count = stack.pop_int32();
                                 let val = match &objs.metas[umd.key] {
                                     MetadataType::SliceOrArray(asm, _) => {
@@ -1247,17 +1247,17 @@ impl<'a> Fiber<'a> {
                                         }
                                         match umd.category {
                                             MetaCategory::Default => {
-                                                GosValue::slice_with_val(val, *md, gcv)
+                                                GosValue::slice_with_val(val, **md, gcv)
                                             }
                                             MetaCategory::Array => {
-                                                GosValue::array_with_val(val, *md, gcv)
+                                                GosValue::array_with_val(val, **md, gcv)
                                             }
                                             _ => unreachable!(),
                                         }
                                     }
                                     MetadataType::Map(km, vm) => {
                                         let gosv =
-                                            GosValue::new_map(*md, zero_val!(vm, objs, gcv), gcv);
+                                            GosValue::new_map(**md, zero_val!(vm, objs, gcv), gcv);
                                         let map = gosv.as_map();
                                         let tk = km.value_type(&objs.metas);
                                         let tv = vm.value_type(&objs.metas);
@@ -1283,7 +1283,7 @@ impl<'a> Fiber<'a> {
                                 };
                                 match !is_named {
                                     true => val,
-                                    false => GosValue::Named(Box::new((val, *md))),
+                                    false => GosValue::Named(Box::new((val, **md))),
                                 }
                             }
                             _ => unimplemented!(),
@@ -1297,11 +1297,11 @@ impl<'a> Fiber<'a> {
                             GosValue::Metadata(md) => {
                                 let is_named = inst.t1() == ValueType::Named;
                                 let umd =
-                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(md);
+                                    is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
                                 let v = umd.into_value_category().zero_val(&objs.metas, gcv);
                                 let v = match !is_named {
                                     true => v,
-                                    false => GosValue::Named(Box::new((v, md))),
+                                    false => GosValue::Named(Box::new((v, *md))),
                                 };
                                 GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                             }
@@ -1315,7 +1315,7 @@ impl<'a> Fiber<'a> {
                         let meta_val = stack.get_with_type(i, ValueType::Metadata);
                         let md = meta_val.as_meta();
                         let is_named = inst.t1() == ValueType::Named;
-                        let umd = is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
+                        let umd = is_named.then(|| md.underlying(&objs.metas)).unwrap_or(**md);
                         let metadata = &objs.metas[umd.key];
                         let val = match metadata {
                             MetadataType::SliceOrArray(vmeta, _) => {
@@ -1351,7 +1351,7 @@ impl<'a> Fiber<'a> {
                         };
                         let val = match !is_named {
                             true => val,
-                            false => GosValue::Named(Box::new((val, *md))),
+                            false => GosValue::Named(Box::new((val, **md))),
                         };
                         stack.pop_discard();
                         stack.push(val);

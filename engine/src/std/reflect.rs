@@ -40,12 +40,12 @@ macro_rules! err_set_val_type {
 
 #[inline]
 fn wrap_std_val(v: GosValue) -> GosValue {
-    GosValue::UnsafePtr(Rc::new(StdValue::new(v)))
+    GosValue::new_unsafe_ptr(StdValue::new(v))
 }
 
 #[inline]
 fn wrap_ptr_std_val(p: Box<PointerObj>) -> GosValue {
-    GosValue::UnsafePtr(Rc::new(StdValue::Pointer(p)))
+    GosValue::new_unsafe_ptr(StdValue::Pointer(p))
 }
 
 #[inline]
@@ -267,7 +267,7 @@ impl StdValue {
         let v = match &iface.0.borrow() as &InterfaceObj {
             InterfaceObj::Gos(v, _) => v.clone(),
             // todo: should we return something else?
-            InterfaceObj::Ffi(_) => GosValue::Nil(Some(iface.1)),
+            InterfaceObj::Ffi(_) => GosValue::nil_with_meta(iface.1),
         };
         wrap_std_val(v)
     }
@@ -633,7 +633,7 @@ impl StdType {
             _ => GosKind::Invalid,
         };
         (
-            GosValue::UnsafePtr(Rc::new(typ)),
+            GosValue::new_unsafe_ptr(typ),
             GosValue::new_uint(kind as usize),
         )
     }
@@ -667,7 +667,7 @@ impl StdMapIter {
                 item: None,
             }),
         };
-        GosValue::UnsafePtr(Rc::new(smi))
+        GosValue::new_unsafe_ptr(smi)
     }
 
     fn next(&self) -> GosValue {
