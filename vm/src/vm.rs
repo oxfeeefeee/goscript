@@ -632,7 +632,7 @@ impl<'a> Fiber<'a> {
                                 let pointee = pointee.unwrap_named();
                                 let pointee = if inst.t2() != ValueType::Void {
                                     let meta_key = read_imm_key!(code, frame, objs);
-                                    let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                                    let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
                                     GosValue::Named(Box::new((pointee, meta)))
                                 } else {
                                     pointee
@@ -646,7 +646,7 @@ impl<'a> Fiber<'a> {
                                 let target = stack.get_rc(target_index);
                                 let chan = target.as_channel().chan.clone();
                                 let meta_key = read_imm_key!(code, frame, objs);
-                                let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                                let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
                                 let v = GosValue::channel_with_chan(meta, chan);
                                 stack.set(target_index, v);
                             }
@@ -695,7 +695,7 @@ impl<'a> Fiber<'a> {
                             stack.wrap_restore_named(i, inst.t0());
                         } else {
                             let meta_key = read_imm_key!(code, frame, objs);
-                            let meta = GosMetadata::NonPtr(meta_key, MetaCategory::Default);
+                            let meta = GosMetadata::new(meta_key, MetaCategory::Default, 0);
                             *stack.get_rc_mut(i) = GosValue::Named(Box::new((
                                 stack.get_with_type(i, inst.t0()),
                                 meta,
@@ -1220,9 +1220,8 @@ impl<'a> Fiber<'a> {
                                 let is_named = inst.t1() == ValueType::Named;
                                 let umd =
                                     is_named.then(|| md.underlying(&objs.metas)).unwrap_or(*md);
-                                let (key, mc) = umd.unwrap_non_ptr();
                                 let count = stack.pop_int32();
-                                let val = match &objs.metas[key] {
+                                let val = match &objs.metas[umd.key] {
                                     MetadataType::SliceOrArray(asm, _) => {
                                         let elem_type = asm.value_type(&objs.metas);
                                         let zero_val = asm.zero_val(&objs.metas, gcv);
@@ -1248,7 +1247,7 @@ impl<'a> Fiber<'a> {
                                                 val[cur_index as usize] = elem;
                                             }
                                         }
-                                        match mc {
+                                        match umd.category {
                                             MetaCategory::Default => {
                                                 GosValue::slice_with_val(val, *md, gcv)
                                             }
@@ -1409,6 +1408,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Map(map) => map.0.len(),
                             GosValue::Str(sval) => sval.len(),
                             GosValue::Channel(chan) => chan.len(),
+                            GosValue::Nil(_) => 0,
                             _ => unreachable!(),
                         };
                         stack.push(GosValue::new_int(l as isize));

@@ -451,14 +451,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_slice_nil(meta: GosMetadata, gcobjs: &GcoVec) -> GosValue {
-        let s = Rc::new((SliceObj::new_nil(meta), Cell::new(0)));
-        let v = GosValue::Slice(s);
-        gcobjs.add(&v);
-        v
-    }
-
-    #[inline]
     pub fn slice_with_obj(obj: SliceObj, gcobjs: &GcoVec) -> GosValue {
         let s = Rc::new((obj, Cell::new(0)));
         let v = GosValue::Slice(s);
@@ -488,14 +480,6 @@ impl GosValue {
     #[inline]
     pub fn new_map(meta: GosMetadata, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
         let val = Rc::new((MapObj::new(meta, default_val), Cell::new(0)));
-        let v = GosValue::Map(val);
-        gcobjs.add(&v);
-        v
-    }
-
-    #[inline]
-    pub fn new_map_nil(meta: GosMetadata, default_val: GosValue, gcobjs: &GcoVec) -> GosValue {
-        let val = Rc::new((MapObj::new_nil(meta, default_val), Cell::new(0)));
         let v = GosValue::Map(val);
         gcobjs.add(&v);
         v
@@ -561,7 +545,7 @@ impl GosValue {
 
     #[inline]
     pub fn new_meta(t: MetadataType, metas: &mut MetadataObjs) -> GosValue {
-        GosValue::Metadata(GosMetadata::NonPtr(metas.insert(t), MetaCategory::Default))
+        GosValue::Metadata(GosMetadata::with_type(t, metas))
     }
 
     #[inline]

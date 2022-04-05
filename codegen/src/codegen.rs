@@ -1149,11 +1149,11 @@ impl<'a> CodeGen<'a> {
         let vt = self.t.value_type_from_tc(tctype);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
-        let (mkey, mc) = meta.underlying(&self.objects.metas).unwrap_non_ptr();
-        let mtype = &self.objects.metas[mkey].clone();
+        let meta = meta.underlying(&self.objects.metas);
+        let mtype = &self.objects.metas[meta.key].clone();
         match mtype {
             MetadataType::SliceOrArray(_, _) => {
-                let elem = match mc {
+                let elem = match meta.category {
                     MetaCategory::Default => typ.try_as_slice().unwrap().elem(),
                     MetaCategory::Array => typ.try_as_array().unwrap().elem(),
                     _ => unreachable!(),
@@ -1264,12 +1264,8 @@ impl<'a> CodeGen<'a> {
     }
 
     fn get_embedded_member_meta(&self, parent: &GosMetadata, index: usize) -> GosMetadata {
-        let (meta_key, _) = parent.unwrap_non_ptr_or_prt1();
-        match &self.objects.metas[meta_key] {
-            MetadataType::Named(_, m) => {
-                let (key2, _) = m.unwrap_non_ptr_or_prt1();
-                self.objects.metas[key2].as_struct().0.fields[index].0
-            }
+        match &self.objects.metas[parent.key] {
+            MetadataType::Named(_, m) => self.objects.metas[m.key].as_struct().0.fields[index].0,
             MetadataType::Struct(f, _) => f.fields[index].0,
             _ => unreachable!(),
         }
