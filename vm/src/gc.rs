@@ -1,3 +1,4 @@
+use super::metadata::Meta;
 use super::objects::*;
 use super::value::{GosValue, RCQueue, RCount, IRC};
 use std::cell::Ref;
@@ -36,7 +37,7 @@ impl GcoVec {
 pub enum GcWeak {
     Array(Weak<(ArrayObj, RCount)>),
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
-    Slice(Weak<(SliceObj, RCount)>),
+    Slice(Weak<(SliceObj, Meta, RCount)>),
     Map(Weak<(MapObj, RCount)>),
     Struct(Weak<(RefCell<StructObj>, RCount)>),
     // todo:
@@ -71,7 +72,7 @@ impl GcWeak {
                 GosValue::Closure(v)
             }),
             GcWeak::Slice(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
+                v.2.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::Slice(v)
             }),
             GcWeak::Map(w) => w.upgrade().map(|v| {

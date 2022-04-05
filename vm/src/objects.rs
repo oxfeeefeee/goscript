@@ -393,7 +393,6 @@ impl Clone for ArrayObj {
 
 #[derive(Debug)]
 pub struct SliceObj {
-    pub meta: Meta,
     begin: Cell<usize>,
     end: Cell<usize>,
     cap_end: Cell<usize>,
@@ -401,14 +400,13 @@ pub struct SliceObj {
 }
 
 impl<'a> SliceObj {
-    pub fn new(len: usize, cap: usize, meta: Meta, default_val: Option<&GosValue>) -> SliceObj {
+    pub fn new(len: usize, cap: usize, default_val: Option<&GosValue>) -> SliceObj {
         assert!(cap >= len);
         let mut val: GosVec = Vec::with_capacity(cap);
         for _ in 0..cap {
             val.push(RefCell::new(default_val.unwrap().clone()));
         }
         SliceObj {
-            meta: meta,
             begin: Cell::from(0),
             end: Cell::from(len),
             cap_end: Cell::from(cap),
@@ -416,9 +414,8 @@ impl<'a> SliceObj {
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>, meta: Meta) -> SliceObj {
+    pub fn with_data(val: Vec<GosValue>) -> SliceObj {
         SliceObj {
-            meta: meta,
             begin: Cell::from(0),
             end: Cell::from(val.len()),
             cap_end: Cell::from(val.len()),
@@ -429,13 +426,11 @@ impl<'a> SliceObj {
     }
 
     pub fn with_array(arr: &ArrayObj, begin: isize, end: isize) -> SliceObj {
-        let elem_meta = Meta::new_slice_from_array(arr.meta);
         let len = arr.len();
         let self_end = len as isize + 1;
         let bi = begin as usize;
         let ei = ((self_end + end) % self_end) as usize;
         SliceObj {
-            meta: elem_meta,
             begin: Cell::from(bi),
             end: Cell::from(ei),
             cap_end: Cell::from(bi + len),
@@ -555,7 +550,6 @@ impl<'a> SliceObj {
             data.push(RefCell::new(GosValue::new_nil())); // todo: is nil ok?
         }
         SliceObj {
-            meta: self.meta,
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
             cap_end: Cell::from(cap),
@@ -582,7 +576,6 @@ impl<'a> SliceObj {
 impl Clone for SliceObj {
     fn clone(&self) -> Self {
         SliceObj {
-            meta: self.meta,
             begin: self.begin.clone(),
             end: self.end.clone(),
             cap_end: self.cap_end.clone(),
@@ -981,9 +974,9 @@ pub enum PointerObj {
     UpVal(UpValue),
     Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
     Array(Rc<(ArrayObj, RCount)>, Option<Meta>),
-    Slice(Rc<(SliceObj, RCount)>, Option<Meta>),
+    Slice(Rc<(SliceObj, Meta, RCount)>, Option<Meta>),
     Map(Rc<(MapObj, RCount)>, Option<Meta>),
-    SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
+    SliceMember(Rc<(SliceObj, Meta, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
 }
@@ -1005,8 +998,8 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
-        let slice = GosValue::slice_with_array(val, 0, -1, gcv);
+    pub fn new_array_member(val: &GosValue, i: OpIndex, meta: Meta, gcv: &GcoVec) -> PointerObj {
+        let slice = GosValue::slice_with_array(val, 0, -1, meta, gcv);
         PointerObj::SliceMember(slice.as_slice().clone(), i)
     }
 
@@ -1031,7 +1024,7 @@ impl PointerObj {
                 Some(m) => *m,
             },
             PointerObj::Slice(s, named_md) => match named_md {
-                None => s.0.meta,
+                None => s.1,
                 Some(m) => *m,
             },
             PointerObj::Map(m, named_md) => match named_md {
@@ -1113,9 +1106,9 @@ impl PointerObj {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
             PointerObj::Struct(s, _) => s.1.set(s.1.get() - 1),
-            PointerObj::Slice(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Slice(s, _) => s.2.set(s.2.get() - 1),
             PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
-            PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::SliceMember(s, _) => s.2.set(s.2.get() - 1),
             PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
             _ => {}
         };
@@ -1126,9 +1119,9 @@ impl PointerObj {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
             PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.1, queue),
-            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.2, queue),
             PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
-            PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.2, queue),
             PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
             _ => {}
         };

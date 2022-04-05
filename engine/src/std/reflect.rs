@@ -336,7 +336,7 @@ impl StdValue {
         let mobjs = &ctx.vm_objs.metas;
         match val.unwrap_named_ref() {
             GosValue::Slice(s) => {
-                let (m, _) = mobjs[s.0.meta.key].as_slice_or_array();
+                let (m, _) = mobjs[s.1.key].as_slice_or_array();
                 match m.value_type(mobjs) {
                     ValueType::Uint8 => Ok(val),
                     _ => err_wrong_type!(),
@@ -393,12 +393,13 @@ impl StdValue {
         let container = self.val(ctx);
         let container = container.unwrap_named_ref();
         match container {
-            GosValue::Array(arr) => match arr.0.len() > iusize {
-                true => Ok(wrap_ptr_std_val(Box::new(PointerObj::new_array_member(
-                    container, i, ctx.gcv,
-                )))),
-                false => err_index_oor!(),
-            },
+            // todo: fix later
+            // GosValue::Array(arr) => match arr.0.len() > iusize {
+            //     true => Ok(wrap_ptr_std_val(Box::new(PointerObj::new_array_member(
+            //         container, i, ctx.gcv,
+            //     )))),
+            //     false => err_index_oor!(),
+            // },
             GosValue::Slice(s) => match s.0.len() > iusize {
                 true => Ok(wrap_ptr_std_val(Box::new(PointerObj::SliceMember(
                     s.clone(),

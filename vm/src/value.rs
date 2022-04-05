@@ -259,7 +259,7 @@ pub enum GosValue {
     Pointer(Box<PointerObj>),
     UnsafePtr(Rc<dyn UnsafePtr>),
     Closure(Rc<(RefCell<ClosureObj>, RCount)>),
-    Slice(Rc<(SliceObj, RCount)>),
+    Slice(Rc<(SliceObj, Meta, RCount)>),
     Map(Rc<(MapObj, RCount)>),
     Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<(RefCell<StructObj>, RCount)>),
@@ -439,15 +439,15 @@ impl GosValue {
         dval: Option<&GosValue>,
         gcobjs: &GcoVec,
     ) -> GosValue {
-        let s = Rc::new((SliceObj::new(len, cap, meta, dval), Cell::new(0)));
+        let s = Rc::new((SliceObj::new(len, cap, dval), meta, Cell::new(0)));
         let v = GosValue::Slice(s);
         gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn slice_with_obj(obj: SliceObj, gcobjs: &GcoVec) -> GosValue {
-        let s = Rc::new((obj, Cell::new(0)));
+    pub fn slice_with_obj(obj: SliceObj, meta: Meta, gcobjs: &GcoVec) -> GosValue {
+        let s = Rc::new((obj, meta, Cell::new(0)));
         let v = GosValue::Slice(s);
         gcobjs.add(&v);
         v
@@ -455,16 +455,23 @@ impl GosValue {
 
     #[inline]
     pub fn slice_with_val(val: Vec<GosValue>, meta: Meta, gcobjs: &GcoVec) -> GosValue {
-        let s = Rc::new((SliceObj::with_data(val, meta), Cell::new(0)));
+        let s = Rc::new((SliceObj::with_data(val), meta, Cell::new(0)));
         let v = GosValue::Slice(s);
         gcobjs.add(&v);
         v
     }
 
     #[inline]
-    pub fn slice_with_array(arr: &GosValue, begin: isize, end: isize, gcobjs: &GcoVec) -> GosValue {
+    pub fn slice_with_array(
+        arr: &GosValue,
+        begin: isize,
+        end: isize,
+        meta: Meta,
+        gcobjs: &GcoVec,
+    ) -> GosValue {
         let s = Rc::new((
             SliceObj::with_array(&arr.as_array().0, begin, end),
+            meta,
             Cell::new(0),
         ));
         let v = GosValue::Slice(s);
@@ -609,7 +616,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_slice(&self) -> &Rc<(SliceObj, RCount)> {
+    pub fn as_slice(&self) -> &Rc<(SliceObj, Meta, RCount)> {
         unwrap_gos_val!(Slice, self)
     }
 
@@ -813,7 +820,7 @@ impl GosValue {
             GosValue::Pointer(p) => p.point_to_meta(objs, stack).ptr_to(),
             GosValue::UnsafePtr(_) => objs.s_meta.unsafe_ptr,
             GosValue::Closure(c) => c.0.borrow().meta,
-            GosValue::Slice(s) => s.0.meta,
+            GosValue::Slice(s) => s.1,
             GosValue::Map(m) => m.0.meta,
             GosValue::Interface(i) => i.borrow().meta,
             GosValue::Struct(s) => s.0.borrow().meta,
@@ -829,7 +836,7 @@ impl GosValue {
     pub fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
         match self {
             GosValue::Slice(s) => {
-                let rc = Rc::new((SliceObj::clone(&s.0), Cell::new(0)));
+                let rc = Rc::new((SliceObj::clone(&s.0), s.1, Cell::new(0)));
                 gcv.add_weak(GcWeak::Slice(Rc::downgrade(&rc)));
                 GosValue::Slice(rc)
             }
@@ -950,7 +957,7 @@ impl GosValue {
             GosValue::Pointer(obj) => obj.ref_sub_one(),
             GosValue::UnsafePtr(obj) => obj.ref_sub_one(),
             GosValue::Closure(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Slice(obj) => obj.1.set(obj.1.get() - 1),
+            GosValue::Slice(obj) => obj.2.set(obj.2.get() - 1),
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Interface(obj) => obj.borrow().ref_sub_one(),
             GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
@@ -966,7 +973,7 @@ impl GosValue {
             GosValue::Pointer(obj) => obj.mark_dirty(queue),
             GosValue::UnsafePtr(obj) => obj.mark_dirty(queue),
             GosValue::Closure(obj) => rcount_mark_and_queue(&obj.1, queue),
-            GosValue::Slice(obj) => rcount_mark_and_queue(&obj.1, queue),
+            GosValue::Slice(obj) => rcount_mark_and_queue(&obj.2, queue),
             GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Interface(obj) => obj.borrow().mark_dirty(queue),
             GosValue::Struct(obj) => rcount_mark_and_queue(&obj.1, queue),
@@ -979,7 +986,7 @@ impl GosValue {
         match &self {
             GosValue::Array(obj) => obj.1.get(),
             GosValue::Closure(obj) => obj.1.get(),
-            GosValue::Slice(obj) => obj.1.get(),
+            GosValue::Slice(obj) => obj.2.get(),
             GosValue::Map(obj) => obj.1.get(),
             GosValue::Struct(obj) => obj.1.get(),
             _ => unreachable!(),
@@ -990,7 +997,7 @@ impl GosValue {
         match &self {
             GosValue::Array(obj) => obj.1.set(rc),
             GosValue::Closure(obj) => obj.1.set(rc),
-            GosValue::Slice(obj) => obj.1.set(rc),
+            GosValue::Slice(obj) => obj.2.set(rc),
             GosValue::Map(obj) => obj.1.set(rc),
             GosValue::Struct(obj) => obj.1.set(rc),
             _ => unreachable!(),

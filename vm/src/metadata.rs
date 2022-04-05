@@ -88,12 +88,12 @@ pub enum MetaCategory {
 pub struct Meta {
     pub key: MetadataKey,
     pub category: MetaCategory,
-    pub ptr_depth: usize,
+    pub ptr_depth: u8,
 }
 
 impl Meta {
     #[inline]
-    pub fn new(key: MetadataKey, category: MetaCategory, pdepth: usize) -> Meta {
+    pub fn new(key: MetadataKey, category: MetaCategory, pdepth: u8) -> Meta {
         Meta {
             key: key,
             category: category,

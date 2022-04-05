@@ -766,7 +766,11 @@ impl<'a> Fiber<'a> {
                         let typ = inst.t0();
                         let arr_or_slice = stack.pop_with_type(typ);
                         let v = match typ {
-                            ValueType::Array => PointerObj::new_array_member(&arr_or_slice, i, gcv),
+                            ValueType::Array => {
+                                let meta =
+                                    Meta::new_slice_from_array(arr_or_slice.meta(objs, stack));
+                                PointerObj::new_array_member(&arr_or_slice, i, meta, gcv)
+                            }
                             ValueType::Slice => {
                                 PointerObj::SliceMember(arr_or_slice.as_slice().clone(), i)
                             }
@@ -1171,12 +1175,14 @@ impl<'a> Fiber<'a> {
                                 }
                                 GosValue::Slice(Rc::new((
                                     sl.0.slice(begin, end, max),
+                                    sl.1,
                                     Cell::new(0),
                                 )))
                             }
                             GosValue::Str(s) => GosValue::Str(Rc::new(s.slice(begin, end))),
                             GosValue::Array(_) => {
-                                GosValue::slice_with_array(&target, begin, end, gcv)
+                                let meta = Meta::new_slice_from_array(target.meta(objs, stack));
+                                GosValue::slice_with_array(&target, begin, end, meta, gcv)
                             }
                             _ => unreachable!(),
                         };
@@ -1423,6 +1429,7 @@ impl<'a> Fiber<'a> {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
                         let a = stack.get_with_type(index, inst.t0());
                         let a = a.unwrap_named();
+                        //todo: a could be nil (with metadata)
                         let vala = a.as_slice();
                         match inst.t2() {
                             ValueType::FlagA => unreachable!(),
@@ -1436,12 +1443,12 @@ impl<'a> Fiber<'a> {
                                     .iter()
                                     .map(|x| GosValue::new_uint8(*x))
                                     .collect();
-                                let b_slice = GosValue::slice_with_val(bytes, vala.0.meta, gcv);
+                                let b_slice = GosValue::slice_with_val(bytes, vala.1, gcv);
                                 stack.push(b_slice);
                             }
                             _ => {
                                 // pack args into a slice
-                                stack.pack_variadic(index + 1, vala.0.meta, inst.t2(), gcv);
+                                stack.pack_variadic(index + 1, vala.1, inst.t2(), gcv);
                             }
                         };
                         let mut result = vala.0.clone();
@@ -1449,7 +1456,7 @@ impl<'a> Fiber<'a> {
                         let valb = b.as_slice();
                         result.append(&valb.0);
 
-                        stack.set(index, GosValue::slice_with_obj(result, gcv));
+                        stack.set(index, GosValue::slice_with_obj(result, vala.1, gcv));
                     }
                     Opcode::COPY => {
                         let t2 = match inst.t2() {
@@ -1468,7 +1475,7 @@ impl<'a> Fiber<'a> {
                                 .iter()
                                 .map(|x| GosValue::new_uint8(*x))
                                 .collect();
-                            let b_slice = SliceObj::with_data(bytes, vala.0.meta);
+                            let b_slice = SliceObj::with_data(bytes);
                             vala.0.copy_from(&b_slice)
                         } else {
                             vala.0.copy_from(&b.as_slice().0)
