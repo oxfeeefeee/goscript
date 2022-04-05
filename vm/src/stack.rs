@@ -416,24 +416,18 @@ impl Stack {
                 self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
                 Ok(())
             }
-            GosValue::Slice(s) => match s.0.is_nil() {
-                false => {
-                    let target_cell = &s.0.borrow()[*key.as_int() as usize];
-                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-                    Ok(())
-                }
-                true => err,
-            },
-            GosValue::Map(map) => match map.0.is_nil() {
-                false => {
-                    map.0.touch_key(&key);
-                    let borrowed = map.0.borrow_data();
-                    let target_cell = borrowed.get(&key).unwrap();
-                    self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
-                    Ok(())
-                }
-                true => err,
-            },
+            GosValue::Slice(s) => {
+                let target_cell = &s.0.borrow()[*key.as_int() as usize];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                Ok(())
+            }
+            GosValue::Map(map) => {
+                map.0.touch_key(&key);
+                let borrowed = map.0.borrow_data();
+                let target_cell = borrowed.get(&key).unwrap();
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                Ok(())
+            }
             GosValue::Nil(_) => err,
             _ => {
                 dbg!(target);

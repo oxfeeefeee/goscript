@@ -748,8 +748,6 @@ impl GosValue {
         match &self {
             GosValue::Nil(_) => true,
             GosValue::Named(n) => n.0.is_nil(),
-            GosValue::Slice(s) => s.0.is_nil(),
-            GosValue::Map(m) => m.0.is_nil(),
             GosValue::Interface(iface) => iface.borrow().is_nil(),
             _ => false,
         }

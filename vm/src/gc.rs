@@ -96,23 +96,14 @@ fn children_ref_sub_one(val: &GosValue) {
         GosValue::Closure(c) => c.0.borrow().ref_sub_one(),
         GosValue::Slice(s) => {
             // todo: slice shares data, could use some optimization
-            let sdata = &s.0;
-            if !sdata.is_nil() {
-                sdata
-                    .borrow()
-                    .iter()
-                    .for_each(|obj| obj.borrow().ref_sub_one())
-            }
+            s.0.borrow()
+                .iter()
+                .for_each(|obj| obj.borrow().ref_sub_one())
         }
-        GosValue::Map(m) => {
-            let mdata = &m.0;
-            if !mdata.is_nil() {
-                mdata.borrow_data().iter().for_each(|(k, v)| {
-                    k.ref_sub_one();
-                    v.borrow().ref_sub_one();
-                })
-            }
-        }
+        GosValue::Map(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
+            k.ref_sub_one();
+            v.borrow().ref_sub_one();
+        }),
         GosValue::Struct(s) => s.0.borrow().fields.iter().for_each(|obj| obj.ref_sub_one()),
         _ => unreachable!(),
     };
@@ -127,24 +118,15 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
             .for_each(|obj| obj.borrow().mark_dirty(queue)),
         GosValue::Closure(c) => c.0.borrow().mark_dirty(queue),
         GosValue::Slice(s) => {
-            let sdata = &s.0;
             // todo: slice shares data, could use some optimization
-            if !sdata.is_nil() {
-                sdata
-                    .borrow()
-                    .iter()
-                    .for_each(|obj| obj.borrow().mark_dirty(queue))
-            }
+            s.0.borrow()
+                .iter()
+                .for_each(|obj| obj.borrow().mark_dirty(queue))
         }
-        GosValue::Map(m) => {
-            let mdata = &m.0;
-            if !mdata.is_nil() {
-                mdata.borrow_data().iter().for_each(|(k, v)| {
-                    k.mark_dirty(queue);
-                    v.borrow().mark_dirty(queue);
-                })
-            }
-        }
+        GosValue::Map(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
+            k.mark_dirty(queue);
+            v.borrow().mark_dirty(queue);
+        }),
         GosValue::Struct(s) => {
             s.0.borrow()
                 .fields
@@ -166,17 +148,11 @@ fn break_cycle(obj: &mut GosValue) {
             r.recv = None;
             r.ffi = None;
         }
-        GosValue::Slice(s) => {
-            let sdata = &s.0;
-            if !sdata.is_nil() {
-                // slices share data, we cannot clear the data here
-            }
+        GosValue::Slice(_) => {
+            // slices share data, we cannot clear the data here
         }
         GosValue::Map(m) => {
-            let mdata = &m.0;
-            if !mdata.is_nil() {
-                mdata.borrow_data_mut().clear();
-            }
+            m.0.borrow_data_mut().clear();
         }
         GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
         _ => unreachable!(),

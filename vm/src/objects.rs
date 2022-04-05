@@ -180,7 +180,7 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Ref
 pub struct MapObj {
     pub meta: GosMetadata,
     default_val: RefCell<GosValue>,
-    pub map: Option<Rc<RefCell<GosHashMap>>>,
+    pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
@@ -188,15 +188,7 @@ impl MapObj {
         MapObj {
             meta: meta,
             default_val: RefCell::new(default_val),
-            map: Some(Rc::new(RefCell::new(HashMap::new()))),
-        }
-    }
-
-    pub fn new_nil(meta: GosMetadata, default_val: GosValue) -> MapObj {
-        MapObj {
-            meta: meta,
-            default_val: RefCell::new(default_val),
-            map: None,
+            map: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -205,11 +197,6 @@ impl MapObj {
         self.borrow_data_mut()
             .insert(key, RefCell::new(val))
             .map(|x| x.into_inner())
-    }
-
-    #[inline]
-    pub fn is_nil(&self) -> bool {
-        self.map.is_none()
     }
 
     #[inline]
@@ -251,17 +238,17 @@ impl MapObj {
 
     #[inline]
     pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
-        self.map.as_ref().unwrap().borrow_mut()
+        self.map.as_ref().borrow_mut()
     }
 
     #[inline]
     pub fn borrow_data(&self) -> Ref<GosHashMap> {
-        self.map.as_ref().unwrap().borrow()
+        self.map.as_ref().borrow()
     }
 
     #[inline]
     pub fn clone_inner(&self) -> Rc<RefCell<GosHashMap>> {
-        self.map.as_ref().unwrap().clone()
+        self.map.clone()
     }
 }
 
@@ -286,14 +273,12 @@ impl Eq for MapObj {}
 impl Display for MapObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("map[")?;
-        if let Some(m) = &self.map {
-            for (i, kv) in m.borrow().iter().enumerate() {
-                if i > 0 {
-                    f.write_char(' ')?;
-                }
-                let v: &GosValue = &kv.1.borrow();
-                write!(f, "{}:{}", kv.0, v)?
+        for (i, kv) in self.map.borrow().iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
             }
+            let v: &GosValue = &kv.1.borrow();
+            write!(f, "{}:{}", kv.0, v)?
         }
         f.write_char(']')
     }
@@ -412,7 +397,7 @@ pub struct SliceObj {
     begin: Cell<usize>,
     end: Cell<usize>,
     cap_end: Cell<usize>,
-    pub vec: Option<Rc<RefCell<GosVec>>>,
+    pub vec: Rc<RefCell<GosVec>>,
 }
 
 impl<'a> SliceObj {
@@ -432,7 +417,7 @@ impl<'a> SliceObj {
             begin: Cell::from(0),
             end: Cell::from(len),
             cap_end: Cell::from(cap),
-            vec: Some(Rc::new(RefCell::new(val))),
+            vec: Rc::new(RefCell::new(val)),
         }
     }
 
@@ -442,9 +427,9 @@ impl<'a> SliceObj {
             begin: Cell::from(0),
             end: Cell::from(val.len()),
             cap_end: Cell::from(val.len()),
-            vec: Some(Rc::new(RefCell::new(
+            vec: Rc::new(RefCell::new(
                 val.into_iter().map(|x| RefCell::new(x)).collect(),
-            ))),
+            )),
         }
     }
 
@@ -459,17 +444,7 @@ impl<'a> SliceObj {
             begin: Cell::from(bi),
             end: Cell::from(ei),
             cap_end: Cell::from(bi + len),
-            vec: Some(arr.vec.clone()),
-        }
-    }
-
-    pub fn new_nil(meta: GosMetadata) -> SliceObj {
-        SliceObj {
-            meta: meta,
-            begin: Cell::from(0),
-            end: Cell::from(0),
-            cap_end: Cell::from(0),
-            vec: None,
+            vec: arr.vec.clone(),
         }
     }
 
@@ -478,11 +453,6 @@ impl<'a> SliceObj {
         self.end.set(other.end());
         self.cap_end.set(other.cap_end.get());
         *self.borrow_all_data_mut() = other.borrow_all_data().clone()
-    }
-
-    #[inline]
-    pub fn is_nil(&self) -> bool {
-        self.vec.is_none()
     }
 
     #[inline]
@@ -605,12 +575,12 @@ impl<'a> SliceObj {
 
     #[inline]
     pub fn borrow_all_data_mut(&self) -> std::cell::RefMut<GosVec> {
-        self.vec.as_ref().unwrap().borrow_mut()
+        self.vec.as_ref().borrow_mut()
     }
 
     #[inline]
     fn borrow_all_data(&self) -> std::cell::Ref<GosVec> {
-        self.vec.as_ref().unwrap().borrow()
+        self.vec.as_ref().borrow()
     }
 }
 
