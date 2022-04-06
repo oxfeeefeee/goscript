@@ -23,9 +23,9 @@ pub enum NodeId {
 }
 
 pub trait Node {
-    fn pos(&self, arena: &Objects) -> position::Pos;
+    fn pos(&self, objs: &Objects) -> position::Pos;
 
-    fn end(&self, arena: &Objects) -> position::Pos;
+    fn end(&self, objs: &Objects) -> position::Pos;
 
     fn id(&self) -> NodeId;
 }
@@ -161,69 +161,69 @@ impl Expr {
 }
 
 impl Node for Expr {
-    fn pos(&self, arena: &Objects) -> position::Pos {
+    fn pos(&self, objs: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.from,
-            Expr::Ident(e) => arena.idents[*e].pos,
+            Expr::Ident(e) => objs.idents[*e].pos,
             Expr::Ellipsis(e) => e.pos,
             Expr::BasicLit(e) => e.pos,
             Expr::FuncLit(e) => {
-                let typ = &arena.ftypes[e.typ];
+                let typ = &objs.ftypes[e.typ];
                 match typ.func {
                     Some(p) => p,
-                    None => typ.params.pos(arena),
+                    None => typ.params.pos(objs),
                 }
             }
             Expr::CompositeLit(e) => match &e.typ {
-                Some(expr) => expr.pos(arena),
+                Some(expr) => expr.pos(objs),
                 None => e.l_brace,
             },
             Expr::Paren(e) => e.l_paren,
-            Expr::Selector(e) => e.expr.pos(arena),
-            Expr::Index(e) => e.expr.pos(arena),
-            Expr::Slice(e) => e.expr.pos(arena),
-            Expr::TypeAssert(e) => e.expr.pos(arena),
-            Expr::Call(e) => e.func.pos(arena),
+            Expr::Selector(e) => e.expr.pos(objs),
+            Expr::Index(e) => e.expr.pos(objs),
+            Expr::Slice(e) => e.expr.pos(objs),
+            Expr::TypeAssert(e) => e.expr.pos(objs),
+            Expr::Call(e) => e.func.pos(objs),
             Expr::Star(e) => e.star,
             Expr::Unary(e) => e.op_pos,
-            Expr::Binary(e) => e.expr_a.pos(arena),
-            Expr::KeyValue(e) => e.key.pos(arena),
+            Expr::Binary(e) => e.expr_a.pos(objs),
+            Expr::KeyValue(e) => e.key.pos(objs),
             Expr::Array(e) => e.l_brack,
             Expr::Struct(e) => e.struct_pos,
-            Expr::Func(e) => e.pos(arena),
+            Expr::Func(e) => e.pos(objs),
             Expr::Interface(e) => e.interface,
             Expr::Map(e) => e.map,
             Expr::Chan(e) => e.begin,
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, objs: &Objects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.to,
-            Expr::Ident(e) => arena.idents[*e].end(),
+            Expr::Ident(e) => objs.idents[*e].end(),
             Expr::Ellipsis(e) => match &e.elt {
-                Some(expr) => expr.end(arena),
+                Some(expr) => expr.end(objs),
                 None => e.pos + 3,
             },
             Expr::BasicLit(e) => e.pos + e.token.get_literal().len(),
             Expr::FuncLit(e) => e.body.end(),
             Expr::CompositeLit(e) => e.r_brace + 1,
             Expr::Paren(e) => e.r_paren + 1,
-            Expr::Selector(e) => arena.idents[e.sel].end(),
+            Expr::Selector(e) => objs.idents[e.sel].end(),
             Expr::Index(e) => e.r_brack + 1,
             Expr::Slice(e) => e.r_brack + 1,
             Expr::TypeAssert(e) => e.r_paren + 1,
             Expr::Call(e) => e.r_paren + 1,
-            Expr::Star(e) => e.expr.end(arena),
-            Expr::Unary(e) => e.expr.end(arena),
-            Expr::Binary(e) => e.expr_b.end(arena),
-            Expr::KeyValue(e) => e.val.end(arena),
-            Expr::Array(e) => e.elt.end(arena),
-            Expr::Struct(e) => e.fields.end(arena),
-            Expr::Func(e) => e.end(arena),
-            Expr::Interface(e) => e.methods.end(arena),
-            Expr::Map(e) => e.val.end(arena),
-            Expr::Chan(e) => e.val.end(arena),
+            Expr::Star(e) => e.expr.end(objs),
+            Expr::Unary(e) => e.expr.end(objs),
+            Expr::Binary(e) => e.expr_b.end(objs),
+            Expr::KeyValue(e) => e.val.end(objs),
+            Expr::Array(e) => e.elt.end(objs),
+            Expr::Struct(e) => e.fields.end(objs),
+            Expr::Func(e) => e.end(objs),
+            Expr::Interface(e) => e.methods.end(objs),
+            Expr::Map(e) => e.val.end(objs),
+            Expr::Chan(e) => e.val.end(objs),
         }
     }
 
@@ -261,13 +261,13 @@ impl Stmt {
     }
 
     pub fn new_assign(
-        arena: &mut Objects,
+        objs: &mut Objects,
         lhs: Vec<Expr>,
         tpos: position::Pos,
         tok: token::Token,
         rhs: Vec<Expr>,
     ) -> Stmt {
-        Stmt::Assign(AssignStmt::arena_new(arena, lhs, tpos, tok, rhs))
+        Stmt::Assign(AssignStmt::arena_new(objs, lhs, tpos, tok, rhs))
     }
 
     pub fn box_block(block: BlockStmt) -> Stmt {
@@ -276,21 +276,21 @@ impl Stmt {
 }
 
 impl Node for Stmt {
-    fn pos(&self, arena: &Objects) -> position::Pos {
+    fn pos(&self, objs: &Objects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.from,
-            Stmt::Decl(d) => d.pos(arena),
+            Stmt::Decl(d) => d.pos(objs),
             Stmt::Empty(s) => s.semi,
             Stmt::Labeled(s) => {
-                let label = arena.l_stmts[*s].label;
-                arena.idents[label].pos
+                let label = objs.l_stmts[*s].label;
+                objs.idents[label].pos
             }
-            Stmt::Expr(e) => e.pos(arena),
-            Stmt::Send(s) => s.chan.pos(arena),
-            Stmt::IncDec(s) => s.expr.pos(arena),
+            Stmt::Expr(e) => e.pos(objs),
+            Stmt::Send(s) => s.chan.pos(objs),
+            Stmt::IncDec(s) => s.expr.pos(objs),
             Stmt::Assign(s) => {
-                let assign = &arena.a_stmts[*s];
-                assign.pos(arena)
+                let assign = &objs.a_stmts[*s];
+                assign.pos(objs)
             }
             Stmt::Go(s) => s.go,
             Stmt::Defer(s) => s.defer,
@@ -307,10 +307,10 @@ impl Node for Stmt {
             Stmt::Range(s) => s.for_pos,
         }
     }
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, objs: &Objects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.to,
-            Stmt::Decl(d) => d.end(arena),
+            Stmt::Decl(d) => d.end(objs),
             Stmt::Empty(s) => {
                 if s.implicit {
                     s.semi
@@ -319,39 +319,39 @@ impl Node for Stmt {
                 }
             }
             Stmt::Labeled(s) => {
-                let ls = &arena.l_stmts[*s];
-                ls.stmt.end(arena)
+                let ls = &objs.l_stmts[*s];
+                ls.stmt.end(objs)
             }
-            Stmt::Expr(e) => e.end(arena),
-            Stmt::Send(s) => s.val.end(arena),
+            Stmt::Expr(e) => e.end(objs),
+            Stmt::Send(s) => s.val.end(objs),
             Stmt::IncDec(s) => s.token_pos + 2,
             Stmt::Assign(s) => {
-                let assign = &arena.a_stmts[*s];
-                assign.rhs[assign.rhs.len() - 1].end(arena)
+                let assign = &objs.a_stmts[*s];
+                assign.rhs[assign.rhs.len() - 1].end(objs)
             }
-            Stmt::Go(s) => s.call.end(arena),
-            Stmt::Defer(s) => s.call.end(arena),
+            Stmt::Go(s) => s.call.end(objs),
+            Stmt::Defer(s) => s.call.end(objs),
             Stmt::Return(s) => {
                 let n = s.results.len();
                 if n > 0 {
-                    s.results[n - 1].end(arena)
+                    s.results[n - 1].end(objs)
                 } else {
                     s.ret + 6
                 }
             }
             Stmt::Branch(s) => match &s.label {
-                Some(l) => arena.idents[*l].end(),
+                Some(l) => objs.idents[*l].end(),
                 None => s.token_pos + s.token.text().len(),
             },
             Stmt::Block(s) => s.end(),
             Stmt::If(s) => match &s.els {
-                Some(e) => e.end(arena),
+                Some(e) => e.end(objs),
                 None => s.body.end(),
             },
             Stmt::Case(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n - 1].end(arena)
+                    s.body[n - 1].end(objs)
                 } else {
                     s.colon + 1
                 }
@@ -361,7 +361,7 @@ impl Node for Stmt {
             Stmt::Comm(s) => {
                 let n = s.body.len();
                 if n > 0 {
-                    s.body[n - 1].end(arena)
+                    s.body[n - 1].end(objs)
                 } else {
                     s.colon + 1
                 }
@@ -400,18 +400,18 @@ impl Node for Stmt {
 }
 
 impl Node for Spec {
-    fn pos(&self, arena: &Objects) -> position::Pos {
+    fn pos(&self, objs: &Objects) -> position::Pos {
         match &self {
             Spec::Import(s) => match &s.name {
-                Some(i) => arena.idents[*i].pos,
+                Some(i) => objs.idents[*i].pos,
                 None => s.path.pos,
             },
-            Spec::Value(s) => arena.idents[s.names[0]].pos,
-            Spec::Type(s) => arena.idents[s.name].pos,
+            Spec::Value(s) => objs.idents[s.names[0]].pos,
+            Spec::Type(s) => objs.idents[s.name].pos,
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, objs: &Objects) -> position::Pos {
         match &self {
             Spec::Import(s) => match s.end_pos {
                 Some(p) => p,
@@ -420,15 +420,15 @@ impl Node for Spec {
             Spec::Value(s) => {
                 let n = s.values.len();
                 if n > 0 {
-                    s.values[n - 1].end(arena)
+                    s.values[n - 1].end(objs)
                 } else {
                     match &s.typ {
-                        Some(t) => t.end(arena),
-                        None => arena.idents[s.names[s.names.len() - 1]].end(),
+                        Some(t) => t.end(objs),
+                        None => objs.idents[s.names[s.names.len() - 1]].end(),
                     }
                 }
             }
-            Spec::Type(t) => t.typ.end(arena),
+            Spec::Type(t) => t.typ.end(objs),
         }
     }
 
@@ -442,26 +442,26 @@ impl Node for Spec {
 }
 
 impl Node for Decl {
-    fn pos(&self, arena: &Objects) -> position::Pos {
+    fn pos(&self, objs: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.from,
             Decl::Gen(d) => d.token_pos,
-            Decl::Func(d) => arena.fdecls[*d].pos(arena),
+            Decl::Func(d) => objs.fdecls[*d].pos(objs),
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, objs: &Objects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.to,
             Decl::Gen(d) => match &d.r_paren {
                 Some(p) => p + 1,
-                None => arena.specs[d.specs[0]].end(arena),
+                None => objs.specs[d.specs[0]].end(objs),
             },
             Decl::Func(d) => {
-                let fd = &arena.fdecls[*d];
+                let fd = &objs.fdecls[*d];
                 match &fd.body {
                     Some(b) => b.end(),
-                    None => fd.typ.end(arena),
+                    None => fd.typ.end(objs),
                 }
             }
         }
@@ -491,12 +491,12 @@ impl Node for File {
         self.package
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
+    fn end(&self, objs: &Objects) -> position::Pos {
         let n = self.decls.len();
         if n > 0 {
-            self.decls[n - 1].end(arena)
+            self.decls[n - 1].end(objs)
         } else {
-            arena.idents[self.name].end()
+            objs.idents[self.name].end()
         }
     }
 
@@ -581,9 +581,9 @@ impl Ident {
         self.entity.clone().into_key_data()
     }
 
-    pub fn entity_obj<'a>(&self, arena: &'a Objects) -> Option<&'a scope::Entity> {
+    pub fn entity_obj<'a>(&self, objs: &'a Objects) -> Option<&'a scope::Entity> {
         match self.entity {
-            IdentEntity::Entity(i) => Some(&arena.entities[i]),
+            IdentEntity::Entity(i) => Some(&objs.entities[i]),
             _ => None,
         }
     }
@@ -772,19 +772,19 @@ impl FuncType {
 }
 
 impl Node for FuncTypeKey {
-    fn pos(&self, arena: &Objects) -> position::Pos {
-        let self_ = &arena.ftypes[*self];
+    fn pos(&self, objs: &Objects) -> position::Pos {
+        let self_ = &objs.ftypes[*self];
         match self_.func {
             Some(p) => p,
-            None => self_.params.pos(arena),
+            None => self_.params.pos(objs),
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
-        let self_ = &arena.ftypes[*self];
+    fn end(&self, objs: &Objects) -> position::Pos {
+        let self_ = &objs.ftypes[*self];
         match &self_.results {
-            Some(r) => (*r).end(arena),
-            None => self_.params.end(arena),
+            Some(r) => (*r).end(objs),
+            None => self_.params.end(objs),
         }
     }
 
@@ -885,8 +885,8 @@ pub struct FuncDecl {
 }
 
 impl FuncDecl {
-    pub fn pos(&self, arena: &Objects) -> position::Pos {
-        self.typ.pos(arena)
+    pub fn pos(&self, objs: &Objects) -> position::Pos {
+        self.typ.pos(objs)
     }
 }
 
@@ -912,7 +912,7 @@ pub struct LabeledStmt {
 
 impl LabeledStmt {
     pub fn arena_new(
-        arena: &mut Objects,
+        objs: &mut Objects,
         label: IdentKey,
         colon: position::Pos,
         stmt: Stmt,
@@ -922,11 +922,11 @@ impl LabeledStmt {
             colon: colon,
             stmt: stmt,
         };
-        arena.l_stmts.insert(l)
+        objs.l_stmts.insert(l)
     }
 
-    pub fn pos(&self, arena: &Objects) -> position::Pos {
-        arena.idents[self.label].pos
+    pub fn pos(&self, objs: &Objects) -> position::Pos {
+        objs.idents[self.label].pos
     }
 }
 
@@ -958,7 +958,7 @@ pub struct AssignStmt {
 
 impl AssignStmt {
     pub fn arena_new(
-        arena: &mut Objects,
+        objs: &mut Objects,
         lhs: Vec<Expr>,
         tpos: position::Pos,
         tok: token::Token,
@@ -970,11 +970,11 @@ impl AssignStmt {
             token: tok,
             rhs: rhs,
         };
-        arena.a_stmts.insert(ass)
+        objs.a_stmts.insert(ass)
     }
 
-    pub fn pos(&self, arena: &Objects) -> position::Pos {
-        self.lhs[0].pos(arena)
+    pub fn pos(&self, objs: &Objects) -> position::Pos {
+        self.lhs[0].pos(objs)
     }
 }
 
@@ -1107,20 +1107,20 @@ pub struct Field {
 }
 
 impl Node for FieldKey {
-    fn pos(&self, arena: &Objects) -> position::Pos {
-        let self_ = &arena.fields[*self];
+    fn pos(&self, objs: &Objects) -> position::Pos {
+        let self_ = &objs.fields[*self];
         if self_.names.len() > 0 {
-            arena.idents[self_.names[0]].pos
+            objs.idents[self_.names[0]].pos
         } else {
-            self_.typ.pos(arena)
+            self_.typ.pos(objs)
         }
     }
 
-    fn end(&self, arena: &Objects) -> position::Pos {
-        let self_ = &arena.fields[*self];
+    fn end(&self, objs: &Objects) -> position::Pos {
+        let self_ = &objs.fields[*self];
         match &self_.tag {
-            Some(t) => t.end(arena),
-            None => self_.typ.end(arena),
+            Some(t) => t.end(objs),
+            None => self_.typ.end(objs),
         }
     }
 
@@ -1149,17 +1149,17 @@ impl FieldList {
         }
     }
 
-    pub fn pos(&self, arena: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &Objects) -> position::Pos {
         match self.openning {
             Some(o) => o,
-            None => self.list[0].pos(arena),
+            None => self.list[0].pos(objs),
         }
     }
 
-    pub fn end(&self, arena: &Objects) -> position::Pos {
+    pub fn end(&self, objs: &Objects) -> position::Pos {
         match self.closing {
             Some(c) => c,
-            None => self.list[self.list.len() - 1].pos(arena),
+            None => self.list[self.list.len() - 1].pos(objs),
         }
     }
 }

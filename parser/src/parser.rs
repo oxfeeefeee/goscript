@@ -2132,7 +2132,7 @@ impl<'a> Parser<'a> {
 
         let ret = if is_range {
             if let Stmt::Assign(idx) = s2.unwrap() {
-                // move AssignStmt out of arena
+                // move AssignStmt out of objs
                 // and tear it apart for the components
                 let mut ass = self.objects.a_stmts.remove(idx).unwrap();
                 let (key, val) = match ass.lhs.len() {
