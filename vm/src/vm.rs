@@ -846,22 +846,7 @@ impl<'a> Fiber<'a> {
                             // default case
                             ValueType::Void => {
                                 frame.on_drop(&stack);
-
-                                // dbg!(
-                                //     //stack.len() - frame.func_val(objs).param_types.len(),
-                                //     frame.func_val(objs).stack_temp_types.len(),
-                                //     stack.len() - stack_base - frame.func_val(objs).ret_count()
-                                // );
-                                // assert!(
-                                //     frame.func_val(objs).stack_temp_types.len()
-                                //         == stack.len()
-                                //             - stack_base
-                                //             - frame.func_val(objs).ret_count()
-                                //         || panic.is_some()
-                                // );
-
-                                //stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
-                                stack.truncate(stack_base + frame.func_val(objs).ret_count());
+                                stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
                             }
                             // init_package func
                             ValueType::FlagA => {
@@ -899,11 +884,8 @@ impl<'a> Fiber<'a> {
                                     None => {
                                         frame.on_drop(&stack);
 
-                                        // stack.pop_with_type_n(
-                                        //     &frame.func_val(objs).stack_temp_types,
-                                        // );
-                                        stack.truncate(
-                                            stack_base + frame.func_val(objs).ret_count(),
+                                        stack.pop_with_type_n(
+                                            &frame.func_val(objs).stack_temp_types,
                                         );
                                     }
                                 }

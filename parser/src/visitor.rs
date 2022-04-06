@@ -128,6 +128,8 @@ pub trait StmtVisitor {
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) -> Self::Result;
 
+    fn visit_expr_stmt(&mut self, stmt: &Expr) -> Self::Result;
+
     fn visit_empty_stmt(&mut self, e: &EmptyStmt) -> Self::Result;
 
     fn visit_bad_stmt(&mut self, b: &BadStmt) -> Self::Result;
@@ -206,7 +208,7 @@ pub fn walk_stmt<V: StmtVisitor<Result = R> + ExprVisitor<Result = R>, R>(
         Stmt::Decl(decl) => v.visit_decl(decl),
         Stmt::Empty(e) => v.visit_empty_stmt(e),
         Stmt::Labeled(lstmt) => v.visit_stmt_labeled(lstmt),
-        Stmt::Expr(expr) => v.visit_expr(expr),
+        Stmt::Expr(expr) => v.visit_expr_stmt(expr),
         Stmt::Send(sstmt) => v.visit_stmt_send(sstmt),
         Stmt::IncDec(idstmt) => v.visit_stmt_incdec(idstmt),
         Stmt::Assign(astmt) => v.visit_stmt_assign(astmt),

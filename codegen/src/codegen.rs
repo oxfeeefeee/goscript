@@ -1228,6 +1228,11 @@ impl<'a> CodeGen<'a> {
         }
     }
 
+    fn swallow_value(&mut self, expr: &Expr) {
+        let count = self.t.get_expr_value_count(expr);
+        current_func_emitter!(self).emit_pop(count as OpIndex, Some(expr.pos(&self.ast_objs)));
+    }
+
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.s_meta.default_sig;
@@ -2201,6 +2206,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
 
         self.branch_helper
             .leave_block(current_func_mut!(self), Some(marker));
+    }
+
+    fn visit_expr_stmt(&mut self, e: &Expr) {
+        self.visit_expr(e);
+        self.swallow_value(e);
     }
 
     fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}
