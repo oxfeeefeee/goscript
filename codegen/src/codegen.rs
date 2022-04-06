@@ -237,9 +237,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let val = self
-                .t
-                .get_const_value_by_ident(name, self.objects, self.dummy_gcv);
+            let val = self.t.get_const_value_by_ident(name);
             self.current_func_add_const_def(name, val);
         }
     }
@@ -359,7 +357,7 @@ impl<'a> CodeGen<'a> {
                     _ => unreachable!(),
                 };
                 let typ = self.t.get_expr_value_type(&lhs_exprs[0]);
-                self.gen_op_assign(&lhs[0].0, (code, None), None, false, typ, lhs[0].2);
+                self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
                 None
             }
             RightHandSide::Values(rhs_exprs) => {
@@ -382,19 +380,17 @@ impl<'a> CodeGen<'a> {
                     assert_eq!(lhs_exprs.len(), 1);
                     assert_eq!(rhs_exprs.len(), 1);
                     let ltyp = self.t.get_expr_value_type(&lhs_exprs[0]);
-                    let (rtyp, unwrap) = match code {
+                    let rtyp = match code {
                         Opcode::SHL | Opcode::SHR => {
-                            let (t, t_inner) = self.t.get_expr_value_type_named(&rhs_exprs[0]);
-                            let t = t_inner.unwrap_or(t);
-                            (Some(t), t_inner.is_some())
+                            let t = self.t.get_expr_value_type(&rhs_exprs[0]);
+                            Some(t)
                         }
-                        _ => (None, false),
+                        _ => None,
                     };
                     self.gen_op_assign(
                         &lhs[0].0,
                         (code, rtyp),
                         Some(&rhs_exprs[0]),
-                        unwrap,
                         ltyp,
                         lhs[0].2,
                     );
@@ -608,7 +604,6 @@ impl<'a> CodeGen<'a> {
         left: &LeftHandSide,
         op: (Opcode, Option<ValueType>),
         right: Option<&Expr>,
-        unwrap_right: bool,
         typ: ValueType,
         p: usize,
     ) {
@@ -621,11 +616,8 @@ impl<'a> CodeGen<'a> {
             None => 0, //It's INC/DEC
         };
 
-        // If this is SHL/SHR, unwrap and/or cast the rhs to uint32
+        // If this is SHL/SHR,  cast the rhs to uint32
         if let Some(t) = op.1 {
-            if unwrap_right {
-                current_func_emitter!(self).emit_unwrap(-1, pos);
-            }
             if t != ValueType::Uint32 {
                 current_func_emitter!(self).emit_cast(ValueType::Uint32, t, None, -1, 0, pos);
             }
@@ -878,39 +870,29 @@ impl<'a> CodeGen<'a> {
             OperandMode::TypeExpr => {
                 assert!(params.len() == 1);
                 self.visit_expr(&params[0]);
-                let tct_to = self.t.get_expr_tc_type(func_expr);
-                let utct_to = self.t.underlying_tc(tct_to);
-                let ut_to = self.t.value_type_from_tc(utct_to);
-                let tct_from = self.t.get_expr_tc_type(&params[0]);
-                let utct_from = self.t.underlying_tc(tct_from);
-                let ut_from = self.t.value_type_from_tc(utct_from);
+                let tc_to = self.t.underlying_tc(self.t.get_expr_tc_type(func_expr));
+                let typ_to = self.t.value_type_from_tc(tc_to);
+                let tc_from = self.t.underlying_tc(self.t.get_expr_tc_type(&params[0]));
+                let typ_from = self.t.value_type_from_tc(tc_from);
 
-                let type_to_meta_u64 = |self_: &mut CodeGen, t: TCTypeKey| {
-                    let meta = self_.t.meta_from_tc(t, self_.objects, self_.dummy_gcv);
-                    key_to_u64(meta.key)
-                };
-                let to_is_named =
-                    |lookup: &TypeLookup| lookup.value_type_from_tc(tct_to) == ValueType::Named;
-                let from_is_named =
-                    |lookup: &TypeLookup| lookup.value_type_from_tc(tct_from) == ValueType::Named;
-
-                if ut_from == ValueType::Nil
-                    || identical_ignore_tags(tct_to, tct_from, self.tc_objs)
+                if typ_from == ValueType::Nil || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
                 {
                     // just ignore conversion if it's nil or types are identical
-                } else if !identical_ignore_tags(utct_to, utct_from, self.tc_objs) {
-                    match ut_to {
+                    // or convert between Named type and underlying type,
+                    // or both types are Named in case they are Structs
+                } else {
+                    match typ_to {
                         ValueType::Interface => {
-                            if ut_from != ValueType::Nil {
+                            if typ_from != ValueType::Nil {
                                 let iface_index = self.iface_mapping.get_index(
-                                    &(tct_to, tct_from),
+                                    &(tc_to, tc_from),
                                     &mut self.t,
                                     self.objects,
                                     self.dummy_gcv,
                                 );
                                 current_func_emitter!(self).emit_cast(
-                                    ut_to,
-                                    ut_from,
+                                    typ_to,
+                                    typ_from,
                                     None,
                                     -1,
                                     iface_index,
@@ -934,66 +916,26 @@ impl<'a> CodeGen<'a> {
                         | ValueType::Complex64
                         | ValueType::Complex128
                         | ValueType::Str
-                        | ValueType::Slice
-                        | ValueType::Channel
-                        | ValueType::Pointer => {
-                            if from_is_named(&self.t) {
-                                current_func_emitter!(self).emit_unwrap(-1, pos);
-                            }
-
-                            // We need:
-                            // - Elem type when converting to Str or Slice
-                            // - Underlying meta if converting to a pointer which points Named struct
-                            // - Underlying meta if converting to a Named channel
-                            let t_extra = match ut_to {
-                                ValueType::Str => (ut_from == ValueType::Slice).then(|| {
-                                    self.tc_objs.types[utct_from].try_as_slice().unwrap().elem()
+                        | ValueType::Slice => {
+                            let t_extra = match typ_to {
+                                ValueType::Str => (typ_from == ValueType::Slice).then(|| {
+                                    self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()
                                 }),
                                 ValueType::Slice => {
-                                    Some(self.tc_objs.types[utct_to].try_as_slice().unwrap().elem())
+                                    Some(self.tc_objs.types[tc_to].try_as_slice().unwrap().elem())
                                 }
-                                ValueType::Pointer => {
-                                    let base = self.tc_objs.types[utct_to]
-                                        .try_as_pointer()
-                                        .unwrap()
-                                        .base();
-                                    Some(base)
-                                }
-                                ValueType::Channel => Some(utct_to),
+                                ValueType::Channel => Some(tc_to),
                                 _ => None,
                             };
                             let t2 = t_extra.map(|x| self.t.value_type_from_tc(x));
 
-                            current_func_emitter!(self).emit_cast(ut_to, ut_from, t2, -1, 0, pos);
-                            match ut_to {
-                                ValueType::Pointer | ValueType::Channel => {
-                                    if let Some(t) = t_extra {
-                                        let m = type_to_meta_u64(self, t);
-                                        current_func_mut!(self).emit_raw_inst(m, pos);
-                                    }
-                                }
-                                _ => {}
-                            }
-
-                            if to_is_named(&self.t) {
-                                let m = Some(type_to_meta_u64(self, tct_to));
-                                current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
-                            }
+                            current_func_emitter!(self).emit_cast(typ_to, typ_from, t2, -1, 0, pos);
                         }
+                        ValueType::Channel | ValueType::Pointer => { /* nothing to be done */ }
                         _ => {
-                            dbg!(ut_to);
+                            dbg!(typ_to);
                             unreachable!()
                         }
-                    }
-                } else {
-                    // Convert between Named type and underlying type,
-                    // Or both types are Named in case they are Structs
-                    if from_is_named(&self.t) {
-                        current_func_emitter!(self).emit_unwrap(-1, pos);
-                    }
-                    if to_is_named(&self.t) {
-                        let m = Some(type_to_meta_u64(self, tct_to));
-                        current_func_emitter!(self).emit_wrap(ut_to, -1, m, pos)
                     }
                 }
             }
@@ -1230,7 +1172,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
-        let val = self.t.get_const_value(node, self.objects, self.dummy_gcv);
+        let val = self.t.get_const_value(node);
         let mut emitter = current_func_emitter!(self);
         let t = val.typ();
         let i = emitter.add_const(None, val);
@@ -1694,55 +1636,40 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 unreachable!()
             }
         };
-        let (t, t_inner) = self.t.get_expr_value_type_named(expr);
-        if code == Opcode::RECV {
-            current_func_emitter!(self)
-                .f
-                .emit_code_with_type(code, t, pos);
-        } else {
-            let t_inner = t_inner.map(|x| {
-                let meta = self
-                    .t
-                    .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
-                (x, key_to_u64(meta.key))
-            });
-            current_func_emitter!(self).emit_ops(code, t, None, t_inner, None, pos);
-        }
+        let t = self.t.get_expr_value_type(expr);
+        current_func_mut!(self).emit_code_with_type(code, t, pos);
     }
 
     fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
         self.visit_expr(left);
-        let (t0, t0_inner) = self.t.get_expr_value_type_named(left);
-        let (code, compare) = match op {
-            Token::ADD => (Opcode::ADD, false),
-            Token::SUB => (Opcode::SUB, false),
-            Token::MUL => (Opcode::MUL, false),
-            Token::QUO => (Opcode::QUO, false),
-            Token::REM => (Opcode::REM, false),
-            Token::AND => (Opcode::AND, false),
-            Token::OR => (Opcode::OR, false),
-            Token::XOR => (Opcode::XOR, false),
-            Token::SHL => (Opcode::SHL, false),
-            Token::SHR => (Opcode::SHR, false),
-            Token::AND_NOT => (Opcode::AND_NOT, false),
-            Token::LAND => (Opcode::SHORT_CIRCUIT_AND, false),
-            Token::LOR => (Opcode::SHORT_CIRCUIT_OR, false),
-            Token::EQL => (Opcode::EQL, true),
-            Token::LSS => (Opcode::LSS, true),
-            Token::GTR => (Opcode::GTR, true),
-            Token::NEQ => (Opcode::NEQ, true),
-            Token::LEQ => (Opcode::LEQ, true),
-            Token::GEQ => (Opcode::GEQ, true),
+        let t = self.t.get_expr_value_type(left);
+        let code = match op {
+            Token::ADD => Opcode::ADD,
+            Token::SUB => Opcode::SUB,
+            Token::MUL => Opcode::MUL,
+            Token::QUO => Opcode::QUO,
+            Token::REM => Opcode::REM,
+            Token::AND => Opcode::AND,
+            Token::OR => Opcode::OR,
+            Token::XOR => Opcode::XOR,
+            Token::SHL => Opcode::SHL,
+            Token::SHR => Opcode::SHR,
+            Token::AND_NOT => Opcode::AND_NOT,
+            Token::LAND => Opcode::SHORT_CIRCUIT_AND,
+            Token::LOR => Opcode::SHORT_CIRCUIT_OR,
+            Token::EQL => Opcode::EQL,
+            Token::LSS => Opcode::LSS,
+            Token::GTR => Opcode::GTR,
+            Token::NEQ => Opcode::NEQ,
+            Token::LEQ => Opcode::LEQ,
+            Token::GEQ => Opcode::GEQ,
             _ => unreachable!(),
         };
         let pos = Some(left.pos(&self.ast_objs));
         // handles short circuit
         let mark = match code {
             Opcode::SHORT_CIRCUIT_AND | Opcode::SHORT_CIRCUIT_OR => {
-                let mut emitter = current_func_emitter!(self);
-                if t0 == ValueType::Named {
-                    emitter.emit_unwrap(-1, pos);
-                }
+                let emitter = current_func_emitter!(self);
                 emitter.f.emit_code(code, pos);
                 Some(emitter.f.next_code_index() - 1)
             }
@@ -1752,41 +1679,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
         if let Some(i) = mark {
             let emitter = current_func_emitter!(self);
-            let mut diff = emitter.f.next_code_index() - i - 1;
-            if t0 == ValueType::Named {
-                let meta = self
-                    .t
-                    .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
-                let m_u64 = Some(key_to_u64(meta.key));
-                let mut emitter = current_func_emitter!(self);
-                emitter.f.emit_code_with_imm(Opcode::JUMP, 2, pos);
-                diff += 1;
-                emitter.emit_wrap(ValueType::Bool, -1, m_u64, pos);
-            };
+            let diff = emitter.f.next_code_index() - i - 1;
             current_func_emitter!(self)
                 .f
                 .instruction_mut(i)
                 .set_imm(diff as OpIndex);
         } else {
-            let (t1, t1_inner) = if code == Opcode::SHL || code == Opcode::SHR {
-                self.t.get_expr_value_type_named(right)
+            let t1 = if code == Opcode::SHL || code == Opcode::SHR {
+                Some(self.t.get_expr_value_type(right))
             } else {
-                (t0, t0_inner)
+                None
             };
-            if compare {
-                // don't unwrap named operands of comparisons
-                current_func_emitter!(self)
-                    .f
-                    .emit_code_with_type(code, t0, pos);
-            } else {
-                let t0_inner = t0_inner.map(|x| {
-                    let meta = self
-                        .t
-                        .get_meta_by_node_id(left.id(), self.objects, self.dummy_gcv);
-                    (x, key_to_u64(meta.key))
-                });
-                current_func_emitter!(self).emit_ops(code, t0, Some(t1), t0_inner, t1_inner, pos);
-            }
+            current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
         }
     }
 

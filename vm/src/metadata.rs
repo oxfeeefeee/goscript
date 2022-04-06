@@ -175,6 +175,15 @@ impl Meta {
     }
 
     #[inline]
+    pub fn mtype_unwraped<'a>(&self, metas: &'a MetadataObjs) -> &'a MetadataType {
+        let mt = &metas[self.key];
+        match mt {
+            MetadataType::Named(_, m) => &metas[m.key],
+            _ => mt,
+        }
+    }
+
+    #[inline]
     pub fn ptr_to(&self) -> Meta {
         let mut m = *self;
         m.ptr_depth += 1;
@@ -237,7 +246,7 @@ impl Meta {
                     MetadataType::Map(_, _) => ValueType::Map,
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel(_, _) => ValueType::Channel,
-                    MetadataType::Named(_, _) => ValueType::Named,
+                    MetadataType::Named(_, m) => m.value_type(metas),
                     MetadataType::None => ValueType::Nil,
                 },
                 MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
@@ -288,10 +297,7 @@ impl Meta {
                 MetadataType::Map(_, _) => GosValue::nil_with_meta(*self),
                 MetadataType::Interface(_) => GosValue::nil_with_meta(*self),
                 MetadataType::Channel(_, _) => GosValue::nil_with_meta(*self),
-                MetadataType::Named(_, gm) => {
-                    let val = gm.zero_val_impl(mobjs, gcv);
-                    GosValue::Named(Box::new((val, *gm)))
-                }
+                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs, gcv),
                 MetadataType::None => GosValue::nil_with_meta(*self),
             },
             _ => GosValue::nil_with_meta(*self),

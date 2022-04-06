@@ -263,8 +263,6 @@ pub enum GosValue {
     Interface(Rc<RefCell<InterfaceObj>>),
     Struct(Rc<(RefCell<StructObj>, RCount)>),
     Channel(Rc<ChannelObj>),
-
-    Named(Box<(GosValue, Meta)>),
 }
 
 impl GosValue {
@@ -664,11 +662,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_named(&self) -> &Box<(GosValue, Meta)> {
-        unwrap_gos_val!(Named, self)
-    }
-
-    #[inline]
     pub fn is_nil(&self) -> bool {
         match &self {
             GosValue::Nil(_) => true,
@@ -679,7 +672,6 @@ impl GosValue {
     #[inline]
     pub fn try_as_interface(&self) -> Option<&Rc<RefCell<InterfaceObj>>> {
         match &self {
-            GosValue::Named(n) => Some(n.0.as_interface()),
             GosValue::Interface(_) => Some(self.as_interface()),
             _ => None,
         }
@@ -688,7 +680,6 @@ impl GosValue {
     #[inline]
     pub fn try_as_struct(&self) -> Option<&Rc<(RefCell<StructObj>, RCount)>> {
         match &self {
-            GosValue::Named(n) => Some(n.0.as_struct()),
             GosValue::Struct(_) => Some(self.as_struct()),
             _ => None,
         }
@@ -697,39 +688,14 @@ impl GosValue {
     #[inline]
     pub fn try_as_map(&self) -> Option<&Rc<(MapObj, RCount)>> {
         match &self {
-            GosValue::Named(n) => Some(n.0.as_map()),
             GosValue::Map(_) => Some(self.as_map()),
             _ => None,
         }
     }
 
     #[inline]
-    pub fn unwrap_named(self) -> GosValue {
-        match self {
-            GosValue::Named(n) => n.0,
-            _ => self,
-        }
-    }
-
-    #[inline]
-    pub fn unwrap_named_ref(&self) -> &GosValue {
-        match self {
-            GosValue::Named(n) => &n.0,
-            _ => &self,
-        }
-    }
-
-    #[inline]
     pub fn iface_underlying(&self) -> Option<GosValue> {
         match &self {
-            GosValue::Named(n) => match &n.0 {
-                GosValue::Nil(_) => Some(n.0.clone()),
-                GosValue::Interface(i) => {
-                    let b = i.borrow();
-                    b.underlying_value().map(|x| x.clone())
-                }
-                _ => unreachable!(),
-            },
             GosValue::Interface(v) => {
                 let b = v.borrow();
                 b.underlying_value().map(|x| x.clone())
@@ -742,7 +708,6 @@ impl GosValue {
     pub fn equals_nil(&self) -> bool {
         match &self {
             GosValue::Nil(_) => true,
-            GosValue::Named(n) => n.0.is_nil(),
             _ => false,
         }
     }
@@ -780,7 +745,6 @@ impl GosValue {
             GosValue::Function(_) => ValueType::Function,
             GosValue::Package(_) => ValueType::Package,
             GosValue::Metadata(_) => ValueType::Metadata,
-            GosValue::Named(_) => ValueType::Named,
         }
     }
 
@@ -806,7 +770,6 @@ impl GosValue {
                 gcv.add_weak(GcWeak::Struct(Rc::downgrade(&rc)));
                 GosValue::Struct(rc)
             }
-            GosValue::Named(v) => GosValue::Named(Box::new((v.0.copy_semantic(gcv), v.1))),
             _ => self.clone(),
         }
     }
@@ -824,7 +787,6 @@ impl GosValue {
             GosValue::Uint16(i) => *i.as_uint16() as usize,
             GosValue::Uint32(i) => *i.as_uint32() as usize,
             GosValue::Uint64(i) => *i.as_uint64() as usize,
-            GosValue::Named(n) => n.0.as_index(),
             _ => unreachable!(),
         }
     }
@@ -883,7 +845,6 @@ impl GosValue {
                 .0
                 .get(i)
                 .map_or_else(|| Err(format!("index {} out of range", i)), |x| Ok(x)),
-            GosValue::Named(n) => n.0.load_index_int(i),
             _ => {
                 dbg!(self);
                 unreachable!();
@@ -917,7 +878,6 @@ impl GosValue {
             GosValue::Map(obj) => obj.1.set(obj.1.get() - 1),
             GosValue::Interface(obj) => obj.borrow().ref_sub_one(),
             GosValue::Struct(obj) => obj.1.set(obj.1.get() - 1),
-            GosValue::Named(obj) => obj.0.ref_sub_one(),
             _ => {}
         };
     }
@@ -933,7 +893,6 @@ impl GosValue {
             GosValue::Map(obj) => rcount_mark_and_queue(&obj.1, queue),
             GosValue::Interface(obj) => obj.borrow().mark_dirty(queue),
             GosValue::Struct(obj) => rcount_mark_and_queue(&obj.1, queue),
-            GosValue::Named(obj) => obj.0.mark_dirty(queue),
             _ => {}
         };
     }
@@ -995,7 +954,6 @@ impl Clone for GosValue {
             GosValue::Function(v) => GosValue::Function(*v),
             GosValue::Package(v) => GosValue::Package(*v),
             GosValue::Metadata(v) => GosValue::Metadata(v.clone()),
-            GosValue::Named(v) => GosValue::Named(v.clone()),
         }
     }
 }
@@ -1040,7 +998,6 @@ impl PartialEq for GosValue {
             (Self::Interface(x), Self::Interface(y)) => InterfaceObj::eq(&x.borrow(), &y.borrow()),
             (Self::Struct(x), Self::Struct(y)) => StructObj::eq(&x.0.borrow(), &y.0.borrow()),
             (Self::Channel(x), Self::Channel(y)) => Rc::ptr_eq(x, y),
-            (Self::Named(x), Self::Named(y)) => x.0 == y.0,
             (Self::Nil(_), nil) | (nil, Self::Nil(_)) => nil.equals_nil(),
             (Self::Interface(iface), val) | (val, Self::Interface(iface)) => {
                 match iface.borrow().underlying_value() {
@@ -1098,7 +1055,6 @@ impl Hash for GosValue {
                 PointerObj::hash(&p, state);
             }
             GosValue::UnsafePtr(p) => Rc::as_ptr(p).hash(state),
-            GosValue::Named(n) => n.0.hash(state),
             _ => unreachable!(),
         }
     }
@@ -1163,7 +1119,6 @@ impl Display for GosValue {
             GosValue::Function(_) => f.write_str("<function>"),
             GosValue::Package(_) => f.write_str("<package>"),
             GosValue::Metadata(_) => f.write_str("<metadata>"),
-            GosValue::Named(v) => write!(f, "{}", v.0),
         }
     }
 }

@@ -35,9 +35,6 @@ pub enum Opcode {
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
     CAST,
-    // wrap and unwrap Named values to avoid branching
-    UNWRAP,
-    WRAP,
     // arithmetic, logical, ref, deref, arrow
     ADD,       // +
     SUB,       // -
@@ -84,7 +81,6 @@ pub enum Opcode {
     SHORT_CIRCUIT_AND,
     SWITCH, // EQL + JUMP_IF + do not pop the first argument
     SELECT,
-    LOOP,
     RANGE_INIT,
     RANGE, // for ... range statement
 
@@ -149,8 +145,6 @@ impl Opcode {
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
             Opcode::CAST => ("CAST", 0),
-            Opcode::UNWRAP => ("UNWRAP", 0),
-            Opcode::WRAP => ("WRAP", 0),
 
             Opcode::ADD => ("ADD", -1),
             Opcode::SUB => ("SUB", -1),
@@ -188,7 +182,6 @@ impl Opcode {
             Opcode::RETURN => ("RETURN", -128),
 
             Opcode::JUMP => ("JUMP", 0),
-            Opcode::LOOP => ("LOOP", 0),
             Opcode::JUMP_IF => ("JUMP_IF", -1),
             Opcode::JUMP_IF_NOT => ("JUMP_IF_NOT", -1),
             Opcode::SHORT_CIRCUIT_OR => ("SHORT_CIRCUIT_OR", -128),
@@ -275,7 +268,6 @@ pub enum ValueType {
     Interface,
     Struct,
     Channel,
-    Named,
 
     Void,  //place holder
     FlagA, //not a type, works as a flag in instructions

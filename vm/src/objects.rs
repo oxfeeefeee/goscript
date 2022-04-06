@@ -657,7 +657,7 @@ impl StructObj {
     pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
         let mut cur_val: GosValue = struct_;
         for &i in indices.iter() {
-            let s = &cur_val.unwrap_named_ref().as_struct().0;
+            let s = &cur_val.as_struct().0;
             let v = s.borrow().fields[i].clone();
             cur_val = v;
         }
@@ -773,10 +773,7 @@ impl InterfaceObj {
                     }
                     Binding4Runtime::Iface(i, indices) => {
                         let bind = |obj: &GosValue| {
-                            obj.unwrap_named_ref()
-                                .as_interface()
-                                .borrow()
-                                .bind_method(*i, funcs, gcv)
+                            obj.as_interface().borrow().bind_method(*i, funcs, gcv)
                         };
                         match indices {
                             None => bind(obj),
@@ -918,10 +915,10 @@ impl ChannelObj {
 #[derive(Debug, Clone)]
 pub enum PointerObj {
     UpVal(UpValue),
-    Struct(Rc<(RefCell<StructObj>, RCount)>, Option<Meta>),
-    Array(Rc<(ArrayObj, RCount)>, Option<Meta>),
-    Slice(Rc<(SliceObj, RCount)>, Option<Meta>),
-    Map(Rc<(MapObj, RCount)>, Option<Meta>),
+    Struct(Rc<(RefCell<StructObj>, RCount)>),
+    Array(Rc<(ArrayObj, RCount)>),
+    Slice(Rc<(SliceObj, RCount)>),
+    Map(Rc<(MapObj, RCount)>),
     SliceMember(Rc<(SliceObj, RCount)>, OpIndex),
     StructField(Rc<(RefCell<StructObj>, RCount)>, OpIndex),
     PkgMember(PackageKey, OpIndex),
@@ -930,15 +927,11 @@ pub enum PointerObj {
 impl PointerObj {
     #[inline]
     pub fn try_new_local(val: &GosValue) -> Option<PointerObj> {
-        let (val, meta) = match val {
-            GosValue::Named(n) => (&n.0, Some(n.1)),
-            _ => (val, None),
-        };
         match val {
-            GosValue::Struct(s) => Some(PointerObj::Struct(s.clone(), meta)),
-            GosValue::Array(a) => Some(PointerObj::Array(a.clone(), meta)),
-            GosValue::Slice(s) => Some(PointerObj::Slice(s.clone(), meta)),
-            GosValue::Map(m) => Some(PointerObj::Map(m.clone(), meta)),
+            GosValue::Struct(s) => Some(PointerObj::Struct(s.clone())),
+            GosValue::Array(a) => Some(PointerObj::Array(a.clone())),
+            GosValue::Slice(s) => Some(PointerObj::Slice(s.clone())),
+            GosValue::Map(m) => Some(PointerObj::Map(m.clone())),
             _ => None,
         }
     }
@@ -952,22 +945,10 @@ impl PointerObj {
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> GosValue {
         match self {
             PointerObj::UpVal(uv) => uv.value(stack),
-            PointerObj::Struct(s, md) => match md {
-                None => GosValue::Struct(s.clone()),
-                Some(m) => GosValue::Named(Box::new((GosValue::Struct(s.clone()), *m))),
-            },
-            PointerObj::Array(a, md) => match md {
-                None => GosValue::Array(a.clone()),
-                Some(m) => GosValue::Named(Box::new((GosValue::Array(a.clone()), *m))),
-            },
-            PointerObj::Slice(s, md) => match md {
-                None => GosValue::Slice(s.clone()),
-                Some(m) => GosValue::Named(Box::new((GosValue::Slice(s.clone()), *m))),
-            },
-            PointerObj::Map(s, md) => match md {
-                None => GosValue::Map(s.clone()),
-                Some(m) => GosValue::Named(Box::new((GosValue::Map(s.clone()), *m))),
-            },
+            PointerObj::Struct(s) => GosValue::Struct(s.clone()),
+            PointerObj::Array(a) => GosValue::Array(a.clone()),
+            PointerObj::Slice(s) => GosValue::Slice(s.clone()),
+            PointerObj::Map(s) => GosValue::Map(s.clone()),
             PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
             PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
             PointerObj::PkgMember(pkg, index) => pkgs[*pkg].member(*index).clone(),
@@ -978,18 +959,12 @@ impl PointerObj {
     pub fn set_value(&self, val: GosValue, stack: &mut Stack, pkgs: &PackageObjs, gcv: &GcoVec) {
         match self {
             PointerObj::UpVal(uv) => uv.set_value(val, stack),
-            PointerObj::Struct(s, _) => {
-                *s.0.borrow_mut() = val
-                    .unwrap_named()
-                    .copy_semantic(gcv)
-                    .as_struct()
-                    .0
-                    .borrow()
-                    .clone()
+            PointerObj::Struct(s) => {
+                *s.0.borrow_mut() = val.copy_semantic(gcv).as_struct().0.borrow().clone()
             }
-            PointerObj::Array(a, _) => a.0.set_from(&val.as_array().0),
-            PointerObj::Slice(s, _) => s.0.set_from(&val.as_slice().0),
-            PointerObj::Map(m, _) => *m.0.borrow_data_mut() = val.as_map().0.borrow_data().clone(),
+            PointerObj::Array(a) => a.0.set_from(&val.as_array().0),
+            PointerObj::Slice(s) => s.0.set_from(&val.as_slice().0),
+            PointerObj::Map(m) => *m.0.borrow_data_mut() = val.as_map().0.borrow_data().clone(),
             PointerObj::SliceMember(s, index) => {
                 let vborrow = s.0.borrow();
                 let target: &mut GosValue =
@@ -1011,9 +986,9 @@ impl PointerObj {
     pub fn ref_sub_one(&self) {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
-            PointerObj::Struct(s, _) => s.1.set(s.1.get() - 1),
-            PointerObj::Slice(s, _) => s.1.set(s.1.get() - 1),
-            PointerObj::Map(s, _) => s.1.set(s.1.get() - 1),
+            PointerObj::Struct(s) => s.1.set(s.1.get() - 1),
+            PointerObj::Slice(s) => s.1.set(s.1.get() - 1),
+            PointerObj::Map(s) => s.1.set(s.1.get() - 1),
             PointerObj::SliceMember(s, _) => s.1.set(s.1.get() - 1),
             PointerObj::StructField(s, _) => s.1.set(s.1.get() - 1),
             _ => {}
@@ -1024,9 +999,9 @@ impl PointerObj {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
-            PointerObj::Struct(s, _) => rcount_mark_and_queue(&s.1, queue),
-            PointerObj::Slice(s, _) => rcount_mark_and_queue(&s.1, queue),
-            PointerObj::Map(s, _) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Struct(s) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Slice(s) => rcount_mark_and_queue(&s.1, queue),
+            PointerObj::Map(s) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::SliceMember(s, _) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::StructField(s, _) => rcount_mark_and_queue(&s.1, queue),
             _ => {}
@@ -1041,10 +1016,10 @@ impl PartialEq for PointerObj {
     fn eq(&self, other: &PointerObj) -> bool {
         match (self, other) {
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
-            (Self::Struct(x, _), Self::Struct(y, _)) => x == y,
-            (Self::Array(x, _), Self::Array(y, _)) => x == y,
-            (Self::Slice(x, _), Self::Slice(y, _)) => x == y,
-            (Self::Map(x, _), Self::Map(y, _)) => x == y,
+            (Self::Struct(x), Self::Struct(y)) => x == y,
+            (Self::Array(x), Self::Array(y)) => x == y,
+            (Self::Slice(x), Self::Slice(y)) => x == y,
+            (Self::Map(x), Self::Map(y)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::StructField(x, ix), Self::StructField(y, iy)) => Rc::ptr_eq(x, y) && ix == iy,
             (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka == kb && ix == iy,
@@ -1057,10 +1032,10 @@ impl Hash for PointerObj {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Self::UpVal(x) => x.hash(state),
-            Self::Struct(s, _) => Rc::as_ptr(s).hash(state),
-            Self::Array(s, _) => Rc::as_ptr(s).hash(state),
-            Self::Slice(s, _) => Rc::as_ptr(s).hash(state),
-            Self::Map(s, _) => Rc::as_ptr(s).hash(state),
+            Self::Struct(s) => Rc::as_ptr(s).hash(state),
+            Self::Array(s) => Rc::as_ptr(s).hash(state),
+            Self::Slice(s) => Rc::as_ptr(s).hash(state),
+            Self::Map(s) => Rc::as_ptr(s).hash(state),
             Self::SliceMember(s, index) => {
                 Rc::as_ptr(s).hash(state);
                 index.hash(state);
@@ -1081,10 +1056,10 @@ impl Display for PointerObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UpVal(uv) => write!(f, "{:p}", Rc::as_ptr(&uv.inner)),
-            Self::Struct(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
-            Self::Array(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
-            Self::Slice(s, _) => write!(f, "{:p}", Rc::as_ptr(&s)),
-            Self::Map(m, _) => write!(f, "{:p}", Rc::as_ptr(&m)),
+            Self::Struct(s) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Array(s) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Slice(s) => write!(f, "{:p}", Rc::as_ptr(&s)),
+            Self::Map(m) => write!(f, "{:p}", Rc::as_ptr(&m)),
             Self::SliceMember(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
             Self::StructField(s, i) => write!(f, "{:p}i{}", Rc::as_ptr(&s), i),
             Self::PkgMember(p, i) => write!(f, "{:x}i{}", key_to_u64(*p), i),

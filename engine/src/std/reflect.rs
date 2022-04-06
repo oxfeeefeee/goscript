@@ -289,7 +289,7 @@ impl StdValue {
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val.unwrap_named_ref() {
+        match val {
             GosValue::Bool(_) => Ok(val),
             _ => err_wrong_type!(),
         }
@@ -297,7 +297,7 @@ impl StdValue {
 
     fn int_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val.unwrap_named_ref() {
+        match val {
             GosValue::Int(i) => Ok(*i.as_int() as i64),
             GosValue::Int8(i) => Ok(*i.as_int8() as i64),
             GosValue::Int16(i) => Ok(*i.as_int16() as i64),
@@ -310,7 +310,7 @@ impl StdValue {
 
     fn uint_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val.unwrap_named_ref() {
+        match val {
             GosValue::Uint(i) => Ok(*i.as_uint() as u64),
             GosValue::Uint8(i) => Ok(*i.as_uint8() as u64),
             GosValue::Uint16(i) => Ok(*i.as_uint16() as u64),
@@ -323,7 +323,7 @@ impl StdValue {
 
     fn float_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val.unwrap_named_ref() {
+        match val {
             GosValue::Float32(f) => Ok((Into::<f32>::into(*f.as_float32()) as f64).into()),
             GosValue::Float64(f) => Ok(*f.as_float64()),
             _ => err_wrong_type!(),
@@ -336,7 +336,7 @@ impl StdValue {
         // todo
         // let val = self.val(ctx);
         // let mobjs = &ctx.vm_objs.metas;
-        // match val.unwrap_named_ref() {
+        // match val {
         //     GosValue::Slice(s) => {
         //         let (m, _) = mobjs[s.1.key].as_slice_or_array();
         //         match m.value_type(mobjs) {
@@ -350,7 +350,6 @@ impl StdValue {
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        let val = val.unwrap_named_ref();
         match val {
             GosValue::Interface(iface) => Ok(wrap_std_val(
                 iface
@@ -393,7 +392,6 @@ impl StdValue {
         let i = *ival.as_int() as i32;
         let iusize = i as usize;
         let container = self.val(ctx);
-        let container = container.unwrap_named_ref();
         match container {
             // todo: fix later
             // GosValue::Array(arr) => match arr.0.len() > iusize {
@@ -420,7 +418,7 @@ impl StdValue {
     }
 
     fn len(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        match self.val(ctx).unwrap_named_ref() {
+        match self.val(ctx) {
             GosValue::Array(arr) => Ok(arr.0.len()),
             GosValue::Slice(s) => Ok(s.0.len()),
             GosValue::Str(s) => Ok(s.len()),

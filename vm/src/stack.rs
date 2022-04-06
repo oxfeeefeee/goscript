@@ -217,10 +217,6 @@ impl Stack {
         let ret = self.pop_rc();
         match ret {
             GosValue::Interface(i) => i,
-            GosValue::Named(n) => match &n.0 {
-                GosValue::Interface(i) => i.clone(),
-                _ => unreachable!(),
-            },
             _ => unreachable!(),
         }
     }
@@ -322,21 +318,7 @@ impl Stack {
     #[inline]
     fn read_non_copyable_ops(&self, lhs: &GosValue, r_index: OpIndex, t: ValueType) -> GosValue {
         let ri = Stack::offset(self.len(), -1);
-        if t == ValueType::Named {
-            let op = Instruction::index2code(r_index);
-            let l = lhs.as_named();
-            let (a, t) = Value64::from_v128(&l.0).unwrap();
-            let v = read_with_ops!(
-                op,
-                &a,
-                &Value64::from_v128(&self.get_rc(ri).as_named().0).unwrap().0,
-                self.get_c(ri),
-                t
-            );
-            GosValue::Named(Box::new((v.v128(t), l.1)))
-        } else {
-            GosValue::add_str(lhs, self.get_rc(ri))
-        }
+        GosValue::add_str(lhs, self.get_rc(ri))
     }
 
     #[inline]
@@ -455,7 +437,6 @@ impl Stack {
         key: &GosValue,
         r_index: OpIndex,
         t: ValueType,
-        metas: &MetadataObjs,
         gcos: &GcoVec,
     ) {
         match target {
@@ -484,26 +465,23 @@ impl Stack {
             PointerObj::UpVal(uv) => {
                 self.store_up_value(uv, rhs_index, typ, gcv);
             }
-            PointerObj::Struct(r, _) => {
+            PointerObj::Struct(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self
-                    .get_with_type(rhs_s_index, typ)
-                    .unwrap_named()
-                    .copy_semantic(gcv);
+                let val = self.get_with_type(rhs_s_index, typ).copy_semantic(gcv);
                 let mref: &mut StructObj = &mut r.0.borrow_mut();
                 *mref = val.as_struct().0.borrow().clone();
             }
-            PointerObj::Array(a, _) => {
+            PointerObj::Array(a) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
                 let val = self.get_with_type(rhs_s_index, typ);
                 a.0.set_from(&val.as_array().0);
             }
-            PointerObj::Slice(r, _) => {
+            PointerObj::Slice(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
                 let val = self.get_with_type(rhs_s_index, typ);
                 r.0.set_from(&val.as_slice().0);
             }
-            PointerObj::Map(m, _) => {
+            PointerObj::Map(m) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
                 let val = self.get_with_type(rhs_s_index, typ);
                 let mref: &mut GosHashMap = &mut m.0.borrow_data_mut();
@@ -556,25 +534,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn unwrap_named(&mut self, i: usize) -> ValueType {
-        self.set(i, self.get_rc(i).as_named().0.clone())
-    }
-
-    #[inline]
-    pub fn wrap_restore_named(&mut self, i: usize, typ: ValueType) {
-        let val = self.get_with_type(i, typ);
-        match self.get_rc_mut(i) {
-            GosValue::Named(n) => {
-                n.as_mut().0 = val;
-            }
-            _ => {
-                dbg!(self.get_rc_mut(i));
-                unreachable!();
-            }
-        }
-    }
-
-    #[inline]
     pub fn add(&mut self, t: ValueType) {
         if t.copyable() {
             stack_binary_op!(self, binary_op_add, t)
@@ -585,12 +544,6 @@ impl Stack {
                     let b = self.get_rc(self.len() - 1);
                     *self.get_rc_mut(self.len() - 2) = GosValue::add_str(a, b);
                     self.pop_discard();
-                }
-                ValueType::Named => {
-                    let t = self.unwrap_named(self.len() - 2);
-                    self.unwrap_named(self.len() - 1);
-                    stack_binary_op!(self, binary_op_add, t);
-                    self.wrap_restore_named(self.len() - 1, t)
                 }
                 _ => unreachable!(),
             }
