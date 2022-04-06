@@ -1532,14 +1532,14 @@ pub struct FunctionVal {
     pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<ValueDesc>,
 
+    pub stack_temp_types: Vec<ValueType>,
     pub ret_zeros: Vec<GosValue>,
     pub local_zeros: Vec<GosValue>,
     pub flag: FuncFlag,
 
-    param_count: usize,
     entities: HashMap<KeyData, EntIndex>,
     uv_entities: HashMap<KeyData, EntIndex>,
-    local_alloc: u16,
+    local_alloc: OpIndex,
 }
 
 impl FunctionVal {
@@ -1551,11 +1551,11 @@ impl FunctionVal {
         flag: FuncFlag,
     ) -> FunctionVal {
         let s = &objs.metas[meta.key].as_signature();
-        let mut returns = vec![];
-        for m in s.results.iter() {
-            returns.push(zero_val!(m, objs, gcv));
-        }
-        let params = s.params.len() + s.recv.map_or(0, |_| 1);
+        let returns = s.results.iter().map(|m| zero_val!(m, objs, gcv)).collect();
+        let mut p_types: Vec<ValueType> =
+            s.recv.map_or(vec![], |m| vec![m.value_type(&objs.metas)]);
+        p_types.append(&mut s.params.iter().map(|m| m.value_type(&objs.metas)).collect());
+
         FunctionVal {
             package: package,
             meta: meta,
@@ -1563,10 +1563,10 @@ impl FunctionVal {
             pos: Vec::new(),
             consts: Vec::new(),
             up_ptrs: Vec::new(),
+            stack_temp_types: p_types,
             ret_zeros: returns,
             local_zeros: Vec::new(),
             flag: flag,
-            param_count: params,
             entities: HashMap::new(),
             uv_entities: HashMap::new(),
             local_alloc: 0,
@@ -1590,7 +1590,7 @@ impl FunctionVal {
 
     #[inline]
     pub fn param_count(&self) -> usize {
-        self.param_count
+        self.stack_temp_types.len() - self.local_zeros.len()
     }
 
     #[inline]
@@ -1712,7 +1712,7 @@ impl FunctionVal {
     }
 
     pub fn add_local(&mut self, entity: Option<KeyData>) -> EntIndex {
-        let result = self.local_alloc as OpIndex;
+        let result = self.local_alloc;
         if let Some(key) = entity {
             let old = self.entities.insert(key, EntIndex::LocalVar(result));
             assert_eq!(old, None);
@@ -1733,6 +1733,7 @@ impl FunctionVal {
     }
 
     pub fn add_local_zero(&mut self, zero: GosValue) {
+        self.stack_temp_types.push(zero.typ());
         self.local_zeros.push(zero)
     }
 

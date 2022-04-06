@@ -174,9 +174,9 @@ impl CallFrame {
     }
 
     #[inline]
-    fn ret_count(&self, objs: &VMObjects) -> usize {
+    fn func_val<'a>(&self, objs: &'a VMObjects) -> &'a FunctionVal {
         let fkey = self.func();
-        objs.functions[fkey].ret_count()
+        &objs.functions[fkey]
     }
 
     #[inline]
@@ -846,7 +846,22 @@ impl<'a> Fiber<'a> {
                             // default case
                             ValueType::Void => {
                                 frame.on_drop(&stack);
-                                stack.truncate(stack_base + frame.ret_count(objs));
+
+                                // dbg!(
+                                //     //stack.len() - frame.func_val(objs).param_types.len(),
+                                //     frame.func_val(objs).stack_temp_types.len(),
+                                //     stack.len() - stack_base - frame.func_val(objs).ret_count()
+                                // );
+                                // assert!(
+                                //     frame.func_val(objs).stack_temp_types.len()
+                                //         == stack.len()
+                                //             - stack_base
+                                //             - frame.func_val(objs).ret_count()
+                                //         || panic.is_some()
+                                // );
+
+                                //stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
+                                stack.truncate(stack_base + frame.func_val(objs).ret_count());
                             }
                             // init_package func
                             ValueType::FlagA => {
@@ -883,7 +898,13 @@ impl<'a> Fiber<'a> {
                                     }
                                     None => {
                                         frame.on_drop(&stack);
-                                        stack.truncate(stack_base + frame.ret_count(objs));
+
+                                        // stack.pop_with_type_n(
+                                        //     &frame.func_val(objs).stack_temp_types,
+                                        // );
+                                        stack.truncate(
+                                            stack_base + frame.func_val(objs).ret_count(),
+                                        );
                                     }
                                 }
                             }
@@ -941,6 +962,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::SWITCH => {
                         if stack.switch_cmp(inst.t0(), objs) {
+                            stack.pop_discard();
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         }
                     }
@@ -1342,9 +1364,8 @@ impl<'a> Fiber<'a> {
                             ValueType::FlagC => ValueType::Str,
                             _ => ValueType::Slice,
                         };
-                        let index = Stack::offset(stack.len(), -2);
-                        let a = stack.get_with_type(index, inst.t0());
                         let b = stack.pop_with_type(t2);
+                        let a = stack.pop_with_type(inst.t0());
                         let vala = a.as_slice();
                         let count = if t2 == ValueType::Str {
                             let bytes: Vec<GosValue> = b

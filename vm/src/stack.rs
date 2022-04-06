@@ -90,8 +90,7 @@ macro_rules! store_local_val {
                 *$to.get_c_mut($s_index) =
                     $stack.read_copyable_ops($to.get_c($s_index), $r_index, $t);
             } else {
-                *$to.get_rc_mut($s_index) =
-                    $stack.read_non_copyable_ops($to.get_rc($s_index), $r_index, $t);
+                *$to.get_rc_mut($s_index) = $stack.read_non_copyable_ops($to.get_rc($s_index));
             }
         }
     }};
@@ -112,7 +111,7 @@ impl Display for Stack {
 impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("=====rc  top=======\n")?;
-        for i in 0..(self.v.len()) {
+        for i in (0..(self.v.len())).rev() {
             write!(f, "{}\n", &self.v[i])?;
         }
         f.write_str("=====rc  botton====\n")
@@ -316,7 +315,7 @@ impl Stack {
     }
 
     #[inline]
-    fn read_non_copyable_ops(&self, lhs: &GosValue, r_index: OpIndex, t: ValueType) -> GosValue {
+    fn read_non_copyable_ops(&self, lhs: &GosValue) -> GosValue {
         let ri = Stack::offset(self.len(), -1);
         GosValue::add_str(lhs, self.get_rc(ri))
     }
@@ -341,7 +340,7 @@ impl Stack {
                 self.read_copyable_ops(&Value64::from_v128(target).unwrap().0, r_index, t)
                     .v128(t)
             } else {
-                self.read_non_copyable_ops(target, r_index, t)
+                self.read_non_copyable_ops(target)
             }
         };
     }

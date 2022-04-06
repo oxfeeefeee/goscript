@@ -693,6 +693,9 @@ impl<'a> CodeGen<'a> {
             }
         }
 
+        // pop the tag
+        current_func_emitter!(self).emit_pop(1, None);
+
         let func = current_func_mut!(self);
         helper.tags.add_default(func.next_code_index());
         func.emit_code(Opcode::JUMP, None);
@@ -726,9 +729,6 @@ impl<'a> CodeGen<'a> {
             let func = current_func_mut!(self);
             helper.tags.patch_default(func, end);
         }
-
-        // pop the tag
-        current_func_emitter!(self).emit_pop(1, None);
     }
 
     fn gen_func_def(
