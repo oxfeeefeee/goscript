@@ -507,16 +507,7 @@ impl<'a> CodeGen<'a> {
         let mut on_stack_types = vec![];
         // lhs types
         for (i, _, _) in lhs.iter().rev() {
-            match i {
-                LeftHandSide::Primitive(_) => {}
-                LeftHandSide::IndexSelExpr(info) => {
-                    on_stack_types.push(info.t1);
-                    if let Some(t) = info.t2 {
-                        on_stack_types.push(t);
-                    }
-                }
-                LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
-            }
+            on_stack_types.append(&mut CodeGen::lhs_on_stack_value_types(i));
         }
         let lhs_stack_space = on_stack_types.len() as OpIndex;
         // rhs types
@@ -601,18 +592,21 @@ impl<'a> CodeGen<'a> {
         p: usize,
     ) {
         let pos = Some(p);
-        let mut on_stack_types = match right {
+        let mut on_stack_types = CodeGen::lhs_on_stack_value_types(left);
+
+        match right {
             Some(e) => {
                 self.visit_expr(e);
-                vec![self.t.get_expr_value_type(e)]
+                on_stack_types.push(self.t.get_expr_value_type(e));
             }
-            None => vec![],
+            None => {}
         };
 
         // If this is SHL/SHR,  cast the rhs to uint32
         if let Some(t) = op.1 {
             if t != ValueType::Uint32 {
                 current_func_emitter!(self).emit_cast(ValueType::Uint32, t, None, -1, 0, pos);
+                *on_stack_types.last_mut().unwrap() = ValueType::Uint32;
             }
         }
 
@@ -634,10 +628,6 @@ impl<'a> CodeGen<'a> {
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
-                on_stack_types.push(info.t1);
-                if let Some(t) = info.t2 {
-                    on_stack_types.push(t);
-                }
                 current_func_emitter!(self).emit_store(
                     &LeftHandSide::IndexSelExpr(
                         info.with_index(-(on_stack_types.len() as OpIndex)),
@@ -650,7 +640,6 @@ impl<'a> CodeGen<'a> {
                 );
             }
             LeftHandSide::Deref(_) => {
-                on_stack_types.push(ValueType::Pointer);
                 // stack looks like this(bottom to top) :
                 //  [... target, value]
                 let mut emitter = current_func_emitter!(self);
@@ -1225,6 +1214,21 @@ impl<'a> CodeGen<'a> {
     fn swallow_value(&mut self, expr: &Expr) {
         let val_types = self.t.get_expr_value_types(expr);
         current_func_emitter!(self).emit_pop(&val_types, Some(expr.pos(&self.ast_objs)));
+    }
+
+    fn lhs_on_stack_value_types(lhs: &LeftHandSide) -> Vec<ValueType> {
+        let mut on_stack_types = vec![];
+        match lhs {
+            LeftHandSide::Primitive(_) => {}
+            LeftHandSide::IndexSelExpr(info) => {
+                on_stack_types.push(info.t1);
+                if let Some(t) = info.t2 {
+                    on_stack_types.push(t);
+                }
+            }
+            LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
+        }
+        on_stack_types
     }
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
