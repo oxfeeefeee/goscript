@@ -234,6 +234,9 @@ pub const COPYABLE_END: ValueType = ValueType::Package;
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
+    // Nil is a virtual type representing zero value for pointer, interfaces,
+    // maps, slices, channels and function types
+    Nil,
     Bool,
     Int,
     Int8,
@@ -249,14 +252,10 @@ pub enum ValueType {
     Float32,
     Float64,
     Complex64,
-
     Function,
-    Package,
-    Metadata,
+    Package, //COPYABLE_END
 
-    // Nil is a virtual type representing zero value for pointer, interfaces,
-    // maps, slices, channels and function types
-    Nil,
+    Metadata,
     Complex128,
     Str,
     Array,

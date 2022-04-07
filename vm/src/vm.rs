@@ -337,7 +337,7 @@ impl<'a> Fiber<'a> {
                     Opcode::PUSH_IMM => stack.push_int32_as(inst.imm(), inst.t0()),
                     Opcode::PUSH_ZERO_VALUE => {
                         let meta = consts[inst.imm() as usize].as_meta();
-                        stack.push(zero_val!(meta, objs, gcv));
+                        stack.push(meta.zero(&objs.metas, gcv));
                     }
                     Opcode::POP => match inst.imm() {
                         1 => {
@@ -1142,7 +1142,7 @@ impl<'a> Fiber<'a> {
                                 match &objs.metas[md.key] {
                                     MetadataType::SliceOrArray(asm, _) => {
                                         let elem_type = asm.value_type(&objs.metas);
-                                        let zero_val = asm.zero_val(&objs.metas, gcv);
+                                        let zero_val = asm.zero(&objs.metas, gcv);
                                         let mut val = vec![];
                                         let mut cur_index = -1;
                                         for _ in 0..count {
@@ -1176,7 +1176,8 @@ impl<'a> Fiber<'a> {
                                         }
                                     }
                                     MetadataType::Map(km, vm) => {
-                                        let gosv = GosValue::new_map(zero_val!(vm, objs, gcv), gcv);
+                                        let gosv =
+                                            GosValue::new_map(vm.zero(&objs.metas, gcv), gcv);
                                         let map = gosv.as_map();
                                         let tk = km.value_type(&objs.metas);
                                         let tv = vm.value_type(&objs.metas);
@@ -1188,7 +1189,7 @@ impl<'a> Fiber<'a> {
                                         gosv
                                     }
                                     MetadataType::Struct(f, _) => {
-                                        let struct_val = zero_val!(md, objs, gcv);
+                                        let struct_val = md.zero(&objs.metas, gcv);
                                         let mut sref = struct_val.as_struct().0.borrow_mut();
                                         for _ in 0..count {
                                             let index = stack.pop_uint();
@@ -1210,7 +1211,7 @@ impl<'a> Fiber<'a> {
                         let param = stack.pop_with_type(inst.t0());
                         let new_val = match param {
                             GosValue::Metadata(md) => {
-                                let v = md.into_value_category().zero_val(&objs.metas, gcv);
+                                let v = md.into_value_category().zero(&objs.metas, gcv);
                                 GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)))
                             }
                             _ => unimplemented!(),
@@ -1235,12 +1236,12 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_slice(
                                     len,
                                     cap,
-                                    Some(&zero_val!(vmeta, objs, gcv)),
+                                    Some(&vmeta.zero(&objs.metas, gcv)),
                                     gcv,
                                 )
                             }
                             MetadataType::Map(_, v) => {
-                                let default = zero_val!(v, objs, gcv);
+                                let default = v.zero(&objs.metas, gcv);
                                 GosValue::new_map(default, gcv)
                             }
                             MetadataType::Channel(_, val_meta) => {
@@ -1249,7 +1250,7 @@ impl<'a> Fiber<'a> {
                                     0 => 0,
                                     _ => unreachable!(),
                                 };
-                                let zero = zero_val!(val_meta, objs, gcv);
+                                let zero = val_meta.zero(&objs.metas, gcv);
                                 GosValue::new_channel(cap, zero)
                             }
                             _ => unreachable!(),
@@ -1307,7 +1308,7 @@ impl<'a> Fiber<'a> {
                             GosValue::Map(map) => map.0.len(),
                             GosValue::Str(sval) => sval.len(),
                             GosValue::Channel(chan) => chan.len(),
-                            GosValue::Nil(_) => 0,
+                            GosValue::Nil => 0,
                             _ => unreachable!(),
                         };
                         stack.push(GosValue::new_int(l as isize));

@@ -14,7 +14,6 @@ use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::objects::EntIndex;
 use goscript_vm::value::*;
-use goscript_vm::zero_val;
 
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
@@ -199,7 +198,7 @@ impl<'a> CodeGen<'a> {
             let meta = self
                 .t
                 .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
-            let zero_val = zero_val!(meta, self.objects, self.dummy_gcv);
+            let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
             let func = current_func_mut!(self);
             let ident_key = Some(def_ident_unique_key!(self, *ikey));
             let index = func.add_local(ident_key);
@@ -511,12 +510,25 @@ impl<'a> CodeGen<'a> {
             }
         };
 
-        // now the values should be on stack, generate code to set them to the lhs
-        let total_lhs_stack_space = lhs.iter().fold(0, |acc, (x, _, _)| match x {
-            LeftHandSide::Primitive(_) => acc,
-            LeftHandSide::IndexSelExpr(info) => acc + info.stack_space(),
-            LeftHandSide::Deref(_) => acc + 1,
-        });
+        // rhs types
+        let mut on_stack_types: Vec<ValueType> = types
+            .iter()
+            .map(|x| self.t.value_type_from_tc(*x))
+            .collect();
+        // lhs types
+        for (i, _, _) in lhs.iter().rev() {
+            match i {
+                LeftHandSide::Primitive(_) => {}
+                LeftHandSide::IndexSelExpr(info) => {
+                    on_stack_types.push(info.t1);
+                    if let Some(t) = info.t2 {
+                        on_stack_types.push(t);
+                    }
+                }
+                LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
+            }
+        }
+
         // only when in select stmt, lhs in stack is on top of the rhs
         let lhs_on_stack_top = if let RightHandSide::SelectRecv(_) = rhs {
             true
@@ -526,7 +538,8 @@ impl<'a> CodeGen<'a> {
 
         assert_eq!(lhs.len(), types.len());
         let total_val = types.len() as OpIndex;
-        let total_stack_space = (total_lhs_stack_space + total_val) as OpIndex;
+        let total_stack_space = on_stack_types.len() as OpIndex;
+        let total_lhs_stack_space = total_stack_space - total_val;
         let mut current_indexing_deref_index = -if lhs_on_stack_top {
             total_lhs_stack_space
         } else {
@@ -579,26 +592,8 @@ impl<'a> CodeGen<'a> {
             }
         }
 
-        // pop rhs
-        let mut pop_types: Vec<ValueType> = types
-            .iter()
-            .map(|x| self.t.value_type_from_tc(*x))
-            .collect();
-        // pop lhs
-        for (i, _, _) in lhs.iter().rev() {
-            match i {
-                LeftHandSide::Primitive(_) => {}
-                LeftHandSide::IndexSelExpr(info) => {
-                    pop_types.push(info.t1);
-                    if let Some(t) = info.t2 {
-                        pop_types.push(t);
-                    }
-                }
-                LeftHandSide::Deref(_) => pop_types.push(ValueType::Pointer),
-            }
-        }
         let pos = Some(lhs[0].2);
-        current_func_emitter!(self).emit_pop(&pop_types, pos);
+        current_func_emitter!(self).emit_pop(&on_stack_types, pos);
         range_marker
     }
 
@@ -611,7 +606,7 @@ impl<'a> CodeGen<'a> {
         p: usize,
     ) {
         let pos = Some(p);
-        let mut rhs_types = match right {
+        let mut on_stack_types = match right {
             Some(e) => {
                 self.visit_expr(e);
                 vec![self.t.get_expr_value_type(e)]
@@ -640,42 +635,41 @@ impl<'a> CodeGen<'a> {
                     typ,
                     pos,
                 );
-                emitter.emit_pop(&rhs_types, pos);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
-                rhs_types.push(info.t1);
+                on_stack_types.push(info.t1);
                 if let Some(t) = info.t2 {
-                    rhs_types.push(t);
+                    on_stack_types.push(t);
                 }
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::IndexSelExpr(info.with_index(-(rhs_types.len() as OpIndex))),
+                    &LeftHandSide::IndexSelExpr(
+                        info.with_index(-(on_stack_types.len() as OpIndex)),
+                    ),
                     -1,
                     Some(op),
                     None,
                     typ,
                     pos,
                 );
-
-                current_func_emitter!(self).emit_pop(&rhs_types, pos);
             }
             LeftHandSide::Deref(_) => {
-                rhs_types.push(ValueType::Pointer);
+                on_stack_types.push(ValueType::Pointer);
                 // stack looks like this(bottom to top) :
                 //  [... target, value]
                 let mut emitter = current_func_emitter!(self);
                 emitter.emit_store(
-                    &LeftHandSide::Deref(-(rhs_types.len() as OpIndex)),
+                    &LeftHandSide::Deref(-(on_stack_types.len() as OpIndex)),
                     -1,
                     Some(op),
                     None,
                     typ,
                     pos,
                 );
-                emitter.emit_pop(&rhs_types, pos);
             }
         }
+        current_func_emitter!(self).emit_pop(&on_stack_types, pos);
     }
 
     fn gen_switch_body(&mut self, body: &BlockStmt, tag_type: ValueType) {
@@ -1228,7 +1222,7 @@ impl<'a> CodeGen<'a> {
         for n in names.iter() {
             let ident = &self.ast_objs.idents[*n];
             let meta = self.t.gen_def_type_meta(*n, self.objects, self.dummy_gcv);
-            let val = zero_val!(meta, self.objects, self.dummy_gcv);
+            let val = meta.zero(&self.objects.metas, self.dummy_gcv);
             self.objects.packages[pkey].add_member(ident.name.clone(), val);
         }
     }

@@ -232,6 +232,7 @@ pub type RuntimeResult<T> = result::Result<T, String>;
 #[derive(Debug)]
 #[repr(C, u8)]
 pub enum GosValue {
+    Nil,
     Bool(Value64),
     Int(Value64),
     Int8(Value64),
@@ -251,7 +252,6 @@ pub enum GosValue {
     Package(Value64),  // not visible to users
 
     Metadata(Box<Meta>), // not visible to users
-    Nil(Option<Box<Meta>>),
     Complex128(Box<(F64, F64)>),
     Str(Rc<StringObj>), // "String" is taken
     Array(Rc<(ArrayObj, RCount)>),
@@ -268,12 +268,7 @@ pub enum GosValue {
 impl GosValue {
     #[inline]
     pub fn new_nil() -> GosValue {
-        GosValue::Nil(None)
-    }
-
-    #[inline]
-    pub fn nil_with_meta(m: Meta) -> GosValue {
-        GosValue::Nil(Some(Box::new(m)))
+        GosValue::Nil
     }
 
     #[inline]
@@ -497,7 +492,7 @@ impl GosValue {
         gcv: &GcoVec,
         flag: FuncFlag,
     ) -> GosValue {
-        let val = FunctionVal::new(package, meta, objs, gcv, flag);
+        let val = FunctionVal::new(package, meta, &objs.metas, gcv, flag);
         GosValue::new_function(objs.functions.insert(val))
     }
 
@@ -664,7 +659,7 @@ impl GosValue {
     #[inline]
     pub fn is_nil(&self) -> bool {
         match &self {
-            GosValue::Nil(_) => true,
+            GosValue::Nil => true,
             _ => false,
         }
     }
@@ -705,17 +700,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn equals_nil(&self) -> bool {
-        match &self {
-            GosValue::Nil(_) => true,
-            _ => false,
-        }
-    }
-
-    #[inline]
     pub fn typ(&self) -> ValueType {
         match self {
-            GosValue::Nil(_) => ValueType::Nil,
+            GosValue::Nil => ValueType::Nil,
             GosValue::Bool(_) => ValueType::Bool,
             GosValue::Int(_) => ValueType::Int,
             GosValue::Int8(_) => ValueType::Int8,
@@ -924,7 +911,7 @@ impl Clone for GosValue {
     #[inline(always)]
     fn clone(&self) -> Self {
         match self {
-            GosValue::Nil(m) => GosValue::Nil(m.clone()),
+            GosValue::Nil => GosValue::Nil,
             GosValue::Bool(v) => GosValue::Bool(*v),
             GosValue::Int(v) => GosValue::Int(*v),
             GosValue::Int8(v) => GosValue::Int8(*v),
@@ -964,7 +951,7 @@ impl PartialEq for GosValue {
     #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self, b) {
-            (Self::Nil(_), Self::Nil(_)) => true,
+            (Self::Nil, Self::Nil) => true,
             (Self::Bool(x), Self::Bool(y)) => x.as_bool() == y.as_bool(),
             (Self::Int(x), Self::Int(y)) => x.as_int() == y.as_int(),
             (Self::Int8(x), Self::Int8(y)) => x.as_int8() == y.as_int8(),
@@ -998,7 +985,7 @@ impl PartialEq for GosValue {
             (Self::Interface(x), Self::Interface(y)) => InterfaceObj::eq(&x.borrow(), &y.borrow()),
             (Self::Struct(x), Self::Struct(y)) => StructObj::eq(&x.0.borrow(), &y.0.borrow()),
             (Self::Channel(x), Self::Channel(y)) => Rc::ptr_eq(x, y),
-            (Self::Nil(_), nil) | (nil, Self::Nil(_)) => nil.equals_nil(),
+            (Self::Nil, nil) | (nil, Self::Nil) => nil.is_nil(),
             (Self::Interface(iface), val) | (val, Self::Interface(iface)) => {
                 match iface.borrow().underlying_value() {
                     Some(v) => v == val,
@@ -1089,7 +1076,7 @@ impl Ord for GosValue {
 impl Display for GosValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            GosValue::Nil(_) => f.write_str("<nil>"),
+            GosValue::Nil => f.write_str("<nil>"),
             GosValue::Bool(b) => write!(f, "{}", b.as_bool()),
             GosValue::Int(i) => write!(f, "{}", i.as_int()),
             GosValue::Int8(i) => write!(f, "{}", i.as_int8()),

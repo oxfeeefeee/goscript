@@ -1546,15 +1546,14 @@ impl FunctionVal {
     pub fn new(
         package: PackageKey,
         meta: Meta,
-        objs: &VMObjects,
+        metas: &MetadataObjs,
         gcv: &GcoVec,
         flag: FuncFlag,
     ) -> FunctionVal {
-        let s = &objs.metas[meta.key].as_signature();
-        let returns = s.results.iter().map(|m| zero_val!(m, objs, gcv)).collect();
-        let mut p_types: Vec<ValueType> =
-            s.recv.map_or(vec![], |m| vec![m.value_type(&objs.metas)]);
-        p_types.append(&mut s.params.iter().map(|m| m.value_type(&objs.metas)).collect());
+        let s = &metas[meta.key].as_signature();
+        let returns = s.results.iter().map(|m| m.zero(metas, gcv)).collect();
+        let mut p_types: Vec<ValueType> = s.recv.map_or(vec![], |m| vec![m.value_type(&metas)]);
+        p_types.append(&mut s.params.iter().map(|m| m.value_type(&metas)).collect());
 
         FunctionVal {
             package: package,

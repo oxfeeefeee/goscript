@@ -6,13 +6,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[macro_export]
-macro_rules! zero_val {
-    ($meta:expr, $objs:expr, $gcv:expr) => {
-        $meta.zero_val(&$objs.metas, $gcv)
-    };
-}
-
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub enum ChannelType {
     Send,
@@ -138,8 +131,11 @@ impl Meta {
 
     #[inline]
     pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> Meta {
-        let field_zeros: Vec<GosValue> =
-            f.fields.iter().map(|x| zero_val!(x.0, objs, gcv)).collect();
+        let field_zeros: Vec<GosValue> = f
+            .fields
+            .iter()
+            .map(|x| x.0.zero(&objs.metas, gcv))
+            .collect();
         let struct_val = StructObj {
             fields: field_zeros,
         };
@@ -247,7 +243,7 @@ impl Meta {
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel(_, _) => ValueType::Channel,
                     MetadataType::Named(_, m) => m.value_type(metas),
-                    MetadataType::None => ValueType::Nil,
+                    MetadataType::None => ValueType::Void,
                 },
                 MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
                 MetaCategory::Array => ValueType::Array,
@@ -257,12 +253,7 @@ impl Meta {
     }
 
     #[inline]
-    pub fn zero_val(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
-        self.zero_val_impl(mobjs, gcv)
-    }
-
-    #[inline]
-    fn zero_val_impl(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
+    pub fn zero(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
         match self.ptr_depth {
             0 => match &mobjs[self.key] {
                 MetadataType::Bool => GosValue::new_bool(false),
@@ -286,21 +277,21 @@ impl Meta {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::SliceOrArray(m, size) => match self.category {
                     MetaCategory::Array => {
-                        let val = m.zero_val_impl(mobjs, gcv);
+                        let val = m.zero(mobjs, gcv);
                         GosValue::array_with_size(*size, &val, gcv)
                     }
-                    MetaCategory::Default => GosValue::nil_with_meta(*self),
+                    MetaCategory::Default => GosValue::new_nil(),
                     _ => unreachable!(),
                 },
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),
-                MetadataType::Signature(_) => GosValue::nil_with_meta(*self),
-                MetadataType::Map(_, _) => GosValue::nil_with_meta(*self),
-                MetadataType::Interface(_) => GosValue::nil_with_meta(*self),
-                MetadataType::Channel(_, _) => GosValue::nil_with_meta(*self),
-                MetadataType::Named(_, gm) => gm.zero_val_impl(mobjs, gcv),
-                MetadataType::None => GosValue::nil_with_meta(*self),
+                MetadataType::Signature(_) => GosValue::new_nil(),
+                MetadataType::Map(_, _) => GosValue::new_nil(),
+                MetadataType::Interface(_) => GosValue::new_nil(),
+                MetadataType::Channel(_, _) => GosValue::new_nil(),
+                MetadataType::Named(_, gm) => gm.zero(mobjs, gcv),
+                MetadataType::None => GosValue::new_nil(),
             },
-            _ => GosValue::nil_with_meta(*self),
+            _ => GosValue::new_nil(),
         }
     }
 

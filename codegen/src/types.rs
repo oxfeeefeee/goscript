@@ -405,7 +405,7 @@ impl<'a> TypeLookup<'a> {
                 GosValue::Complex128(Box::new((cr, ci)))
             }
             BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
-            BasicType::UnsafePointer => GosValue::nil_with_meta(self.unsafe_ptr_meta),
+            BasicType::UnsafePointer => GosValue::new_nil(),
             _ => {
                 dbg!(typ);
                 unreachable!();

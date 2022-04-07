@@ -145,7 +145,7 @@ impl Reflect {
 
     fn ffi_is_nil(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
         Ok(GosValue::new_bool(
-            arg_as!(&args[0], StdValue)?.val(ctx).equals_nil(),
+            arg_as!(&args[0], StdValue)?.val(ctx).is_nil(),
         ))
     }
 

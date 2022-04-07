@@ -176,7 +176,12 @@ impl Stack {
 
     #[inline]
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
-        self.v.pop().unwrap()
+        let v = self.v.pop().unwrap();
+        // dbg!(v.typ(), t);
+        // if v.typ() != t && v.typ() != ValueType::Nil {
+        //     assert!(v.typ() == t);
+        // }
+        v
     }
 
     #[inline]
@@ -385,7 +390,7 @@ impl Stack {
                 self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
                 Ok(())
             }
-            GosValue::Nil(_) => err,
+            GosValue::Nil => err,
             _ => {
                 dbg!(target);
                 unreachable!()
