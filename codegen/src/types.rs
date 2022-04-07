@@ -69,20 +69,25 @@ impl<'a> TypeLookup<'a> {
         self.const_value(tkey, lobj.const_val())
     }
 
-    pub fn get_expr_value_count(&self, e: &Expr) -> usize {
+    pub fn get_expr_value_types(&self, e: &Expr) -> Vec<ValueType> {
         let typ_val = self.ti.types.get(&e.id()).unwrap();
-        match typ_val.mode {
+        let tcts = match typ_val.mode {
             OperandMode::Value => {
                 let typ = self.tc_objs.types[typ_val.typ].underlying_val(self.tc_objs);
                 match typ {
-                    Type::Tuple(tp) => tp.vars().len(),
-                    _ => 1,
+                    Type::Tuple(tp) => tp
+                        .vars()
+                        .iter()
+                        .map(|o| self.tc_objs.lobjs[*o].typ().unwrap())
+                        .collect(),
+                    _ => vec![typ_val.typ],
                 }
             }
-            OperandMode::NoValue => 0,
-            OperandMode::Constant(_) => 1,
+            OperandMode::NoValue => vec![],
+            OperandMode::Constant(_) => vec![typ_val.typ],
             _ => unreachable!(),
-        }
+        };
+        tcts.iter().map(|x| self.value_type_from_tc(*x)).collect()
     }
 
     #[inline]

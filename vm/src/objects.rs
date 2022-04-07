@@ -1594,6 +1594,11 @@ impl FunctionVal {
     }
 
     #[inline]
+    pub fn param_types(&self) -> &[ValueType] {
+        &self.stack_temp_types[..self.param_count()]
+    }
+
+    #[inline]
     pub fn ret_count(&self) -> usize {
         self.ret_zeros.len()
     }

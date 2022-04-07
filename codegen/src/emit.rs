@@ -56,11 +56,7 @@ impl IndexSelInfo {
     }
 
     pub fn stack_space(&self) -> OpIndex {
-        if self.t2.is_some() {
-            2
-        } else {
-            1
-        }
+        self.t2.map_or(1, |_| 2)
     }
 }
 
@@ -323,10 +319,21 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    pub fn emit_pop(&mut self, count: OpIndex, pos: Option<usize>) {
-        if count > 0 {
+    pub fn emit_pop(&mut self, types: &[ValueType], pos: Option<usize>) {
+        let mut batch: [Option<ValueType>; 3] = [None; 3];
+        let mut i = 0;
+        for &t in types.iter().rev() {
+            batch[i] = Some(t);
+            i += 1;
+            if i == 3 {
+                self.f.emit_inst(Opcode::POP, batch, Some(3), pos);
+                batch = [None; 3];
+                i = 0;
+            }
+        }
+        if i > 0 {
             self.f
-                .emit_inst(Opcode::POP, [None, None, None], Some(count), pos);
+                .emit_inst(Opcode::POP, batch, Some(i as OpIndex), pos);
         }
     }
 

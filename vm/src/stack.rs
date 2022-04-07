@@ -16,13 +16,13 @@ macro_rules! stack_binary_op {
         let a = $stack.get_c(len - 2);
         let b = $stack.get_c(len - 1);
         *$stack.get_c_mut(len - 2) = a.$op(b, $t);
-        $stack.pop_discard();
+        $stack.pop_copyable();
     }};
 }
 
 macro_rules! stack_binary_op_shift {
     ($stack:ident, $op:tt, $t0:ident, $t1:ident) => {{
-        let mut right = $stack.pop_c();
+        let mut right = $stack.pop_copyable();
         right.to_uint32($t1);
         $stack
             .get_c_mut($stack.len() - 1)
@@ -36,7 +36,7 @@ macro_rules! stack_cmp_op {
         let a = $stack.get_c(len - 2);
         let b = $stack.get_c(len - 1);
         *$stack.get_c_mut(len - 2) = Value64::from_bool(Value64::$op(a, b, $t));
-        $stack.pop_discard();
+        $stack.pop_copyable();
     }};
 }
 
@@ -135,14 +135,9 @@ impl Stack {
     }
 
     #[inline]
-    pub fn move_from(other: &mut Stack, count: usize) -> Stack {
-        let v = other.pop_n(count);
+    pub fn move_from(other: &mut Stack, types: &[ValueType]) -> Stack {
+        let v = other.pop_with_type_n(types);
         Stack::with_data(v)
-    }
-
-    pub fn pop_n(&mut self, n: usize) -> Vec<GosValue> {
-        let mid = self.len() - n;
-        self.v.split_off(mid)
     }
 
     pub fn push_n(&mut self, mut vec: Vec<GosValue>) {
@@ -180,40 +175,20 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_discard(&mut self) {
-        self.pop_discard_n(1);
-    }
-
-    #[inline]
-    pub fn pop_discard_n(&mut self, n: usize) {
-        self.v.truncate(self.len() - n);
-    }
-
-    #[inline]
-    pub fn pop_c(&mut self) -> Value64 {
-        let v = self.get_c(self.len() - 1).clone();
-        self.pop_discard();
-        v
-    }
-
-    #[inline]
-    pub fn pop_rc(&mut self) -> GosValue {
+    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         self.v.pop().unwrap()
     }
 
     #[inline]
-    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
-        self.pop_rc()
-    }
-
-    #[inline]
     pub fn pop_with_type_n(&mut self, types: &[ValueType]) -> Vec<GosValue> {
-        self.pop_n(types.len())
+        let n = types.len();
+        let mid = self.len() - n;
+        self.v.split_off(mid)
     }
 
     #[inline]
     pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
-        let ret = self.pop_rc();
+        let ret = self.pop_with_type(ValueType::Interface);
         match ret {
             GosValue::Interface(i) => i,
             _ => unreachable!(),
@@ -221,37 +196,44 @@ impl Stack {
     }
 
     #[inline]
+    pub fn pop_copyable(&mut self) -> Value64 {
+        let v = self.get_c(self.len() - 1).clone();
+        self.v.pop();
+        v
+    }
+
+    #[inline]
     pub fn pop_bool(&mut self) -> bool {
         let v = *self.get_c(self.len() - 1).as_bool();
-        self.pop_discard();
+        self.v.pop();
         v
     }
 
     #[inline]
     pub fn pop_int(&mut self) -> isize {
         let v = *self.get_c(self.len() - 1).as_int();
-        self.pop_discard();
+        self.v.pop();
         v
     }
 
     #[inline]
     pub fn pop_int32(&mut self) -> i32 {
         let v = *self.get_c(self.len() - 1).as_int32();
-        self.pop_discard();
+        self.v.pop();
         v
     }
 
     #[inline]
     pub fn pop_uint(&mut self) -> usize {
         let v = *self.get_c(self.len() - 1).as_uint();
-        self.pop_discard();
+        self.v.pop();
         v
     }
 
     #[inline]
     pub fn pop_uint32(&mut self) -> u32 {
         let v = *self.get_c(self.len() - 1).as_uint32();
-        self.pop_discard();
+        self.v.pop();
         v
     }
 
@@ -283,11 +265,6 @@ impl Stack {
     #[inline]
     pub fn len(&self) -> usize {
         self.v.len()
-    }
-
-    #[inline]
-    pub fn truncate(&mut self, len: usize) {
-        self.v.truncate(len);
     }
 
     #[inline]
@@ -542,7 +519,7 @@ impl Stack {
                     let a = self.get_rc(self.len() - 2);
                     let b = self.get_rc(self.len() - 1);
                     *self.get_rc_mut(self.len() - 2) = GosValue::add_str(a, b);
-                    self.pop_discard();
+                    self.pop_with_type(ValueType::Str);
                 }
                 _ => unreachable!(),
             }
@@ -565,7 +542,7 @@ impl Stack {
                 a.as_meta().identical(b.as_meta(), &objs.metas)
             }
         };
-        self.pop_discard();
+        self.pop_with_type(t);
         b
     }
 

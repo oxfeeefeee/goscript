@@ -339,9 +339,21 @@ impl<'a> Fiber<'a> {
                         let meta = consts[inst.imm() as usize].as_meta();
                         stack.push(zero_val!(meta, objs, gcv));
                     }
-                    Opcode::POP => {
-                        stack.pop_discard_n(inst.imm() as usize);
-                    }
+                    Opcode::POP => match inst.imm() {
+                        1 => {
+                            stack.pop_with_type(inst.t0());
+                        }
+                        2 => {
+                            stack.pop_with_type(inst.t0());
+                            stack.pop_with_type(inst.t1());
+                        }
+                        3 => {
+                            stack.pop_with_type(inst.t0());
+                            stack.pop_with_type(inst.t1());
+                            stack.pop_with_type(inst.t2());
+                        }
+                        _ => unreachable!(),
+                    },
                     Opcode::LOAD_LOCAL => {
                         let index = Stack::offset(stack_base, inst.imm());
                         stack.push_from_index(index, inst.t0()); // (index![stack, index]);
@@ -586,7 +598,7 @@ impl<'a> Fiber<'a> {
                             }
                             ValueType::UintPtr => match inst.t1() {
                                 ValueType::UnsafePtr => {
-                                    let v = stack.pop_rc();
+                                    let v = stack.pop_with_type(ValueType::UnsafePtr);
                                     let up = v.as_unsafe_ptr();
                                     stack.push(GosValue::new_uint_ptr(
                                         Rc::as_ptr(up) as *const () as usize
@@ -639,7 +651,7 @@ impl<'a> Fiber<'a> {
                     Opcode::GEQ => stack.compare_geq(inst.t0()),
                     Opcode::SEND => {
                         let val = stack.pop_with_type(inst.t0());
-                        let chan = stack.pop_rc();
+                        let chan = stack.pop_with_type(ValueType::Channel);
                         drop(stack_mut_ref);
                         let re = chan.as_channel().send(&val).await;
                         restore_stack_ref!(self, stack, stack_mut_ref);
@@ -648,7 +660,7 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::RECV => {
-                        let chan_val = stack.pop_rc();
+                        let chan_val = stack.pop_with_type(ValueType::Channel);
                         let chan = chan_val.as_channel();
                         drop(stack_mut_ref);
                         let val = chan.recv().await;
@@ -795,11 +807,11 @@ impl<'a> Fiber<'a> {
                                     ValueType::FlagA => {
                                         // goroutine
                                         nframe.stack_base = 0;
-                                        let nstack = Stack::move_from(stack, nfunc.param_count());
+                                        let nstack = Stack::move_from(stack, nfunc.param_types());
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagB => {
-                                        let v = stack.pop_n(nfunc.param_count());
+                                        let v = stack.pop_with_type_n(nfunc.param_types());
                                         let deferred = DeferredCall {
                                             frame: nframe,
                                             vec: v,
@@ -932,19 +944,19 @@ impl<'a> Fiber<'a> {
                         if *stack.get_c(stack.len() - 1).as_bool() {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         } else {
-                            stack.pop_discard()
+                            stack.pop_copyable();
                         }
                     }
                     Opcode::SHORT_CIRCUIT_AND => {
                         if !*stack.get_c(stack.len() - 1).as_bool() {
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         } else {
-                            stack.pop_discard()
+                            stack.pop_copyable();
                         }
                     }
                     Opcode::SWITCH => {
                         if stack.switch_cmp(inst.t0(), objs) {
-                            stack.pop_discard();
+                            stack.pop_with_type(inst.t0());
                             frame.pc = Stack::offset(frame.pc, inst.imm());
                         }
                     }
@@ -970,11 +982,11 @@ impl<'a> Fiber<'a> {
                                 match &flag {
                                     ValueType::FlagA => {
                                         let val = stack.pop_with_type(sel_code.t1());
-                                        let chan = stack.pop_rc();
+                                        let chan = stack.pop_with_type(ValueType::Channel);
                                         channel::SelectComm::Send(chan, val, offset)
                                     }
                                     ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
-                                        let chan = stack.pop_rc();
+                                        let chan = stack.pop_with_type(ValueType::Channel);
                                         channel::SelectComm::Recv(chan, flag, offset)
                                     }
                                     _ => unreachable!(),
@@ -1023,9 +1035,8 @@ impl<'a> Fiber<'a> {
                         let len = stack.len();
                         let t = stack.get_with_type(len - 1, inst.t0());
                         self.rstack.range_init(&t);
-                        stack.pop_discard();
+                        stack.pop_with_type(inst.t0());
                     }
-                    // Opcode::RANGE assumes a container and an int(as the cursor) on the stack
                     Opcode::RANGE => {
                         let offset = inst.imm();
                         if self.rstack.range_body(inst.t0(), stack) {
@@ -1243,7 +1254,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unreachable!(),
                         };
-                        stack.pop_discard();
+                        stack.pop_with_type(ValueType::Metadata);
                         stack.push(val);
                     }
                     Opcode::COMPLEX => {
@@ -1253,13 +1264,13 @@ impl<'a> Fiber<'a> {
                         let t = inst.t0();
                         let val = match t {
                             ValueType::Float32 => {
-                                let i = stack.pop_c();
-                                let r = stack.pop_c();
+                                let i = stack.pop_copyable();
+                                let r = stack.pop_copyable();
                                 GosValue::new_complex64(*r.as_float32(), *i.as_float32())
                             }
                             ValueType::Float64 => {
-                                let i = stack.pop_c();
-                                let r = stack.pop_c();
+                                let i = stack.pop_copyable();
+                                let r = stack.pop_copyable();
                                 GosValue::Complex128(Box::new((*r.as_float64(), *i.as_float64())))
                             }
                             _ => unreachable!(),
@@ -1269,11 +1280,11 @@ impl<'a> Fiber<'a> {
                     Opcode::REAL => {
                         let val = match inst.t0() {
                             ValueType::Complex64 => {
-                                GosValue::new_float32(stack.pop_c().as_complex64().0)
+                                GosValue::new_float32(stack.pop_copyable().as_complex64().0)
                             }
-                            ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_rc().as_complex128().0)
-                            }
+                            ValueType::Complex128 => GosValue::new_float64(
+                                stack.pop_with_type(ValueType::Complex128).as_complex128().0,
+                            ),
                             _ => unreachable!(),
                         };
                         stack.push(val);
@@ -1281,11 +1292,11 @@ impl<'a> Fiber<'a> {
                     Opcode::IMAG => {
                         let val = match inst.t0() {
                             ValueType::Complex64 => {
-                                GosValue::new_float32(stack.pop_c().as_complex64().1)
+                                GosValue::new_float32(stack.pop_copyable().as_complex64().1)
                             }
-                            ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_rc().as_complex128().1)
-                            }
+                            ValueType::Complex128 => GosValue::new_float64(
+                                stack.pop_with_type(ValueType::Complex128).as_complex128().1,
+                            ),
                             _ => unreachable!(),
                         };
                         stack.push(val);
@@ -1373,7 +1384,7 @@ impl<'a> Fiber<'a> {
                         chan.as_channel().close();
                     }
                     Opcode::PANIC => {
-                        let val = stack.pop_rc();
+                        let val = stack.pop_with_type(inst.t0());
                         go_panic!(panic, val, frame, code);
                     }
                     Opcode::RECOVER => {
@@ -1409,7 +1420,8 @@ impl<'a> Fiber<'a> {
                                 continue;
                             }
                         };
-                        stack.pop_n(2);
+                        stack.pop_with_type(ValueType::Str);
+                        stack.pop_with_type(ValueType::Metadata);
                         stack.push(v);
                     }
                     Opcode::ZERO => {

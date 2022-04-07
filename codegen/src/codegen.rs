@@ -580,22 +580,25 @@ impl<'a> CodeGen<'a> {
         }
 
         // pop rhs
-        let mut total_pop = types.iter().count() as OpIndex;
+        let mut pop_types: Vec<ValueType> = types
+            .iter()
+            .map(|x| self.t.value_type_from_tc(*x))
+            .collect();
         // pop lhs
         for (i, _, _) in lhs.iter().rev() {
             match i {
                 LeftHandSide::Primitive(_) => {}
                 LeftHandSide::IndexSelExpr(info) => {
-                    if let Some(_t) = info.t2 {
-                        total_pop += 1;
+                    pop_types.push(info.t1);
+                    if let Some(t) = info.t2 {
+                        pop_types.push(t);
                     }
-                    total_pop += 1;
                 }
-                LeftHandSide::Deref(_) => total_pop += 1,
+                LeftHandSide::Deref(_) => pop_types.push(ValueType::Pointer),
             }
         }
         let pos = Some(lhs[0].2);
-        current_func_emitter!(self).emit_pop(total_pop, pos);
+        current_func_emitter!(self).emit_pop(&pop_types, pos);
         range_marker
     }
 
@@ -608,12 +611,12 @@ impl<'a> CodeGen<'a> {
         p: usize,
     ) {
         let pos = Some(p);
-        let rhs_count = match right {
+        let mut rhs_types = match right {
             Some(e) => {
                 self.visit_expr(e);
-                1
+                vec![self.t.get_expr_value_type(e)]
             }
-            None => 0, //It's INC/DEC
+            None => vec![],
         };
 
         // If this is SHL/SHR,  cast the rhs to uint32
@@ -637,38 +640,40 @@ impl<'a> CodeGen<'a> {
                     typ,
                     pos,
                 );
-                emitter.emit_pop(rhs_count, pos);
+                emitter.emit_pop(&rhs_types, pos);
             }
             LeftHandSide::IndexSelExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
+                rhs_types.push(info.t1);
+                if let Some(t) = info.t2 {
+                    rhs_types.push(t);
+                }
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::IndexSelExpr(info.with_index(-info.stack_space() - rhs_count)),
+                    &LeftHandSide::IndexSelExpr(info.with_index(-(rhs_types.len() as OpIndex))),
                     -1,
                     Some(op),
                     None,
                     typ,
                     pos,
                 );
-                let mut total_pop = rhs_count + 1;
-                if let Some(_) = info.t2 {
-                    total_pop += 1;
-                }
-                current_func_emitter!(self).emit_pop(total_pop, pos);
+
+                current_func_emitter!(self).emit_pop(&rhs_types, pos);
             }
             LeftHandSide::Deref(_) => {
+                rhs_types.push(ValueType::Pointer);
                 // stack looks like this(bottom to top) :
                 //  [... target, value]
                 let mut emitter = current_func_emitter!(self);
                 emitter.emit_store(
-                    &LeftHandSide::Deref(-1 - rhs_count),
+                    &LeftHandSide::Deref(-(rhs_types.len() as OpIndex)),
                     -1,
                     Some(op),
                     None,
                     typ,
                     pos,
                 );
-                emitter.emit_pop(1 + rhs_count, pos);
+                emitter.emit_pop(&rhs_types, pos);
             }
         }
     }
@@ -694,7 +699,7 @@ impl<'a> CodeGen<'a> {
         }
 
         // pop the tag
-        current_func_emitter!(self).emit_pop(1, None);
+        current_func_emitter!(self).emit_pop(&vec![tag_type], None);
 
         let func = current_func_mut!(self);
         helper.tags.add_default(func.next_code_index());
@@ -1229,8 +1234,8 @@ impl<'a> CodeGen<'a> {
     }
 
     fn swallow_value(&mut self, expr: &Expr) {
-        let count = self.t.get_expr_value_count(expr);
-        current_func_emitter!(self).emit_pop(count as OpIndex, Some(expr.pos(&self.ast_objs)));
+        let val_types = self.t.get_expr_value_types(expr);
+        current_func_emitter!(self).emit_pop(&val_types, Some(expr.pos(&self.ast_objs)));
     }
 
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
@@ -1874,23 +1879,27 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 .get_sig_returns_tc_types(*self.func_t_stack.last().unwrap());
             assert_eq!(return_types.len(), types.len());
             let count: OpIndex = return_types.len() as OpIndex;
-            for (i, typ) in return_types.iter().enumerate() {
-                let index = i as i32 - count;
-                let pos = typ.1;
-                let t = self.try_cast_to_iface(Some(types[i]), typ.0, index, pos);
-                let mut emitter = current_func_emitter!(self);
-                emitter.emit_store(
-                    &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
-                    index,
-                    None,
-                    None,
-                    t,
-                    Some(pos),
-                );
-            }
-            current_func_emitter!(self).emit_pop(count, Some(rstmt.ret));
+            let types: Vec<ValueType> = return_types
+                .iter()
+                .enumerate()
+                .map(|(i, typ)| {
+                    let index = i as i32 - count;
+                    let pos = typ.1;
+                    let t = self.try_cast_to_iface(Some(types[i]), typ.0, index, pos);
+                    let mut emitter = current_func_emitter!(self);
+                    emitter.emit_store(
+                        &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
+                        index,
+                        None,
+                        None,
+                        t,
+                        Some(pos),
+                    );
+                    t
+                })
+                .collect();
+            current_func_emitter!(self).emit_pop(&types, Some(rstmt.ret));
         }
-
         current_func_emitter!(self).emit_return(None, Some(rstmt.ret));
     }
 
