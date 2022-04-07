@@ -644,7 +644,7 @@ impl<'a> Fiber<'a> {
                     Opcode::UNARY_SUB => stack.unary_negate(inst.t0()),
                     Opcode::UNARY_XOR => stack.unary_xor(inst.t0()),
                     Opcode::NOT => stack.logical_not(inst.t0()),
-                    Opcode::EQL => stack.compare_eql(inst.t0()),
+                    Opcode::EQL => stack.compare_eql(inst.t0(), inst.t1()),
                     Opcode::LSS => stack.compare_lss(inst.t0()),
                     Opcode::GTR => stack.compare_gtr(inst.t0()),
                     Opcode::NEQ => stack.compare_neq(inst.t0()),

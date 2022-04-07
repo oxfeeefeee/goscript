@@ -1654,10 +1654,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 .instruction_mut(i)
                 .set_imm(diff as OpIndex);
         } else {
-            let t1 = if code == Opcode::SHL || code == Opcode::SHR {
-                Some(self.t.get_expr_value_type(right))
-            } else {
-                None
+            let t1 = match code {
+                Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.get_expr_value_type(right)),
+                _ => None,
             };
             current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
         }
