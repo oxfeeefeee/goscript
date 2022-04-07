@@ -510,11 +510,7 @@ impl<'a> CodeGen<'a> {
             }
         };
 
-        // rhs types
-        let mut on_stack_types: Vec<ValueType> = types
-            .iter()
-            .map(|x| self.t.value_type_from_tc(*x))
-            .collect();
+        let mut on_stack_types = vec![];
         // lhs types
         for (i, _, _) in lhs.iter().rev() {
             match i {
@@ -528,6 +524,11 @@ impl<'a> CodeGen<'a> {
                 LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
             }
         }
+        let lhs_stack_space = on_stack_types.len() as OpIndex;
+        // rhs types
+        for t in types.iter() {
+            on_stack_types.push(self.t.value_type_from_tc(*t));
+        }
 
         // only when in select stmt, lhs in stack is on top of the rhs
         let lhs_on_stack_top = if let RightHandSide::SelectRecv(_) = rhs {
@@ -539,9 +540,8 @@ impl<'a> CodeGen<'a> {
         assert_eq!(lhs.len(), types.len());
         let total_val = types.len() as OpIndex;
         let total_stack_space = on_stack_types.len() as OpIndex;
-        let total_lhs_stack_space = total_stack_space - total_val;
         let mut current_indexing_deref_index = -if lhs_on_stack_top {
-            total_lhs_stack_space
+            lhs_stack_space
         } else {
             total_stack_space
         };
@@ -553,6 +553,7 @@ impl<'a> CodeGen<'a> {
                     total_val
                 };
             let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
+            on_stack_types[lhs_stack_space as usize + i] = typ;
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
