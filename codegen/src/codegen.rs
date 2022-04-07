@@ -64,12 +64,6 @@ macro_rules! dbg_tc {
     };
 }
 
-enum ReceiverPreprocess {
-    Default,
-    Ref,   // take ref of receiver before binding method
-    Deref, // deref receiver before binding method
-}
-
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
@@ -1349,29 +1343,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
         let lhs_type = t0;
         let lhs_has_embedded = index_count > 1;
-        let get_recv_prep = |stype, typ: ValueType| -> ReceiverPreprocess {
-            if stype == &SelectionType::MethodPtrRecv && typ != ValueType::Pointer {
-                ReceiverPreprocess::Ref
-            } else if stype == &SelectionType::MethodNonPtrRecv && typ == ValueType::Pointer {
-                ReceiverPreprocess::Deref
-            } else {
-                ReceiverPreprocess::Default
-            }
-        };
 
-        if !lhs_has_embedded {
-            let recv_prep = get_recv_prep(&stype, lhs_type);
-            match &recv_prep {
-                ReceiverPreprocess::Default => self.visit_expr(expr),
-                ReceiverPreprocess::Ref => self.visit_expr_unary(this, expr, &Token::AND),
-                ReceiverPreprocess::Deref => {
-                    self.visit_expr(expr);
-                    current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
-                    lhs_meta = lhs_meta.unptr_to();
-                }
-            };
-        } else {
-            self.visit_expr(expr);
+        self.visit_expr(expr);
+
+        if lhs_has_embedded {
             let index_count_m1 = embedded_indices.len() - 1;
             let (m, t) = self.gen_load_embedded_member(
                 &embedded_indices[0..index_count_m1],
@@ -1381,28 +1356,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             );
             let index = embedded_indices[index_count_m1];
             let final_meta = self.get_embedded_member_meta(&m, index);
-            let final_typ = final_meta.value_type(&self.objects.metas);
-            let recv_prep = get_recv_prep(&stype, final_typ);
-            match &recv_prep {
-                ReceiverPreprocess::Ref => {
-                    current_func_mut!(self).emit_code_with_type_imm(
-                        Opcode::REF_STRUCT_FIELD,
-                        t,
-                        index as OpIndex,
-                        pos,
-                    );
-                    lhs_meta = final_meta.ptr_to();
-                }
-                ReceiverPreprocess::Deref => {
-                    current_func_emitter!(self).emit_load_struct_field(index as OpIndex, t, pos);
-                    current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
-                    lhs_meta = final_meta.unptr_to();
-                }
-                ReceiverPreprocess::Default => {
-                    current_func_emitter!(self).emit_load_struct_field(index as OpIndex, t, pos);
-                    lhs_meta = final_meta;
-                }
-            }
+            current_func_emitter!(self).emit_load_struct_field(index as OpIndex, t, pos);
+            lhs_meta = final_meta;
         }
 
         let typ = lhs_meta.value_type(&self.objects.metas);
@@ -1420,8 +1375,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         pos,
                     );
                 } else {
+                    let t1 = match &stype {
+                        SelectionType::MethodNonPtrRecv => ValueType::Void,
+                        SelectionType::MethodPtrRecv => ValueType::Pointer,
+                        _ => unreachable!(),
+                    };
                     let func = current_func_mut!(self);
-                    func.emit_code_with_type(Opcode::BIND_METHOD, typ, pos);
+                    func.emit_code_with_type2(Opcode::BIND_METHOD, typ, Some(t1), pos);
                     let point = func.next_code_index();
                     func.emit_raw_inst(0, pos); // placeholder for FunctionKey
                     let fkey = *self.func_stack.last().unwrap();

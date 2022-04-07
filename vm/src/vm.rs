@@ -441,6 +441,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::BIND_METHOD => {
                         let val = stack.pop_with_type(inst.t0());
+                        let val = cast_receiver(val, inst.t1() == ValueType::Pointer, stack, objs);
                         let func = read_imm_key!(code, frame, objs);
                         stack.push(GosValue::Closure(Rc::new((
                             RefCell::new(ClosureObj::new_gos(
@@ -455,7 +456,7 @@ impl<'a> Fiber<'a> {
                         let val = stack.pop_with_type(inst.t0());
                         let index = inst.imm() as usize;
                         let borrowed = val.as_interface().borrow();
-                        match borrowed.bind_method(index, &objs.functions, gcv) {
+                        match bind_method(&borrowed, index, stack, objs, gcv) {
                             Ok(cls) => stack.push(cls),
                             Err(e) => {
                                 go_panic_str!(panic, s_meta, e, frame, code);
@@ -1499,6 +1500,62 @@ impl<'a> GosVM<'a> {
                 }
             }
         });
+    }
+}
+
+#[inline]
+fn cast_receiver(receiver: GosValue, b1: bool, stack: &Stack, objs: &VMObjects) -> GosValue {
+    let b0 = receiver.typ() == ValueType::Pointer;
+    dbg!(b0, b1);
+    if b0 == b1 {
+        receiver
+    } else if b1 {
+        GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(receiver.clone())))
+    } else {
+        deref_value(&receiver, stack, objs)
+    }
+}
+
+pub fn bind_method(
+    iface: &InterfaceObj,
+    index: usize,
+    stack: &Stack,
+    objs: &VMObjects,
+    gcv: &GcoVec,
+) -> RuntimeResult<GosValue> {
+    match iface {
+        InterfaceObj::Gos(obj, _, b) => {
+            let binding = &b.as_ref().unwrap()[index];
+            match binding {
+                Binding4Runtime::Struct(func, ptr_recv, indices) => {
+                    let obj = match indices {
+                        None => obj.copy_semantic(gcv),
+                        Some(inds) => StructObj::get_embeded(obj.clone(), inds).copy_semantic(gcv),
+                    };
+                    let obj = cast_receiver(obj, *ptr_recv, stack, objs);
+                    let cls = ClosureObj::new_gos(*func, &objs.functions, Some(obj));
+                    Ok(GosValue::new_closure(cls, gcv))
+                }
+                Binding4Runtime::Iface(i, indices) => {
+                    let bind = |obj: &GosValue| {
+                        bind_method(&obj.as_interface().borrow(), *i, stack, objs, gcv)
+                    };
+                    match indices {
+                        None => bind(obj),
+                        Some(inds) => bind(&StructObj::get_embeded(obj.clone(), inds)),
+                    }
+                }
+            }
+        }
+        InterfaceObj::Ffi(ffi) => {
+            let (name, meta) = ffi.methods[index].clone();
+            let cls = FfiClosureObj {
+                ffi: ffi.ffi_obj.clone(),
+                func_name: name,
+                meta: meta,
+            };
+            Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcv))
+        }
     }
 }
 

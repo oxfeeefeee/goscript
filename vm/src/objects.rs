@@ -729,7 +729,7 @@ pub enum IfaceBinding {
 
 #[derive(Clone, Debug)]
 pub enum Binding4Runtime {
-    Struct(FunctionKey, Option<Vec<usize>>),
+    Struct(FunctionKey, bool, Option<Vec<usize>>),
     Iface(usize, Option<Vec<usize>>),
 }
 
@@ -737,7 +737,8 @@ impl From<IfaceBinding> for Binding4Runtime {
     fn from(item: IfaceBinding) -> Binding4Runtime {
         match item {
             IfaceBinding::Struct(f, indices) => {
-                Binding4Runtime::Struct(f.borrow().func.unwrap(), indices)
+                let md = f.borrow();
+                Binding4Runtime::Struct(md.func.unwrap(), md.pointer_recv, indices)
             }
             IfaceBinding::Iface(a, b) => Binding4Runtime::Iface(a, b),
         }
@@ -751,49 +752,6 @@ pub enum InterfaceObj {
 }
 
 impl InterfaceObj {
-    pub fn bind_method(
-        &self,
-        index: usize,
-        funcs: &FunctionObjs,
-        gcv: &GcoVec,
-    ) -> RuntimeResult<GosValue> {
-        match self {
-            InterfaceObj::Gos(obj, _, b) => {
-                let binding = &b.as_ref().unwrap()[index];
-                match binding {
-                    Binding4Runtime::Struct(func, indices) => {
-                        let obj = match indices {
-                            None => obj.copy_semantic(gcv),
-                            Some(inds) => {
-                                StructObj::get_embeded(obj.clone(), inds).copy_semantic(gcv)
-                            }
-                        };
-                        let cls = ClosureObj::new_gos(*func, &funcs, Some(obj));
-                        Ok(GosValue::new_closure(cls, gcv))
-                    }
-                    Binding4Runtime::Iface(i, indices) => {
-                        let bind = |obj: &GosValue| {
-                            obj.as_interface().borrow().bind_method(*i, funcs, gcv)
-                        };
-                        match indices {
-                            None => bind(obj),
-                            Some(inds) => bind(&StructObj::get_embeded(obj.clone(), inds)),
-                        }
-                    }
-                }
-            }
-            InterfaceObj::Ffi(ffi) => {
-                let (name, meta) = ffi.methods[index].clone();
-                let cls = FfiClosureObj {
-                    ffi: ffi.ffi_obj.clone(),
-                    func_name: name,
-                    meta: meta,
-                };
-                Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcv))
-            }
-        }
-    }
-
     #[inline]
     pub fn underlying_value(&self) -> Option<&GosValue> {
         match self {
