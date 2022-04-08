@@ -187,7 +187,24 @@ impl Stack {
     pub fn pop_with_type_n(&mut self, types: &[ValueType]) -> Vec<GosValue> {
         let n = types.len();
         let mid = self.len() - n;
-        self.v.split_off(mid)
+        let vec = self.v.split_off(mid);
+        let t2: Vec<ValueType> = vec.iter().map(|x| x.typ()).collect();
+
+        for (i, v) in vec.iter().enumerate() {
+            let t = types[i];
+            if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
+                //dbg!(v.typ(), t);
+                if v.typ() != t {
+                    dbg!(types, &t2);
+                    //assert!(v.typ() == t);
+                }
+            }
+        }
+        vec
+    }
+
+    pub fn discard_n(&mut self, n: usize) {
+        self.v.truncate(self.len() - n);
     }
 
     #[inline]

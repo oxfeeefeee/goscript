@@ -855,53 +855,54 @@ impl<'a> Fiber<'a> {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
 
-                        match inst.t0() {
+                        let clear_stack = match inst.t0() {
                             // default case
-                            ValueType::Void => {
-                                frame.on_drop(&stack);
-                                stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
-                            }
+                            ValueType::Void => true,
                             // init_package func
                             ValueType::FlagA => {
                                 let index = inst.imm() as usize;
                                 let pkey = pkgs[index];
                                 let pkg = &objs.packages[pkey];
-
                                 // the var values left on the stack are for pkg members
                                 pkg.init_vars(stack);
+                                false
                             }
                             // func with deferred calls
                             ValueType::FlagB => {
-                                match frame.defer_stack.as_mut().map(|x| x.pop()).flatten() {
-                                    Some(call) => {
-                                        // run Opcode::RETURN to check if deferred_stack is empty
-                                        frame.pc -= 1;
+                                if let Some(call) =
+                                    frame.defer_stack.as_mut().map(|x| x.pop()).flatten()
+                                {
+                                    // run Opcode::RETURN to check if deferred_stack is empty
+                                    frame.pc -= 1;
 
-                                        stack.push_n(call.vec);
-                                        let nframe = call.frame;
+                                    stack.push_n(call.vec);
+                                    let nframe = call.frame;
 
-                                        self.frames.push(nframe);
-                                        frame_height += 1;
-                                        frame = self.frames.last_mut().unwrap();
-                                        let fkey = frame.closure.0.borrow().func.unwrap();
-                                        func = &objs.functions[fkey];
-                                        stack_base = frame.stack_base;
-                                        consts = &func.consts;
-                                        code = func.code();
-                                        debug_assert!(func.local_count() == func.local_zeros.len());
-                                        stack.append(func.local_zeros.clone());
-                                        continue;
-                                    }
-                                    None => {
-                                        frame.on_drop(&stack);
-
-                                        stack.pop_with_type_n(
-                                            &frame.func_val(objs).stack_temp_types,
-                                        );
-                                    }
+                                    self.frames.push(nframe);
+                                    frame_height += 1;
+                                    frame = self.frames.last_mut().unwrap();
+                                    let fkey = frame.closure.0.borrow().func.unwrap();
+                                    func = &objs.functions[fkey];
+                                    stack_base = frame.stack_base;
+                                    consts = &func.consts;
+                                    code = func.code();
+                                    debug_assert!(func.local_count() == func.local_zeros.len());
+                                    stack.append(func.local_zeros.clone());
+                                    continue;
                                 }
+                                true
                             }
                             _ => unreachable!(),
+                        };
+
+                        let panicking = panic.is_some();
+                        if clear_stack {
+                            frame.on_drop(&stack);
+                            if !panicking {
+                                stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
+                            } else {
+                                stack.discard_n(frame.func_val(objs).stack_temp_types.len());
+                            }
                         }
 
                         drop(frame);

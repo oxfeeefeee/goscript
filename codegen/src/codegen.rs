@@ -195,7 +195,7 @@ impl<'a> CodeGen<'a> {
             let func = current_func_mut!(self);
             let ident_key = Some(def_ident_unique_key!(self, *ikey));
             let index = func.add_local(ident_key);
-            func.add_local_zero(zero_val);
+            func.add_local_zero(zero_val, meta.value_type(&self.objects.metas));
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
@@ -1999,7 +1999,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 .collect();
             let func = current_func_mut!(self);
             let index = func.add_implicit_local(implicit_entities);
-            func.add_local_zero(GosValue::new_nil());
+            func.add_local_zero(GosValue::new_nil(), ValueType::Nil);
             self.visit_expr(v);
             let func = current_func_mut!(self);
             func.emit_code_with_flag_imm(Opcode::TYPE, true, index.into(), pos);

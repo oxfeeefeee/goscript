@@ -1695,8 +1695,8 @@ impl FunctionVal {
         EntIndex::LocalVar(result)
     }
 
-    pub fn add_local_zero(&mut self, zero: GosValue) {
-        self.stack_temp_types.push(zero.typ());
+    pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
+        self.stack_temp_types.push(typ);
         self.local_zeros.push(zero)
     }
 
