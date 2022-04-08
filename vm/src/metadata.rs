@@ -58,7 +58,7 @@ impl StaticMeta {
             mcomplex64: Meta::with_type(MetadataType::Complex64, objs),
             mcomplex128: Meta::with_type(MetadataType::Complex128, objs),
             mstr: Meta::with_type(MetadataType::Str(GosValue::new_str("".to_owned())), objs),
-            unsafe_ptr: Meta::new(objs.insert(MetadataType::Uint), MetaCategory::Default, 1),
+            unsafe_ptr: Meta::with_type(MetadataType::UnsafePtr, objs),
             default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
             empty_iface: Meta::with_type(
                 MetadataType::Interface(Fields::new(vec![], HashMap::new())),
@@ -235,6 +235,7 @@ impl Meta {
                     MetadataType::Float64 => ValueType::Float64,
                     MetadataType::Complex64 => ValueType::Complex64,
                     MetadataType::Complex128 => ValueType::Complex128,
+                    MetadataType::UnsafePtr => ValueType::UnsafePtr,
                     MetadataType::Str(_) => ValueType::Str,
                     MetadataType::Struct(_, _) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
@@ -274,6 +275,7 @@ impl Meta {
                 MetadataType::Complex128 => {
                     GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
                 }
+                MetadataType::UnsafePtr => GosValue::new_nil(),
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::SliceOrArray(m, size) => match self.category {
                     MetaCategory::Array => {
@@ -543,6 +545,7 @@ pub enum MetadataType {
     Float64,
     Complex64,
     Complex128,
+    UnsafePtr,
     Str(GosValue),
     SliceOrArray(Meta, usize),
     Struct(Fields, StructObj),

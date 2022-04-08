@@ -177,10 +177,9 @@ impl Stack {
     #[inline]
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         let v = self.v.pop().unwrap();
-        // dbg!(v.typ(), t);
-        // if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
-        //     assert!(v.typ() == t);
-        // }
+        if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
+            assert!(v.typ() == t);
+        }
         v
     }
 

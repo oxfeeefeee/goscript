@@ -25,7 +25,6 @@ pub struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
     types_cache: &'a mut TypeCache,
-    unsafe_ptr_meta: Meta,
 }
 
 impl<'a> TypeLookup<'a> {
@@ -33,13 +32,11 @@ impl<'a> TypeLookup<'a> {
         tc_objs: &'a TCObjects,
         ti: &'a TypeInfo,
         cache: &'a mut TypeCache,
-        u_p_meta: Meta,
     ) -> TypeLookup<'a> {
         TypeLookup {
             tc_objs: tc_objs,
             ti: ti,
             types_cache: cache,
-            unsafe_ptr_meta: u_p_meta,
         }
     }
 
