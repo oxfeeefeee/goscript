@@ -513,68 +513,69 @@ impl<'a> CodeGen<'a> {
             on_stack_types.append(&mut CodeGen::lhs_on_stack_value_types(i));
         }
         let lhs_stack_space = on_stack_types.len() as OpIndex;
-        // rhs types
-        let mut rhs_types = types
+
+        assert_eq!(lhs.len(), types.len());
+        let total_val = types.len() as OpIndex;
+        let total_stack_space = lhs_stack_space + total_val;
+        let (mut current_indexing_deref_index, rhs_begin_index) = match lhs_on_stack_top {
+            true => (-lhs_stack_space, -total_stack_space),
+            false => (-total_stack_space, -total_val),
+        };
+        let mut rhs_types = lhs
             .iter()
-            .map(|t| self.t.value_type_from_tc(*t))
+            .enumerate()
+            .map(|(i, (l, _, p))| {
+                let rhs_index = i as OpIndex + rhs_begin_index;
+                let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
+                let pos = Some(*p);
+                match l {
+                    LeftHandSide::Primitive(_) => {
+                        let fkey = self.func_stack.last().unwrap();
+                        current_func_emitter!(self).emit_store(
+                            l,
+                            rhs_index,
+                            None,
+                            Some((self.pkg_helper.pairs_mut(), *fkey)),
+                            typ,
+                            pos,
+                        );
+                    }
+                    LeftHandSide::IndexSelExpr(info) => {
+                        current_func_emitter!(self).emit_store(
+                            &LeftHandSide::IndexSelExpr(
+                                info.with_index(current_indexing_deref_index),
+                            ),
+                            rhs_index,
+                            None,
+                            None,
+                            typ,
+                            pos,
+                        );
+                        // the lhs of IndexSelExpr takes two spots
+                        current_indexing_deref_index += 2;
+                    }
+                    LeftHandSide::Deref(_) => {
+                        current_func_emitter!(self).emit_store(
+                            &LeftHandSide::Deref(current_indexing_deref_index),
+                            rhs_index,
+                            None,
+                            None,
+                            typ,
+                            pos,
+                        );
+                        current_indexing_deref_index += 1;
+                    }
+                }
+                typ
+            })
             .collect();
+
+        let pos = Some(lhs[0].2);
         if !lhs_on_stack_top {
             on_stack_types.append(&mut rhs_types);
         } else {
             on_stack_types.splice(0..0, rhs_types);
         }
-
-        assert_eq!(lhs.len(), types.len());
-        let total_val = types.len() as OpIndex;
-        let total_stack_space = on_stack_types.len() as OpIndex;
-        let (mut current_indexing_deref_index, rhs_begin_index) = match lhs_on_stack_top {
-            true => (-lhs_stack_space, -total_stack_space),
-            false => (-total_stack_space, -total_val),
-        };
-        for (i, (l, _, p)) in lhs.iter().enumerate() {
-            let rhs_index = i as OpIndex + rhs_begin_index;
-            let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
-            on_stack_types[(total_stack_space + rhs_begin_index) as usize + i] = typ;
-            let pos = Some(*p);
-            match l {
-                LeftHandSide::Primitive(_) => {
-                    let fkey = self.func_stack.last().unwrap();
-                    current_func_emitter!(self).emit_store(
-                        l,
-                        rhs_index,
-                        None,
-                        Some((self.pkg_helper.pairs_mut(), *fkey)),
-                        typ,
-                        pos,
-                    );
-                }
-                LeftHandSide::IndexSelExpr(info) => {
-                    current_func_emitter!(self).emit_store(
-                        &LeftHandSide::IndexSelExpr(info.with_index(current_indexing_deref_index)),
-                        rhs_index,
-                        None,
-                        None,
-                        typ,
-                        pos,
-                    );
-                    // the lhs of IndexSelExpr takes two spots
-                    current_indexing_deref_index += 2;
-                }
-                LeftHandSide::Deref(_) => {
-                    current_func_emitter!(self).emit_store(
-                        &LeftHandSide::Deref(current_indexing_deref_index),
-                        rhs_index,
-                        None,
-                        None,
-                        typ,
-                        pos,
-                    );
-                    current_indexing_deref_index += 1;
-                }
-            }
-        }
-
-        let pos = Some(lhs[0].2);
         current_func_emitter!(self).emit_pop(&on_stack_types, pos);
         range_marker
     }
@@ -970,36 +971,36 @@ impl<'a> CodeGen<'a> {
         rhs_index: OpIndex,
         pos: usize,
     ) -> ValueType {
-        let mut ret_type = None;
-        if let Some(t0) = lhs {
-            if self.t.underlying_value_type_from_tc(t0) == ValueType::Interface {
-                let to_cast_typ = {
+        let rhs_type = self.t.value_type_from_tc(rhs);
+        match lhs {
+            Some(t0) => match self.t.underlying_value_type_from_tc(t0) == ValueType::Interface {
+                true => {
                     let vt1 = self.t.underlying_value_type_from_tc(rhs);
                     match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
-                        true => Some(self.t.value_type_from_tc(rhs)),
-                        false => None,
+                        true => {
+                            let index = self.iface_mapping.get_index(
+                                &(t0, rhs),
+                                &mut self.t,
+                                self.objects,
+                                self.dummy_gcv,
+                            );
+                            current_func_emitter!(self).emit_cast(
+                                ValueType::Interface,
+                                rhs_type,
+                                None,
+                                rhs_index,
+                                index,
+                                Some(pos),
+                            );
+                            ValueType::Interface
+                        }
+                        false => rhs_type,
                     }
-                };
-                if let Some(typ) = to_cast_typ {
-                    let index = self.iface_mapping.get_index(
-                        &(t0, rhs),
-                        &mut self.t,
-                        self.objects,
-                        self.dummy_gcv,
-                    );
-                    current_func_emitter!(self).emit_cast(
-                        ValueType::Interface,
-                        typ,
-                        None,
-                        rhs_index,
-                        index,
-                        Some(pos),
-                    );
-                    ret_type = Some(ValueType::Interface);
                 }
-            }
+                false => rhs_type,
+            },
+            None => rhs_type,
         }
-        ret_type.unwrap_or(self.t.value_type_from_tc(rhs))
     }
 
     fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
