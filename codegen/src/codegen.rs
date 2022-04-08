@@ -230,8 +230,8 @@ impl<'a> CodeGen<'a> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let val = self.t.get_const_value_by_ident(name);
-            self.current_func_add_const_def(name, val);
+            let (val, typ) = self.t.get_const_value_type_by_ident(name);
+            self.current_func_add_const_def(name, val, typ);
         }
     }
 
@@ -1186,7 +1186,12 @@ impl<'a> CodeGen<'a> {
         }
     }
 
-    fn current_func_add_const_def(&mut self, ikey: &IdentKey, cst: GosValue) -> EntIndex {
+    fn current_func_add_const_def(
+        &mut self,
+        ikey: &IdentKey,
+        cst: GosValue,
+        typ: ValueType,
+    ) -> EntIndex {
         let func = current_func_mut!(self);
         let entity = def_ident_unique_key!(self, *ikey);
         let index = func.add_const(Some(entity), cst.clone());
@@ -1195,7 +1200,7 @@ impl<'a> CodeGen<'a> {
             drop(func);
             let pkg = &mut self.objects.packages[pkg_key];
             let ident = &self.ast_objs.idents[*ikey];
-            pkg.add_member(ident.name.clone(), cst);
+            pkg.add_member(ident.name.clone(), cst, typ);
         }
         index
     }
@@ -1205,7 +1210,11 @@ impl<'a> CodeGen<'a> {
             let ident = &self.ast_objs.idents[*n];
             let meta = self.t.gen_def_type_meta(*n, self.objects, self.dummy_gcv);
             let val = meta.zero(&self.objects.metas, self.dummy_gcv);
-            self.objects.packages[pkey].add_member(ident.name.clone(), val);
+            self.objects.packages[pkey].add_member(
+                ident.name.clone(),
+                val,
+                meta.value_type(&self.objects.metas),
+            );
         }
     }
 
@@ -1244,6 +1253,7 @@ impl<'a> CodeGen<'a> {
         self.objects.packages[pkey].add_member(
             String::new(),
             GosValue::new_static_closure(fkey, &self.objects.functions),
+            ValueType::Closure,
         );
         self.pkg_key = pkey;
         self.func_stack.push(fkey);
@@ -1716,7 +1726,11 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     let m = self
                         .t
                         .gen_def_type_meta(ts.name, self.objects, self.dummy_gcv);
-                    self.current_func_add_const_def(&ts.name, GosValue::new_metadata(m));
+                    self.current_func_add_const_def(
+                        &ts.name,
+                        GosValue::new_metadata(m),
+                        ValueType::Metadata,
+                    );
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
@@ -1756,7 +1770,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             match name.as_str() {
                 "init" => pkg.add_init_func(cls),
                 _ => {
-                    pkg.add_member(name.clone(), cls);
+                    pkg.add_member(name.clone(), cls, ValueType::Closure);
                 }
             };
         }

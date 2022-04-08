@@ -505,16 +505,6 @@ impl Stack {
     }
 
     #[inline]
-    pub fn init_pkg_vars(&mut self, pkg: &PackageVal, count: usize) {
-        for i in 0..count {
-            let var_index = (count - 1 - i) as OpIndex;
-            let var: &mut GosValue = &mut pkg.var_mut(var_index);
-            let t = var.typ();
-            *var = self.pop_with_type(t);
-        }
-    }
-
-    #[inline]
     pub fn add(&mut self, t: ValueType) {
         if t.copyable() {
             stack_binary_op!(self, binary_op_add, t)

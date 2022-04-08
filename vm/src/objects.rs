@@ -1370,6 +1370,7 @@ impl ClosureObj {
 pub struct PackageVal {
     name: String,
     members: Vec<Rc<RefCell<GosValue>>>, // imports, const, var, func are all stored here
+    member_types: Vec<ValueType>,
     member_indices: HashMap<String, OpIndex>,
     init_funcs: Vec<GosValue>,
     // maps func_member_index of the constructor to pkg_member_index
@@ -1380,15 +1381,17 @@ impl PackageVal {
     pub fn new(name: String) -> PackageVal {
         PackageVal {
             name: name,
-            members: Vec::new(),
+            members: vec![],
+            member_types: vec![],
             member_indices: HashMap::new(),
-            init_funcs: Vec::new(),
+            init_funcs: vec![],
             var_mapping: Some(HashMap::new()),
         }
     }
 
-    pub fn add_member(&mut self, name: String, val: GosValue) -> OpIndex {
+    pub fn add_member(&mut self, name: String, val: GosValue, typ: ValueType) -> OpIndex {
         self.members.push(Rc::new(RefCell::new(val)));
+        self.member_types.push(typ);
         let index = (self.members.len() - 1) as OpIndex;
         self.member_indices.insert(name, index);
         index as OpIndex
@@ -1396,24 +1399,12 @@ impl PackageVal {
 
     pub fn add_var_mapping(&mut self, name: String, fn_index: OpIndex) -> OpIndex {
         let index = *self.get_member_index(&name).unwrap();
-        self.var_mapping
-            .as_mut()
-            .unwrap()
-            .insert(fn_index.into(), index);
+        self.var_mapping.as_mut().unwrap().insert(fn_index, index);
         index
     }
 
     pub fn add_init_func(&mut self, func: GosValue) {
         self.init_funcs.push(func);
-    }
-
-    pub fn var_mut(&self, fn_member_index: OpIndex) -> RefMut<GosValue> {
-        let index = self.var_mapping.as_ref().unwrap()[&fn_member_index];
-        self.members[index as usize].borrow_mut()
-    }
-
-    pub fn var_count(&self) -> usize {
-        self.var_mapping.as_ref().unwrap().len()
     }
 
     pub fn get_member_index(&self, name: &str) -> Option<&OpIndex> {
@@ -1441,6 +1432,16 @@ impl PackageVal {
     #[inline]
     pub fn init_func(&self, i: OpIndex) -> Option<&GosValue> {
         self.init_funcs.get(i as usize)
+    }
+
+    #[inline]
+    pub fn init_vars(&self, stack: &mut Stack) {
+        let mapping = self.var_mapping.as_ref().unwrap();
+        let count = mapping.len();
+        for i in 0..count {
+            let vi = mapping[&((count - 1 - i) as OpIndex)];
+            *self.member_mut(vi) = stack.pop_with_type(self.member_types[vi as usize]);
+        }
     }
 }
 

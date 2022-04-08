@@ -866,11 +866,9 @@ impl<'a> Fiber<'a> {
                                 let index = inst.imm() as usize;
                                 let pkey = pkgs[index];
                                 let pkg = &objs.packages[pkey];
-                                let count = pkg.var_count();
-                                // remove garbage first
-                                debug_assert!(stack.len() == stack_base + count);
+
                                 // the var values left on the stack are for pkg members
-                                stack.init_pkg_vars(pkg, count);
+                                pkg.init_vars(stack);
                             }
                             // func with deferred calls
                             ValueType::FlagB => {
@@ -1506,7 +1504,6 @@ impl<'a> GosVM<'a> {
 #[inline]
 fn cast_receiver(receiver: GosValue, b1: bool, stack: &Stack, objs: &VMObjects) -> GosValue {
     let b0 = receiver.typ() == ValueType::Pointer;
-    dbg!(b0, b1);
     if b0 == b1 {
         receiver
     } else if b1 {

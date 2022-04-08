@@ -58,15 +58,16 @@ impl<'a> TypeLookup<'a> {
     pub fn get_const_value(&mut self, id: NodeId) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
-        self.const_value(typ_val.typ, const_val)
+        let (v, _) = self.const_value_type(typ_val.typ, const_val);
+        v
     }
 
     #[inline]
-    pub fn get_const_value_by_ident(&mut self, id: &IdentKey) -> GosValue {
+    pub fn get_const_value_type_by_ident(&mut self, id: &IdentKey) -> (GosValue, ValueType) {
         let lobj_key = self.ti.defs[id].unwrap();
         let lobj = &self.tc_objs.lobjs[lobj_key];
         let tkey = lobj.typ().unwrap();
-        self.const_value(tkey, lobj.const_val())
+        self.const_value_type(tkey, lobj.const_val())
     }
 
     pub fn get_expr_value_types(&self, e: &Expr) -> Vec<ValueType> {
@@ -336,76 +337,83 @@ impl<'a> TypeLookup<'a> {
     }
 
     // get GosValue from type checker's Obj
-    fn const_value(&self, tkey: TCTypeKey, val: &ConstValue) -> GosValue {
+    fn const_value_type(&self, tkey: TCTypeKey, val: &ConstValue) -> (GosValue, ValueType) {
         let typ = self.tc_objs.types[tkey]
             .underlying_val(self.tc_objs)
             .try_as_basic()
             .unwrap()
             .typ();
         match typ {
-            BasicType::Bool | BasicType::UntypedBool => GosValue::new_bool(val.bool_as_bool()),
+            BasicType::Bool | BasicType::UntypedBool => {
+                (GosValue::new_bool(val.bool_as_bool()), ValueType::Bool)
+            }
             BasicType::Int | BasicType::UntypedInt => {
                 let (i, _) = val.to_int().int_as_i64();
-                GosValue::new_int(i as isize)
+                (GosValue::new_int(i as isize), ValueType::Int)
             }
             BasicType::Int8 => {
                 let (i, _) = val.to_int().int_as_i64();
-                GosValue::new_int8(i as i8)
+                (GosValue::new_int8(i as i8), ValueType::Int8)
             }
             BasicType::Int16 => {
                 let (i, _) = val.to_int().int_as_i64();
-                GosValue::new_int16(i as i16)
+                (GosValue::new_int16(i as i16), ValueType::Int16)
             }
             BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
                 let (i, _) = val.to_int().int_as_i64();
-                GosValue::new_int32(i as i32)
+                (GosValue::new_int32(i as i32), ValueType::Int32)
             }
             BasicType::Int64 => {
                 let (i, _) = val.to_int().int_as_i64();
-                GosValue::new_int64(i)
+                (GosValue::new_int64(i), ValueType::Int64)
             }
             BasicType::Uint => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint(i as usize)
+                (GosValue::new_uint(i as usize), ValueType::Uint)
             }
             BasicType::Uintptr => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint_ptr(i as usize)
+                (GosValue::new_uint_ptr(i as usize), ValueType::UintPtr)
             }
             BasicType::Uint8 | BasicType::Byte => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint8(i as u8)
+                (GosValue::new_uint8(i as u8), ValueType::Uint8)
             }
             BasicType::Uint16 => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint16(i as u16)
+                (GosValue::new_uint16(i as u16), ValueType::Uint16)
             }
             BasicType::Uint32 => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint32(i as u32)
+                (GosValue::new_uint32(i as u32), ValueType::Uint32)
             }
             BasicType::Uint64 => {
                 let (i, _) = val.to_int().int_as_u64();
-                GosValue::new_uint64(i)
+                (GosValue::new_uint64(i), ValueType::Uint64)
             }
             BasicType::Float32 => {
                 let (f, _) = val.num_as_f32();
-                GosValue::new_float32(f.into())
+                (GosValue::new_float32(f.into()), ValueType::Float32)
             }
             BasicType::Float64 | BasicType::UntypedFloat => {
                 let (f, _) = val.num_as_f64();
-                GosValue::new_float64(f.into())
+                (GosValue::new_float64(f.into()), ValueType::Float64)
             }
             BasicType::Complex64 => {
                 let (cr, ci, _) = val.complex_as_complex64();
-                GosValue::new_complex64(cr, ci)
+                (GosValue::new_complex64(cr, ci), ValueType::Complex64)
             }
             BasicType::Complex128 => {
                 let (cr, ci, _) = val.complex_as_complex128();
-                GosValue::Complex128(Box::new((cr, ci)))
+                (
+                    GosValue::Complex128(Box::new((cr, ci))),
+                    ValueType::Complex128,
+                )
             }
-            BasicType::Str | BasicType::UntypedString => GosValue::new_str(val.str_as_string()),
-            BasicType::UnsafePointer => GosValue::new_nil(),
+            BasicType::Str | BasicType::UntypedString => {
+                (GosValue::new_str(val.str_as_string()), ValueType::Str)
+            }
+            BasicType::UnsafePointer => (GosValue::new_nil(), ValueType::UnsafePtr),
             _ => {
                 dbg!(typ);
                 unreachable!();
