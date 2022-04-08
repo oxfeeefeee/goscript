@@ -819,17 +819,18 @@ impl<'a> CodeGen<'a> {
                         false => (Some(ValueType::FlagA), Some(param_count as OpIndex)),
                     },
                 };
-                let param1t = match opcode {
-                    Opcode::DELETE => param_last_t,
+                let (t0, t1) = match opcode {
+                    Opcode::DELETE => (param0t, param_last_t),
                     Opcode::MAKE | Opcode::NEW => {
                         // provide the type of param0 too instead of only ValueType::Metadata
                         let t = self.t.get_expr_tc_type(&params[0]);
-                        Some(self.t.value_type_from_tc(t))
+                        (param0t, Some(self.t.value_type_from_tc(t)))
                     }
-                    _ => None,
+                    Opcode::PANIC => (Some(ValueType::Interface), None),
+                    _ => (param0t, None),
                 };
                 let func = current_func_mut!(self);
-                func.emit_inst(opcode, [param0t, param1t, t_variadic], count, pos);
+                func.emit_inst(opcode, [t0, t1, t_variadic], count, pos);
             }
             // conversion
             // from the specs:

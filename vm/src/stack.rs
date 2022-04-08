@@ -178,7 +178,7 @@ impl Stack {
     pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
         let v = self.v.pop().unwrap();
         // dbg!(v.typ(), t);
-        // if v.typ() != t && v.typ() != ValueType::Nil {
+        // if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
         //     assert!(v.typ() == t);
         // }
         v
@@ -617,11 +617,11 @@ impl Stack {
     }
 
     #[inline]
-    pub fn compare_eql(&mut self, t: ValueType) {
-        if t.copyable() {
-            stack_cmp_op!(self, compare_eql, t);
+    pub fn compare_eql(&mut self, t0: ValueType, t1: ValueType) {
+        if t0.copyable() && t0 == t1 {
+            stack_cmp_op!(self, compare_eql, t0);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_with_type(t1), self.pop_with_type(t0));
             self.push_bool(a.eq(&b));
         }
     }
