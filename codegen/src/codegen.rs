@@ -403,6 +403,7 @@ impl<'a> CodeGen<'a> {
         rhs: &RightHandSide,
     ) -> Option<usize> {
         let mut range_marker = None;
+        let mut lhs_on_stack_top = false;
         // handle the right hand side
         let types = match rhs {
             RightHandSide::Nothing => {
@@ -495,6 +496,8 @@ impl<'a> CodeGen<'a> {
                 tkv[1..].to_vec()
             }
             RightHandSide::SelectRecv(rhs) => {
+                // only when in select stmt, lhs in stack is on top of the rhs
+                lhs_on_stack_top = true;
                 let comma_ok = lhs.len() == 2 && self.t.get_expr_mode(rhs) == &OperandMode::CommaOk;
                 if comma_ok {
                     self.t.get_tuple_tc_types(rhs)
@@ -511,34 +514,27 @@ impl<'a> CodeGen<'a> {
         }
         let lhs_stack_space = on_stack_types.len() as OpIndex;
         // rhs types
-        for t in types.iter() {
-            on_stack_types.push(self.t.value_type_from_tc(*t));
-        }
-
-        // only when in select stmt, lhs in stack is on top of the rhs
-        let lhs_on_stack_top = if let RightHandSide::SelectRecv(_) = rhs {
-            true
+        let mut rhs_types = types
+            .iter()
+            .map(|t| self.t.value_type_from_tc(*t))
+            .collect();
+        if !lhs_on_stack_top {
+            on_stack_types.append(&mut rhs_types);
         } else {
-            false
-        };
+            on_stack_types.splice(0..0, rhs_types);
+        }
 
         assert_eq!(lhs.len(), types.len());
         let total_val = types.len() as OpIndex;
         let total_stack_space = on_stack_types.len() as OpIndex;
-        let mut current_indexing_deref_index = -if lhs_on_stack_top {
-            lhs_stack_space
-        } else {
-            total_stack_space
+        let (mut current_indexing_deref_index, rhs_begin_index) = match lhs_on_stack_top {
+            true => (-lhs_stack_space, -total_stack_space),
+            false => (-total_stack_space, -total_val),
         };
         for (i, (l, _, p)) in lhs.iter().enumerate() {
-            let rhs_index = i as OpIndex
-                - if lhs_on_stack_top {
-                    total_stack_space
-                } else {
-                    total_val
-                };
+            let rhs_index = i as OpIndex + rhs_begin_index;
             let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
-            on_stack_types[lhs_stack_space as usize + i] = typ;
+            on_stack_types[(total_stack_space + rhs_begin_index) as usize + i] = typ;
             let pos = Some(*p);
             match l {
                 LeftHandSide::Primitive(_) => {
