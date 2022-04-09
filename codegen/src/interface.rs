@@ -46,8 +46,8 @@ impl IfaceMapping {
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> (Meta, Vec<IfaceBinding>) {
-        let iface = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
-        let struct_ = lookup.meta_from_tc(i_s.1, objs, dummy_gcv);
+        let iface = lookup.tc_type_to_meta(i_s.0, objs, dummy_gcv);
+        let struct_ = lookup.tc_type_to_meta(i_s.1, objs, dummy_gcv);
         let fields: Vec<&String> = match &objs.metas[iface.underlying(&objs.metas).key] {
             MetadataType::Interface(m) => m.fields.iter().map(|x| &x.1).collect(),
             _ => unreachable!(),

@@ -46,13 +46,13 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn get_tc_const_value(&mut self, id: NodeId) -> Option<&ConstValue> {
+    pub fn try_tc_const_value(&mut self, id: NodeId) -> Option<&ConstValue> {
         let typ_val = self.ti.types.get(&id).unwrap();
         typ_val.get_const_val()
     }
 
     #[inline]
-    pub fn get_const_value(&mut self, id: NodeId) -> GosValue {
+    pub fn const_value(&mut self, id: NodeId) -> GosValue {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
         let (v, _) = self.const_value_type(typ_val.typ, const_val);
@@ -60,14 +60,14 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn get_const_value_type_by_ident(&mut self, id: &IdentKey) -> (GosValue, ValueType) {
+    pub fn ident_const_value_type(&mut self, id: &IdentKey) -> (GosValue, ValueType) {
         let lobj_key = self.ti.defs[id].unwrap();
         let lobj = &self.tc_objs.lobjs[lobj_key];
         let tkey = lobj.typ().unwrap();
         self.const_value_type(tkey, lobj.const_val())
     }
 
-    pub fn get_expr_value_types(&self, e: &Expr) -> Vec<ValueType> {
+    pub fn expr_value_types(&self, e: &Expr) -> Vec<ValueType> {
         let typ_val = self.ti.types.get(&e.id()).unwrap();
         let tcts = match typ_val.mode {
             OperandMode::Value => {
@@ -85,31 +85,33 @@ impl<'a> TypeLookup<'a> {
             OperandMode::Constant(_) => vec![typ_val.typ],
             _ => unreachable!(),
         };
-        tcts.iter().map(|x| self.value_type_from_tc(*x)).collect()
+        tcts.iter()
+            .map(|x| self.tc_type_to_value_type(*x))
+            .collect()
     }
 
     #[inline]
-    pub fn get_expr_tc_type(&self, e: &Expr) -> TCTypeKey {
-        self.get_node_tc_type(e.id())
+    pub fn expr_tc_type(&self, e: &Expr) -> TCTypeKey {
+        self.node_tc_type(e.id())
     }
 
     #[inline]
-    pub fn get_node_tc_type(&self, id: NodeId) -> TCTypeKey {
+    pub fn node_tc_type(&self, id: NodeId) -> TCTypeKey {
         self.ti.types.get(&id).unwrap().typ
     }
 
     #[inline]
-    pub fn try_get_expr_mode(&self, e: &Expr) -> Option<&OperandMode> {
+    pub fn try_expr_mode(&self, e: &Expr) -> Option<&OperandMode> {
         self.ti.types.get(&e.id()).map(|x| &x.mode)
     }
 
     #[inline]
-    pub fn get_expr_mode(&self, e: &Expr) -> &OperandMode {
+    pub fn expr_mode(&self, e: &Expr) -> &OperandMode {
         &self.ti.types.get(&e.id()).unwrap().mode
     }
 
     // some of the built in funcs are not recorded
-    pub fn try_get_expr_tc_type(&self, e: &Expr) -> Option<TCTypeKey> {
+    pub fn try_expr_tc_type(&self, e: &Expr) -> Option<TCTypeKey> {
         self.ti
             .types
             .get(&e.id())
@@ -124,7 +126,7 @@ impl<'a> TypeLookup<'a> {
             .flatten()
     }
 
-    pub fn try_get_pkg_key(&self, e: &Expr) -> Option<TCPackageKey> {
+    pub fn try_pkg_key(&self, e: &Expr) -> Option<TCPackageKey> {
         if let Expr::Ident(ikey) = e {
             self.ti
                 .uses
@@ -142,24 +144,24 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn get_expr_value_type(&mut self, e: &Expr) -> ValueType {
+    pub fn expr_value_type(&mut self, e: &Expr) -> ValueType {
         let tv = self.ti.types.get(&e.id()).unwrap();
         if tv.mode == OperandMode::TypeExpr {
             ValueType::Metadata
         } else {
-            let t = self.get_expr_tc_type(e);
-            self.value_type_from_tc(t)
+            let t = self.expr_tc_type(e);
+            self.tc_type_to_value_type(t)
         }
     }
 
-    pub fn get_meta_by_node_id(
+    pub fn node_meta(
         &mut self,
         id: NodeId,
         objects: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Meta {
         let tv = self.ti.types.get(&id).unwrap();
-        let md = self.meta_from_tc(tv.typ, objects, dummy_gcv);
+        let md = self.tc_type_to_meta(tv.typ, objects, dummy_gcv);
         if tv.mode == OperandMode::TypeExpr {
             md.into_type_category()
         } else {
@@ -168,44 +170,44 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn get_use_object(&self, ikey: IdentKey) -> TCObjKey {
+    pub fn object_use(&self, ikey: IdentKey) -> TCObjKey {
         self.ti.uses[&ikey]
     }
 
     #[inline]
-    pub fn get_def_object(&self, ikey: IdentKey) -> TCObjKey {
+    pub fn object_def(&self, ikey: IdentKey) -> TCObjKey {
         self.ti.defs[&ikey].unwrap()
     }
 
     #[inline]
-    pub fn get_implicit_object(&self, id: &NodeId) -> TCObjKey {
+    pub fn object_implicit(&self, id: &NodeId) -> TCObjKey {
         self.ti.implicits[id]
     }
 
     #[inline]
-    pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        self.get_obj_tc_type(self.get_use_object(ikey))
+    pub fn obj_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
+        self.obj_tc_type(self.object_use(ikey))
     }
 
     #[inline]
-    pub fn get_use_value_type(&self, ikey: IdentKey) -> ValueType {
-        self.value_type_from_tc(self.get_use_tc_type(ikey))
+    pub fn obj_use_value_type(&self, ikey: IdentKey) -> ValueType {
+        self.tc_type_to_value_type(self.obj_use_tc_type(ikey))
     }
 
     #[inline]
-    pub fn get_def_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        self.get_obj_tc_type(self.get_def_object(ikey))
+    pub fn obj_def_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
+        self.obj_tc_type(self.object_def(ikey))
     }
 
     #[inline]
-    pub fn get_obj_tc_type(&self, okey: TCObjKey) -> TCTypeKey {
+    pub fn obj_tc_type(&self, okey: TCObjKey) -> TCTypeKey {
         let obj = &self.tc_objs.lobjs[okey];
         obj.typ().unwrap()
     }
 
     #[inline]
-    pub fn get_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
-        self.value_type_from_tc(self.get_def_tc_type(ikey))
+    pub fn obj_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
+        self.tc_type_to_value_type(self.obj_def_tc_type(ikey))
     }
 
     #[inline]
@@ -214,35 +216,35 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn gen_def_type_meta(
+    pub fn obj_def_meta(
         &mut self,
         ikey: IdentKey,
         objects: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Meta {
-        self.meta_from_tc(self.get_def_tc_type(ikey), objects, dummy_gcv)
+        self.tc_type_to_meta(self.obj_def_tc_type(ikey), objects, dummy_gcv)
     }
 
     #[inline]
-    pub fn get_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
+    pub fn expr_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.range_tc_types(typ)
     }
 
     #[inline]
-    pub fn get_tuple_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
+    pub fn expr_tuple_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.tuple_tc_types(typ)
     }
 
-    pub fn get_selection_vtypes_indices_sel_typ(
+    pub fn selection_vtypes_indices_sel_typ(
         &mut self,
         id: NodeId,
     ) -> (ValueType, ValueType, &Vec<usize>, SelectionType) {
         let sel = &self.ti.selections[&id];
-        let t0 = self.value_type_from_tc(sel.recv().unwrap());
+        let t0 = self.tc_type_to_value_type(sel.recv().unwrap());
         let obj = &self.tc_objs.lobjs[sel.obj()];
-        let t1 = self.value_type_from_tc(obj.typ().unwrap());
+        let t1 = self.tc_type_to_value_type(obj.typ().unwrap());
         let sel_typ = match t1 {
             ValueType::Closure => match obj.entity_type() {
                 EntityType::Func(ptr_recv) => match ptr_recv {
@@ -256,23 +258,20 @@ impl<'a> TypeLookup<'a> {
         (t0, t1, &sel.indices(), sel_typ)
     }
 
-    pub fn meta_from_tc(
+    pub fn tc_type_to_meta(
         &mut self,
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Meta {
         if !self.types_cache.contains_key(&typ) {
-            let val = self.meta_from_tc_impl(typ, vm_objs, dummy_gcv);
+            let val = self.tc_type_to_meta_impl(typ, vm_objs, dummy_gcv);
             self.types_cache.insert(typ, val);
         }
         self.types_cache.get(&typ).unwrap().clone()
     }
 
-    pub fn get_sig_params_tc_types(
-        &mut self,
-        func: TCTypeKey,
-    ) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
+    pub fn sig_params_tc_types(&mut self, func: TCTypeKey) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         let params: Vec<TCTypeKey> = self.tc_objs.types[sig.params()]
@@ -298,14 +297,14 @@ impl<'a> TypeLookup<'a> {
         (params, variadic)
     }
 
-    pub fn get_sig_returns_tc_types(&mut self, func: TCTypeKey) -> Vec<TCTypeKey> {
+    pub fn sig_returns_tc_types(&mut self, func: TCTypeKey) -> Vec<TCTypeKey> {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         self.tuple_tc_types(sig.results())
     }
 
     // returns vm_type(metadata) for the tc_type
-    pub fn basic_type_from_tc(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> Option<Meta> {
+    pub fn basic_type_meta(&self, tkey: TCTypeKey, vm_objs: &mut VMObjects) -> Option<Meta> {
         self.tc_objs.types[tkey].try_as_basic().map(|x| {
             let typ = x.typ();
             match typ {
@@ -423,34 +422,34 @@ impl<'a> TypeLookup<'a> {
     }
 
     // get vm_type from tc_type
-    fn meta_from_tc_impl(
+    fn tc_type_to_meta_impl(
         &mut self,
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Meta {
         match &self.tc_objs.types[typ] {
-            Type::Basic(_) => self.basic_type_from_tc(typ, vm_objs).unwrap(),
+            Type::Basic(_) => self.basic_type_meta(typ, vm_objs).unwrap(),
             Type::Array(detail) => {
-                let elem = self.meta_from_tc_impl(detail.elem(), vm_objs, dummy_gcv);
+                let elem = self.tc_type_to_meta_impl(detail.elem(), vm_objs, dummy_gcv);
                 Meta::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
             }
             Type::Slice(detail) => {
-                let el_type = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
+                let el_type = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
                 Meta::new_slice(el_type, &mut vm_objs.metas)
             }
             Type::Map(detail) => {
-                let ktype = self.meta_from_tc(detail.key(), vm_objs, dummy_gcv);
-                let vtype = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
+                let ktype = self.tc_type_to_meta(detail.key(), vm_objs, dummy_gcv);
+                let vtype = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
                 Meta::new_map(ktype, vtype, &mut vm_objs.metas)
             }
             Type::Struct(detail) => {
-                let fields = self.get_fields(detail.fields(), vm_objs, dummy_gcv);
+                let fields = self.build_fields(detail.fields(), vm_objs, dummy_gcv);
                 Meta::new_struct(fields, vm_objs, dummy_gcv)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
-                let fields = self.get_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcv);
+                let fields = self.build_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcv);
                 Meta::new_interface(fields, &mut vm_objs.metas)
             }
             Type::Chan(detail) => {
@@ -459,7 +458,7 @@ impl<'a> TypeLookup<'a> {
                     ChanDir::SendOnly => ChannelType::Send,
                     ChanDir::SendRecv => ChannelType::SendRecv,
                 };
-                let vmeta = self.meta_from_tc(detail.elem(), vm_objs, dummy_gcv);
+                let vmeta = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
                 Meta::new_channel(typ, vmeta, &mut vm_objs.metas)
             }
             Type::Signature(detail) => {
@@ -470,7 +469,7 @@ impl<'a> TypeLookup<'a> {
                         .vars()
                         .iter()
                         .map(|&x| {
-                            self.meta_from_tc(
+                            self.tc_type_to_meta(
                                 self.tc_objs.lobjs[x].typ().unwrap(),
                                 vm_objs,
                                 dummy_gcv,
@@ -485,7 +484,7 @@ impl<'a> TypeLookup<'a> {
                     let recv_tc_type = self.tc_objs.lobjs[*r].typ().unwrap();
                     // to avoid infinite recursion
                     if !self.tc_objs.types[recv_tc_type].is_interface(self.tc_objs) {
-                        recv = Some(self.meta_from_tc(recv_tc_type, vm_objs, dummy_gcv));
+                        recv = Some(self.tc_type_to_meta(recv_tc_type, vm_objs, dummy_gcv));
                     }
                 }
                 let variadic = if detail.variadic() {
@@ -500,7 +499,7 @@ impl<'a> TypeLookup<'a> {
                 Meta::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
             }
             Type::Pointer(detail) => {
-                let inner = self.meta_from_tc(detail.base(), vm_objs, dummy_gcv);
+                let inner = self.tc_type_to_meta(detail.base(), vm_objs, dummy_gcv);
                 inner.ptr_to()
             }
             Type::Named(detail) => {
@@ -515,7 +514,7 @@ impl<'a> TypeLookup<'a> {
                     )
                 }
                 self.types_cache.insert(typ, md);
-                let underlying = self.meta_from_tc(detail.underlying(), vm_objs, dummy_gcv);
+                let underlying = self.tc_type_to_meta(detail.underlying(), vm_objs, dummy_gcv);
                 let (_, underlying_mut) = vm_objs.metas[md.key].as_named_mut();
                 *underlying_mut = underlying;
                 md
@@ -534,11 +533,11 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn underlying_value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
-        self.value_type_from_tc(self.underlying_tc(typ))
+    pub fn obj_underlying_value_type(&self, typ: TCTypeKey) -> ValueType {
+        self.tc_type_to_value_type(self.underlying_tc(typ))
     }
 
-    pub fn value_type_from_tc(&self, typ: TCTypeKey) -> ValueType {
+    pub fn tc_type_to_value_type(&self, typ: TCTypeKey) -> ValueType {
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
                 BasicType::Bool | BasicType::UntypedBool => ValueType::Bool,
@@ -573,7 +572,7 @@ impl<'a> TypeLookup<'a> {
             Type::Chan(_) => ValueType::Channel,
             Type::Signature(_) => ValueType::Closure,
             Type::Pointer(_) => ValueType::Pointer,
-            Type::Named(n) => self.value_type_from_tc(n.underlying()),
+            Type::Named(n) => self.tc_type_to_value_type(n.underlying()),
             _ => {
                 dbg!(&self.tc_objs.types[typ]);
                 unimplemented!()
@@ -608,7 +607,7 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    fn get_fields(
+    fn build_fields(
         &mut self,
         fields: &Vec<TCObjKey>,
         vm_objs: &mut VMObjects,
@@ -618,7 +617,7 @@ impl<'a> TypeLookup<'a> {
         let mut map = HashMap::<String, usize>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
-            let f_type = self.meta_from_tc(field.typ().unwrap(), vm_objs, dummy_gcv);
+            let f_type = self.tc_type_to_meta(field.typ().unwrap(), vm_objs, dummy_gcv);
             let exported = field.name().chars().next().unwrap().is_uppercase();
             vec.push((f_type, field.name().clone(), exported));
             map.insert(field.name().clone(), i);

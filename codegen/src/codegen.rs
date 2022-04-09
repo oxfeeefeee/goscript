@@ -46,7 +46,7 @@ macro_rules! current_func_emitter {
 
 macro_rules! use_ident_unique_key {
     ($owner:ident, $var:expr) => {
-        $owner.t.get_use_object($var).into()
+        $owner.t.object_use($var).into()
     };
 }
 
@@ -113,12 +113,12 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> EntIndex {
-        let mode = expr.map_or(&OperandMode::Value, |x| self.t.get_expr_mode(x));
+        let mode = expr.map_or(&OperandMode::Value, |x| self.t.expr_mode(x));
         match mode {
             OperandMode::TypeExpr => {
                 let lookup = &self.t;
-                let tctype = lookup.underlying_tc(lookup.get_use_tc_type(*ident));
-                match lookup.basic_type_from_tc(tctype, self.objects) {
+                let tctype = lookup.underlying_tc(lookup.obj_use_tc_type(*ident));
+                match lookup.basic_type_meta(tctype, self.objects) {
                     Some(meta) => EntIndex::TypeMeta(meta),
                     None => self.resolve_var_ident(ident),
                 }
@@ -137,7 +137,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
-        let okey = self.t.get_use_object(*ident);
+        let okey = self.t.object_use(*ident);
         let entity_key: KeyData = okey.into();
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
@@ -156,7 +156,7 @@ impl<'a> CodeGen<'a> {
                 let index = f.entity_index(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
                     let desc =
-                        ValueDesc::new(*ifunc, ind.into(), self.t.get_use_value_type(*ident), true);
+                        ValueDesc::new(*ifunc, ind.into(), self.t.obj_use_value_type(*ident), true);
                     Some(desc)
                 } else {
                     None
@@ -182,7 +182,7 @@ impl<'a> CodeGen<'a> {
             return (EntIndex::Blank, None, pos);
         }
         if is_def {
-            let tc_obj = self.t.get_def_object(*ikey);
+            let tc_obj = self.t.object_def(*ikey);
             let (index, tc_type, _) = self.add_local_var(tc_obj);
             let func = current_func_mut!(self);
             if func.is_ctor() {
@@ -193,14 +193,16 @@ impl<'a> CodeGen<'a> {
             (index, Some(tc_type), pos)
         } else {
             let index = self.resolve_var_ident(ikey);
-            let t = self.t.get_use_tc_type(*ikey);
+            let t = self.t.obj_use_tc_type(*ikey);
             (index, Some(t), pos)
         }
     }
 
     fn add_local_var(&mut self, okey: TCObjKey) -> (EntIndex, TCTypeKey, Meta) {
-        let tc_type = self.t.get_obj_tc_type(okey);
-        let meta = self.t.meta_from_tc(tc_type, self.objects, self.dummy_gcv);
+        let tc_type = self.t.obj_tc_type(okey);
+        let meta = self
+            .t
+            .tc_type_to_meta(tc_type, self.objects, self.dummy_gcv);
         let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
         let func = current_func_mut!(self);
         let ident_key = Some(okey.into());
@@ -228,7 +230,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let (val, typ) = self.t.get_const_value_type_by_ident(name);
+            let (val, typ) = self.t.ident_const_value_type(name);
             self.current_func_add_const_def(name, val, typ);
         }
     }
@@ -258,13 +260,13 @@ impl<'a> CodeGen<'a> {
                     Expr::Index(ind_expr) => {
                         let obj = &ind_expr.as_ref().expr;
                         self.visit_expr(obj);
-                        let obj_typ = self.t.get_expr_value_type(obj);
+                        let obj_typ = self.t.expr_value_type(obj);
                         let ind = &ind_expr.as_ref().index;
                         let pos = ind_expr.as_ref().l_brack;
 
                         let mut index_const = None;
                         let mut index_typ = None;
-                        if let Some(const_val) = self.t.get_tc_const_value(ind.id()) {
+                        if let Some(const_val) = self.t.try_tc_const_value(ind.id()) {
                             let (ival, _) = const_val.to_int().int_as_i64();
                             if let Ok(i) = OpIndex::try_from(ival) {
                                 index_const = Some(i);
@@ -272,7 +274,7 @@ impl<'a> CodeGen<'a> {
                         }
                         if index_const.is_none() {
                             self.visit_expr(ind);
-                            index_typ = Some(self.t.get_expr_value_type(ind));
+                            index_typ = Some(self.t.expr_value_type(ind));
                         }
                         (
                             LeftHandSide::IndexSelExpr(IndexSelInfo::new(
@@ -282,13 +284,13 @@ impl<'a> CodeGen<'a> {
                                 index_typ,
                                 IndexSelType::Indexing,
                             )), // the true index will be calculated later
-                            Some(self.t.get_expr_tc_type(expr)),
+                            Some(self.t.expr_tc_type(expr)),
                             pos,
                         )
                     }
                     Expr::Selector(sexpr) => {
                         let pos = self.ast_objs.idents[sexpr.sel].pos;
-                        match self.t.try_get_pkg_key(&sexpr.expr) {
+                        match self.t.try_pkg_key(&sexpr.expr) {
                             Some(key) => {
                                 let pkg = self.pkg_helper.get_runtime_key(key);
                                 (
@@ -297,21 +299,19 @@ impl<'a> CodeGen<'a> {
                                         pkg,
                                         sexpr.sel.into(),
                                     )),
-                                    Some(self.t.get_expr_tc_type(expr)),
+                                    Some(self.t.expr_tc_type(expr)),
                                     pos,
                                 )
                             }
                             None => {
-                                let t = self.t.get_meta_by_node_id(
-                                    sexpr.expr.id(),
-                                    self.objects,
-                                    self.dummy_gcv,
-                                );
+                                let t =
+                                    self.t
+                                        .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
                                 let name = &self.ast_objs.idents[sexpr.sel].name;
                                 let i = t.field_index(name, &self.objects.metas);
 
                                 self.visit_expr(&sexpr.expr);
-                                let obj_typ = self.t.get_expr_value_type(&sexpr.expr);
+                                let obj_typ = self.t.expr_value_type(&sexpr.expr);
                                 (
                                     // the true index will be calculated later
                                     LeftHandSide::IndexSelExpr(IndexSelInfo::new(
@@ -321,7 +321,7 @@ impl<'a> CodeGen<'a> {
                                         None,
                                         IndexSelType::StructField,
                                     )),
-                                    Some(self.t.get_expr_tc_type(expr)),
+                                    Some(self.t.expr_tc_type(expr)),
                                     pos,
                                 )
                             }
@@ -331,7 +331,7 @@ impl<'a> CodeGen<'a> {
                         self.visit_expr(&sexpr.expr);
                         (
                             LeftHandSide::Deref(0), // the true index will be calculated later
-                            Some(self.t.get_expr_tc_type(expr)),
+                            Some(self.t.expr_tc_type(expr)),
                             sexpr.star,
                         )
                     }
@@ -347,7 +347,7 @@ impl<'a> CodeGen<'a> {
                     Token::DEC => Opcode::UNARY_SUB,
                     _ => unreachable!(),
                 };
-                let typ = self.t.get_expr_value_type(&lhs_exprs[0]);
+                let typ = self.t.expr_value_type(&lhs_exprs[0]);
                 self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
                 None
             }
@@ -370,10 +370,10 @@ impl<'a> CodeGen<'a> {
                 if let Some(code) = simple_op {
                     assert_eq!(lhs_exprs.len(), 1);
                     assert_eq!(rhs_exprs.len(), 1);
-                    let ltyp = self.t.get_expr_value_type(&lhs_exprs[0]);
+                    let ltyp = self.t.expr_value_type(&lhs_exprs[0]);
                     let rtyp = match code {
                         Opcode::SHL | Opcode::SHR => {
-                            let t = self.t.get_expr_value_type(&rhs_exprs[0]);
+                            let t = self.t.expr_value_type(&rhs_exprs[0]);
                             Some(t)
                         }
                         _ => None,
@@ -406,8 +406,8 @@ impl<'a> CodeGen<'a> {
         let types = match rhs {
             RightHandSide::Nothing => {
                 // define without values
-                let t = self.t.get_expr_tc_type(&typ.as_ref().unwrap());
-                let meta = self.t.meta_from_tc(t, self.objects, self.dummy_gcv);
+                let t = self.t.expr_tc_type(&typ.as_ref().unwrap());
+                let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
                 let mut types = Vec::with_capacity(lhs.len());
                 for (_, _, pos) in lhs.iter() {
                     let mut emitter = current_func_emitter!(self);
@@ -419,7 +419,7 @@ impl<'a> CodeGen<'a> {
             }
             RightHandSide::Values(values) => {
                 let val0 = &values[0];
-                let val0_mode = self.t.get_expr_mode(val0);
+                let val0_mode = self.t.expr_mode(val0);
                 if values.len() == 1
                     && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
                 {
@@ -434,7 +434,7 @@ impl<'a> CodeGen<'a> {
                         Expr::Unary(recv_expr) => {
                             assert_eq!(recv_expr.op, Token::ARROW);
                             self.visit_expr(&recv_expr.expr);
-                            let t = self.t.get_expr_value_type(&recv_expr.expr);
+                            let t = self.t.expr_value_type(&recv_expr.expr);
                             assert_eq!(t, ValueType::Channel);
                             let comma_ok_flag = comma_ok.then(|| ValueType::FlagA);
                             current_func_mut!(self).emit_code_with_type2(
@@ -450,16 +450,16 @@ impl<'a> CodeGen<'a> {
                         }
                     }
                     if comma_ok {
-                        self.t.get_tuple_tc_types(val0)
+                        self.t.expr_tuple_tc_types(val0)
                     } else {
-                        vec![self.t.get_expr_tc_type(val0)]
+                        vec![self.t.expr_tc_type(val0)]
                     }
                 } else if values.len() == lhs.len() {
                     // define or assign with values
                     let mut types = Vec::with_capacity(values.len());
                     for val in values.iter() {
                         self.visit_expr(val);
-                        let rhs_type = self.t.get_expr_tc_type(val);
+                        let rhs_type = self.t.expr_tc_type(val);
                         types.push(rhs_type);
                     }
                     types
@@ -471,7 +471,7 @@ impl<'a> CodeGen<'a> {
                     } else {
                         unreachable!()
                     }
-                    self.t.get_tuple_tc_types(expr)
+                    self.t.expr_tuple_tc_types(expr)
                 } else {
                     unreachable!();
                 }
@@ -479,11 +479,11 @@ impl<'a> CodeGen<'a> {
             RightHandSide::Range(r) => {
                 // the range statement
                 self.visit_expr(r);
-                let tkv = self.t.get_range_tc_types(r);
+                let tkv = self.t.expr_range_tc_types(r);
                 let types = [
-                    Some(self.t.value_type_from_tc(tkv[0])),
-                    Some(self.t.value_type_from_tc(tkv[1])),
-                    Some(self.t.value_type_from_tc(tkv[2])),
+                    Some(self.t.tc_type_to_value_type(tkv[0])),
+                    Some(self.t.tc_type_to_value_type(tkv[1])),
+                    Some(self.t.tc_type_to_value_type(tkv[2])),
                 ];
                 let pos = Some(r.pos(&self.ast_objs));
                 let func = current_func_mut!(self);
@@ -496,11 +496,11 @@ impl<'a> CodeGen<'a> {
             RightHandSide::SelectRecv(rhs) => {
                 // only when in select stmt, lhs in stack is on top of the rhs
                 lhs_on_stack_top = true;
-                let comma_ok = lhs.len() == 2 && self.t.get_expr_mode(rhs) == &OperandMode::CommaOk;
+                let comma_ok = lhs.len() == 2 && self.t.expr_mode(rhs) == &OperandMode::CommaOk;
                 if comma_ok {
-                    self.t.get_tuple_tc_types(rhs)
+                    self.t.expr_tuple_tc_types(rhs)
                 } else {
-                    vec![self.t.get_expr_tc_type(rhs)]
+                    vec![self.t.expr_tc_type(rhs)]
                 }
             }
         };
@@ -592,7 +592,7 @@ impl<'a> CodeGen<'a> {
         match right {
             Some(e) => {
                 self.visit_expr(e);
-                on_stack_types.push(self.t.get_expr_value_type(e));
+                on_stack_types.push(self.t.expr_value_type(e));
             }
             None => {}
         };
@@ -719,7 +719,7 @@ impl<'a> CodeGen<'a> {
         let typ = &self.ast_objs.ftypes[fkey];
         let fmeta = self
             .t
-            .meta_from_tc(tc_type, &mut self.objects, self.dummy_gcv);
+            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
         let f = GosValue::new_function_create(
             self.pkg_key,
             fmeta,
@@ -756,7 +756,7 @@ impl<'a> CodeGen<'a> {
 
     fn gen_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool, style: CallStyle) {
         let pos = Some(func_expr.pos(&self.ast_objs));
-        match *self.t.get_expr_mode(func_expr) {
+        match *self.t.expr_mode(func_expr) {
             // built in function
             OperandMode::Builtin(builtin) => {
                 let opcode = match builtin {
@@ -781,19 +781,19 @@ impl<'a> CodeGen<'a> {
                     self.visit_expr(e);
                 }
                 // some of the built in funcs are not recorded
-                if let Some(t) = self.t.try_get_expr_tc_type(func_expr) {
+                if let Some(t) = self.t.try_expr_tc_type(func_expr) {
                     self.try_cast_params_to_iface(t, params, ellipsis);
                     if opcode == Opcode::FFI {
                         // FFI needs the signature of the call
-                        let meta = self.t.meta_from_tc(t, self.objects, self.dummy_gcv);
+                        let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
                         let mut emitter = current_func_emitter!(self);
                         emitter.emit_load(EntIndex::TypeMeta(meta), None, ValueType::Metadata, pos);
                     }
                 }
                 let (param0t, param_last_t) = match params.len() > 0 {
                     true => (
-                        Some(self.t.get_expr_value_type(&params[0])),
-                        Some(self.t.get_expr_value_type(params.last().unwrap())),
+                        Some(self.t.expr_value_type(&params[0])),
+                        Some(self.t.expr_value_type(params.last().unwrap())),
                     ),
                     false => (None, None),
                 };
@@ -818,8 +818,8 @@ impl<'a> CodeGen<'a> {
                     Opcode::DELETE => (param0t, param_last_t),
                     Opcode::MAKE | Opcode::NEW => {
                         // provide the type of param0 too instead of only ValueType::Metadata
-                        let t = self.t.get_expr_tc_type(&params[0]);
-                        (param0t, Some(self.t.value_type_from_tc(t)))
+                        let t = self.t.expr_tc_type(&params[0]);
+                        (param0t, Some(self.t.tc_type_to_value_type(t)))
                     }
                     Opcode::PANIC => (Some(ValueType::Interface), None),
                     _ => (param0t, None),
@@ -849,10 +849,10 @@ impl<'a> CodeGen<'a> {
             OperandMode::TypeExpr => {
                 assert!(params.len() == 1);
                 self.visit_expr(&params[0]);
-                let tc_to = self.t.underlying_tc(self.t.get_expr_tc_type(func_expr));
-                let typ_to = self.t.value_type_from_tc(tc_to);
-                let tc_from = self.t.underlying_tc(self.t.get_expr_tc_type(&params[0]));
-                let typ_from = self.t.value_type_from_tc(tc_from);
+                let tc_to = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
+                let typ_to = self.t.tc_type_to_value_type(tc_to);
+                let tc_from = self.t.underlying_tc(self.t.expr_tc_type(&params[0]));
+                let typ_from = self.t.tc_type_to_value_type(tc_from);
 
                 if typ_from == ValueType::Nil || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
                 {
@@ -906,7 +906,7 @@ impl<'a> CodeGen<'a> {
                                 ValueType::Channel => Some(tc_to),
                                 _ => None,
                             };
-                            let t2 = t_extra.map(|x| self.t.value_type_from_tc(x));
+                            let t2 = t_extra.map(|x| self.t.tc_type_to_value_type(x));
 
                             current_func_emitter!(self).emit_cast(typ_to, typ_from, t2, -1, 0, pos);
                         }
@@ -923,11 +923,11 @@ impl<'a> CodeGen<'a> {
                 self.visit_expr(func_expr);
                 current_func_emitter!(self).emit_pre_call(pos);
                 let _ = params.iter().map(|e| self.visit_expr(e)).count();
-                let t = self.t.get_expr_tc_type(func_expr);
+                let t = self.t.expr_tc_type(func_expr);
                 self.try_cast_params_to_iface(t, params, ellipsis);
 
                 // do not pack params if there is ellipsis
-                let ftc = self.t.underlying_tc(self.t.get_expr_tc_type(func_expr));
+                let ftc = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
                 let func_detail = self.tc_objs.types[ftc].try_as_signature().unwrap();
                 let variadic = func_detail.variadic();
                 let pack = variadic && !ellipsis;
@@ -938,8 +938,8 @@ impl<'a> CodeGen<'a> {
 
     fn gen_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>, comma_ok: bool) {
         self.visit_expr(expr);
-        let t = self.t.get_expr_tc_type(typ.as_ref().unwrap());
-        let meta = self.t.meta_from_tc(t, self.objects, self.dummy_gcv);
+        let t = self.t.expr_tc_type(typ.as_ref().unwrap());
+        let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
         let func = current_func_mut!(self);
         let index = func.add_const(None, GosValue::new_metadata(meta));
         let pos = expr.pos(self.ast_objs);
@@ -947,11 +947,11 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_map_index(&mut self, expr: &Expr, index: &Expr, comma_ok: bool) {
-        let t0 = self.t.get_expr_value_type(expr);
-        let t1 = self.t.get_expr_value_type(index);
+        let t0 = self.t.expr_value_type(expr);
+        let t1 = self.t.expr_value_type(index);
         self.visit_expr(expr);
         let pos = Some(expr.pos(&self.ast_objs));
-        if let Some(const_val) = self.t.get_tc_const_value(index.id()) {
+        if let Some(const_val) = self.t.try_tc_const_value(index.id()) {
             let (ival, _) = const_val.to_int().int_as_i64();
             if let Ok(i) = OpIndex::try_from(ival) {
                 current_func_emitter!(self).emit_load_index_imm(i, t0, comma_ok, pos);
@@ -969,11 +969,11 @@ impl<'a> CodeGen<'a> {
         rhs_index: OpIndex,
         pos: usize,
     ) -> ValueType {
-        let rhs_type = self.t.value_type_from_tc(rhs);
+        let rhs_type = self.t.tc_type_to_value_type(rhs);
         match lhs {
-            Some(t0) => match self.t.underlying_value_type_from_tc(t0) == ValueType::Interface {
+            Some(t0) => match self.t.obj_underlying_value_type(t0) == ValueType::Interface {
                 true => {
-                    let vt1 = self.t.underlying_value_type_from_tc(rhs);
+                    let vt1 = self.t.obj_underlying_value_type(rhs);
                     match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
                         true => {
                             let index = self.iface_mapping.get_index(
@@ -1002,7 +1002,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
-        let (sig_params, variadic) = self.t.get_sig_params_tc_types(func);
+        let (sig_params, variadic) = self.t.sig_params_tc_types(func);
         let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
         let param_types = self.get_exprs_final_types(params);
 
@@ -1012,7 +1012,7 @@ impl<'a> CodeGen<'a> {
         }
         if !ellipsis {
             if let Some(t) = variadic {
-                if self.t.underlying_value_type_from_tc(t) == ValueType::Interface {
+                if self.t.obj_underlying_value_type(t) == ValueType::Interface {
                     for (i, p) in param_types.iter().enumerate().skip(non_variadic_count) {
                         let rhs_index = i as OpIndex - params.len() as OpIndex;
                         self.try_cast_to_iface(Some(t), p.0, rhs_index, p.1);
@@ -1027,7 +1027,7 @@ impl<'a> CodeGen<'a> {
             let pos = e.pos(&self.ast_objs);
             match e {
                 Expr::Call(call) => {
-                    let typ = self.t.get_node_tc_type(call.id());
+                    let typ = self.t.node_tc_type(call.id());
                     match &self.tc_objs.types[typ] {
                         Type::Tuple(tuple) => init.extend(
                             tuple
@@ -1040,7 +1040,7 @@ impl<'a> CodeGen<'a> {
                         _ => init.push((typ, pos)),
                     }
                 }
-                _ => init.push((self.t.get_expr_tc_type(e), pos)),
+                _ => init.push((self.t.expr_tc_type(e), pos)),
             };
             init
         })
@@ -1051,15 +1051,15 @@ impl<'a> CodeGen<'a> {
             Expr::CompositeLit(clit) => self.gen_composite_literal(clit, tctype),
             _ => self.visit_expr(expr),
         }
-        let t = self.t.get_expr_tc_type(expr);
+        let t = self.t.expr_tc_type(expr);
         self.try_cast_to_iface(Some(tctype), t, -1, expr.pos(self.ast_objs));
     }
 
     fn gen_composite_literal(&mut self, clit: &CompositeLit, tctype: TCTypeKey) {
         let meta = self
             .t
-            .meta_from_tc(tctype, &mut self.objects, self.dummy_gcv);
-        let vt = self.t.value_type_from_tc(tctype);
+            .tc_type_to_meta(tctype, &mut self.objects, self.dummy_gcv);
+        let vt = self.t.tc_type_to_value_type(tctype);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
         let meta = meta.underlying(&self.objects.metas);
@@ -1076,7 +1076,7 @@ impl<'a> CodeGen<'a> {
                         Expr::KeyValue(kv) => {
                             self.visit_composite_expr(&kv.val, elem);
                             // the key is a constant
-                            let key_const = self.t.get_tc_const_value(kv.key.id()).unwrap();
+                            let key_const = self.t.try_tc_const_value(kv.key.id()).unwrap();
                             let (key_i64, ok) = key_const.int_as_i64();
                             debug_assert!(ok);
                             current_func_emitter!(self).emit_push_imm(
@@ -1142,16 +1142,14 @@ impl<'a> CodeGen<'a> {
     }
 
     fn gen_type_meta(&mut self, typ: &Expr) {
-        let m = self
-            .t
-            .get_meta_by_node_id(typ.id(), self.objects, self.dummy_gcv);
+        let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
         let mut emitter = current_func_emitter!(self);
         let pos = Some(typ.pos(&self.ast_objs));
         emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
     }
 
     fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
-        let val = self.t.get_const_value(node);
+        let val = self.t.const_value(node);
         let mut emitter = current_func_emitter!(self);
         let t = val.typ();
         let i = emitter.add_const(None, val);
@@ -1191,7 +1189,7 @@ impl<'a> CodeGen<'a> {
         typ: ValueType,
     ) -> EntIndex {
         let func = current_func_mut!(self);
-        let index = func.add_const(Some(self.t.get_def_object(*ikey).into()), cst.clone());
+        let index = func.add_const(Some(self.t.object_def(*ikey).into()), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
@@ -1205,7 +1203,7 @@ impl<'a> CodeGen<'a> {
     fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
         for n in names.iter() {
             let ident = &self.ast_objs.idents[*n];
-            let meta = self.t.gen_def_type_meta(*n, self.objects, self.dummy_gcv);
+            let meta = self.t.obj_def_meta(*n, self.objects, self.dummy_gcv);
             let val = meta.zero(&self.objects.metas, self.dummy_gcv);
             self.objects.packages[pkey].add_member(
                 ident.name.clone(),
@@ -1216,7 +1214,7 @@ impl<'a> CodeGen<'a> {
     }
 
     fn swallow_value(&mut self, expr: &Expr) {
-        let val_types = self.t.get_expr_value_types(expr);
+        let val_types = self.t.expr_value_types(expr);
         current_func_emitter!(self).emit_pop(&val_types, Some(expr.pos(&self.ast_objs)));
     }
 
@@ -1279,7 +1277,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     type Result = ();
 
     fn visit_expr(&mut self, expr: &Expr) {
-        if let Some(mode) = self.t.try_get_expr_mode(expr) {
+        if let Some(mode) = self.t.try_expr_mode(expr) {
             if let OperandMode::Constant(_) = mode {
                 self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
                 return;
@@ -1290,7 +1288,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_ident(&mut self, expr: &Expr, ident: &IdentKey) {
         let index = self.resolve_any_ident(ident, Some(expr));
-        let t = self.t.get_use_value_type(*ident);
+        let t = self.t.obj_use_value_type(*ident);
         let fkey = self.func_stack.last().unwrap();
         let p = Some(self.ast_objs.idents[*ident].pos);
         current_func_emitter!(self).emit_load(
@@ -1311,7 +1309,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) {
-        let tc_type = self.t.get_node_tc_type(this.id());
+        let tc_type = self.t.node_tc_type(this.id());
         let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let mut emitter = current_func_emitter!(self);
         let i = emitter.add_const(None, GosValue::new_function(fkey));
@@ -1320,7 +1318,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
     }
 
     fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
-        let tctype = self.t.get_expr_tc_type(clit.typ.as_ref().unwrap());
+        let tctype = self.t.expr_tc_type(clit.typ.as_ref().unwrap());
         self.gen_composite_literal(clit, tctype);
     }
 
@@ -1330,9 +1328,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
         let pos = Some(expr.pos(&self.ast_objs));
-        if let Some(key) = self.t.try_get_pkg_key(expr) {
+        if let Some(key) = self.t.try_pkg_key(expr) {
             let pkg = self.pkg_helper.get_runtime_key(key);
-            let t = self.t.get_use_value_type(*ident);
+            let t = self.t.obj_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
                 EntIndex::PackageMember(pkg, (*ident).into()),
@@ -1343,10 +1341,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             return;
         }
 
-        let mut lhs_meta = self
-            .t
-            .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
-        let (t0, _, indices, stype) = self.t.get_selection_vtypes_indices_sel_typ(this.id());
+        let mut lhs_meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
+        let (t0, _, indices, stype) = self.t.selection_vtypes_indices_sel_typ(this.id());
         let index_count = indices.len();
         let index = indices[index_count - 1] as OpIndex; // the final index
         let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
@@ -1416,7 +1412,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         max: &Option<Expr>,
     ) -> Self::Result {
         self.visit_expr(expr);
-        let t = self.t.get_expr_value_type(expr);
+        let t = self.t.expr_value_type(expr);
         let pos = Some(expr.pos(&self.ast_objs));
         match low {
             None => current_func_emitter!(self).emit_push_imm(ValueType::Int, 0, pos),
@@ -1445,18 +1441,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 
     fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) {
         let pos = Some(expr.pos(&self.ast_objs));
-        match self.t.get_expr_mode(expr) {
+        match self.t.expr_mode(expr) {
             OperandMode::TypeExpr => {
                 let m = self
                     .t
-                    .meta_from_tc(self.t.get_expr_tc_type(expr), self.objects, self.dummy_gcv)
+                    .tc_type_to_meta(self.t.expr_tc_type(expr), self.objects, self.dummy_gcv)
                     .ptr_to();
                 let mut emitter = current_func_emitter!(self);
                 emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
             }
             _ => {
                 self.visit_expr(expr);
-                let t = self.t.get_expr_value_type(expr);
+                let t = self.t.expr_value_type(expr);
                 current_func_mut!(self).emit_code_with_type(Opcode::DEREF, t, pos);
             }
         }
@@ -1470,9 +1466,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let index = self.resolve_any_ident(ikey, None);
                     match index {
                         EntIndex::LocalVar(i) => {
-                            let meta =
-                                self.t
-                                    .get_meta_by_node_id(expr.id(), self.objects, self.dummy_gcv);
+                            let meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
                             let t = meta.value_type(&self.objects.metas);
                             let ut = meta
                                 .underlying(&self.objects.metas)
@@ -1509,7 +1503,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             }
                         }
                         EntIndex::UpValue(i) => {
-                            let t = self.t.get_expr_value_type(expr);
+                            let t = self.t.expr_value_type(expr);
                             let func = current_func_mut!(self);
                             func.emit_inst(
                                 Opcode::REF_UPVALUE,
@@ -1535,8 +1529,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                 }
                 Expr::Index(iexpr) => {
-                    let t0 = self.t.get_expr_value_type(&iexpr.expr);
-                    let t1 = self.t.get_expr_value_type(&iexpr.index);
+                    let t0 = self.t.expr_value_type(&iexpr.expr);
+                    let t1 = self.t.expr_value_type(&iexpr.index);
                     self.visit_expr(&iexpr.expr);
                     self.visit_expr(&iexpr.index);
                     let pos = Some(iexpr.index.pos(&self.ast_objs));
@@ -1547,7 +1541,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                         pos,
                     );
                 }
-                Expr::Selector(sexpr) => match self.t.try_get_pkg_key(&sexpr.expr) {
+                Expr::Selector(sexpr) => match self.t.try_pkg_key(&sexpr.expr) {
                     Some(key) => {
                         let pkey = self.pkg_helper.get_runtime_key(key);
                         let func = current_func_mut!(self);
@@ -1559,13 +1553,11 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                     None => {
                         self.visit_expr(&sexpr.expr);
-                        let lhs_meta = self.t.get_meta_by_node_id(
-                            sexpr.expr.id(),
-                            self.objects,
-                            self.dummy_gcv,
-                        );
+                        let lhs_meta =
+                            self.t
+                                .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
                         let (t0, _, indices, _) =
-                            self.t.get_selection_vtypes_indices_sel_typ(sexpr.id());
+                            self.t.selection_vtypes_indices_sel_typ(sexpr.id());
                         let index_count = indices.len();
                         let index = indices[index_count - 1] as OpIndex; // the final index
                         let embedded_indices =
@@ -1582,7 +1574,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 },
                 Expr::CompositeLit(clit) => {
                     self.visit_expr_composit_lit(this, clit);
-                    let typ = self.t.get_expr_value_type(expr);
+                    let typ = self.t.expr_value_type(expr);
                     current_func_mut!(self).emit_inst(
                         Opcode::REF_LOCAL,
                         [Some(typ), None, None],
@@ -1610,13 +1602,13 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 unreachable!()
             }
         };
-        let t = self.t.get_expr_value_type(expr);
+        let t = self.t.expr_value_type(expr);
         current_func_mut!(self).emit_code_with_type(code, t, pos);
     }
 
     fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
         self.visit_expr(left);
-        let t = self.t.get_expr_value_type(left);
+        let t = self.t.expr_value_type(left);
         let code = match op {
             Token::ADD => Opcode::ADD,
             Token::SUB => Opcode::SUB,
@@ -1660,7 +1652,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 .set_imm(diff as OpIndex);
         } else {
             let t1 = match code {
-                Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.get_expr_value_type(right)),
+                Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.expr_value_type(right)),
                 _ => None,
             };
             current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
@@ -1720,9 +1712,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     //handled elsewhere
                 }
                 Spec::Type(ts) => {
-                    let m = self
-                        .t
-                        .gen_def_type_meta(ts.name, self.objects, self.dummy_gcv);
+                    let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcv);
                     self.current_func_add_const_def(
                         &ts.name,
                         GosValue::new_metadata(m),
@@ -1749,7 +1739,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             return;
             // unimplemented!()
         }
-        let tc_type = self.t.get_def_tc_type(decl.name);
+        let tc_type = self.t.obj_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
         let cls = GosValue::new_static_closure(fkey, &self.objects.functions);
@@ -1759,7 +1749,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let name = &self.ast_objs.idents[decl.name].name;
             let meta = self
                 .t
-                .get_meta_by_node_id(field.typ.id(), self.objects, self.dummy_gcv);
+                .node_meta(field.typ.id(), self.objects, self.dummy_gcv);
             meta.set_method_code(name, fkey, &mut self.objects.metas);
         } else {
             let name = &self.ast_objs.idents[decl.name].name;
@@ -1776,7 +1766,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = self.t.get_def_object(stmt.label).into();
+        let entity = self.t.object_def(stmt.label).into();
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
@@ -1788,7 +1778,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_send(&mut self, sstmt: &SendStmt) {
         self.visit_expr(&sstmt.chan);
         self.visit_expr(&sstmt.val);
-        let t = self.t.get_expr_value_type(&sstmt.val);
+        let t = self.t.expr_value_type(&sstmt.val);
         current_func_mut!(self).emit_code_with_type(Opcode::SEND, t, Some(sstmt.arrow));
     }
 
@@ -1843,7 +1833,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let return_types = self.get_exprs_final_types(&rstmt.results);
             let types = self
                 .t
-                .get_sig_returns_tc_types(*self.func_t_stack.last().unwrap());
+                .sig_returns_tc_types(*self.func_t_stack.last().unwrap());
             assert_eq!(return_types.len(), types.len());
             let count: OpIndex = return_types.len() as OpIndex;
             let types: Vec<ValueType> = return_types
@@ -1953,7 +1943,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let tag_type = match &sstmt.tag {
             Some(e) => {
                 self.visit_expr(e);
-                self.t.get_expr_value_type(e)
+                self.t.expr_value_type(e)
             }
             None => {
                 current_func_mut!(self).emit_code(Opcode::PUSH_TRUE, None);
@@ -1991,7 +1981,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 .list
                 .iter()
                 .map(|stmt| {
-                    let tc_obj = self.t.get_implicit_object(&stmt.id());
+                    let tc_obj = self.t.object_implicit(&stmt.id());
                     let (index, _, meta) = self.add_local_var(tc_obj);
                     (meta.value_type(&self.objects.metas), index.into())
                 })
@@ -2054,7 +2044,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                     Stmt::Send(send_stmt) => {
                         self.visit_expr(&send_stmt.chan);
                         self.visit_expr(&send_stmt.val);
-                        let t = self.t.get_expr_value_type(&send_stmt.val);
+                        let t = self.t.expr_value_type(&send_stmt.val);
                         (CommType::Send(t), send_stmt.arrow)
                     }
                     Stmt::Assign(ass_key) => {

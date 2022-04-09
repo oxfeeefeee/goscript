@@ -103,7 +103,7 @@ impl<'a> Emitter<'a> {
                     names
                         .iter()
                         .map(|n| {
-                            let key = t_lookup.get_def_object(*n);
+                            let key = t_lookup.object_def(*n);
                             self.f.add_local(Some(key.into()));
                         })
                         .count()
