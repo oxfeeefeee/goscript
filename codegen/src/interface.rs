@@ -7,7 +7,7 @@ use goscript_vm::objects::{IfaceBinding, VMObjects};
 use std::collections::HashMap;
 
 pub struct IfaceMapping {
-    ifaces: Vec<(Meta, Meta, Option<Vec<IfaceBinding>>)>,
+    ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
     iface_indices: HashMap<(TCTypeKey, TCTypeKey), OpIndex>,
 }
 
@@ -19,7 +19,7 @@ impl IfaceMapping {
         }
     }
 
-    pub fn result(self) -> Vec<(Meta, Meta, Option<Vec<IfaceBinding>>)> {
+    pub fn result(self) -> Vec<(Meta, Vec<IfaceBinding>)> {
         self.ifaces
     }
 
@@ -45,7 +45,7 @@ impl IfaceMapping {
         lookup: &mut TypeLookup,
         objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> (Meta, Meta, Option<Vec<IfaceBinding>>) {
+    ) -> (Meta, Vec<IfaceBinding>) {
         let iface = lookup.meta_from_tc(i_s.0, objs, dummy_gcv);
         let struct_ = lookup.meta_from_tc(i_s.1, objs, dummy_gcv);
         let fields: Vec<&String> = match &objs.metas[iface.underlying(&objs.metas).key] {
@@ -53,14 +53,11 @@ impl IfaceMapping {
             _ => unreachable!(),
         };
         (
-            iface,
             struct_,
-            Some(
-                fields
-                    .iter()
-                    .map(|x| struct_.get_iface_binding(x, &objs.metas).unwrap())
-                    .collect(),
-            ),
+            fields
+                .iter()
+                .map(|x| struct_.get_iface_binding(x, &objs.metas).unwrap())
+                .collect(),
         )
     }
 }

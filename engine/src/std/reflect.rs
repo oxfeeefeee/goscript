@@ -265,7 +265,7 @@ impl StdValue {
     fn value_of(v: &GosValue) -> GosValue {
         let iface = v.as_interface();
         let v = match &iface.borrow() as &InterfaceObj {
-            InterfaceObj::Gos(v, _, _) => v.clone(),
+            InterfaceObj::Gos(v, _) => v.clone(),
             // todo: should we return something else?
             InterfaceObj::Ffi(_) => GosValue::new_nil(),
         };

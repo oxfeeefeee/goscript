@@ -516,8 +516,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn empty_iface_with_val(val: GosValue, val_meta: Meta) -> GosValue {
-        let val = Rc::new(RefCell::new(InterfaceObj::Gos(val, val_meta, None)));
+    pub fn empty_iface_with_val(val: GosValue) -> GosValue {
+        let val = Rc::new(RefCell::new(InterfaceObj::Gos(val, None)));
         GosValue::Interface(val)
     }
 

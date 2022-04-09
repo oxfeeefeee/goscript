@@ -747,7 +747,11 @@ impl From<IfaceBinding> for Binding4Runtime {
 
 #[derive(Clone, Debug)]
 pub enum InterfaceObj {
-    Gos(GosValue, Meta, Option<Vec<Binding4Runtime>>),
+    // The Meta and Binding info are all determined at compile time.
+    // They are not available if the Interface is created at runtime
+    // as an empty Interface holding a GosValue, which acts like a
+    // dynamic type.
+    Gos(GosValue, Option<(Meta, Vec<Binding4Runtime>)>),
     Ffi(UnderlyingFfi),
 }
 
@@ -755,7 +759,7 @@ impl InterfaceObj {
     #[inline]
     pub fn underlying_value(&self) -> Option<&GosValue> {
         match self {
-            Self::Gos(v, _, _) => Some(v),
+            Self::Gos(v, _) => Some(v),
             _ => None,
         }
     }
@@ -763,7 +767,7 @@ impl InterfaceObj {
     /// for gc
     pub fn ref_sub_one(&self) {
         match self {
-            Self::Gos(v, _, _) => v.ref_sub_one(),
+            Self::Gos(v, _) => v.ref_sub_one(),
             _ => {}
         };
     }
@@ -771,7 +775,7 @@ impl InterfaceObj {
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match self {
-            Self::Gos(v, _, _) => v.mark_dirty(queue),
+            Self::Gos(v, _) => v.mark_dirty(queue),
             _ => {}
         };
     }
@@ -783,7 +787,7 @@ impl PartialEq for InterfaceObj {
     #[inline]
     fn eq(&self, other: &InterfaceObj) -> bool {
         match (self, other) {
-            (Self::Gos(x, _, _), Self::Gos(y, _, _)) => x == y,
+            (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
             (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
             _ => false,
         }
@@ -794,7 +798,7 @@ impl Hash for InterfaceObj {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Gos(v, _, _) => v.hash(state),
+            Self::Gos(v, _) => v.hash(state),
             Self::Ffi(ffi) => Rc::as_ptr(&ffi.ffi_obj).hash(state),
         }
     }
@@ -803,7 +807,7 @@ impl Hash for InterfaceObj {
 impl Display for InterfaceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Gos(v, _, _) => write!(f, "{}", v),
+            Self::Gos(v, _) => write!(f, "{}", v),
             Self::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
         }
     }
