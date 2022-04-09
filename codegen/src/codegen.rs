@@ -1990,7 +1990,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let func = current_func_mut!(self);
             func.emit_code_with_imm(Opcode::TYPE, inst_data.len() as OpIndex, pos);
             for data in inst_data.into_iter() {
-                func.emit_inst(Opcode::ZERO, [Some(data.0), None, None], Some(data.1), pos)
+                func.emit_inst(Opcode::VOID, [Some(data.0), None, None], Some(data.1), pos)
             }
         } else {
             self.visit_expr(v);

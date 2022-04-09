@@ -296,7 +296,17 @@ impl Stack {
 
     #[inline]
     pub fn split_off_with_type(&mut self, index: usize, t: ValueType) -> Vec<GosValue> {
-        self.v.split_off(index)
+        let vec = self.v.split_off(index);
+        for v in vec.iter() {
+            if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
+                let types: Vec<ValueType> = vec.iter().map(|x| x.typ()).collect();
+                if v.typ() != t {
+                    dbg!(types, &t);
+                    assert!(v.typ() == t);
+                }
+            }
+        }
+        vec
     }
 
     #[inline]

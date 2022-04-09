@@ -7,7 +7,7 @@ pub type OpIndex = i32;
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Opcode {
-    ZERO = 0, //place holder
+    VOID = 0, //place holder
     // push pop load store
     PUSH_CONST,
     PUSH_NIL,
@@ -118,7 +118,7 @@ impl Opcode {
 
     pub fn property(&self) -> (&str, i8) {
         match self {
-            Opcode::ZERO => ("ZERO (place holder)", 0),
+            Opcode::VOID => ("VOID (place holder)", 0),
             Opcode::PUSH_CONST => ("PUSH_CONST", 1),
             Opcode::PUSH_NIL => ("PUSH_NIL", 1),
             Opcode::PUSH_FALSE => ("PUSH_FALSE", 1),

@@ -893,6 +893,13 @@ impl<'a> Fiber<'a> {
 
                         let panicking = panic.is_some();
                         if clear_stack {
+                            // println!(
+                            //     "current line: {}",
+                            //     self.context.fs.unwrap().position(
+                            //         objs.functions[frame.func()].pos()[frame.pc - 1].unwrap()
+                            //     )
+                            // );
+
                             frame.on_drop(&stack);
                             if !panicking {
                                 stack.pop_with_type_n(&frame.func_val(objs).stack_temp_types);
@@ -1435,9 +1442,7 @@ impl<'a> Fiber<'a> {
                         stack.pop_with_type(ValueType::Metadata);
                         stack.push(v);
                     }
-                    Opcode::ZERO => {
-                        unreachable!();
-                    }
+                    Opcode::VOID => unreachable!(),
                 };
                 //dbg!(inst_op, stack.len());
             } //yield unit
