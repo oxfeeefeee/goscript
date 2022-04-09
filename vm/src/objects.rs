@@ -1688,17 +1688,6 @@ impl FunctionVal {
         EntIndex::LocalVar(result)
     }
 
-    /// for TypeSwitch where identifer is implicitly declared for all the cases
-    pub fn add_implicit_local(&mut self, entitis: Vec<KeyData>) -> EntIndex {
-        let result = self.local_alloc as OpIndex;
-        for key in entitis.into_iter() {
-            let old = self.entities.insert(key, EntIndex::LocalVar(result));
-            assert_eq!(old, None);
-        }
-        self.local_alloc += 1;
-        EntIndex::LocalVar(result)
-    }
-
     pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
         self.stack_temp_types.push(typ);
         self.local_zeros.push(zero)

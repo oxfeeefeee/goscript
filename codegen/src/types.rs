@@ -184,8 +184,7 @@ impl<'a> TypeLookup<'a> {
 
     #[inline]
     pub fn get_use_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        let obj = &self.tc_objs.lobjs[self.get_use_object(ikey)];
-        obj.typ().unwrap()
+        self.get_obj_tc_type(self.get_use_object(ikey))
     }
 
     #[inline]
@@ -195,7 +194,12 @@ impl<'a> TypeLookup<'a> {
 
     #[inline]
     pub fn get_def_tc_type(&self, ikey: IdentKey) -> TCTypeKey {
-        let obj = &self.tc_objs.lobjs[self.get_def_object(ikey)];
+        self.get_obj_tc_type(self.get_def_object(ikey))
+    }
+
+    #[inline]
+    pub fn get_obj_tc_type(&self, okey: TCObjKey) -> TCTypeKey {
+        let obj = &self.tc_objs.lobjs[okey];
         obj.typ().unwrap()
     }
 
@@ -487,7 +491,7 @@ impl<'a> TypeLookup<'a> {
                 let variadic = if detail.variadic() {
                     let slice = params.last().unwrap();
                     match &vm_objs.metas[slice.key] {
-                        MetadataType::SliceOrArray(elem, _) => Some((*slice, elem.clone())),
+                        MetadataType::Slice(elem) => Some((*slice, elem.clone())),
                         _ => unreachable!(),
                     }
                 } else {

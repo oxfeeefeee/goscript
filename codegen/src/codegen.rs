@@ -22,8 +22,8 @@ use goscript_parser::position::Pos;
 use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_types::{
-    identical_ignore_tags, Builtin, OperandMode, PackageKey as TCPackageKey, TCObjects, Type,
-    TypeInfo, TypeKey as TCTypeKey,
+    identical_ignore_tags, Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey,
+    TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
 
 macro_rules! current_func_mut {
@@ -47,12 +47,6 @@ macro_rules! current_func_emitter {
 macro_rules! use_ident_unique_key {
     ($owner:ident, $var:expr) => {
         $owner.t.get_use_object($var).into()
-    };
-}
-
-macro_rules! def_ident_unique_key {
-    ($owner:ident, $var:expr) => {
-        $owner.t.get_def_object($var).into()
     };
 }
 
@@ -188,26 +182,31 @@ impl<'a> CodeGen<'a> {
             return (EntIndex::Blank, None, pos);
         }
         if is_def {
-            let meta = self
-                .t
-                .gen_def_type_meta(*ikey, self.objects, self.dummy_gcv);
-            let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
+            let tc_obj = self.t.get_def_object(*ikey);
+            let (index, tc_type, _) = self.add_local_var(tc_obj);
             let func = current_func_mut!(self);
-            let ident_key = Some(def_ident_unique_key!(self, *ikey));
-            let index = func.add_local(ident_key);
-            func.add_local_zero(zero_val, meta.value_type(&self.objects.metas));
             if func.is_ctor() {
                 let pkg_key = func.package;
                 let pkg = &mut self.objects.packages[pkg_key];
                 pkg.add_var_mapping(ident.name.clone(), index.into());
             }
-            let t = self.t.get_def_tc_type(*ikey);
-            (index, Some(t), pos)
+            (index, Some(tc_type), pos)
         } else {
             let index = self.resolve_var_ident(ikey);
             let t = self.t.get_use_tc_type(*ikey);
             (index, Some(t), pos)
         }
+    }
+
+    fn add_local_var(&mut self, okey: TCObjKey) -> (EntIndex, TCTypeKey, Meta) {
+        let tc_type = self.t.get_obj_tc_type(okey);
+        let meta = self.t.meta_from_tc(tc_type, self.objects, self.dummy_gcv);
+        let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
+        let func = current_func_mut!(self);
+        let ident_key = Some(okey.into());
+        let index = func.add_local(ident_key);
+        func.add_local_zero(zero_val, meta.value_type(&self.objects.metas));
+        (index, tc_type, meta)
     }
 
     fn gen_def_var(&mut self, vs: &ValueSpec) {
@@ -1066,10 +1065,10 @@ impl<'a> CodeGen<'a> {
         let meta = meta.underlying(&self.objects.metas);
         let mtype = &self.objects.metas[meta.key].clone();
         match mtype {
-            MetadataType::SliceOrArray(_, _) => {
-                let elem = match meta.category {
-                    MetaCategory::Default => typ.try_as_slice().unwrap().elem(),
-                    MetaCategory::Array => typ.try_as_array().unwrap().elem(),
+            MetadataType::Slice(_) | MetadataType::Array(_, _) => {
+                let elem = match typ {
+                    Type::Array(detail) => detail.elem(),
+                    Type::Slice(detail) => detail.elem(),
                     _ => unreachable!(),
                 };
                 for expr in clit.elts.iter().rev() {
@@ -1192,8 +1191,7 @@ impl<'a> CodeGen<'a> {
         typ: ValueType,
     ) -> EntIndex {
         let func = current_func_mut!(self);
-        let entity = def_ident_unique_key!(self, *ikey);
-        let index = func.add_const(Some(entity), cst.clone());
+        let index = func.add_const(Some(self.t.get_def_object(*ikey).into()), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
@@ -1778,7 +1776,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = def_ident_unique_key!(self, stmt.label);
+        let entity = self.t.get_def_object(stmt.label).into();
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,
@@ -1988,21 +1986,22 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         };
 
         if let Some(_) = ident_expr {
-            let implicit_entities = tstmt
+            let inst_data: Vec<(ValueType, OpIndex)> = tstmt
                 .body
                 .list
                 .iter()
                 .map(|stmt| {
-                    let obj = self.t.get_implicit_object(&stmt.id());
-                    KeyData::from(obj)
+                    let tc_obj = self.t.get_implicit_object(&stmt.id());
+                    let (index, _, meta) = self.add_local_var(tc_obj);
+                    (meta.value_type(&self.objects.metas), index.into())
                 })
                 .collect();
-            let func = current_func_mut!(self);
-            let index = func.add_implicit_local(implicit_entities);
-            func.add_local_zero(GosValue::new_nil(), ValueType::Nil);
             self.visit_expr(v);
             let func = current_func_mut!(self);
-            func.emit_code_with_flag_imm(Opcode::TYPE, true, index.into(), pos);
+            func.emit_code_with_imm(Opcode::TYPE, inst_data.len() as OpIndex, pos);
+            for data in inst_data.into_iter() {
+                func.emit_inst(Opcode::ZERO, [Some(data.0), None, None], Some(data.1), pos)
+            }
         } else {
             self.visit_expr(v);
             current_func_mut!(self).emit_code(Opcode::TYPE, pos);

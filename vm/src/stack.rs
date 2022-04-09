@@ -193,10 +193,9 @@ impl Stack {
         for (i, v) in vec.iter().enumerate() {
             let t = types[i];
             if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
-                //dbg!(v.typ(), t);
                 if v.typ() != t {
                     dbg!(types, &t2);
-                    //assert!(v.typ() == t);
+                    assert!(v.typ() == t);
                 }
             }
         }

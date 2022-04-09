@@ -551,7 +551,7 @@ impl StdValue {
         if meta.value_type(metas) != ValueType::Slice {
             err_wrong_type!()
         } else {
-            let (elem_meta, _) = metas[meta.key].as_slice_or_array();
+            let elem_meta = metas[meta.key].as_slice();
             if elem_meta.value_type(metas) != ValueType::Uint8 {
                 err_wrong_type!()
             } else {

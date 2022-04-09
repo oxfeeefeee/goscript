@@ -70,48 +70,40 @@ impl StaticMeta {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum MetaCategory {
-    Default,
-    Array,
-    Type,
-    ArrayType,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Meta {
-    pub category: MetaCategory,
-    pub ptr_depth: u8,
     pub key: MetadataKey,
+    pub ptr_depth: u8,
+    pub is_type: bool,
 }
 
 impl Meta {
     #[inline]
-    pub fn new(key: MetadataKey, category: MetaCategory, pdepth: u8) -> Meta {
+    pub fn new(key: MetadataKey, pdepth: u8, is_type: bool) -> Meta {
         Meta {
             key: key,
-            category: category,
             ptr_depth: pdepth,
+            is_type: is_type,
         }
     }
 
     #[inline]
     pub fn with_type(v: MetadataType, metas: &mut MetadataObjs) -> Meta {
-        Meta::new(metas.insert(v), MetaCategory::Default, 0)
+        Meta::new(metas.insert(v), 0, false)
     }
 
     #[inline]
     pub fn new_array(elem_meta: Meta, size: usize, metas: &mut MetadataObjs) -> Meta {
-        let t = MetadataType::SliceOrArray(elem_meta, size);
+        let t = MetadataType::Array(elem_meta, size);
         Meta {
             key: metas.insert(t),
-            category: MetaCategory::Array,
             ptr_depth: 0,
+            is_type: false,
         }
     }
 
     #[inline]
     pub fn new_slice(val_meta: Meta, metas: &mut MetadataObjs) -> Meta {
-        Meta::with_type(MetadataType::SliceOrArray(val_meta, 0), metas)
+        Meta::with_type(MetadataType::Slice(val_meta), metas)
     }
 
     #[inline]
@@ -140,7 +132,7 @@ impl Meta {
             fields: field_zeros,
         };
         let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
-        Meta::new(key, MetaCategory::Default, 0)
+        Meta::new(key, 0, false)
     }
 
     pub fn new_sig(
@@ -164,10 +156,6 @@ impl Meta {
     pub fn new_named(underlying: Meta, metas: &mut MetadataObjs) -> Meta {
         //debug_assert!(underlying.value_type(metas) != ValueType::Named);
         Meta::with_type(MetadataType::Named(Methods::new(), underlying), metas)
-    }
-
-    pub fn new_slice_from_array(array: Meta) -> Meta {
-        Meta::new(array.key, MetaCategory::Default, 0)
     }
 
     #[inline]
@@ -196,29 +184,21 @@ impl Meta {
 
     #[inline]
     pub fn into_type_category(mut self) -> Meta {
-        self.category = match self.category {
-            MetaCategory::Default => MetaCategory::Type,
-            MetaCategory::Array => MetaCategory::ArrayType,
-            _ => self.category,
-        };
+        self.is_type = true;
         self
     }
 
     #[inline]
     pub fn into_value_category(mut self) -> Meta {
-        self.category = match self.category {
-            MetaCategory::Type => MetaCategory::Default,
-            MetaCategory::ArrayType => MetaCategory::Array,
-            _ => self.category,
-        };
+        self.is_type = false;
         self
     }
 
     #[inline]
     pub fn value_type(&self, metas: &MetadataObjs) -> ValueType {
-        match self.ptr_depth {
-            0 => match self.category {
-                MetaCategory::Default => match &metas[self.key] {
+        match self.is_type {
+            false => match self.ptr_depth {
+                0 => match &metas[self.key] {
                     MetadataType::Bool => ValueType::Bool,
                     MetadataType::Int => ValueType::Int,
                     MetadataType::Int8 => ValueType::Int8,
@@ -239,17 +219,17 @@ impl Meta {
                     MetadataType::Str(_) => ValueType::Str,
                     MetadataType::Struct(_, _) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
-                    MetadataType::SliceOrArray(_, _) => ValueType::Slice,
+                    MetadataType::Array(_, _) => ValueType::Array,
+                    MetadataType::Slice(_) => ValueType::Slice,
                     MetadataType::Map(_, _) => ValueType::Map,
                     MetadataType::Interface(_) => ValueType::Interface,
                     MetadataType::Channel(_, _) => ValueType::Channel,
                     MetadataType::Named(_, m) => m.value_type(metas),
                     MetadataType::None => ValueType::Void,
                 },
-                MetaCategory::Type | MetaCategory::ArrayType => ValueType::Metadata,
-                MetaCategory::Array => ValueType::Array,
+                _ => ValueType::Pointer,
             },
-            _ => ValueType::Pointer,
+            true => ValueType::Metadata,
         }
     }
 
@@ -277,14 +257,11 @@ impl Meta {
                 }
                 MetadataType::UnsafePtr => GosValue::new_nil(),
                 MetadataType::Str(s) => s.clone(),
-                MetadataType::SliceOrArray(m, size) => match self.category {
-                    MetaCategory::Array => {
-                        let val = m.zero(mobjs, gcv);
-                        GosValue::array_with_size(*size, &val, gcv)
-                    }
-                    MetaCategory::Default => GosValue::new_nil(),
-                    _ => unreachable!(),
-                },
+                MetadataType::Array(m, size) => {
+                    let val = m.zero(mobjs, gcv);
+                    GosValue::array_with_size(*size, &val, gcv)
+                }
+                MetadataType::Slice(_) => GosValue::new_nil(),
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),
                 MetadataType::Signature(_) => GosValue::new_nil(),
                 MetadataType::Map(_, _) => GosValue::new_nil(),
@@ -300,10 +277,7 @@ impl Meta {
     #[inline]
     pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
         let key = self.recv_meta_key();
-        match &metas[Meta::new(key, MetaCategory::Default, 0)
-            .underlying(metas)
-            .key]
-        {
+        match &metas[Meta::new(key, 0, false).underlying(metas).key] {
             MetadataType::Struct(m, _) => m.mapping[name] as OpIndex,
             _ => unreachable!(),
         }
@@ -392,9 +366,7 @@ impl Meta {
     }
 
     pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
-        (self.category == other.category)
-            && ((self.key == other.key)
-                || metas[self.key].identical(&metas[other.key], self.category, metas))
+        (self.key == other.key) || metas[self.key].identical(&metas[other.key], metas)
     }
 }
 
@@ -547,7 +519,8 @@ pub enum MetadataType {
     Complex128,
     UnsafePtr,
     Str(GosValue),
-    SliceOrArray(Meta, usize),
+    Array(Meta, usize),
+    Slice(Meta),
     Struct(Fields, StructObj),
     Signature(SigMetadata),
     Map(Meta, Meta),
@@ -583,9 +556,17 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_slice_or_array(&self) -> (&Meta, &usize) {
+    pub fn as_array(&self) -> (&Meta, &usize) {
         match self {
-            Self::SliceOrArray(m, s) => (m, s),
+            Self::Array(m, s) => (m, s),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_slice(&self) -> &Meta {
+        match self {
+            Self::Slice(m) => m,
             _ => unreachable!(),
         }
     }
@@ -606,7 +587,7 @@ impl MetadataType {
         }
     }
 
-    pub fn identical(&self, other: &Self, mc: MetaCategory, metas: &MetadataObjs) -> bool {
+    pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         match (self, other) {
             (Self::Bool, Self::Bool) => true,
             (Self::Int, Self::Int) => true,
@@ -625,17 +606,10 @@ impl MetadataType {
             (Self::Str(_), Self::Str(_)) => true,
             (Self::Struct(a, _), Self::Struct(b, _)) => a.identical(b, metas),
             (Self::Signature(a), Self::Signature(b)) => a.identical(b, metas),
-            (Self::SliceOrArray(a, size_a), Self::SliceOrArray(b, size_b)) => {
-                match mc {
-                    MetaCategory::Array | MetaCategory::ArrayType => {
-                        if size_a != size_b {
-                            return false;
-                        }
-                    }
-                    _ => {}
-                }
-                a.identical(b, metas)
+            (Self::Array(a, size_a), Self::Array(b, size_b)) => {
+                size_a == size_b && a.identical(b, metas)
             }
+            (Self::Slice(a), Self::Slice(b)) => a.identical(b, metas),
             (Self::Map(ak, av), Self::Map(bk, bv)) => {
                 ak.identical(bk, metas) && av.identical(bv, metas)
             }

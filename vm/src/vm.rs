@@ -1066,11 +1066,21 @@ impl<'a> Fiber<'a> {
                             }
                             _ => (GosValue::new_nil(), s_meta.none),
                         };
+                        let typ = meta.value_type(&objs.metas);
                         stack.push(GosValue::Metadata(Box::new(meta)));
-                        if inst.t2_as_index() > 0 {
-                            let index = inst.imm();
-                            let s_index = Stack::offset(stack_base, index);
+                        let option_count = inst.imm() as usize;
+                        if option_count > 0 {
+                            let mut index = None;
+                            for i in 0..option_count {
+                                let inst_data = code[frame.pc + i];
+                                if inst_data.t0() == typ {
+                                    index = Some(inst_data.imm());
+                                }
+                            }
+                            let s_index = Stack::offset(stack_base, index.unwrap());
                             stack.set(s_index, val);
+
+                            frame.pc += option_count;
                         }
                     }
                     Opcode::IMPORT => {
@@ -1139,41 +1149,41 @@ impl<'a> Fiber<'a> {
                             }
                             GosValue::Metadata(md) => {
                                 let count = stack.pop_int32();
+                                let mut build_val = |m: &Meta| {
+                                    let elem_type = m.value_type(&objs.metas);
+                                    let zero_val = m.zero(&objs.metas, gcv);
+                                    let mut val = vec![];
+                                    let mut cur_index = -1;
+                                    for _ in 0..count {
+                                        let i = stack.pop_int();
+                                        let elem = stack.pop_with_type(elem_type);
+                                        if i < 0 {
+                                            cur_index += 1;
+                                        } else {
+                                            cur_index = i;
+                                        }
+                                        let gap = cur_index - (val.len() as isize);
+                                        if gap == 0 {
+                                            val.push(elem);
+                                        } else if gap > 0 {
+                                            for _ in 0..gap {
+                                                val.push(zero_val.clone());
+                                            }
+                                            val.push(elem);
+                                        } else {
+                                            val[cur_index as usize] = elem;
+                                        }
+                                    }
+                                    val
+                                };
                                 match &objs.metas[md.key] {
-                                    MetadataType::SliceOrArray(asm, _) => {
-                                        let elem_type = asm.value_type(&objs.metas);
-                                        let zero_val = asm.zero(&objs.metas, gcv);
-                                        let mut val = vec![];
-                                        let mut cur_index = -1;
-                                        for _ in 0..count {
-                                            let i = stack.pop_int();
-                                            let elem = stack.pop_with_type(elem_type);
-                                            if i < 0 {
-                                                cur_index += 1;
-                                            } else {
-                                                cur_index = i;
-                                            }
-                                            let gap = cur_index - (val.len() as isize);
-                                            if gap == 0 {
-                                                val.push(elem);
-                                            } else if gap > 0 {
-                                                for _ in 0..gap {
-                                                    val.push(zero_val.clone());
-                                                }
-                                                val.push(elem);
-                                            } else {
-                                                val[cur_index as usize] = elem;
-                                            }
-                                        }
-                                        match md.category {
-                                            MetaCategory::Default => {
-                                                GosValue::slice_with_val(val, gcv)
-                                            }
-                                            MetaCategory::Array => {
-                                                GosValue::array_with_val(val, gcv)
-                                            }
-                                            _ => unreachable!(),
-                                        }
+                                    MetadataType::Slice(m) => {
+                                        let val = build_val(m);
+                                        GosValue::slice_with_val(val, gcv)
+                                    }
+                                    MetadataType::Array(m, _) => {
+                                        let val = build_val(m);
+                                        GosValue::array_with_val(val, gcv)
                                     }
                                     MetadataType::Map(km, vm) => {
                                         let gosv =
@@ -1224,7 +1234,7 @@ impl<'a> Fiber<'a> {
                         let meta_val = stack.get_with_type(i, ValueType::Metadata);
                         let md = meta_val.as_meta();
                         let val = match md.mtype_unwraped(&objs.metas) {
-                            MetadataType::SliceOrArray(vmeta, _) => {
+                            MetadataType::Slice(vmeta) => {
                                 let (cap, len) = match index {
                                     -2 => (stack.pop_int() as usize, stack.pop_int() as usize),
                                     -1 => {
