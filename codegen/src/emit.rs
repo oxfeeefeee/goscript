@@ -132,9 +132,10 @@ impl<'a> Emitter<'a> {
     ) {
         match index {
             EntIndex::Const(i) => {
-                let done = match self.f.const_val(i).clone() {
-                    GosValue::Bool(b) => {
-                        let op = if *b.as_bool() {
+                let val = self.f.const_val(i).clone();
+                let done = match val.typ() {
+                    ValueType::Bool => {
+                        let op = if *val.as_bool() {
                             Opcode::PUSH_TRUE
                         } else {
                             Opcode::PUSH_FALSE
@@ -142,16 +143,16 @@ impl<'a> Emitter<'a> {
                         self.f.emit_code(op, pos);
                         true
                     }
-                    GosValue::Int(i) => self.try_imm(*i.as_int(), typ, pos),
-                    GosValue::Int8(i) => self.try_imm(*i.as_int8(), typ, pos),
-                    GosValue::Int16(i) => self.try_imm(*i.as_int16(), typ, pos),
-                    GosValue::Int32(i) => self.try_imm(*i.as_int32(), typ, pos),
-                    GosValue::Int64(i) => self.try_imm(*i.as_int64(), typ, pos),
-                    GosValue::Uint(i) => self.try_imm(*i.as_uint(), typ, pos),
-                    GosValue::Uint8(i) => self.try_imm(*i.as_uint8(), typ, pos),
-                    GosValue::Uint16(i) => self.try_imm(*i.as_uint16(), typ, pos),
-                    GosValue::Uint32(i) => self.try_imm(*i.as_uint32(), typ, pos),
-                    GosValue::Uint64(i) => self.try_imm(*i.as_uint64(), typ, pos),
+                    ValueType::Int => self.try_imm(*val.as_int(), typ, pos),
+                    ValueType::Int8 => self.try_imm(*val.as_int8(), typ, pos),
+                    ValueType::Int16 => self.try_imm(*val.as_int16(), typ, pos),
+                    ValueType::Int32 => self.try_imm(*val.as_int32(), typ, pos),
+                    ValueType::Int64 => self.try_imm(*val.as_int64(), typ, pos),
+                    ValueType::Uint => self.try_imm(*val.as_uint(), typ, pos),
+                    ValueType::Uint8 => self.try_imm(*val.as_uint8(), typ, pos),
+                    ValueType::Uint16 => self.try_imm(*val.as_uint16(), typ, pos),
+                    ValueType::Uint32 => self.try_imm(*val.as_uint32(), typ, pos),
+                    ValueType::Uint64 => self.try_imm(*val.as_uint64(), typ, pos),
                     _ => false,
                 };
                 if !done {
@@ -180,7 +181,7 @@ impl<'a> Emitter<'a> {
             }
             EntIndex::BuiltInVal(op) => self.f.emit_code(op, pos),
             EntIndex::TypeMeta(m) => {
-                let i = self.f.add_const(None, GosValue::Metadata(Box::new(m)));
+                let i = self.f.add_const(None, GosValue::new_metadata(m));
                 self.emit_load(i, None, ValueType::Metadata, pos);
             }
             EntIndex::Blank => unreachable!(),
@@ -300,7 +301,13 @@ impl<'a> Emitter<'a> {
             Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
             Instruction::new(Opcode::CALL, None, None, None, None),
             // call init functions
-            Instruction::new(Opcode::PUSH_IMM, Some(ValueType::Uint), None, None, Some(0)),
+            Instruction::new(
+                Opcode::PUSH_IMM,
+                Some(ValueType::Int32),
+                None,
+                None,
+                Some(0),
+            ),
             Instruction::new(Opcode::LOAD_PKG_INIT, None, None, None, Some(0)),
             Instruction::from_u64(key_to_u64(pkg)),
             Instruction::new(Opcode::JUMP_IF_NOT, None, None, None, Some(3)),

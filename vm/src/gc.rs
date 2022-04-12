@@ -1,3 +1,4 @@
+use super::instruction::ValueType;
 use super::objects::*;
 use super::value::{GosValue, RCQueue, RCount, IRC};
 use std::cell::Ref;
@@ -16,10 +17,24 @@ impl GcoVec {
         }
     }
 
-    #[inline]
-    pub fn add(&self, v: &GosValue) {
-        let weak = GcWeak::from_gosv(v);
-        self.add_weak(weak);
+    pub fn add_array(&self, arr: &Rc<(ArrayObj, RCount)>) {
+        self.add_weak(GcWeak::new_array(arr))
+    }
+
+    pub fn add_closure(&self, cls: &Rc<(RefCell<ClosureObj>, RCount)>) {
+        self.add_weak(GcWeak::new_closure(cls))
+    }
+
+    pub fn add_slice(&self, s: &Rc<(SliceObj, RCount)>) {
+        self.add_weak(GcWeak::new_slice(s))
+    }
+
+    pub fn add_map(&self, m: &Rc<(MapObj, RCount)>) {
+        self.add_weak(GcWeak::new_map(m))
+    }
+
+    pub fn add_struct(&self, s: &Rc<(RefCell<StructObj>, RCount)>) {
+        self.add_weak(GcWeak::new_struct(s))
     }
 
     #[inline]
@@ -49,112 +64,156 @@ pub enum GcWeak {
 }
 
 impl GcWeak {
-    pub fn from_gosv(v: &GosValue) -> GcWeak {
-        match v {
-            GosValue::Array(a) => GcWeak::Array(Rc::downgrade(a)),
-            GosValue::Closure(c) => GcWeak::Closure(Rc::downgrade(c)),
-            GosValue::Slice(s) => GcWeak::Slice(Rc::downgrade(s)),
-            GosValue::Map(m) => GcWeak::Map(Rc::downgrade(m)),
-            GosValue::Struct(s) => GcWeak::Struct(Rc::downgrade(s)),
-            _ => unreachable!(),
-        }
+    pub fn new_array(arr: &Rc<(ArrayObj, RCount)>) -> GcWeak {
+        GcWeak::Array(Rc::downgrade(arr))
+    }
+
+    pub fn new_closure(cls: &Rc<(RefCell<ClosureObj>, RCount)>) -> GcWeak {
+        GcWeak::Closure(Rc::downgrade(cls))
+    }
+
+    pub fn new_slice(s: &Rc<(SliceObj, RCount)>) -> GcWeak {
+        GcWeak::Slice(Rc::downgrade(s))
+    }
+
+    pub fn new_map(m: &Rc<(MapObj, RCount)>) -> GcWeak {
+        GcWeak::Map(Rc::downgrade(m))
+    }
+
+    pub fn new_struct(s: &Rc<(RefCell<StructObj>, RCount)>) -> GcWeak {
+        GcWeak::Struct(Rc::downgrade(s))
     }
 
     fn to_gosv(&self) -> Option<GosValue> {
         match &self {
             GcWeak::Array(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Array(v)
+                GosValue::from_array(v)
             }),
             GcWeak::Closure(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Closure(v)
+                GosValue::from_closure(Some(v))
             }),
             GcWeak::Slice(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Slice(v)
+                GosValue::from_slice(Some(v))
             }),
             GcWeak::Map(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Map(v)
+                GosValue::from_map(Some(v))
             }),
             GcWeak::Struct(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::Struct(v)
+                GosValue::from_struct(v)
             }),
         }
     }
 }
 
 fn children_ref_sub_one(val: &GosValue) {
-    match val {
-        GosValue::Array(arr) => arr
+    match val.typ() {
+        ValueType::Array => val
+            .as_array()
             .0
             .borrow_data_mut()
             .iter()
             .for_each(|obj| obj.borrow().ref_sub_one()),
-        GosValue::Closure(c) => c.0.borrow().ref_sub_one(),
-        GosValue::Slice(s) => {
+        ValueType::Closure => match val.as_closure() {
+            Some(cls) => cls.0.borrow().ref_sub_one(),
+            None => {}
+        },
+        ValueType::Slice => {
             // todo: slice shares data, could use some optimization
-            s.0.borrow()
-                .iter()
-                .for_each(|obj| obj.borrow().ref_sub_one())
+            match val.as_slice() {
+                Some(s) => {
+                    s.0.borrow()
+                        .iter()
+                        .for_each(|obj| obj.borrow().ref_sub_one())
+                }
+                None => {}
+            }
         }
-        GosValue::Map(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
-            k.ref_sub_one();
-            v.borrow().ref_sub_one();
-        }),
-        GosValue::Struct(s) => s.0.borrow().fields.iter().for_each(|obj| obj.ref_sub_one()),
+        ValueType::Map => match val.as_map() {
+            Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
+                k.ref_sub_one();
+                v.borrow().ref_sub_one();
+            }),
+            None => {}
+        },
+        ValueType::Struct => val
+            .as_struct()
+            .0
+            .borrow()
+            .fields
+            .iter()
+            .for_each(|obj| obj.ref_sub_one()),
         _ => unreachable!(),
     };
 }
 
 fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
-    match val {
-        GosValue::Array(arr) => arr
+    match val.typ() {
+        ValueType::Array => val
+            .as_array()
             .0
             .borrow_data_mut()
             .iter()
             .for_each(|obj| obj.borrow().mark_dirty(queue)),
-        GosValue::Closure(c) => c.0.borrow().mark_dirty(queue),
-        GosValue::Slice(s) => {
+        ValueType::Closure => match val.as_closure() {
+            Some(cls) => cls.0.borrow().mark_dirty(queue),
+            None => {}
+        },
+        ValueType::Slice => {
             // todo: slice shares data, could use some optimization
-            s.0.borrow()
-                .iter()
-                .for_each(|obj| obj.borrow().mark_dirty(queue))
+            match val.as_slice() {
+                Some(s) => {
+                    s.0.borrow()
+                        .iter()
+                        .for_each(|obj| obj.borrow().mark_dirty(queue))
+                }
+                None => {}
+            }
         }
-        GosValue::Map(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
-            k.mark_dirty(queue);
-            v.borrow().mark_dirty(queue);
-        }),
-        GosValue::Struct(s) => {
-            s.0.borrow()
-                .fields
-                .iter()
-                .for_each(|obj| obj.mark_dirty(queue))
-        }
+        ValueType::Map => match val.as_map() {
+            Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
+                k.mark_dirty(queue);
+                v.borrow().mark_dirty(queue);
+            }),
+            None => {}
+        },
+        ValueType::Struct => val
+            .as_struct()
+            .0
+            .borrow()
+            .fields
+            .iter()
+            .for_each(|obj| obj.mark_dirty(queue)),
         _ => unreachable!(),
     };
 }
 
-fn break_cycle(obj: &mut GosValue) {
-    match obj {
-        GosValue::Array(arr) => arr.0.borrow_data_mut().clear(),
-        GosValue::Closure(c) => {
-            let r: &mut ClosureObj = &mut RefCell::borrow_mut(&c.0);
-            if let Some(uvs) = &mut r.uvs {
-                uvs.clear();
+fn break_cycle(val: &GosValue) {
+    match val.typ() {
+        ValueType::Array => val.as_array().0.borrow_data_mut().clear(),
+        ValueType::Closure => match val.as_closure() {
+            Some(cls) => {
+                let r: &mut ClosureObj = &mut RefCell::borrow_mut(&cls.0);
+                if let Some(uvs) = &mut r.uvs {
+                    uvs.clear();
+                }
+                r.recv = None;
+                r.ffi = None;
             }
-            r.recv = None;
-            r.ffi = None;
-        }
-        GosValue::Slice(_) => {
+            None => {}
+        },
+        ValueType::Slice => {
             // slices share data, we cannot clear the data here
         }
-        GosValue::Map(m) => {
-            m.0.borrow_data_mut().clear();
-        }
-        GosValue::Struct(s) => RefCell::borrow_mut(&s.0).fields.clear(),
+        ValueType::Map => match val.as_map() {
+            Some(m) => m.0.borrow_data_mut().clear(),
+            None => {}
+        },
+        ValueType::Struct => RefCell::borrow_mut(&val.as_struct().0).fields.clear(),
         _ => unreachable!(),
     };
 }
@@ -213,9 +272,9 @@ pub fn gc(objs: &GcoVec) {
         }
     }
 
-    for mut obj in to_scan.into_iter() {
+    for obj in to_scan.into_iter() {
         if obj.rc() <= 0 {
-            break_cycle(&mut obj);
+            break_cycle(&obj);
         }
     }
 

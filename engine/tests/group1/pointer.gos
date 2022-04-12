@@ -65,10 +65,11 @@ func test() {
         i := 3
         psl := &sl2[i-3]
         *psl = 3
-        assert(sl1[0] == 3) 
+        assert(sl1[0] == 1) 
+        assert(sl2[0] == 3) 
 
         *psl += 2
-        assert(sl1[0] == 5) 
+        assert(sl2[0] == 5) 
 
         sl1p := &sl1
         (*sl1p)[0] = 8

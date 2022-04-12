@@ -1,31 +1,32 @@
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
+use super::metadata::Meta;
 use super::value::*;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
+use std::mem;
 use std::ptr;
 use std::rc::Rc;
-use std::{mem, panic};
 
 const DEFAULT_CAPACITY: usize = 1024;
 
 macro_rules! stack_binary_op {
     ($stack:ident, $op:tt, $t:ident) => {{
         let len = $stack.len();
-        let a = $stack.get_c(len - 2);
-        let b = $stack.get_c(len - 1);
-        *$stack.get_c_mut(len - 2) = a.$op(b, $t);
-        $stack.pop_copyable();
+        let a = $stack.get_data(len - 2);
+        let b = $stack.get_data(len - 1);
+        *$stack.get_data_mut(len - 2) = a.$op(b, $t);
+        $stack.pop_discard_copyable();
     }};
 }
 
 macro_rules! stack_binary_op_shift {
     ($stack:ident, $op:tt, $t0:ident, $t1:ident) => {{
-        let mut right = $stack.pop_copyable();
-        right.to_uint32($t1);
+        let mut right = $stack.pop_value();
+        right.data_mut().to_uint32($t1);
         $stack
-            .get_c_mut($stack.len() - 1)
+            .get_data_mut($stack.len() - 1)
             .$op(right.as_uint32(), $t0);
     }};
 }
@@ -33,10 +34,10 @@ macro_rules! stack_binary_op_shift {
 macro_rules! stack_cmp_op {
     ($stack:ident, $op:tt, $t:ident) => {{
         let len = $stack.len();
-        let a = $stack.get_c(len - 2);
-        let b = $stack.get_c(len - 1);
-        *$stack.get_c_mut(len - 2) = Value64::from_bool(Value64::$op(a, b, $t));
-        $stack.pop_copyable();
+        let a = $stack.get_data(len - 2);
+        let b = $stack.get_data(len - 1);
+        *$stack.get_data_mut(len - 2) = ValueData::new_bool(ValueData::$op(a, b, $t));
+        $stack.pop_discard_copyable();
     }};
 }
 
@@ -44,12 +45,12 @@ macro_rules! read_with_ops {
     ($op:expr, $lhs:expr, $rhs:expr, $shift_rhs:expr, $t:expr) => {{
         match $op {
             Opcode::UNARY_ADD => {
-                let mut v = $lhs.clone();
+                let mut v = unsafe { $lhs.copy_non_ptr() };
                 v.inc($t);
                 v
             } // INC
             Opcode::UNARY_SUB => {
-                let mut v = $lhs.clone();
+                let mut v = unsafe { $lhs.copy_non_ptr() };
                 v.dec($t);
                 v
             } // DEC
@@ -63,12 +64,12 @@ macro_rules! read_with_ops {
             Opcode::XOR => $lhs.binary_op_xor($rhs, $t),
             Opcode::AND_NOT => $lhs.binary_op_and_not($rhs, $t),
             Opcode::SHL => {
-                let mut v = $lhs.clone();
+                let mut v = unsafe { $lhs.copy_non_ptr() };
                 v.binary_op_shl($shift_rhs.as_uint32(), $t);
                 v
             }
             Opcode::SHR => {
-                let mut v = $lhs.clone();
+                let mut v = unsafe { $lhs.copy_non_ptr() };
                 v.binary_op_shr($shift_rhs.as_uint32(), $t);
                 v
             }
@@ -80,26 +81,21 @@ macro_rules! read_with_ops {
 macro_rules! store_local_val {
     ($stack:ident, $to:expr, $s_index:ident, $r_index:ident, $t:ident, $gcos:ident) => {{
         if $r_index < 0 {
-            if $t.copyable() {
-                *$to.get_c_mut($s_index) = $stack.read_copyable($r_index);
-            } else {
-                *$to.get_rc_mut($s_index) = $stack.read_non_copyable($r_index, $gcos);
-            }
+            let ri = Stack::offset($stack.len(), $r_index);
+            $to.set_value($s_index, $stack.copy_semantic(ri, $t, $gcos));
         } else {
-            if $t.copyable() {
-                *$to.get_c_mut($s_index) =
-                    $stack.read_copyable_ops($to.get_c($s_index), $r_index, $t);
-            } else {
-                *$to.get_rc_mut($s_index) = $stack.read_non_copyable_ops($to.get_rc($s_index));
-            }
+            $to.set_value(
+                $s_index,
+                $stack
+                    .read_with_ops($to.get_data($s_index), $r_index, $t)
+                    .into_value($t),
+            );
         }
     }};
 }
 
-// NOTE! the type-tag of copyable values are not properly maintained
-// Make sure non-copyable data are properly released
 pub struct Stack {
-    v: Vec<GosValue>,
+    vec: Vec<GosValue>,
 }
 
 impl Display for Stack {
@@ -110,11 +106,11 @@ impl Display for Stack {
 
 impl fmt::Debug for Stack {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("=====rc  top=======\n")?;
-        for i in (0..(self.v.len())).rev() {
-            write!(f, "{}\n", &self.v[i])?;
+        f.write_str("=========top=======\n")?;
+        for v in self.vec.iter().rev() {
+            write!(f, "{:#?}\n", v)?;
         }
-        f.write_str("=====rc  botton====\n")
+        f.write_str("=========botton====\n")
     }
 }
 
@@ -122,239 +118,244 @@ impl Stack {
     #[inline]
     pub fn new() -> Stack {
         Stack {
-            v: Vec::with_capacity(DEFAULT_CAPACITY),
+            vec: Vec::with_capacity(DEFAULT_CAPACITY),
         }
     }
 
     #[inline]
-    pub fn with_data(mut vec: Vec<GosValue>) -> Stack {
-        if vec.len() < DEFAULT_CAPACITY {
-            vec.reserve(DEFAULT_CAPACITY - vec.len());
-        }
-        Stack { v: vec }
+    pub fn get_data(&self, index: usize) -> &ValueData {
+        self.get_value(index).data()
     }
 
     #[inline]
-    pub fn move_from(other: &mut Stack, types: &[ValueType]) -> Stack {
-        let v = other.pop_with_type_n(types);
-        Stack::with_data(v)
-    }
-
-    pub fn push_n(&mut self, mut vec: Vec<GosValue>) {
-        self.v.append(&mut vec)
+    pub fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
+        unsafe { self.vec.get_unchecked_mut(index).data_mut() }
     }
 
     #[inline]
-    pub fn push(&mut self, val: GosValue) {
-        self.v.push(val);
+    pub fn get_value(&self, index: usize) -> &GosValue {
+        unsafe { self.vec.get_unchecked(index) }
     }
 
     #[inline]
-    pub fn push_from_index(&mut self, index: usize, t: ValueType) {
-        self.push(self.get_rc(index).clone());
+    pub fn set_value(&mut self, index: usize, val: GosValue) {
+        self.vec[index] = val;
     }
 
     #[inline]
-    pub fn push_nil(&mut self) {
-        self.push(GosValue::new_nil());
+    pub fn replace_value(&mut self, index: usize, old_type: ValueType, val: GosValue) {
+        self.vec[index] = val;
+    }
+
+    #[inline]
+    pub fn push_value(&mut self, val: GosValue) {
+        self.vec.push(val);
+    }
+
+    #[inline]
+    pub fn push_from_index(&mut self, index: usize) {
+        self.push_value(self.get_value(index).clone());
+    }
+
+    #[inline]
+    pub fn push_nil(&mut self, t: ValueType) {
+        self.push_value(GosValue::new_nil(t));
     }
 
     #[inline]
     pub fn push_bool(&mut self, b: bool) {
-        self.push(GosValue::new_bool(b));
+        self.push_value(GosValue::new_bool(b));
     }
 
     #[inline]
     pub fn push_int(&mut self, i: isize) {
-        self.push(GosValue::new_int(i));
+        self.push_value(GosValue::new_int(i));
     }
 
     #[inline]
     pub fn push_int32_as(&mut self, i: i32, t: ValueType) {
-        self.push(GosValue::int32_as(i, t))
+        self.push_value(GosValue::int32_as(i, t));
     }
 
     #[inline]
-    pub fn pop_with_type(&mut self, t: ValueType) -> GosValue {
-        let v = self.v.pop().unwrap();
-        if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
-            assert!(v.typ() == t);
-        }
-        v
-    }
-
-    #[inline]
-    pub fn pop_with_type_n(&mut self, types: &[ValueType]) -> Vec<GosValue> {
-        let n = types.len();
-        let mid = self.len() - n;
-        let vec = self.v.split_off(mid);
-        let t2: Vec<ValueType> = vec.iter().map(|x| x.typ()).collect();
-
-        for (i, v) in vec.iter().enumerate() {
-            let t = types[i];
-            if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
-                if v.typ() != t {
-                    dbg!(types, &t2);
-                    assert!(v.typ() == t);
-                }
-            }
-        }
-        vec
-    }
-
-    pub fn discard_n(&mut self, n: usize) {
-        self.v.truncate(self.len() - n);
-    }
-
-    #[inline]
-    pub fn pop_interface(&mut self) -> Rc<RefCell<InterfaceObj>> {
-        let ret = self.pop_with_type(ValueType::Interface);
-        match ret {
-            GosValue::Interface(i) => i,
-            _ => unreachable!(),
+    pub fn append_vec(&mut self, mut vec: Vec<GosValue>) {
+        for v in vec.drain(..) {
+            self.push_value(v);
         }
     }
 
     #[inline]
-    pub fn pop_copyable(&mut self) -> Value64 {
-        let v = self.get_c(self.len() - 1).clone();
-        self.v.pop();
-        v
+    pub fn append(&mut self, mut other: Stack) {
+        self.vec.append(&mut other.vec)
+    }
+
+    #[inline]
+    pub fn pop_value(&mut self) -> GosValue {
+        self.vec.pop().unwrap()
     }
 
     #[inline]
     pub fn pop_bool(&mut self) -> bool {
-        let v = *self.get_c(self.len() - 1).as_bool();
-        self.v.pop();
-        v
+        *self.pop_value().as_bool()
     }
 
     #[inline]
     pub fn pop_int(&mut self) -> isize {
-        let v = *self.get_c(self.len() - 1).as_int();
-        self.v.pop();
-        v
+        *self.pop_value().as_int()
     }
 
     #[inline]
     pub fn pop_int32(&mut self) -> i32 {
-        let v = *self.get_c(self.len() - 1).as_int32();
-        self.v.pop();
-        v
+        *self.pop_value().as_int32()
     }
 
     #[inline]
     pub fn pop_uint(&mut self) -> usize {
-        let v = *self.get_c(self.len() - 1).as_uint();
-        self.v.pop();
-        v
+        *self.pop_value().as_uint()
     }
 
     #[inline]
     pub fn pop_uint32(&mut self) -> u32 {
-        let v = *self.get_c(self.len() - 1).as_uint32();
-        self.v.pop();
-        v
+        *self.pop_value().as_uint32()
     }
 
     #[inline]
-    pub fn get_with_type(&self, index: usize, t: ValueType) -> GosValue {
-        if t.copyable() {
-            self.get_c(index).v128(t)
-        } else {
-            self.get_rc(index).clone()
+    pub fn pop_float32(&mut self) -> F32 {
+        *self.pop_value().as_float32()
+    }
+
+    #[inline]
+    pub fn pop_float64(&mut self) -> F64 {
+        *self.pop_value().as_float64()
+    }
+
+    #[inline]
+    pub fn pop_complex64(&mut self) -> (F32, F32) {
+        *self.pop_value().as_complex64()
+    }
+
+    #[inline]
+    pub fn pop_metadata(&mut self) -> Box<Meta> {
+        self.pop_value().into_metadata()
+    }
+
+    #[inline]
+    pub fn pop_str(&mut self) -> Rc<StringObj> {
+        self.pop_value().into_str()
+    }
+
+    #[inline]
+    pub fn pop_some_pointer(&mut self) -> RuntimeResult<Box<PointerObj>> {
+        self.pop_value().into_some_pointer()
+    }
+
+    #[inline]
+    pub fn pop_unsafe_ptr(&mut self) -> OptionBox<Rc<dyn UnsafePtr>> {
+        self.pop_value().into_unsafe_ptr()
+    }
+
+    #[inline]
+    pub fn pop_slice(&mut self) -> OptionRc<(SliceObj, RCount)> {
+        self.pop_value().into_slice()
+    }
+
+    #[inline]
+    pub fn pop_some_slice(&mut self) -> RuntimeResult<Rc<(SliceObj, RCount)>> {
+        self.pop_value().into_some_slice()
+    }
+
+    #[inline]
+    pub fn pop_map(&mut self) -> OptionRc<(MapObj, RCount)> {
+        self.pop_value().into_map()
+    }
+
+    #[inline]
+    pub fn pop_channel(&mut self) -> OptionRc<ChannelObj> {
+        self.pop_value().into_channel()
+    }
+
+    #[inline]
+    pub fn pop_interface(&mut self) -> Option<Rc<RefCell<InterfaceObj>>> {
+        self.pop_value().into_interface()
+    }
+
+    #[inline]
+    pub fn pop_some_interface(&mut self) -> RuntimeResult<Rc<RefCell<InterfaceObj>>> {
+        self.pop_value().into_some_interface()
+    }
+
+    #[inline]
+    pub fn pop_closure(&mut self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
+        self.pop_value().into_closure()
+    }
+
+    #[inline]
+    pub fn pop_discard_copyable(&mut self) {
+        self.pop_value();
+    }
+
+    #[inline]
+    pub fn pop_value_n(&mut self, n: usize) -> Vec<GosValue> {
+        self.vec.split_off(self.len() - n)
+    }
+
+    #[inline]
+    pub fn discard_n(&mut self, n: usize) {
+        self.pop_value_n(n);
+    }
+
+    #[inline]
+    pub fn move_from(other: &mut Stack, n: usize) -> Stack {
+        let values = other.pop_value_n(n);
+        let mut stack = Stack::new();
+        for v in values.into_iter() {
+            stack.push_value(v);
         }
+        stack
     }
 
     #[inline]
-    pub fn copy_semantic_with_type(&self, index: usize, t: ValueType, gcv: &GcoVec) -> GosValue {
-        if t.copyable() {
-            self.get_c(index).v128(t)
-        } else {
-            self.get_rc(index).copy_semantic(gcv)
-        }
+    pub fn split_off_with_type(&mut self, index: usize) -> Vec<GosValue> {
+        self.vec.split_off(index).into_iter().collect()
     }
 
     #[inline]
-    pub fn set(&mut self, index: usize, val: GosValue) -> ValueType {
-        let t = val.typ();
-        *self.get_rc_mut(index) = val;
-        t
+    pub fn get_slice(&mut self, index: usize) -> Option<&(SliceObj, RCount)> {
+        self.get_value(index).as_slice()
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.v.len()
+    pub fn get_str(&mut self, index: usize) -> &StringObj {
+        self.get_value(index).as_str()
     }
 
     #[inline]
-    pub fn append(&mut self, mut vec: Vec<GosValue>) {
-        for v in vec.drain(..) {
-            self.push(v);
-        }
+    pub fn copy_semantic(&self, index: usize, t: ValueType, gcv: &GcoVec) -> GosValue {
+        self.get_value(index).copy_semantic(gcv)
     }
 
     #[inline]
-    pub fn split_off_with_type(&mut self, index: usize, t: ValueType) -> Vec<GosValue> {
-        let vec = self.v.split_off(index);
-        for v in vec.iter() {
-            if v.typ() != t && v.typ() != ValueType::Nil && !(v.typ().copyable() && t.copyable()) {
-                let types: Vec<ValueType> = vec.iter().map(|x| x.typ()).collect();
-                if v.typ() != t {
-                    dbg!(types, &t);
-                    assert!(v.typ() == t);
-                }
-            }
-        }
-        vec
-    }
-
-    #[inline]
-    fn read_copyable(&self, r_index: OpIndex) -> Value64 {
-        let rhs_s_index = Stack::offset(self.len(), r_index);
-        *self.get_c(rhs_s_index)
-    }
-
-    #[inline]
-    fn read_non_copyable(&self, r_index: OpIndex, gcos: &GcoVec) -> GosValue {
-        let rhs_s_index = Stack::offset(self.len(), r_index);
-        self.get_rc(rhs_s_index).copy_semantic(gcos)
-    }
-
-    #[inline]
-    fn read_non_copyable_ops(&self, lhs: &GosValue) -> GosValue {
-        let ri = Stack::offset(self.len(), -1);
-        GosValue::add_str(lhs, self.get_rc(ri))
-    }
-
-    #[inline]
-    fn read_copyable_ops(&self, lhs: &Value64, r_index: OpIndex, t: ValueType) -> Value64 {
+    fn read_with_ops(&self, lhs: &ValueData, r_index: OpIndex, t: ValueType) -> ValueData {
         let ri = Stack::offset(self.len(), -1);
         let op = Instruction::index2code(r_index);
-        read_with_ops!(op, lhs, self.get_c(ri), self.get_c(ri), t)
+        read_with_ops!(op, lhs, self.get_data(ri), self.get_data(ri), t)
     }
 
     #[inline]
     pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
         *target = if r_index < 0 {
-            if t.copyable() {
-                self.read_copyable(r_index).v128(t)
-            } else {
-                self.read_non_copyable(r_index, gcos)
-            }
+            let i = Stack::offset(self.len(), r_index);
+            self.copy_semantic(i, t, gcos)
         } else {
-            if t.copyable() {
-                self.read_copyable_ops(&Value64::from_v128(target).unwrap().0, r_index, t)
-                    .v128(t)
-            } else {
-                self.read_non_copyable_ops(target)
-            }
+            self.read_with_ops(target.data(), r_index, t).into_value(t)
         };
     }
 
     #[inline]
     pub fn store_local(&mut self, s_index: usize, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
+        //dbg!("store_local1");
         store_local_val!(self, self, s_index, r_index, t, gcos);
+        //dbg!("store_local2");
     }
 
     #[inline]
@@ -394,28 +395,27 @@ impl Stack {
         key: &GosValue,
         r_index: OpIndex,
         t: ValueType,
-        gcos: &GcoVec,
+        gcv: &GcoVec,
     ) -> RuntimeResult<()> {
-        let err = Err("assignment to entry in nil map or slice".to_owned());
-        match target {
-            GosValue::Array(arr) => {
-                let target_cell = &arr.0.borrow_data()[*key.as_int() as usize];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+        match target.typ() {
+            ValueType::Array => {
+                let target_cell = &target.as_array().0.borrow_data()[*key.as_int() as usize];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
                 Ok(())
             }
-            GosValue::Slice(s) => {
-                let target_cell = &s.0.borrow()[*key.as_int() as usize];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+            ValueType::Slice => {
+                let target_cell = &target.as_some_slice()?.0.borrow()[*key.as_int() as usize];
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
                 Ok(())
             }
-            GosValue::Map(map) => {
-                map.0.touch_key(&key);
+            ValueType::Map => {
+                let map = target.as_some_map()?;
+                map.0.touch_key(&key, gcv);
                 let borrowed = map.0.borrow_data();
                 let target_cell = borrowed.get(&key).unwrap();
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcos);
+                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
                 Ok(())
             }
-            GosValue::Nil => err,
             _ => {
                 dbg!(target);
                 unreachable!()
@@ -445,18 +445,8 @@ impl Stack {
         t: ValueType,
         gcos: &GcoVec,
     ) {
-        match target {
-            GosValue::Struct(s) => {
-                match key {
-                    GosValue::Int(i) => {
-                        let target = &mut s.0.borrow_mut().fields[*i.as_int() as usize];
-                        self.store_val(target, r_index, t, gcos);
-                    }
-                    _ => unreachable!(),
-                };
-            }
-            _ => unreachable!(),
-        }
+        let target = &mut target.as_struct().0.borrow_mut().fields[*key.as_int() as usize];
+        self.store_val(target, r_index, t, gcos);
     }
 
     pub fn store_to_pointer(
@@ -466,32 +456,32 @@ impl Stack {
         typ: ValueType,
         packages: &PackageObjs,
         gcv: &GcoVec,
-    ) {
+    ) -> RuntimeResult<()> {
         match p {
             PointerObj::UpVal(uv) => {
                 self.store_up_value(uv, rhs_index, typ, gcv);
             }
             PointerObj::Struct(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_with_type(rhs_s_index, typ).copy_semantic(gcv);
+                let val = self.get_value(rhs_s_index).copy_semantic(gcv);
                 let mref: &mut StructObj = &mut r.0.borrow_mut();
                 *mref = val.as_struct().0.borrow().clone();
             }
             PointerObj::Array(a) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_with_type(rhs_s_index, typ);
+                let val = self.get_value(rhs_s_index);
                 a.0.set_from(&val.as_array().0);
             }
             PointerObj::Slice(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_with_type(rhs_s_index, typ);
-                r.0.set_from(&val.as_slice().0);
+                let val = self.get_value(rhs_s_index);
+                r.0.set_from(&val.as_some_slice()?.0);
             }
             PointerObj::Map(m) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_with_type(rhs_s_index, typ);
+                let val = self.get_value(rhs_s_index);
                 let mref: &mut GosHashMap = &mut m.0.borrow_data_mut();
-                *mref = val.as_map().0.borrow_data().clone();
+                *mref = val.as_some_map()?.0.borrow_data().clone();
             }
             PointerObj::SliceMember(s, index) => {
                 let vborrow = s.0.borrow();
@@ -508,62 +498,56 @@ impl Stack {
                 self.store_val(target, rhs_index, typ, gcv);
             }
         };
+        Ok(())
     }
 
     #[inline]
-    pub fn push_index_comma_ok(&mut self, map: &GosValue, index: &GosValue) {
-        let (v, b) = match map.as_map().0.try_get(index) {
-            Some(v) => (v, true),
-            None => (GosValue::new_nil(), false),
-        };
-        self.push(v);
+    pub fn push_index_comma_ok(
+        &mut self,
+        map: &GosValue,
+        index: &GosValue,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<()> {
+        let (v, b) = map.as_some_map()?.0.get(index, gcv);
+        self.push_value(v);
         self.push_bool(b);
+        Ok(())
     }
 
     #[inline]
     pub fn pack_variadic(&mut self, index: usize, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();
-            v.append(&mut self.split_off_with_type(index, t));
-            self.push(GosValue::slice_with_val(v, gcos))
+            v.append(&mut self.split_off_with_type(index));
+            self.push_value(GosValue::slice_with_data(v, gcos))
         }
     }
 
     #[inline]
     pub fn add(&mut self, t: ValueType) {
-        if t.copyable() {
-            stack_binary_op!(self, binary_op_add, t)
-        } else {
-            match t {
-                ValueType::Str => {
-                    let a = self.get_rc(self.len() - 2);
-                    let b = self.get_rc(self.len() - 1);
-                    *self.get_rc_mut(self.len() - 2) = GosValue::add_str(a, b);
-                    self.pop_with_type(ValueType::Str);
-                }
-                _ => unreachable!(),
-            }
-        }
+        stack_binary_op!(self, binary_op_add, t)
     }
 
     #[inline]
     pub fn switch_cmp(&mut self, t: ValueType, objs: &VMObjects) -> bool {
-        let b = if t.copyable() {
+        if t.copyable() {
             let len = self.len();
-            let a = self.get_c(len - 2);
-            let b = self.get_c(len - 1);
-            Value64::compare_eql(a, b, t)
+            let a = self.get_data(len - 2);
+            let b = self.get_data(len - 1);
+            let result = ValueData::compare_eql(a, b, t);
+            self.pop_discard_copyable();
+            result
         } else {
-            let a = self.get_rc(self.len() - 2);
-            let b = self.get_rc(self.len() - 1);
-            if t != ValueType::Metadata {
+            let a = self.get_value(self.len() - 2);
+            let b = self.get_value(self.len() - 1);
+            let result = if t != ValueType::Metadata {
                 a.eq(&b)
             } else {
-                a.as_meta().identical(b.as_meta(), &objs.metas)
-            }
-        };
-        self.pop_with_type(t);
-        b
+                a.as_metadata().identical(b.as_metadata(), &objs.metas)
+            };
+            self.pop_value();
+            result
+        }
     }
 
     #[inline]
@@ -618,17 +602,17 @@ impl Stack {
 
     #[inline]
     pub fn unary_negate(&mut self, t: ValueType) {
-        self.get_c_mut(self.len() - 1).unary_negate(t);
+        self.get_data_mut(self.len() - 1).unary_negate(t);
     }
 
     #[inline]
     pub fn unary_xor(&mut self, t: ValueType) {
-        self.get_c_mut(self.len() - 1).unary_xor(t);
+        self.get_data_mut(self.len() - 1).unary_xor(t);
     }
 
     #[inline]
     pub fn logical_not(&mut self, t: ValueType) {
-        self.get_c_mut(self.len() - 1).unary_not(t);
+        self.get_data_mut(self.len() - 1).unary_not(t);
     }
 
     #[inline]
@@ -636,7 +620,7 @@ impl Stack {
         if t0.copyable() && t0 == t1 {
             stack_cmp_op!(self, compare_eql, t0);
         } else {
-            let (b, a) = (self.pop_with_type(t1), self.pop_with_type(t0));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(a.eq(&b));
         }
     }
@@ -646,7 +630,7 @@ impl Stack {
         if t.copyable() {
             stack_cmp_op!(self, compare_neq, t);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(!a.eq(&b));
         }
     }
@@ -656,7 +640,7 @@ impl Stack {
         if t.copyable() {
             stack_cmp_op!(self, compare_lss, t);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(a.cmp(&b) == Ordering::Less);
         }
     }
@@ -666,7 +650,7 @@ impl Stack {
         if t.copyable() {
             stack_cmp_op!(self, compare_gtr, t);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(a.cmp(&b) == Ordering::Greater);
         }
     }
@@ -676,7 +660,7 @@ impl Stack {
         if t.copyable() {
             stack_cmp_op!(self, compare_leq, t);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(a.cmp(&b) != Ordering::Greater);
         }
     }
@@ -686,48 +670,14 @@ impl Stack {
         if t.copyable() {
             stack_cmp_op!(self, compare_geq, t);
         } else {
-            let (b, a) = (self.pop_with_type(t), self.pop_with_type(t));
+            let (b, a) = (self.pop_value(), self.pop_value());
             self.push_bool(a.cmp(&b) != Ordering::Less);
         }
     }
 
     #[inline]
-    pub fn get_c(&self, i: usize) -> &Value64 {
-        let t = self.get_rc(i).typ();
-        if !t.copyable() && t != ValueType::Nil {
-            dbg!(t, self.get_rc(i));
-            panic!("11111");
-        }
-        unsafe {
-            // one word offset from beginning
-            let p: *const usize = mem::transmute(self.v.get_unchecked(i));
-            mem::transmute(p.offset(1))
-        }
-    }
-
-    #[inline]
-    pub fn get_c_mut(&mut self, i: usize) -> &mut Value64 {
-        let t = self.get_rc(i).typ();
-        if !t.copyable() && t != ValueType::Nil {
-            dbg!(t);
-            dbg!(self.get_rc(i));
-            panic!("22222");
-        }
-        unsafe {
-            // one word offset from beginning
-            let p: *mut usize = mem::transmute(self.v.get_unchecked_mut(i));
-            mem::transmute(p.offset(1))
-        }
-    }
-
-    #[inline]
-    pub fn get_rc(&self, i: usize) -> &GosValue {
-        unsafe { self.v.get_unchecked(i) }
-    }
-
-    #[inline]
-    pub fn get_rc_mut(&mut self, i: usize) -> &mut GosValue {
-        unsafe { self.v.get_unchecked_mut(i) }
+    pub fn len(&self) -> usize {
+        self.vec.len()
     }
 
     #[inline]
@@ -752,32 +702,33 @@ impl RangeStack {
         }
     }
 
-    pub fn range_init(&mut self, target: &GosValue) {
-        match target {
-            GosValue::Map(m) => {
-                let map = m.0.borrow_data();
+    pub fn range_init(&mut self, target: &GosValue) -> RuntimeResult<()> {
+        match target.typ() {
+            ValueType::Map => {
+                let map = target.as_some_map()?.0.borrow_data();
                 let iter = unsafe { mem::transmute(map.iter()) };
                 self.maps.push(iter);
             }
-            GosValue::Slice(sl) => {
-                let slice = sl.0.borrow();
+            ValueType::Slice => {
+                let slice = target.as_some_slice()?.0.borrow();
                 let iter = unsafe { mem::transmute(slice.iter().enumerate()) };
                 self.slices.push(iter);
             }
-            GosValue::Str(s) => {
-                let iter = unsafe { mem::transmute(s.iter().enumerate()) };
+            ValueType::Str => {
+                let iter = unsafe { mem::transmute(target.as_str().iter().enumerate()) };
                 self.strings.push(iter);
             }
             _ => unreachable!(),
         }
+        Ok(())
     }
 
     pub fn range_body(&mut self, typ: ValueType, stack: &mut Stack) -> bool {
         match typ {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
-                    stack.push(k.clone());
-                    stack.push(v.clone().into_inner());
+                    stack.push_value(k.clone());
+                    stack.push_value(v.clone().into_inner());
                     false
                 }
                 None => {
@@ -788,7 +739,7 @@ impl RangeStack {
             ValueType::Slice => match self.slices.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.push_int(k as isize);
-                    stack.push(v.clone().into_inner());
+                    stack.push_value(v.clone().into_inner());
                     false
                 }
                 None => {
@@ -809,21 +760,5 @@ impl RangeStack {
             },
             _ => unreachable!(),
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn test_stack() {
-        let mut s = Stack::new();
-        //s.push(GosValue::Int(1));
-        //assert_eq!(s.pop(), GosValue::Int(1));
-
-        s.push(GosValue::new_str("11".to_owned()));
-        let v2 = GosValue::new_str("aa".to_owned());
-        s.set(0, v2.clone());
-        //assert_eq!(s.get(0, ValueType::Str), v2);
     }
 }

@@ -21,9 +21,9 @@ func (r rect) area() float64 {
 
 func test1() {
 
-    //a := geometry(nil)
+    a := geometry(nil)
     var b geometry = (geometry)(nil)
-   // assert(a == nil)
+    assert(a == nil)
     assert(b == nil)
 
     var r *rect

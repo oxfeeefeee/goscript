@@ -720,7 +720,7 @@ impl<'a> CodeGen<'a> {
         let fmeta = self
             .t
             .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
-        let f = GosValue::new_function_create(
+        let f = GosValue::function_with_meta(
             self.pkg_key,
             fmeta,
             self.objects,
@@ -854,7 +854,8 @@ impl<'a> CodeGen<'a> {
                 let tc_from = self.t.underlying_tc(self.t.expr_tc_type(&params[0]));
                 let typ_from = self.t.tc_type_to_value_type(tc_from);
 
-                if typ_from == ValueType::Nil || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
+                if typ_from == ValueType::Void
+                    || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
                 {
                     // just ignore conversion if it's nil or types are identical
                     // or convert between Named type and underlying type,
@@ -862,7 +863,7 @@ impl<'a> CodeGen<'a> {
                 } else {
                     match typ_to {
                         ValueType::Interface => {
-                            if typ_from != ValueType::Nil {
+                            if typ_from != ValueType::Void {
                                 let iface_index = self.iface_mapping.get_index(
                                     &(tc_to, tc_from),
                                     &mut self.t,
@@ -974,7 +975,7 @@ impl<'a> CodeGen<'a> {
             Some(t0) => match self.t.obj_underlying_value_type(t0) == ValueType::Interface {
                 true => {
                     let vt1 = self.t.obj_underlying_value_type(rhs);
-                    match vt1 != ValueType::Interface && vt1 != ValueType::Nil {
+                    match vt1 != ValueType::Interface && vt1 != ValueType::Void {
                         true => {
                             let index = self.iface_mapping.get_index(
                                 &(t0, rhs),
@@ -1236,7 +1237,7 @@ impl<'a> CodeGen<'a> {
     pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.s_meta.default_sig;
-        let f = GosValue::new_function_create(
+        let f = GosValue::function_with_meta(
             pkey,
             fmeta,
             self.objects,
@@ -1247,7 +1248,7 @@ impl<'a> CodeGen<'a> {
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
             String::new(),
-            GosValue::new_static_closure(fkey, &self.objects.functions),
+            GosValue::new_closure_static(fkey, &self.objects.functions),
             ValueType::Closure,
         );
         self.pkg_key = pkey;
@@ -1471,11 +1472,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                             let ut = meta
                                 .underlying(&self.objects.metas)
                                 .value_type(&self.objects.metas);
-                            if ut == ValueType::Struct
-                                || ut == ValueType::Array
-                                || ut == ValueType::Slice
-                                || ut == ValueType::Map
-                            {
+                            if ut == ValueType::Struct || ut == ValueType::Array {
                                 let func = current_func_mut!(self);
                                 func.emit_inst(
                                     Opcode::REF_LOCAL,
@@ -1742,7 +1739,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
         let tc_type = self.t.obj_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
         let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
-        let cls = GosValue::new_static_closure(fkey, &self.objects.functions);
+        let cls = GosValue::new_closure_static(fkey, &self.objects.functions);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];

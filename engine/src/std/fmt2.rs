@@ -15,26 +15,29 @@ impl Fmt2 {
         Fmt2 {}
     }
 
-    fn ffi_println(&self, args: Vec<GosValue>) {
-        let vec = args[0].as_slice().0.get_vec();
+    fn ffi_println(&self, args: Vec<GosValue>) -> RuntimeResult<()> {
+        let vec = args[0].as_some_slice()?.0.get_vec();
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {
-                if x.is_nil() {
+                let s = if x.is_nil() {
                     "<nil>".to_owned()
                 } else {
-                    match x.iface_underlying() {
+                    let underlying = x.iface_underlying()?;
+                    match underlying {
                         Some(v) => v.to_string(),
                         None => "<ffi>".to_owned(),
                     }
-                }
+                };
+                Ok(s)
             })
+            .map(|x: RuntimeResult<String>| x.unwrap())
             .collect();
         println!("{}", strs.join(", "));
+        Ok(())
     }
 
     fn ffi_printf(&self, args: Vec<GosValue>) {
-        let _vec = args[0].as_slice().0.get_vec();
         unimplemented!();
     }
 }

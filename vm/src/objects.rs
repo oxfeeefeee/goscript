@@ -17,7 +17,7 @@ use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::ops::Index;
-use std::ptr;
+use std::ptr::{self};
 use std::rc::{Rc, Weak};
 
 const DEFAULT_CAPACITY: usize = 128;
@@ -178,15 +178,14 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Ref
 
 #[derive(Debug)]
 pub struct MapObj {
-    // todo: need compy_semantic for default_val
-    default_val: RefCell<GosValue>,
+    default_val: GosValue,
     pub map: Rc<RefCell<GosHashMap>>,
 }
 
 impl MapObj {
     pub fn new(default_val: GosValue) -> MapObj {
         MapObj {
-            default_val: RefCell::new(default_val),
+            default_val: default_val,
             map: Rc::new(RefCell::new(HashMap::new())),
         }
     }
@@ -199,19 +198,17 @@ impl MapObj {
     }
 
     #[inline]
-    pub fn get(&self, key: &GosValue) -> GosValue {
-        let mref = self.borrow_data();
-        let cell = match mref.get(key) {
-            Some(v) => v,
-            None => &self.default_val,
-        };
-        cell.clone().into_inner()
+    pub fn new_default_val(&self, gcv: &GcoVec) -> GosValue {
+        self.default_val.copy_semantic(gcv)
     }
 
     #[inline]
-    pub fn try_get(&self, key: &GosValue) -> Option<GosValue> {
+    pub fn get(&self, key: &GosValue, gcv: &GcoVec) -> (GosValue, bool) {
         let mref = self.borrow_data();
-        mref.get(key).map(|x| x.clone().into_inner())
+        match mref.get(key) {
+            Some(v) => (v.clone().into_inner(), true),
+            None => (self.new_default_val(gcv), false),
+        }
     }
 
     #[inline]
@@ -223,10 +220,10 @@ impl MapObj {
     /// touch_key makes sure there is a value for the 'key', a default value is set if
     /// the value is empty
     #[inline]
-    pub fn touch_key(&self, key: &GosValue) {
+    pub fn touch_key(&self, key: &GosValue, gcv: &GcoVec) {
         if self.borrow_data().get(&key).is_none() {
             self.borrow_data_mut()
-                .insert(key.clone(), self.default_val.clone());
+                .insert(key.clone(), RefCell::new(self.new_default_val(gcv)));
         }
     }
 
@@ -303,10 +300,10 @@ impl ArrayObj {
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>) -> ArrayObj {
+    pub fn with_data(data: Vec<GosValue>) -> ArrayObj {
         ArrayObj {
             vec: Rc::new(RefCell::new(
-                val.into_iter().map(|x| RefCell::new(x)).collect(),
+                data.into_iter().map(|x| RefCell::new(x)).collect(),
             )),
         }
     }
@@ -377,7 +374,9 @@ impl PartialEq for ArrayObj {
 impl Clone for ArrayObj {
     fn clone(&self) -> Self {
         ArrayObj {
-            vec: self.vec.clone(),
+            vec: Rc::new(RefCell::new(
+                self.borrow_data().iter().map(|x| x.clone()).collect(),
+            )),
         }
     }
 }
@@ -541,7 +540,7 @@ impl<'a> SliceObj {
         let mut data = self.borrow_all_data_mut();
         let more_cap = cap as isize - data.len() as isize;
         for _ in 0..more_cap {
-            data.push(RefCell::new(GosValue::new_nil())); // todo: is nil ok?
+            data.push(RefCell::new(GosValue::new_nil(ValueType::Void))); // todo: is nil ok?
         }
         SliceObj {
             begin: Cell::from(self.begin() + bi),
@@ -764,6 +763,14 @@ impl InterfaceObj {
         }
     }
 
+    #[inline]
+    pub fn equals_value(&self, val: &GosValue) -> bool {
+        match self.underlying_value() {
+            Some(v) => v == val,
+            None => false,
+        }
+    }
+
     /// for gc
     pub fn ref_sub_one(&self) {
         match self {
@@ -889,11 +896,11 @@ pub enum PointerObj {
 impl PointerObj {
     #[inline]
     pub fn try_new_local(val: &GosValue) -> Option<PointerObj> {
-        match val {
-            GosValue::Struct(s) => Some(PointerObj::Struct(s.clone())),
-            GosValue::Array(a) => Some(PointerObj::Array(a.clone())),
-            GosValue::Slice(s) => Some(PointerObj::Slice(s.clone())),
-            GosValue::Map(m) => Some(PointerObj::Map(m.clone())),
+        match val.typ() {
+            ValueType::Struct => Some(PointerObj::Struct(val.clone().into_struct())),
+            ValueType::Array => Some(PointerObj::Array(val.clone().into_array())),
+            ValueType::Slice => val.clone().into_slice().map(|x| PointerObj::Slice(x)),
+            ValueType::Map => val.clone().into_map().map(|x| PointerObj::Map(x)),
             _ => None,
         }
     }
@@ -901,16 +908,16 @@ impl PointerObj {
     #[inline]
     pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
         let slice = GosValue::slice_with_array(val, 0, -1, gcv);
-        PointerObj::SliceMember(slice.as_slice().clone(), i)
+        PointerObj::SliceMember(slice.into_slice().unwrap(), i)
     }
 
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> GosValue {
         match self {
             PointerObj::UpVal(uv) => uv.value(stack),
-            PointerObj::Struct(s) => GosValue::Struct(s.clone()),
-            PointerObj::Array(a) => GosValue::Array(a.clone()),
-            PointerObj::Slice(s) => GosValue::Slice(s.clone()),
-            PointerObj::Map(s) => GosValue::Map(s.clone()),
+            PointerObj::Struct(s) => GosValue::from_struct(s.clone()),
+            PointerObj::Array(a) => GosValue::from_array(a.clone()),
+            PointerObj::Slice(s) => GosValue::from_slice(Some(s.clone())),
+            PointerObj::Map(m) => GosValue::from_map(Some(m.clone())),
             PointerObj::SliceMember(s, index) => s.0.get(*index as usize).unwrap(),
             PointerObj::StructField(s, index) => s.0.borrow().fields[*index as usize].clone(),
             PointerObj::PkgMember(pkg, index) => pkgs[*pkg].member(*index).clone(),
@@ -925,8 +932,10 @@ impl PointerObj {
                 *s.0.borrow_mut() = val.copy_semantic(gcv).as_struct().0.borrow().clone()
             }
             PointerObj::Array(a) => a.0.set_from(&val.as_array().0),
-            PointerObj::Slice(s) => s.0.set_from(&val.as_slice().0),
-            PointerObj::Map(m) => *m.0.borrow_data_mut() = val.as_map().0.borrow_data().clone(),
+            PointerObj::Slice(s) => s.0.set_from(&val.as_slice().unwrap().0),
+            PointerObj::Map(m) => {
+                *m.0.borrow_data_mut() = val.as_map().unwrap().0.borrow_data().clone()
+            }
             PointerObj::SliceMember(s, index) => {
                 let vborrow = s.0.borrow();
                 let target: &mut GosValue =
@@ -948,6 +957,7 @@ impl PointerObj {
     pub fn ref_sub_one(&self) {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
+            PointerObj::Array(a) => a.1.set(a.1.get() - 1),
             PointerObj::Struct(s) => s.1.set(s.1.get() - 1),
             PointerObj::Slice(s) => s.1.set(s.1.get() - 1),
             PointerObj::Map(s) => s.1.set(s.1.get() - 1),
@@ -961,6 +971,7 @@ impl PointerObj {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
+            PointerObj::Array(a) => rcount_mark_and_queue(&a.1, queue),
             PointerObj::Struct(s) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::Slice(s) => rcount_mark_and_queue(&s.1, queue),
             PointerObj::Map(s) => rcount_mark_and_queue(&s.1, queue),
@@ -1094,12 +1105,13 @@ impl UnsafePtr for PointerHandle {
 
 impl PointerHandle {
     pub fn from_pointer(ptr: GosValue) -> GosValue {
-        let p = match ptr {
-            GosValue::Pointer(p) => *p,
-            _ => unreachable!(),
-        };
-        let handle = PointerHandle { ptr: p };
-        GosValue::UnsafePtr(Box::new(Rc::new(handle)))
+        match ptr.into_pointer() {
+            Some(p) => {
+                let handle = PointerHandle { ptr: *p };
+                GosValue::new_unsafe_ptr(handle)
+            }
+            None => GosValue::new_nil(ValueType::UnsafePtr),
+        }
     }
 
     pub fn to_pointer(self) -> GosValue {
@@ -1158,9 +1170,9 @@ impl ValueDesc {
         let index = (self.stack_base + self.index) as usize;
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
-            stack.get_with_type(index, self.typ)
+            stack.get_value(index).clone()
         } else {
-            uv_stack.borrow().get_with_type(index, self.typ)
+            uv_stack.borrow().get_value(index).clone()
         }
     }
 
@@ -1169,9 +1181,9 @@ impl ValueDesc {
         let index = (self.stack_base + self.index) as usize;
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
-            stack.set(index, val);
+            stack.set_value(index, val);
         } else {
-            uv_stack.borrow_mut().set(index, val);
+            uv_stack.borrow_mut().set_value(index, val);
         }
     }
 }
@@ -1444,7 +1456,7 @@ impl PackageVal {
         let count = mapping.len();
         for i in 0..count {
             let vi = mapping[&((count - 1 - i) as OpIndex)];
-            *self.member_mut(vi) = stack.pop_with_type(self.member_types[vi as usize]);
+            *self.member_mut(vi) = stack.pop_value();
         }
     }
 }

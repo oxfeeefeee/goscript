@@ -1,5 +1,6 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
+use goscript_types::ConstValue;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::Meta;
 use goscript_vm::objects::*;
@@ -13,8 +14,13 @@ use std::rc::Rc;
 
 macro_rules! arg_as {
     ($arg:expr, $t:ty) => {{
-        match $arg {
-            GosValue::UnsafePtr(ud) => Ok(ud.as_any().downcast_ref::<$t>().unwrap()),
+        match $arg.typ() {
+            ValueType::UnsafePtr => Ok($arg
+                .as_unsafe_ptr()
+                .unwrap()
+                .as_any()
+                .downcast_ref::<$t>()
+                .unwrap()),
             _ => Err("reflect: expect UnsafePtr".to_owned()),
         }
     }};
@@ -228,11 +234,12 @@ impl Reflect {
         let arg0 = iter.next();
         let arg1 = iter.next();
         let arg2 = iter.next();
-        let iface = arg0.as_ref().unwrap().as_interface().borrow();
+        let iface = arg0.as_ref().unwrap().as_interface().unwrap().borrow();
         let mut vec = iface
             .underlying_value()
             .unwrap()
             .as_slice()
+            .unwrap()
             .0
             .borrow_all_data_mut();
         let a = arg1.as_ref().unwrap().as_int();
@@ -263,11 +270,11 @@ impl StdValue {
     }
 
     fn value_of(v: &GosValue) -> GosValue {
-        let iface = v.as_interface();
+        let iface = v.as_interface().unwrap();
         let v = match &iface.borrow() as &InterfaceObj {
             InterfaceObj::Gos(v, _) => v.clone(),
             // todo: should we return something else?
-            InterfaceObj::Ffi(_) => GosValue::new_nil(),
+            InterfaceObj::Ffi(_) => GosValue::new_nil(ValueType::Void),
         };
         wrap_std_val(v)
     }
@@ -289,20 +296,20 @@ impl StdValue {
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val {
-            GosValue::Bool(_) => Ok(val),
+        match val.typ() {
+            ValueType::Bool => Ok(val),
             _ => err_wrong_type!(),
         }
     }
 
     fn int_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val {
-            GosValue::Int(i) => Ok(*i.as_int() as i64),
-            GosValue::Int8(i) => Ok(*i.as_int8() as i64),
-            GosValue::Int16(i) => Ok(*i.as_int16() as i64),
-            GosValue::Int32(i) => Ok(*i.as_int32() as i64),
-            GosValue::Int64(i) => Ok(*i.as_int64()),
+        match val.typ() {
+            ValueType::Int => Ok(*val.as_int() as i64),
+            ValueType::Int8 => Ok(*val.as_int8() as i64),
+            ValueType::Int16 => Ok(*val.as_int16() as i64),
+            ValueType::Int32 => Ok(*val.as_int32() as i64),
+            ValueType::Int64 => Ok(*val.as_int64()),
             _ => err_wrong_type!(),
         }
         .map(|x| GosValue::new_int64(x))
@@ -310,12 +317,12 @@ impl StdValue {
 
     fn uint_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val {
-            GosValue::Uint(i) => Ok(*i.as_uint() as u64),
-            GosValue::Uint8(i) => Ok(*i.as_uint8() as u64),
-            GosValue::Uint16(i) => Ok(*i.as_uint16() as u64),
-            GosValue::Uint32(i) => Ok(*i.as_uint32() as u64),
-            GosValue::Uint64(i) => Ok(*i.as_uint64()),
+        match val.typ() {
+            ValueType::Uint => Ok(*val.as_uint() as u64),
+            ValueType::Uint8 => Ok(*val.as_uint8() as u64),
+            ValueType::Uint16 => Ok(*val.as_uint16() as u64),
+            ValueType::Uint32 => Ok(*val.as_uint32() as u64),
+            ValueType::Uint64 => Ok(*val.as_uint64()),
             _ => err_wrong_type!(),
         }
         .map(|x| GosValue::new_uint64(x))
@@ -323,9 +330,9 @@ impl StdValue {
 
     fn float_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val {
-            GosValue::Float32(f) => Ok((Into::<f32>::into(*f.as_float32()) as f64).into()),
-            GosValue::Float64(f) => Ok(*f.as_float64()),
+        match val.typ() {
+            ValueType::Float32 => Ok((Into::<f32>::into(*val.as_float32()) as f64).into()),
+            ValueType::Float64 => Ok(*val.as_float64()),
             _ => err_wrong_type!(),
         }
         .map(|x| GosValue::new_float64(x))
@@ -350,15 +357,15 @@ impl StdValue {
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx);
-        match val {
-            GosValue::Interface(iface) => Ok(wrap_std_val(
-                iface
+        match val.typ() {
+            ValueType::Interface => Ok(wrap_std_val(
+                val.as_some_interface()?
                     .borrow()
                     .underlying_value()
                     .map(|x| x.clone())
-                    .unwrap_or(GosValue::new_nil()),
+                    .unwrap_or(GosValue::new_nil(ValueType::Void)),
             )),
-            GosValue::Pointer(p) => Ok(wrap_ptr_std_val(p.clone())),
+            ValueType::Pointer => Ok(wrap_ptr_std_val(val.clone().into_pointer().unwrap())),
             _ => err_wrong_type!(),
         }
     }
@@ -372,19 +379,20 @@ impl StdValue {
 
     fn field(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
         let i = *ival.as_int() as usize;
-        match self.val(ctx).try_as_struct() {
-            Some(s) => {
-                let fields = &s.0.borrow().fields;
+        let val = self.val(ctx);
+        match val.typ() {
+            ValueType::Struct => {
+                let fields = &val.as_struct().0.borrow().fields;
                 if fields.len() <= i {
                     err_index_oor!()
                 } else {
                     Ok(wrap_ptr_std_val(Box::new(PointerObj::StructField(
-                        s.clone(),
+                        val.clone().into_struct(),
                         i as i32,
                     ))))
                 }
             }
-            None => err_wrong_type!(),
+            _ => err_wrong_type!(),
         }
     }
 
@@ -392,7 +400,7 @@ impl StdValue {
         let i = *ival.as_int() as i32;
         let iusize = i as usize;
         let container = self.val(ctx);
-        match container {
+        match container.typ() {
             // todo: fix later
             // GosValue::Array(arr) => match arr.0.len() > iusize {
             //     true => Ok(wrap_ptr_std_val(Box::new(PointerObj::new_array_member(
@@ -400,16 +408,16 @@ impl StdValue {
             //     )))),
             //     false => err_index_oor!(),
             // },
-            GosValue::Slice(s) => match s.0.len() > iusize {
+            ValueType::Slice => match container.as_slice().unwrap().0.len() > iusize {
                 true => Ok(wrap_ptr_std_val(Box::new(PointerObj::SliceMember(
-                    s.clone(),
+                    container.clone().into_slice().unwrap(),
                     i,
                 )))),
                 false => err_index_oor!(),
             },
-            GosValue::Str(s) => match s.len() > iusize {
+            ValueType::Str => match container.as_str().len() > iusize {
                 true => Ok(wrap_std_val(GosValue::new_uint8(
-                    *s.get_byte(iusize).unwrap(),
+                    *container.as_str().get_byte(iusize).unwrap(),
                 ))),
                 false => err_index_oor!(),
             },
@@ -418,12 +426,13 @@ impl StdValue {
     }
 
     fn len(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        match self.val(ctx) {
-            GosValue::Array(arr) => Ok(arr.0.len()),
-            GosValue::Slice(s) => Ok(s.0.len()),
-            GosValue::Str(s) => Ok(s.len()),
-            GosValue::Channel(c) => Ok(c.len()),
-            GosValue::Map(m) => Ok(m.0.len()),
+        let val = self.val(ctx);
+        match val.typ() {
+            ValueType::Array => Ok(val.as_array().0.len()),
+            ValueType::Slice => Ok(val.as_slice().map_or(0, |x| x.0.len())),
+            ValueType::Str => Ok(val.as_str().len()),
+            ValueType::Channel => Ok(val.as_channel().map_or(0, |x| x.len())),
+            ValueType::Map => Ok(val.as_map().map_or(0, |x| x.0.len())),
             _ => err_wrong_type!(),
         }
         .map(|x| GosValue::new_int(x as isize))
@@ -525,7 +534,7 @@ impl StdValue {
     fn set_float(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let fval = *val.as_float64();
         let val = match self.settable_meta(ctx)?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Float32 => Ok(GosValue::new_float32((fval as f32).into())),
+            ValueType::Float32 => Ok(GosValue::new_float32((fval.into_inner() as f32).into())),
             ValueType::Float64 => Ok(GosValue::new_float64(fval.into())),
             _ => err_set_val_type!(),
         }?;
@@ -539,7 +548,7 @@ impl StdValue {
                 (Into::<f64>::into(c.0) as f32).into(),
                 (Into::<f64>::into(c.1) as f32).into(),
             )),
-            ValueType::Complex128 => Ok(GosValue::Complex128(c.clone())),
+            ValueType::Complex128 => Ok(GosValue::new_complex128(c.0, c.1)),
             _ => err_set_val_type!(),
         }?;
         self.set(ctx, val)
@@ -661,7 +670,7 @@ impl UnsafePtr for StdMapIter {
 impl StdMapIter {
     fn map_range(ctx: &FfiCallCtx, v: &StdValue) -> GosValue {
         let val = v.val(ctx);
-        let mref = val.as_map().0.borrow_data();
+        let mref = val.as_map().unwrap().0.borrow_data();
         let iter: GosHashMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
         let smi = StdMapIter {
             inner: RefCell::new(StdMapIterInner {

@@ -405,15 +405,15 @@ impl<'a> TypeLookup<'a> {
             }
             BasicType::Complex128 => {
                 let (cr, ci, _) = val.complex_as_complex128();
-                (
-                    GosValue::Complex128(Box::new((cr, ci))),
-                    ValueType::Complex128,
-                )
+                (GosValue::new_complex128(cr, ci), ValueType::Complex128)
             }
             BasicType::Str | BasicType::UntypedString => {
                 (GosValue::new_str(val.str_as_string()), ValueType::Str)
             }
-            BasicType::UnsafePointer => (GosValue::new_nil(), ValueType::UnsafePtr),
+            BasicType::UnsafePointer => (
+                GosValue::new_nil(ValueType::UnsafePtr),
+                ValueType::UnsafePtr,
+            ),
             _ => {
                 dbg!(typ);
                 unreachable!();
@@ -558,7 +558,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Complex128 => ValueType::Complex128,
                 BasicType::Str | BasicType::UntypedString => ValueType::Str,
                 BasicType::UnsafePointer => ValueType::UnsafePtr,
-                BasicType::UntypedNil => ValueType::Nil,
+                BasicType::UntypedNil => ValueType::Void,
                 _ => {
                     dbg!(detail.typ());
                     unreachable!()

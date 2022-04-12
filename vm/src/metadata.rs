@@ -252,25 +252,23 @@ impl Meta {
                 MetadataType::Float32 => GosValue::new_float32(0.0.into()),
                 MetadataType::Float64 => GosValue::new_float64(0.0.into()),
                 MetadataType::Complex64 => GosValue::new_complex64(0.0.into(), 0.0.into()),
-                MetadataType::Complex128 => {
-                    GosValue::Complex128(Box::new((0.0.into(), 0.0.into())))
-                }
-                MetadataType::UnsafePtr => GosValue::new_nil(),
+                MetadataType::Complex128 => GosValue::new_complex128(0.0.into(), 0.0.into()),
+                MetadataType::UnsafePtr => GosValue::new_nil(ValueType::UnsafePtr),
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Array(m, size) => {
                     let val = m.zero(mobjs, gcv);
                     GosValue::array_with_size(*size, &val, gcv)
                 }
-                MetadataType::Slice(_) => GosValue::new_nil(),
+                MetadataType::Slice(_) => GosValue::new_nil(ValueType::Slice),
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),
-                MetadataType::Signature(_) => GosValue::new_nil(),
-                MetadataType::Map(_, _) => GosValue::new_nil(),
-                MetadataType::Interface(_) => GosValue::new_nil(),
-                MetadataType::Channel(_, _) => GosValue::new_nil(),
+                MetadataType::Signature(_) => GosValue::new_nil(ValueType::Closure),
+                MetadataType::Map(_, _) => GosValue::new_nil(ValueType::Map),
+                MetadataType::Interface(_) => GosValue::new_nil(ValueType::Interface),
+                MetadataType::Channel(_, _) => GosValue::new_nil(ValueType::Channel),
                 MetadataType::Named(_, gm) => gm.zero(mobjs, gcv),
-                MetadataType::None => GosValue::new_nil(),
+                MetadataType::None => unreachable!(),
             },
-            _ => GosValue::new_nil(),
+            _ => GosValue::new_nil(ValueType::Pointer),
         }
     }
 

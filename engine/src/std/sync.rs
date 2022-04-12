@@ -14,7 +14,7 @@ use std::vec;
 
 macro_rules! create_mutex {
     ($arg0:expr, $ctx:expr, $typ:tt) => {{
-        let pp = $arg0.as_pointer();
+        let pp = $arg0.as_pointer().unwrap();
         let p = pp.deref(&$ctx.stack, &$ctx.vm_objs.packages);
         if p.is_nil() {
             let inner = $typ::new();
@@ -23,6 +23,7 @@ macro_rules! create_mutex {
             inner
         } else {
             p.as_unsafe_ptr()
+                .unwrap()
                 .as_any()
                 .downcast_ref::<$typ>()
                 .unwrap()
@@ -53,7 +54,12 @@ impl Mutex {
 
     async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud.as_any().downcast_ref::<MutexInner>().unwrap().clone();
+        let mutex = ud
+            .unwrap()
+            .as_any()
+            .downcast_ref::<MutexInner>()
+            .unwrap()
+            .clone();
         mutex.unlock().await
     }
 }
@@ -116,7 +122,12 @@ impl RWMutex {
 
     async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        let mutex = ud
+            .unwrap()
+            .as_any()
+            .downcast_ref::<RWMutexInner>()
+            .unwrap()
+            .clone();
         mutex.r_unlock().await
     }
 
@@ -131,7 +142,12 @@ impl RWMutex {
 
     async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud.as_any().downcast_ref::<RWMutexInner>().unwrap().clone();
+        let mutex = ud
+            .unwrap()
+            .as_any()
+            .downcast_ref::<RWMutexInner>()
+            .unwrap()
+            .clone();
         mutex.w_unlock().await
     }
 }
