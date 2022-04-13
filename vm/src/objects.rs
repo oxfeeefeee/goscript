@@ -1170,9 +1170,9 @@ impl ValueDesc {
         let index = (self.stack_base + self.index) as usize;
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
-            stack.get_value(index).clone()
+            stack.get(index).clone()
         } else {
-            uv_stack.borrow().get_value(index).clone()
+            uv_stack.borrow().get(index).clone()
         }
     }
 
@@ -1181,9 +1181,9 @@ impl ValueDesc {
         let index = (self.stack_base + self.index) as usize;
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
-            stack.set_value(index, val);
+            stack.set(index, val);
         } else {
-            uv_stack.borrow_mut().set_value(index, val);
+            uv_stack.borrow_mut().set(index, val);
         }
     }
 }

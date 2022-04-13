@@ -171,7 +171,7 @@ impl CallFrame {
                 if referrers.weaks.len() == 0 {
                     continue;
                 }
-                let val = stack.get_value(Stack::offset(self.stack_base, *ind));
+                let val = stack.get(Stack::offset(self.stack_base, *ind));
                 for weak in referrers.weaks.iter() {
                     if let Some(uv) = weak.upgrade() {
                         uv.close(val.clone());
@@ -314,7 +314,7 @@ impl<'a> Fiber<'a> {
                 match inst_op {
                     Opcode::PUSH_CONST => {
                         let index = inst.imm();
-                        stack.push_value(consts[index as usize].clone());
+                        stack.push(consts[index as usize].clone());
                     }
                     Opcode::PUSH_NIL => stack.push_nil(inst.t0()),
                     Opcode::PUSH_FALSE => stack.push_bool(false),
@@ -322,7 +322,7 @@ impl<'a> Fiber<'a> {
                     Opcode::PUSH_IMM => stack.push_int32_as(inst.imm(), inst.t0()),
                     Opcode::PUSH_ZERO_VALUE => {
                         let meta = consts[inst.imm() as usize].as_metadata();
-                        stack.push_value(meta.zero(&objs.metas, gcv));
+                        stack.push(meta.zero(&objs.metas, gcv));
                     }
                     Opcode::POP => match inst.imm() {
                         1 => {
@@ -351,7 +351,7 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.push_value(upvalue.value(stack));
+                        stack.push(upvalue.value(stack));
                         frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::STORE_UPVALUE => {
@@ -365,7 +365,7 @@ impl<'a> Fiber<'a> {
                         let val = &stack.pop_value();
                         if inst.t2_as_index() == 0 {
                             match val.load_index(&ind, gcv) {
-                                Ok(v) => stack.push_value(v),
+                                Ok(v) => stack.push(v),
                                 Err(e) => {
                                     go_panic_str!(panic, e, frame, code);
                                 }
@@ -379,7 +379,7 @@ impl<'a> Fiber<'a> {
                         let index = inst.imm() as usize;
                         if inst.t2_as_index() == 0 {
                             match val.load_index_int(index, gcv) {
-                                Ok(v) => stack.push_value(v),
+                                Ok(v) => stack.push(v),
                                 Err(e) => {
                                     go_panic_str!(panic, e, frame, code);
                                 }
@@ -391,8 +391,8 @@ impl<'a> Fiber<'a> {
                     Opcode::STORE_INDEX => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
-                        let key = stack.get_value(s_index + 1);
-                        let target = &stack.get_value(s_index);
+                        let key = stack.get(s_index + 1);
+                        let target = &stack.get(s_index);
                         if let Err(e) = stack.store_index(target, &key, rhs_index, inst.t0(), gcv) {
                             go_panic_str!(panic, e, frame, code);
                         }
@@ -402,7 +402,7 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, imm) = inst.imm824();
                         let index = inst.t2_as_index();
                         let s_index = Stack::offset(stack.len(), index);
-                        let target = &stack.get_value(s_index);
+                        let target = &stack.get(s_index);
                         if let Err(e) =
                             stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv)
                         {
@@ -412,7 +412,7 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_FIELD => {
                         let ind = stack.pop_value();
                         let val = stack.pop_value();
-                        stack.push_value(val.load_field(&ind, objs));
+                        stack.push(val.load_field(&ind, objs));
                     }
                     Opcode::LOAD_STRUCT_FIELD => {
                         let ind = inst.imm();
@@ -420,7 +420,7 @@ impl<'a> Fiber<'a> {
                             Ok(target) => {
                                 let val =
                                     target.as_struct().0.borrow().fields[ind as usize].clone();
-                                stack.push_value(val);
+                                stack.push(val);
                             }
                             Err(e) => go_panic_str!(panic, e, frame, code),
                         }
@@ -430,7 +430,7 @@ impl<'a> Fiber<'a> {
                         match cast_receiver(val, inst.t1() == ValueType::Pointer, stack, objs) {
                             Ok(val) => {
                                 let func = read_imm_key!(code, frame, objs);
-                                stack.push_value(GosValue::new_closure(
+                                stack.push(GosValue::new_closure(
                                     ClosureObj::new_gos(
                                         func,
                                         &objs.functions,
@@ -447,7 +447,7 @@ impl<'a> Fiber<'a> {
                         let index = inst.imm() as usize;
                         let borrowed = val.borrow();
                         match bind_method(&borrowed, index, stack, objs, gcv) {
-                            Ok(cls) => stack.push_value(cls),
+                            Ok(cls) => stack.push(cls),
                             Err(e) => {
                                 go_panic_str!(panic, e, frame, code);
                             }
@@ -457,7 +457,7 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, _) = inst.imm824();
                         let index = inst.t2_as_index();
                         let s_index = Stack::offset(stack.len(), index);
-                        let key = stack.get_value(s_index + 1).clone();
+                        let key = stack.get(s_index + 1).clone();
 
                         match get_try_deref_value(stack, s_index, inst.t1(), objs) {
                             Ok(target) => {
@@ -483,7 +483,7 @@ impl<'a> Fiber<'a> {
                         let index = inst.imm();
                         let pkg_key = read_imm_key!(code, frame, objs);
                         let pkg = &objs.packages[pkg_key];
-                        stack.push_value(pkg.member(index).clone());
+                        stack.push(pkg.member(index).clone());
                     }
                     Opcode::LOAD_PKG_INIT => {
                         let index = stack.pop_int32();
@@ -491,11 +491,11 @@ impl<'a> Fiber<'a> {
                         let pkg = &objs.packages[pkg_key];
                         match pkg.init_func(index) {
                             Some(f) => {
-                                stack.push_value(GosValue::new_int32(index + 1));
-                                stack.push_value(f.clone());
-                                stack.push_value(GosValue::new_bool(true));
+                                stack.push(GosValue::new_int32(index + 1));
+                                stack.push(f.clone());
+                                stack.push(GosValue::new_bool(true));
                             }
-                            None => stack.push_value(GosValue::new_bool(false)),
+                            None => stack.push(GosValue::new_bool(false)),
                         }
                     }
                     Opcode::STORE_PKG_FIELD => {
@@ -506,7 +506,7 @@ impl<'a> Fiber<'a> {
                     Opcode::STORE_DEREF => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
-                        let p = stack.get_value(s_index).clone();
+                        let p = stack.get(s_index).clone();
                         match p.as_some_pointer() {
                             Ok(ptr_obj) => {
                                 stack.store_to_pointer(
@@ -529,7 +529,7 @@ impl<'a> Fiber<'a> {
                         let to = inst.t0();
                         match to {
                             _ if to.copyable() => {
-                                stack.get_value_mut(index).cast_copyable(from, to);
+                                stack.get_mut(index).cast_copyable(from, to);
                             }
                             ValueType::Interface => {
                                 let binding = ifaces[mapping as usize].clone();
@@ -538,7 +538,7 @@ impl<'a> Fiber<'a> {
                                     under,
                                     Some(binding),
                                 ));
-                                stack.set_value(index, val);
+                                stack.set(index, val);
                             }
                             ValueType::Str => {
                                 let result = match from {
@@ -565,12 +565,12 @@ impl<'a> Fiber<'a> {
                                         None => "".to_owned(),
                                     },
                                     _ => {
-                                        let val = stack.get_value_mut(index);
+                                        let val = stack.get_mut(index);
                                         val.cast_copyable(from, ValueType::Uint32);
                                         char_from_u32(*val.as_uint32()).to_string()
                                     }
                                 };
-                                stack.set_value(index, GosValue::new_str(result));
+                                stack.set(index, GosValue::new_str(result));
                             }
                             ValueType::Slice => {
                                 let from = stack.get_str(index);
@@ -590,7 +590,7 @@ impl<'a> Fiber<'a> {
                                     _ => unreachable!(),
                                 };
                                 let v = GosValue::slice_with_data(result, gcv);
-                                stack.set_value(index, v);
+                                stack.set(index, v);
                             }
                             ValueType::UnsafePtr => {
                                 unimplemented!()
@@ -598,11 +598,11 @@ impl<'a> Fiber<'a> {
                             ValueType::UintPtr => match from {
                                 ValueType::UnsafePtr => {
                                     let up = stack.pop_unsafe_ptr();
-                                    stack.push_value(GosValue::new_uint_ptr(
+                                    stack.push(GosValue::new_uint_ptr(
                                         up.map_or(0, |x| Rc::as_ptr(&x) as *const () as usize),
                                     ));
                                 }
-                                _ => stack.get_value_mut(index).cast_copyable(from, to),
+                                _ => stack.get_mut(index).cast_copyable(from, to),
                             },
                             _ => {
                                 dbg!(to);
@@ -653,9 +653,9 @@ impl<'a> Fiber<'a> {
                                 let val = chan.recv().await;
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcv);
-                                stack.push_value(unwrapped);
+                                stack.push(unwrapped);
                                 if inst.t1() == ValueType::FlagA {
-                                    stack.push_value(GosValue::new_bool(ok));
+                                    stack.push(GosValue::new_bool(ok));
                                 }
                             }
                             None => loop {
@@ -666,30 +666,30 @@ impl<'a> Fiber<'a> {
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.push_value(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
+                        stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
                     }
                     Opcode::REF_LOCAL => {
                         let val = if inst.imm() >= 0 {
                             let s_index = Stack::offset(stack_base, inst.imm());
-                            stack.get_value(s_index).clone()
+                            stack.get(s_index).clone()
                         } else {
                             stack.pop_value()
                         };
                         let boxed = PointerObj::try_new_local(&val).unwrap();
-                        stack.push_value(GosValue::new_pointer(boxed));
+                        stack.push(GosValue::new_pointer(boxed));
                     }
                     Opcode::REF_SLICE_MEMBER => {
                         let i = stack.pop_int() as OpIndex;
                         let typ = inst.t0();
                         let arr_or_slice = stack.pop_value();
                         match typ {
-                            ValueType::Array => stack.push_value(GosValue::new_pointer(
+                            ValueType::Array => stack.push(GosValue::new_pointer(
                                 PointerObj::new_array_member(&arr_or_slice, i, gcv),
                             )),
                             ValueType::Slice => match arr_or_slice.clone().into_some_slice() {
-                                Ok(s) => stack.push_value(GosValue::new_pointer(
-                                    PointerObj::SliceMember(s, i),
-                                )),
+                                Ok(s) => {
+                                    stack.push(GosValue::new_pointer(PointerObj::SliceMember(s, i)))
+                                }
                                 Err(e) => {
                                     go_panic_str!(panic, e, frame, code);
                                 }
@@ -699,7 +699,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::REF_STRUCT_FIELD => match pop_try_deref_value(stack, inst.t0(), objs) {
                         Ok(target) => {
-                            stack.push_value(GosValue::new_pointer(PointerObj::StructField(
+                            stack.push(GosValue::new_pointer(PointerObj::StructField(
                                 target.clone().into_struct(),
                                 inst.imm(),
                             )));
@@ -708,21 +708,21 @@ impl<'a> Fiber<'a> {
                     },
                     Opcode::REF_PKG_MEMBER => {
                         let pkg = read_imm_key!(code, frame, objs);
-                        stack.push_value(GosValue::new_pointer(PointerObj::PkgMember(
+                        stack.push(GosValue::new_pointer(PointerObj::PkgMember(
                             pkg,
                             inst.imm(),
                         )));
                     }
                     Opcode::REF_LITERAL => {
                         let v = stack.pop_value();
-                        stack.push_value(GosValue::new_pointer(PointerObj::UpVal(
+                        stack.push(GosValue::new_pointer(PointerObj::UpVal(
                             UpValue::new_closed(v),
                         )))
                     }
                     Opcode::DEREF => {
                         let boxed = stack.pop_value();
                         match deref_value(&boxed, stack, objs) {
-                            Ok(val) => stack.push_value(val),
+                            Ok(val) => stack.push(val),
                             Err(e) => go_panic_str!(panic, e, frame, code),
                         }
                     }
@@ -737,7 +737,7 @@ impl<'a> Fiber<'a> {
                                 if let Some(r) = &cls.recv {
                                     // push receiver on stack as the first parameter
                                     // don't call copy_semantic because BIND_METHOD did it already
-                                    stack.push_value(r.clone());
+                                    stack.push(r.clone());
                                 }
                             }
                             None => {} //ffi
@@ -1014,10 +1014,10 @@ impl<'a> Fiber<'a> {
                                             );
                                             match flag {
                                                 ValueType::FlagC => {
-                                                    stack.push_value(unwrapped);
+                                                    stack.push(unwrapped);
                                                 }
                                                 ValueType::FlagD => {
-                                                    stack.push_value(unwrapped);
+                                                    stack.push(unwrapped);
                                                     stack.push_bool(ok);
                                                 }
                                                 _ => {}
@@ -1036,7 +1036,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::RANGE_INIT => {
                         let len = stack.len();
-                        let t = stack.get_value(len - 1);
+                        let t = stack.get(len - 1);
                         self.rstack.range_init(&t);
                         stack.pop_value();
                     }
@@ -1053,12 +1053,12 @@ impl<'a> Fiber<'a> {
                                 InterfaceObj::Gos(v, b) => {
                                     let val = v.copy_semantic(gcv);
                                     let meta = b.as_ref().unwrap().0;
-                                    stack.push_value(val);
+                                    stack.push(val);
                                     let want_meta = consts[inst.imm() as usize].as_metadata();
                                     let do_try = inst.t2_as_index() > 0;
                                     match *want_meta == meta {
                                         true => {
-                                            stack.push_value(v.copy_semantic(gcv));
+                                            stack.push(v.copy_semantic(gcv));
                                             if do_try {
                                                 stack.push_bool(true);
                                             }
@@ -1066,7 +1066,7 @@ impl<'a> Fiber<'a> {
                                         }
                                         false => match do_try {
                                             true => {
-                                                stack.push_value(want_meta.zero(&objs.metas, gcv));
+                                                stack.push(want_meta.zero(&objs.metas, gcv));
                                                 stack.push_bool(false);
                                                 None
                                             }
@@ -1097,7 +1097,7 @@ impl<'a> Fiber<'a> {
                             _ => (iface_value, s_meta.none),
                         };
                         let typ = meta.value_type(&objs.metas);
-                        stack.push_value(GosValue::new_metadata(meta));
+                        stack.push(GosValue::new_metadata(meta));
                         let option_count = inst.imm() as usize;
                         if option_count > 0 {
                             let mut index = None;
@@ -1108,14 +1108,14 @@ impl<'a> Fiber<'a> {
                                 }
                             }
                             let s_index = Stack::offset(stack_base, index.unwrap());
-                            stack.set_value(s_index, val);
+                            stack.set(s_index, val);
 
                             frame.pc += option_count;
                         }
                     }
                     Opcode::IMPORT => {
                         let pkey = pkgs[inst.imm() as usize];
-                        stack.push_value(GosValue::new_bool(!objs.packages[pkey].inited()));
+                        stack.push(GosValue::new_bool(!objs.packages[pkey].inited()));
                     }
                     Opcode::SLICE | Opcode::SLICE_FULL => {
                         let max = if inst_op == Opcode::SLICE_FULL {
@@ -1150,7 +1150,7 @@ impl<'a> Fiber<'a> {
                         };
 
                         match result {
-                            Ok(v) => stack.push_value(v),
+                            Ok(v) => stack.push(v),
                             Err(e) => go_panic_str!(panic, e, frame, code),
                         }
                     }
@@ -1252,19 +1252,19 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unimplemented!(),
                         };
-                        stack.push_value(new_val);
+                        stack.push(new_val);
                     }
 
                     Opcode::NEW => {
                         let md = stack.pop_metadata();
                         let v = md.into_value_category().zero(&objs.metas, gcv);
                         let p = GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)));
-                        stack.push_value(p);
+                        stack.push(p);
                     }
                     Opcode::MAKE => {
                         let index = inst.imm() - 1;
                         let i = Stack::offset(stack.len(), index - 1);
-                        let meta_val = stack.get_value(i);
+                        let meta_val = stack.get(i);
                         let md = meta_val.as_metadata();
                         let val = match md.mtype_unwraped(&objs.metas) {
                             MetadataType::Slice(vmeta) => {
@@ -1299,7 +1299,7 @@ impl<'a> Fiber<'a> {
                             _ => unreachable!(),
                         };
                         stack.pop_value();
-                        stack.push_value(val);
+                        stack.push(val);
                     }
                     Opcode::COMPLEX => {
                         // for the specs: For complex, the two arguments must be of the same
@@ -1319,7 +1319,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unreachable!(),
                         };
-                        stack.push_value(val);
+                        stack.push(val);
                     }
                     Opcode::REAL => {
                         let val = match inst.t0() {
@@ -1329,7 +1329,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unreachable!(),
                         };
-                        stack.push_value(val);
+                        stack.push(val);
                     }
                     Opcode::IMAG => {
                         let val = match inst.t0() {
@@ -1339,7 +1339,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unreachable!(),
                         };
-                        stack.push_value(val);
+                        stack.push(val);
                     }
                     Opcode::LEN => {
                         let l = match inst.t0() {
@@ -1349,7 +1349,7 @@ impl<'a> Fiber<'a> {
                             ValueType::Channel => stack.pop_channel().map_or(0, |x| x.len()),
                             _ => unreachable!(),
                         };
-                        stack.push_value(GosValue::new_int(l as isize));
+                        stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::CAP => {
                         let l = match inst.t0() {
@@ -1357,7 +1357,7 @@ impl<'a> Fiber<'a> {
                             ValueType::Channel => stack.pop_channel().map_or(0, |x| x.cap()),
                             _ => unreachable!(),
                         };
-                        stack.push_value(GosValue::new_int(l as isize));
+                        stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
                         let index = Stack::offset(stack.len(), inst.imm() - 2);
@@ -1374,7 +1374,7 @@ impl<'a> Fiber<'a> {
                                     .map(|x| GosValue::new_uint8(*x))
                                     .collect();
                                 let b_slice = GosValue::slice_with_data(bytes, gcv);
-                                stack.push_value(b_slice);
+                                stack.push(b_slice);
                             }
                             _ => {
                                 // pack args into a slice
@@ -1394,7 +1394,7 @@ impl<'a> Fiber<'a> {
                             },
                             None => GosValue::from_slice(None),
                         };
-                        stack.push_value(result);
+                        stack.push(result);
                     }
                     Opcode::COPY => {
                         let t2 = match inst.t2() {
@@ -1442,7 +1442,7 @@ impl<'a> Fiber<'a> {
                     Opcode::RECOVER => {
                         let p = panic.take();
                         let val = p.map_or(GosValue::new_nil(ValueType::Void), |x| x.msg);
-                        stack.push_value(val);
+                        stack.push(val);
                     }
                     Opcode::ASSERT => {
                         let ok = stack.pop_bool();
@@ -1455,8 +1455,8 @@ impl<'a> Fiber<'a> {
                         let meta = stack.pop_value();
                         let total_params = inst.imm();
                         let index = Stack::offset(stack.len(), -total_params);
-                        let itype = stack.get_value(index).clone();
-                        let name = stack.get_value(index + 1).clone();
+                        let itype = stack.get(index).clone();
+                        let name = stack.get(index + 1).clone();
                         let name_str = name.as_str().as_str();
                         let ptypes = &objs.metas[meta.as_metadata().key]
                             .as_signature()
@@ -1477,7 +1477,7 @@ impl<'a> Fiber<'a> {
                         };
                         stack.pop_str();
                         stack.pop_metadata();
-                        stack.push_value(v);
+                        stack.push(v);
                     }
                     Opcode::VOID => unreachable!(),
                 };
@@ -1590,10 +1590,10 @@ fn get_try_deref_value(
 ) -> RuntimeResult<GosValue> {
     let v = match t {
         ValueType::Pointer => stack
-            .get_value(index)
+            .get(index)
             .as_some_pointer()?
             .deref(stack, &objs.packages),
-        _ => stack.get_value(index).clone(),
+        _ => stack.get(index).clone(),
     };
     Ok(v)
 }

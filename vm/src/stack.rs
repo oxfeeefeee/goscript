@@ -82,9 +82,9 @@ macro_rules! store_local_val {
     ($stack:ident, $to:expr, $s_index:ident, $r_index:ident, $t:ident, $gcos:ident) => {{
         if $r_index < 0 {
             let ri = Stack::offset($stack.len(), $r_index);
-            $to.set_value($s_index, $stack.copy_semantic(ri, $gcos));
+            $to.set($s_index, $stack.copy_semantic(ri, $gcos));
         } else {
-            $to.set_value(
+            $to.set(
                 $s_index,
                 $stack
                     .read_with_ops($to.get_data($s_index), $r_index, $t)
@@ -124,58 +124,58 @@ impl Stack {
 
     #[inline]
     pub fn get_data(&self, index: usize) -> &ValueData {
-        self.get_value(index).data()
+        self.get(index).data()
     }
 
     #[inline]
-    pub fn get_value(&self, index: usize) -> &GosValue {
+    pub fn get(&self, index: usize) -> &GosValue {
         unsafe { self.vec.get_unchecked(index) }
     }
 
     #[inline]
-    pub fn get_value_mut(&mut self, index: usize) -> &mut GosValue {
+    pub fn get_mut(&mut self, index: usize) -> &mut GosValue {
         unsafe { self.vec.get_unchecked_mut(index) }
     }
 
     #[inline]
-    pub fn set_value(&mut self, index: usize, val: GosValue) {
+    pub fn set(&mut self, index: usize, val: GosValue) {
         self.vec[index] = val;
     }
 
     #[inline]
-    pub fn push_value(&mut self, val: GosValue) {
+    pub fn push(&mut self, val: GosValue) {
         self.vec.push(val);
     }
 
     #[inline]
     pub fn push_from_index(&mut self, index: usize) {
-        self.push_value(self.get_value(index).clone());
+        self.push(self.get(index).clone());
     }
 
     #[inline]
     pub fn push_nil(&mut self, t: ValueType) {
-        self.push_value(GosValue::new_nil(t));
+        self.push(GosValue::new_nil(t));
     }
 
     #[inline]
     pub fn push_bool(&mut self, b: bool) {
-        self.push_value(GosValue::new_bool(b));
+        self.push(GosValue::new_bool(b));
     }
 
     #[inline]
     pub fn push_int(&mut self, i: isize) {
-        self.push_value(GosValue::new_int(i));
+        self.push(GosValue::new_int(i));
     }
 
     #[inline]
     pub fn push_int32_as(&mut self, i: i32, t: ValueType) {
-        self.push_value(GosValue::int32_as(i, t));
+        self.push(GosValue::int32_as(i, t));
     }
 
     #[inline]
     pub fn append_vec(&mut self, mut vec: Vec<GosValue>) {
         for v in vec.drain(..) {
-            self.push_value(v);
+            self.push(v);
         }
     }
 
@@ -304,7 +304,7 @@ impl Stack {
         let values = other.pop_value_n(n);
         let mut stack = Stack::new();
         for v in values.into_iter() {
-            stack.push_value(v);
+            stack.push(v);
         }
         stack
     }
@@ -316,17 +316,17 @@ impl Stack {
 
     #[inline]
     pub fn get_slice(&mut self, index: usize) -> Option<&(SliceObj, RCount)> {
-        self.get_value(index).as_slice()
+        self.get(index).as_slice()
     }
 
     #[inline]
     pub fn get_str(&mut self, index: usize) -> &StringObj {
-        self.get_value(index).as_str()
+        self.get(index).as_str()
     }
 
     #[inline]
     pub fn copy_semantic(&self, index: usize, gcv: &GcoVec) -> GosValue {
-        self.get_value(index).copy_semantic(gcv)
+        self.get(index).copy_semantic(gcv)
     }
 
     #[inline]
@@ -456,23 +456,23 @@ impl Stack {
             }
             PointerObj::Struct(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_value(rhs_s_index).copy_semantic(gcv);
+                let val = self.get(rhs_s_index).copy_semantic(gcv);
                 let mref: &mut StructObj = &mut r.0.borrow_mut();
                 *mref = val.as_struct().0.borrow().clone();
             }
             PointerObj::Array(a) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_value(rhs_s_index);
+                let val = self.get(rhs_s_index);
                 a.0.set_from(&val.as_array().0);
             }
             PointerObj::Slice(r) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_value(rhs_s_index);
+                let val = self.get(rhs_s_index);
                 r.0.set_from(&val.as_some_slice()?.0);
             }
             PointerObj::Map(m) => {
                 let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get_value(rhs_s_index);
+                let val = self.get(rhs_s_index);
                 let mref: &mut GosHashMap = &mut m.0.borrow_data_mut();
                 *mref = val.as_some_map()?.0.borrow_data().clone();
             }
@@ -502,7 +502,7 @@ impl Stack {
         gcv: &GcoVec,
     ) -> RuntimeResult<()> {
         let (v, b) = map.as_some_map()?.0.get(index, gcv);
-        self.push_value(v);
+        self.push(v);
         self.push_bool(b);
         Ok(())
     }
@@ -512,7 +512,7 @@ impl Stack {
         if index <= self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index));
-            self.push_value(GosValue::slice_with_data(v, gcos))
+            self.push(GosValue::slice_with_data(v, gcos))
         }
     }
 
@@ -531,8 +531,8 @@ impl Stack {
             self.pop_discard_copyable();
             result
         } else {
-            let a = self.get_value(self.len() - 2);
-            let b = self.get_value(self.len() - 1);
+            let a = self.get(self.len() - 2);
+            let b = self.get(self.len() - 1);
             let result = if t != ValueType::Metadata {
                 a.eq(&b)
             } else {
@@ -680,7 +680,7 @@ impl Stack {
 
     #[inline]
     fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
-        unsafe { self.get_value_mut(index).data_mut() }
+        unsafe { self.get_mut(index).data_mut() }
     }
 }
 
@@ -725,8 +725,8 @@ impl RangeStack {
         match typ {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
-                    stack.push_value(k.clone());
-                    stack.push_value(v.clone().into_inner());
+                    stack.push(k.clone());
+                    stack.push(v.clone().into_inner());
                     false
                 }
                 None => {
@@ -737,7 +737,7 @@ impl RangeStack {
             ValueType::Slice => match self.slices.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.push_int(k as isize);
-                    stack.push_value(v.clone().into_inner());
+                    stack.push(v.clone().into_inner());
                     false
                 }
                 None => {
