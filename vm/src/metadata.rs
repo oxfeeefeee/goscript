@@ -383,11 +383,6 @@ impl Fields {
         }
     }
 
-    #[inline]
-    pub fn is_exported(&self, i: usize) -> bool {
-        self.fields[i].2
-    }
-
     pub fn iface_methods_info(&self) -> Vec<(String, Meta)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
@@ -565,6 +560,14 @@ impl MetadataType {
     pub fn as_slice(&self) -> &Meta {
         match self {
             Self::Slice(m) => m,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_map(&self) -> (&Meta, &Meta) {
+        match self {
+            Self::Map(k, v) => (k, v),
             _ => unreachable!(),
         }
     }

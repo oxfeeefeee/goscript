@@ -515,6 +515,15 @@ impl<'a> Fiber<'a> {
                         let from = inst.t1();
                         let to = inst.t0();
                         match to {
+                            ValueType::UintPtr => match from {
+                                ValueType::UnsafePtr => {
+                                    let up = stack.pop_unsafe_ptr();
+                                    stack.push(GosValue::new_uint_ptr(
+                                        up.map_or(0, |x| Rc::as_ptr(&x) as *const () as usize),
+                                    ));
+                                }
+                                _ => stack.get_mut(index).cast_copyable(from, to),
+                            },
                             _ if to.copyable() => {
                                 stack.get_mut(index).cast_copyable(from, to);
                             }
@@ -582,15 +591,7 @@ impl<'a> Fiber<'a> {
                             ValueType::UnsafePtr => {
                                 unimplemented!()
                             }
-                            ValueType::UintPtr => match from {
-                                ValueType::UnsafePtr => {
-                                    let up = stack.pop_unsafe_ptr();
-                                    stack.push(GosValue::new_uint_ptr(
-                                        up.map_or(0, |x| Rc::as_ptr(&x) as *const () as usize),
-                                    ));
-                                }
-                                _ => stack.get_mut(index).cast_copyable(from, to),
-                            },
+
                             _ => {
                                 dbg!(to);
                                 unimplemented!()

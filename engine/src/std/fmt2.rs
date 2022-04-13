@@ -37,7 +37,7 @@ impl Fmt2 {
         Ok(())
     }
 
-    fn ffi_printf(&self, args: Vec<GosValue>) {
+    fn ffi_printf(&self, _args: Vec<GosValue>) {
         unimplemented!();
     }
 }

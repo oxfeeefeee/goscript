@@ -649,10 +649,6 @@ pub struct StructObj {
 }
 
 impl StructObj {
-    pub fn is_exported(index: usize, meta: &Meta, metas: &MetadataObjs) -> bool {
-        metas[meta.key].as_struct().0.is_exported(index)
-    }
-
     pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
         let mut cur_val: GosValue = struct_;
         for &i in indices.iter() {

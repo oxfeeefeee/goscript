@@ -98,22 +98,6 @@ pub struct Stack {
     vec: Vec<GosValue>,
 }
 
-impl Display for Stack {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
-}
-
-impl fmt::Debug for Stack {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("=========top=======\n")?;
-        for v in self.vec.iter().rev() {
-            write!(f, "{:#?}\n", v)?;
-        }
-        f.write_str("=========botton====\n")
-    }
-}
-
 impl Stack {
     #[inline]
     pub fn new() -> Stack {
@@ -681,6 +665,22 @@ impl Stack {
     #[inline]
     fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
         unsafe { self.get_mut(index).data_mut() }
+    }
+}
+
+impl Display for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+impl fmt::Debug for Stack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("=========top=======\n")?;
+        for v in self.vec.iter().rev() {
+            write!(f, "{:#?}\n", v)?;
+        }
+        f.write_str("=========botton====\n")
     }
 }
 

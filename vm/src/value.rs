@@ -1924,7 +1924,7 @@ impl GosValue {
 
     #[inline]
     pub fn cast_copyable(&mut self, from: ValueType, to: ValueType) {
-        assert!(self.typ.copyable());
+        assert!(from.copyable());
         self.data.cast_copyable(from, to)
     }
 
