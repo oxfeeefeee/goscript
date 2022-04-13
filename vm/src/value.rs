@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//#![allow(dead_code)]
 use super::gc::GcoVec;
 use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
@@ -51,12 +51,6 @@ macro_rules! rc_ptr_eq {
 macro_rules! nil_err_str {
     () => {
         "access nil value".to_owned()
-    };
-}
-
-macro_rules! nil_err {
-    () => {
-        Err(nil_err_str!())
     };
 }
 
@@ -242,6 +236,7 @@ macro_rules! convert_to_float {
 pub type RuntimeResult<T> = result::Result<T, String>;
 
 pub type OptionBox<T> = Option<Box<T>>;
+
 pub type OptionRc<T> = Option<Rc<T>>;
 
 // ----------------------------------------------------------------------------
@@ -251,6 +246,7 @@ pub type OptionRc<T> = Option<Rc<T>>;
 /// maps, slices, channels and function types. For nil-able types, we use
 /// null pointer to represent nil value.
 pub union ValueData {
+    // untyped_nil is only used in ware cases, when the type of the nil value is ValueType::VOID
     untyped_nil: *const usize,
     boolean: bool,
     int: isize,
@@ -394,106 +390,6 @@ impl ValueData {
     #[inline]
     pub fn new_package(p: PackageKey) -> ValueData {
         ValueData { package: p }
-    }
-
-    #[inline]
-    fn new_metadata(m: Meta) -> ValueData {
-        ValueData {
-            metadata: Box::into_raw(Box::new(m)),
-        }
-    }
-
-    #[inline]
-    fn new_complex128(r: F64, i: F64) -> ValueData {
-        ValueData {
-            complex128: Box::into_raw(Box::new((r, i))),
-        }
-    }
-
-    #[inline]
-    fn new_str(s: String) -> ValueData {
-        ValueData {
-            str: Rc::into_raw(Rc::new(StringObj::with_str(s))),
-        }
-    }
-
-    #[inline]
-    fn new_array(obj: ArrayObj, gcv: &GcoVec) -> ValueData {
-        let arr = Rc::new((obj, Cell::new(0)));
-        gcv.add_array(&arr);
-        ValueData {
-            array: Rc::into_raw(arr),
-        }
-    }
-
-    #[inline]
-    fn new_struct(obj: StructObj, gcv: &GcoVec) -> ValueData {
-        let s = Rc::new((RefCell::new(obj), Cell::new(0)));
-        gcv.add_struct(&s);
-        ValueData {
-            structure: Rc::into_raw(s),
-        }
-    }
-
-    #[inline]
-    fn new_pointer(obj: PointerObj) -> ValueData {
-        ValueData {
-            pointer: Box::into_raw(Box::new(obj)),
-        }
-    }
-
-    #[inline]
-    fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> ValueData {
-        ValueData {
-            unsafe_ptr: Box::into_raw(Box::new(Rc::new(p))),
-        }
-    }
-
-    #[inline]
-    fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> ValueData {
-        let cls = Rc::new((RefCell::new(obj), Cell::new(0)));
-        gcv.add_closure(&cls);
-        ValueData {
-            closure: Rc::into_raw(cls),
-        }
-    }
-
-    #[inline]
-    fn new_closure_static(fkey: FunctionKey, fobjs: &FunctionObjs) -> ValueData {
-        let obj = ClosureObj::new_gos(fkey, fobjs, None);
-        let cls = Rc::into_raw(Rc::new((RefCell::new(obj), Cell::new(0))));
-        ValueData { closure: cls }
-    }
-
-    #[inline]
-    fn new_slice(obj: SliceObj, gcv: &GcoVec) -> ValueData {
-        let s = Rc::new((obj, Cell::new(0)));
-        gcv.add_slice(&s);
-        ValueData {
-            slice: Rc::into_raw(s),
-        }
-    }
-
-    #[inline]
-    fn new_map(obj: MapObj, gcv: &GcoVec) -> ValueData {
-        let m = Rc::new((obj, Cell::new(0)));
-        gcv.add_map(&m);
-        ValueData {
-            map: Rc::into_raw(m),
-        }
-    }
-
-    #[inline]
-    fn new_interface(obj: InterfaceObj) -> ValueData {
-        let iface = Rc::into_raw(Rc::new(RefCell::new(obj)));
-        ValueData { interface: iface }
-    }
-
-    #[inline]
-    fn new_channel(obj: ChannelObj) -> ValueData {
-        ValueData {
-            channel: Rc::into_raw(Rc::new(obj)),
-        }
     }
 
     #[inline]
@@ -642,185 +538,6 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_metadata(m: Box<Meta>) -> ValueData {
-        ValueData {
-            metadata: Box::into_raw(m),
-        }
-    }
-
-    #[inline]
-    fn from_complex128(c: Box<(F64, F64)>) -> ValueData {
-        ValueData {
-            complex128: Box::into_raw(c),
-        }
-    }
-
-    #[inline]
-    fn from_str(s: Rc<StringObj>) -> ValueData {
-        ValueData {
-            str: Rc::into_raw(s),
-        }
-    }
-
-    #[inline]
-    fn from_array(arr: Rc<(ArrayObj, RCount)>) -> ValueData {
-        ValueData {
-            array: Rc::into_raw(arr),
-        }
-    }
-
-    #[inline]
-    fn from_struct(s: Rc<(RefCell<StructObj>, RCount)>) -> ValueData {
-        ValueData {
-            structure: Rc::into_raw(s),
-        }
-    }
-
-    #[inline]
-    fn from_pointer(p: OptionBox<PointerObj>) -> ValueData {
-        ValueData {
-            pointer: p.map_or(ptr::null_mut(), |x| Box::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_unsafe_ptr(p: OptionBox<Rc<dyn UnsafePtr>>) -> ValueData {
-        ValueData {
-            unsafe_ptr: p.map_or(ptr::null_mut(), |x| Box::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_closure(cls: OptionRc<(RefCell<ClosureObj>, RCount)>) -> ValueData {
-        ValueData {
-            closure: cls.map_or(ptr::null(), |x| Rc::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_slice(s: OptionRc<(SliceObj, RCount)>) -> ValueData {
-        ValueData {
-            slice: s.map_or(ptr::null(), |x| Rc::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_map(m: OptionRc<(MapObj, RCount)>) -> ValueData {
-        ValueData {
-            map: m.map_or(ptr::null(), |x| Rc::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_interface(i: OptionRc<RefCell<InterfaceObj>>) -> ValueData {
-        ValueData {
-            interface: i.map_or(ptr::null(), |x| Rc::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn from_channel(c: OptionRc<ChannelObj>) -> ValueData {
-        ValueData {
-            channel: c.map_or(ptr::null(), |x| Rc::into_raw(x)),
-        }
-    }
-
-    #[inline]
-    fn into_metadata(self) -> Box<Meta> {
-        unsafe { Box::from_raw(self.metadata) }
-    }
-
-    #[inline]
-    fn into_complex128(self) -> Box<(F64, F64)> {
-        unsafe { Box::from_raw(self.complex128) }
-    }
-
-    #[inline]
-    fn into_str(self) -> Rc<StringObj> {
-        unsafe { Rc::from_raw(self.str) }
-    }
-
-    #[inline]
-    fn into_array(self) -> Rc<(ArrayObj, RCount)> {
-        unsafe { Rc::from_raw(self.array) }
-    }
-
-    #[inline]
-    fn into_struct(self) -> Rc<(RefCell<StructObj>, RCount)> {
-        unsafe { Rc::from_raw(self.structure) }
-    }
-
-    #[inline]
-    fn into_pointer(self) -> OptionBox<PointerObj> {
-        unsafe { (!self.pointer.is_null()).then(|| Box::from_raw(self.pointer)) }
-    }
-
-    #[inline]
-    fn into_unsafe_ptr(self) -> OptionBox<Rc<dyn UnsafePtr>> {
-        unsafe { (!self.unsafe_ptr.is_null()).then(|| Box::from_raw(self.unsafe_ptr)) }
-    }
-
-    #[inline]
-    fn into_closure(self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
-        unsafe { (!self.closure.is_null()).then(|| Rc::from_raw(self.closure)) }
-    }
-
-    #[inline]
-    fn into_slice(self) -> OptionRc<(SliceObj, RCount)> {
-        unsafe { (!self.slice.is_null()).then(|| Rc::from_raw(self.slice)) }
-    }
-
-    #[inline]
-    fn into_map(self) -> OptionRc<(MapObj, RCount)> {
-        unsafe { (!self.map.is_null()).then(|| Rc::from_raw(self.map)) }
-    }
-
-    #[inline]
-    fn into_interface(self) -> OptionRc<RefCell<InterfaceObj>> {
-        unsafe { (!self.interface.is_null()).then(|| Rc::from_raw(self.interface)) }
-    }
-
-    #[inline]
-    fn into_channel(self) -> OptionRc<ChannelObj> {
-        unsafe { (!self.channel.is_null()).then(|| Rc::from_raw(self.channel)) }
-    }
-
-    #[inline]
-    fn into_some_pointer(self) -> RuntimeResult<Box<PointerObj>> {
-        self.into_pointer().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_unsafe_ptr(self) -> RuntimeResult<Box<Rc<dyn UnsafePtr>>> {
-        self.into_unsafe_ptr().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_closure(self) -> RuntimeResult<Rc<(RefCell<ClosureObj>, RCount)>> {
-        self.into_closure().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_slice(self) -> RuntimeResult<Rc<(SliceObj, RCount)>> {
-        self.into_slice().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_map(self) -> RuntimeResult<Rc<(MapObj, RCount)>> {
-        self.into_map().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_interface(self) -> RuntimeResult<Rc<RefCell<InterfaceObj>>> {
-        self.into_interface().ok_or(nil_err_str!())
-    }
-
-    #[inline]
-    fn into_some_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
-        self.into_channel().ok_or(nil_err_str!())
-    }
-
-    #[inline]
     pub fn into_value(self, t: ValueType) -> GosValue {
         GosValue::new(t, self)
     }
@@ -876,68 +593,23 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn to_uint(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint, usize);
-    }
-
-    #[inline]
-    pub fn to_uint_ptr(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint_ptr, usize);
-    }
-
-    #[inline]
-    pub fn to_uint8(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint8, u8);
-    }
-
-    #[inline]
-    pub fn to_uint16(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint16, u16);
-    }
-
-    #[inline]
-    pub fn to_uint32(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint32, u32);
-    }
-
-    #[inline]
-    pub fn to_uint64(&mut self, t: ValueType) {
-        convert_to_int!(self, t, uint64, u64);
-    }
-
-    #[inline]
-    pub fn to_int(&mut self, t: ValueType) {
-        convert_to_int!(self, t, int, isize);
-    }
-
-    #[inline]
-    pub fn to_int8(&mut self, t: ValueType) {
-        convert_to_int!(self, t, int8, i8);
-    }
-
-    #[inline]
-    pub fn to_int16(&mut self, t: ValueType) {
-        convert_to_int!(self, t, int16, i16);
-    }
-
-    #[inline]
-    pub fn to_int32(&mut self, t: ValueType) {
-        convert_to_int!(self, t, int32, i32);
-    }
-
-    #[inline]
-    pub fn to_int64(&mut self, t: ValueType) {
-        convert_to_int!(self, t, int64, i64);
-    }
-
-    #[inline]
-    pub fn to_float32(&mut self, t: ValueType) {
-        convert_to_float!(self, t, float32, F32, f32);
-    }
-
-    #[inline]
-    pub fn to_float64(&mut self, t: ValueType) {
-        convert_to_float!(self, t, float64, F64, f64);
+    pub fn cast_copyable(&mut self, from: ValueType, to: ValueType) {
+        match to {
+            ValueType::Int => convert_to_int!(self, from, int, isize),
+            ValueType::Int8 => convert_to_int!(self, from, int8, i8),
+            ValueType::Int16 => convert_to_int!(self, from, int16, i16),
+            ValueType::Int32 => convert_to_int!(self, from, int32, i32),
+            ValueType::Int64 => convert_to_int!(self, from, int64, i64),
+            ValueType::Uint => convert_to_int!(self, from, uint, usize),
+            ValueType::UintPtr => convert_to_int!(self, from, uint_ptr, usize),
+            ValueType::Uint8 => convert_to_int!(self, from, uint8, u8),
+            ValueType::Uint16 => convert_to_int!(self, from, uint16, u16),
+            ValueType::Uint32 => convert_to_int!(self, from, uint32, u32),
+            ValueType::Uint64 => convert_to_int!(self, from, uint64, u64),
+            ValueType::Float32 => convert_to_float!(self, from, float32, F32, f32),
+            ValueType::Float64 => convert_to_float!(self, from, float64, F64, f64),
+            _ => unreachable!(),
+        }
     }
 
     #[inline]
@@ -1151,6 +823,297 @@ impl ValueData {
         }
     }
 
+    pub fn fmt_debug(&self, t: ValueType, f: &mut fmt::Formatter) -> fmt::Result {
+        match t {
+            ValueType::Bool => write!(f, "Type: {:?}, Data: {:?}", t, self.as_bool()),
+            ValueType::Int => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int()),
+            ValueType::Int8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int8()),
+            ValueType::Int16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int16()),
+            ValueType::Int32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int32()),
+            ValueType::Int64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int64()),
+            ValueType::Uint => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint()),
+            ValueType::UintPtr => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint_ptr()),
+            ValueType::Uint8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint8()),
+            ValueType::Uint16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint16()),
+            ValueType::Uint32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint32()),
+            ValueType::Uint64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint64()),
+            ValueType::Float32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float32()),
+            ValueType::Float64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float64()),
+            ValueType::Complex64 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex64()),
+            ValueType::Function => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_function()),
+            ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
+            ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
+            ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
+            ValueType::Str => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_str()),
+            ValueType::Array => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_array()),
+            ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
+            ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
+            ValueType::UnsafePtr => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_unsafe_ptr()),
+            ValueType::Closure => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_closure()),
+            ValueType::Slice => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_slice()),
+            ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
+            ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
+            ValueType::Channel => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_channel()),
+            ValueType::Void => write!(
+                f,
+                "Type: {:?}, Data: {:#018x}/{:?}",
+                t,
+                self.as_uint(),
+                self.as_uint()
+            ),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub unsafe fn copy_non_ptr(&self) -> ValueData {
+        self.copy()
+    }
+
+    #[inline]
+    fn new_metadata(m: Meta) -> ValueData {
+        ValueData {
+            metadata: Box::into_raw(Box::new(m)),
+        }
+    }
+
+    #[inline]
+    fn new_complex128(r: F64, i: F64) -> ValueData {
+        ValueData {
+            complex128: Box::into_raw(Box::new((r, i))),
+        }
+    }
+
+    #[inline]
+    fn new_str(s: String) -> ValueData {
+        ValueData {
+            str: Rc::into_raw(Rc::new(StringObj::with_str(s))),
+        }
+    }
+
+    #[inline]
+    fn new_array(obj: ArrayObj, gcv: &GcoVec) -> ValueData {
+        let arr = Rc::new((obj, Cell::new(0)));
+        gcv.add_array(&arr);
+        ValueData {
+            array: Rc::into_raw(arr),
+        }
+    }
+
+    #[inline]
+    fn new_struct(obj: StructObj, gcv: &GcoVec) -> ValueData {
+        let s = Rc::new((RefCell::new(obj), Cell::new(0)));
+        gcv.add_struct(&s);
+        ValueData {
+            structure: Rc::into_raw(s),
+        }
+    }
+
+    #[inline]
+    fn new_pointer(obj: PointerObj) -> ValueData {
+        ValueData {
+            pointer: Box::into_raw(Box::new(obj)),
+        }
+    }
+
+    #[inline]
+    fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> ValueData {
+        ValueData {
+            unsafe_ptr: Box::into_raw(Box::new(Rc::new(p))),
+        }
+    }
+
+    #[inline]
+    fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> ValueData {
+        let cls = Rc::new((RefCell::new(obj), Cell::new(0)));
+        gcv.add_closure(&cls);
+        ValueData {
+            closure: Rc::into_raw(cls),
+        }
+    }
+
+    #[inline]
+    fn new_closure_static(fkey: FunctionKey, fobjs: &FunctionObjs) -> ValueData {
+        let obj = ClosureObj::new_gos(fkey, fobjs, None);
+        let cls = Rc::into_raw(Rc::new((RefCell::new(obj), Cell::new(0))));
+        ValueData { closure: cls }
+    }
+
+    #[inline]
+    fn new_slice(obj: SliceObj, gcv: &GcoVec) -> ValueData {
+        let s = Rc::new((obj, Cell::new(0)));
+        gcv.add_slice(&s);
+        ValueData {
+            slice: Rc::into_raw(s),
+        }
+    }
+
+    #[inline]
+    fn new_map(obj: MapObj, gcv: &GcoVec) -> ValueData {
+        let m = Rc::new((obj, Cell::new(0)));
+        gcv.add_map(&m);
+        ValueData {
+            map: Rc::into_raw(m),
+        }
+    }
+
+    #[inline]
+    fn new_interface(obj: InterfaceObj) -> ValueData {
+        let iface = Rc::into_raw(Rc::new(RefCell::new(obj)));
+        ValueData { interface: iface }
+    }
+
+    #[inline]
+    fn new_channel(obj: ChannelObj) -> ValueData {
+        ValueData {
+            channel: Rc::into_raw(Rc::new(obj)),
+        }
+    }
+
+    #[inline]
+    fn from_metadata(m: Box<Meta>) -> ValueData {
+        ValueData {
+            metadata: Box::into_raw(m),
+        }
+    }
+
+    #[inline]
+    fn from_complex128(c: Box<(F64, F64)>) -> ValueData {
+        ValueData {
+            complex128: Box::into_raw(c),
+        }
+    }
+
+    #[inline]
+    fn from_str(s: Rc<StringObj>) -> ValueData {
+        ValueData {
+            str: Rc::into_raw(s),
+        }
+    }
+
+    #[inline]
+    fn from_array(arr: Rc<(ArrayObj, RCount)>) -> ValueData {
+        ValueData {
+            array: Rc::into_raw(arr),
+        }
+    }
+
+    #[inline]
+    fn from_struct(s: Rc<(RefCell<StructObj>, RCount)>) -> ValueData {
+        ValueData {
+            structure: Rc::into_raw(s),
+        }
+    }
+
+    #[inline]
+    fn from_pointer(p: OptionBox<PointerObj>) -> ValueData {
+        ValueData {
+            pointer: p.map_or(ptr::null_mut(), |x| Box::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_unsafe_ptr(p: OptionBox<Rc<dyn UnsafePtr>>) -> ValueData {
+        ValueData {
+            unsafe_ptr: p.map_or(ptr::null_mut(), |x| Box::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_closure(cls: OptionRc<(RefCell<ClosureObj>, RCount)>) -> ValueData {
+        ValueData {
+            closure: cls.map_or(ptr::null(), |x| Rc::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_slice(s: OptionRc<(SliceObj, RCount)>) -> ValueData {
+        ValueData {
+            slice: s.map_or(ptr::null(), |x| Rc::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_map(m: OptionRc<(MapObj, RCount)>) -> ValueData {
+        ValueData {
+            map: m.map_or(ptr::null(), |x| Rc::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_interface(i: OptionRc<RefCell<InterfaceObj>>) -> ValueData {
+        ValueData {
+            interface: i.map_or(ptr::null(), |x| Rc::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn from_channel(c: OptionRc<ChannelObj>) -> ValueData {
+        ValueData {
+            channel: c.map_or(ptr::null(), |x| Rc::into_raw(x)),
+        }
+    }
+
+    #[inline]
+    fn into_metadata(self) -> Box<Meta> {
+        unsafe { Box::from_raw(self.metadata) }
+    }
+
+    #[inline]
+    fn into_complex128(self) -> Box<(F64, F64)> {
+        unsafe { Box::from_raw(self.complex128) }
+    }
+
+    #[inline]
+    fn into_str(self) -> Rc<StringObj> {
+        unsafe { Rc::from_raw(self.str) }
+    }
+
+    #[inline]
+    fn into_array(self) -> Rc<(ArrayObj, RCount)> {
+        unsafe { Rc::from_raw(self.array) }
+    }
+
+    #[inline]
+    fn into_struct(self) -> Rc<(RefCell<StructObj>, RCount)> {
+        unsafe { Rc::from_raw(self.structure) }
+    }
+
+    #[inline]
+    fn into_pointer(self) -> OptionBox<PointerObj> {
+        unsafe { (!self.pointer.is_null()).then(|| Box::from_raw(self.pointer)) }
+    }
+
+    #[inline]
+    fn into_unsafe_ptr(self) -> OptionBox<Rc<dyn UnsafePtr>> {
+        unsafe { (!self.unsafe_ptr.is_null()).then(|| Box::from_raw(self.unsafe_ptr)) }
+    }
+
+    #[inline]
+    fn into_closure(self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
+        unsafe { (!self.closure.is_null()).then(|| Rc::from_raw(self.closure)) }
+    }
+
+    #[inline]
+    fn into_slice(self) -> OptionRc<(SliceObj, RCount)> {
+        unsafe { (!self.slice.is_null()).then(|| Rc::from_raw(self.slice)) }
+    }
+
+    #[inline]
+    fn into_map(self) -> OptionRc<(MapObj, RCount)> {
+        unsafe { (!self.map.is_null()).then(|| Rc::from_raw(self.map)) }
+    }
+
+    #[inline]
+    fn into_interface(self) -> OptionRc<RefCell<InterfaceObj>> {
+        unsafe { (!self.interface.is_null()).then(|| Rc::from_raw(self.interface)) }
+    }
+
+    #[inline]
+    fn into_channel(self) -> OptionRc<ChannelObj> {
+        unsafe { (!self.channel.is_null()).then(|| Rc::from_raw(self.channel)) }
+    }
+
     #[inline]
     fn clone(&self, t: ValueType) -> ValueData {
         match t {
@@ -1212,9 +1175,6 @@ impl ValueData {
 
     #[inline]
     fn copy_semantic(&self, t: ValueType, gcv: &GcoVec) -> ValueData {
-        if t.copyable() {
-            return self.copy();
-        }
         match t {
             ValueType::Metadata => ValueData::from_metadata(Box::new(self.as_metadata().clone())),
             ValueType::Complex128 => {
@@ -1264,56 +1224,9 @@ impl ValueData {
         }
     }
 
-    pub fn fmt_debug(&self, t: ValueType, f: &mut fmt::Formatter) -> fmt::Result {
-        match t {
-            ValueType::Bool => write!(f, "Type: {:?}, Data: {:?}", t, self.as_bool()),
-            ValueType::Int => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int()),
-            ValueType::Int8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int8()),
-            ValueType::Int16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int16()),
-            ValueType::Int32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int32()),
-            ValueType::Int64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int64()),
-            ValueType::Uint => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint()),
-            ValueType::UintPtr => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint_ptr()),
-            ValueType::Uint8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint8()),
-            ValueType::Uint16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint16()),
-            ValueType::Uint32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint32()),
-            ValueType::Uint64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint64()),
-            ValueType::Float32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float32()),
-            ValueType::Float64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float64()),
-            ValueType::Complex64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_complex64()),
-            ValueType::Function => write!(f, "Type: {:?}, Data: {:?}", t, self.as_function()),
-            ValueType::Package => write!(f, "Type: {:?}, Data: {:?}", t, self.as_package()),
-            ValueType::Metadata => write!(f, "Type: {:?}, Data: {:?}", t, self.as_metadata()),
-            ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_complex128()),
-            ValueType::Str => write!(f, "Type: {:?}, Data: {:?}", t, self.as_str()),
-            ValueType::Array => write!(f, "Type: {:?}, Data: {:?}", t, self.as_array()),
-            ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
-            ValueType::Pointer => write!(f, "Type: {:?}, Data: {:?}", t, self.as_pointer()),
-            ValueType::UnsafePtr => write!(f, "Type: {:?}, Data: {:?}", t, self.as_unsafe_ptr()),
-            ValueType::Closure => write!(f, "Type: {:?}, Data: {:?}", t, self.as_closure()),
-            ValueType::Slice => write!(f, "Type: {:?}, Data: {:?}", t, self.as_slice()),
-            ValueType::Map => write!(f, "Type: {:?}, Data: {:?}", t, self.as_map()),
-            ValueType::Interface => write!(f, "Type: {:?}, Data: {:?}", t, self.as_interface()),
-            ValueType::Channel => write!(f, "Type: {:?}, Data: {:?}", t, self.as_channel()),
-            ValueType::Void => write!(
-                f,
-                "Type: {:?}, Data: {:#018x}/{:?}",
-                t,
-                self.as_uint(),
-                self.as_uint()
-            ),
-            _ => unreachable!(),
-        }
-    }
-
     #[inline]
     fn copy(&self) -> ValueData {
         unsafe { std::mem::transmute_copy(self) }
-    }
-
-    #[inline]
-    pub unsafe fn copy_non_ptr(&self) -> ValueData {
-        self.copy()
     }
 
     #[inline]
@@ -1373,11 +1286,20 @@ pub struct GosValue {
 
 impl GosValue {
     #[inline]
-    pub fn new(typ: ValueType, data: ValueData) -> GosValue {
-        GosValue {
-            typ: typ,
-            data: data,
-        }
+    pub fn typ(&self) -> ValueType {
+        self.typ
+    }
+
+    /// Get a reference to the gos value's data.
+    #[inline]
+    pub fn data(&self) -> &ValueData {
+        &self.data
+    }
+
+    /// Get a mutable reference to the gos value's data.
+    #[inline]
+    pub unsafe fn data_mut(&mut self) -> &mut ValueData {
+        &mut self.data
     }
 
     #[inline]
@@ -1623,6 +1545,16 @@ impl GosValue {
     #[inline]
     pub fn from_map(m: OptionRc<(MapObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Map, ValueData::from_map(m))
+    }
+
+    #[inline]
+    pub fn from_interface(i: OptionRc<RefCell<InterfaceObj>>) -> GosValue {
+        GosValue::new(ValueType::Interface, ValueData::from_interface(i))
+    }
+
+    #[inline]
+    pub fn from_channel(c: OptionRc<ChannelObj>) -> GosValue {
+        GosValue::new(ValueType::Channel, ValueData::from_channel(c))
     }
 
     #[inline]
@@ -1974,54 +1906,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn try_as_struct(&self) -> Option<&(RefCell<StructObj>, RCount)> {
-        match &self.typ {
-            ValueType::Struct => Some(self.as_struct()),
-            _ => None,
-        }
-    }
-
-    #[inline]
-    pub fn iface_underlying(&self) -> RuntimeResult<Option<GosValue>> {
-        match self.as_interface() {
-            Some(iface) => Ok(iface.borrow().underlying_value().map(|x| x.clone())),
-            None => nil_err!(),
-        }
-    }
-
-    #[inline]
-    pub fn typ(&self) -> ValueType {
-        self.typ
-    }
-
-    #[inline]
-    pub unsafe fn set_type(&mut self, t: ValueType) {
-        self.typ = t;
-    }
-
-    /// Get a reference to the gos value's data.
-    #[inline]
-    pub fn data(&self) -> &ValueData {
-        &self.data
-    }
-
-    /// Get a mutable reference to the gos value's data.
-    #[inline]
-    pub fn data_mut(&mut self) -> &mut ValueData {
-        &mut self.data
-    }
-
-    #[inline]
-    pub fn into_data(mut self) -> ValueData {
-        self.typ = ValueType::Void;
-        self.data.copy()
-    }
-
-    pub fn identical(&self, other: &GosValue) -> bool {
-        self.typ() == other.typ() && self == other
-    }
-
-    #[inline]
     pub fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
         if self.typ.copyable() {
             GosValue::new(self.typ, self.data.copy())
@@ -2031,11 +1915,36 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn try_as_struct(&self) -> Option<&(RefCell<StructObj>, RCount)> {
+        match &self.typ {
+            ValueType::Struct => Some(self.as_struct()),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub fn cast_copyable(&mut self, from: ValueType, to: ValueType) {
+        assert!(self.typ.copyable());
+        self.data.cast_copyable(from, to)
+    }
+
+    #[inline]
     pub fn as_index(&self) -> usize {
+        debug_assert!(self.typ.copyable());
         self.data.as_index(self.typ)
     }
 
-    #[inline(always)]
+    #[inline]
+    pub fn iface_underlying(&self) -> RuntimeResult<Option<GosValue>> {
+        let iface = self.as_some_interface()?;
+        Ok(iface.borrow().underlying_value().map(|x| x.clone()))
+    }
+
+    pub fn identical(&self, other: &GosValue) -> bool {
+        self.typ() == other.typ() && self == other
+    }
+
+    #[inline]
     pub fn load_index(&self, ind: &GosValue, gcv: &GcoVec) -> RuntimeResult<GosValue> {
         match self.typ {
             ValueType::Map => Ok(self.as_some_map()?.0.get(&ind, gcv).0.clone()),
@@ -2174,6 +2083,14 @@ impl GosValue {
         debug_assert!(self.typ.copyable());
         drop(self);
     }
+
+    #[inline]
+    fn new(typ: ValueType, data: ValueData) -> GosValue {
+        GosValue {
+            typ: typ,
+            data: data,
+        }
+    }
 }
 
 impl Drop for GosValue {
@@ -2186,6 +2103,7 @@ impl Drop for GosValue {
 }
 
 impl Clone for GosValue {
+    #[inline]
     fn clone(&self) -> Self {
         if self.typ.copyable() {
             GosValue::new(self.typ, self.data.copy())
@@ -2201,27 +2119,7 @@ impl PartialEq for GosValue {
     #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self.typ, b.typ) {
-            (ValueType::Bool, ValueType::Bool) => self.as_bool() == b.as_bool(),
-            (ValueType::Int, ValueType::Int) => self.as_int() == b.as_int(),
-            (ValueType::Int8, ValueType::Int8) => self.as_int8() == b.as_int8(),
-            (ValueType::Int16, ValueType::Int16) => self.as_int16() == b.as_int16(),
-            (ValueType::Int32, ValueType::Int32) => self.as_int32() == b.as_int32(),
-            (ValueType::Int64, ValueType::Int64) => self.as_int64() == b.as_int64(),
-            (ValueType::Uint, ValueType::Uint) => self.as_uint() == b.as_uint(),
-            (ValueType::UintPtr, ValueType::UintPtr) => self.as_uint_ptr() == b.as_uint_ptr(),
-            (ValueType::Uint8, ValueType::Uint8) => self.as_uint8() == b.as_uint8(),
-            (ValueType::Uint16, ValueType::Uint16) => self.as_uint16() == b.as_uint16(),
-            (ValueType::Uint32, ValueType::Uint32) => self.as_uint32() == b.as_uint32(),
-            (ValueType::Uint64, ValueType::Uint64) => self.as_uint64() == b.as_uint64(),
-            (ValueType::Float32, ValueType::Float32) => self.as_float32() == b.as_float32(),
-            (ValueType::Float64, ValueType::Float64) => self.as_float64() == b.as_float64(),
-            (ValueType::Complex64, ValueType::Complex64) => {
-                let vx = self.as_complex64();
-                let vy = b.as_complex64();
-                vx.0 == vy.0 && vx.1 == vy.1
-            }
-            (ValueType::Function, ValueType::Function) => self.as_function() == b.as_function(),
-            (ValueType::Package, ValueType::Package) => self.as_package() == b.as_package(),
+            _ if self.typ.copyable() => self.as_uint() == b.as_uint(), //todo: does this work ok with float?
             (ValueType::Metadata, ValueType::Metadata) => self.as_metadata() == b.as_metadata(),
             (ValueType::Complex128, ValueType::Complex128) => {
                 let x = self.as_complex128();
@@ -2272,34 +2170,31 @@ impl PartialOrd for GosValue {
 
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        if self.typ.copyable() {
-            self.as_uint().hash(state)
-        } else {
-            match &self.typ {
-                ValueType::Str => self.as_str().as_str().hash(state),
-                ValueType::Array => self.as_array().0.hash(state),
-                ValueType::Complex128 => {
-                    let c = self.as_complex128();
-                    c.0.hash(state);
-                    c.1.hash(state);
-                }
-                ValueType::Struct => {
-                    self.as_struct().0.borrow().hash(state);
-                }
-                ValueType::Interface => match self.as_interface() {
-                    Some(iface) => iface.borrow().hash(state),
-                    None => 0.hash(state),
-                },
-                ValueType::Pointer => match self.as_pointer() {
-                    Some(p) => PointerObj::hash(&p, state),
-                    None => 0.hash(state),
-                },
-                ValueType::UnsafePtr => match self.as_unsafe_ptr() {
-                    Some(p) => Rc::as_ptr(&p).hash(state),
-                    None => 0.hash(state),
-                },
-                _ => unreachable!(),
+        match &self.typ {
+            _ if self.typ.copyable() => self.as_uint().hash(state),
+            ValueType::Str => self.as_str().as_str().hash(state),
+            ValueType::Array => self.as_array().0.hash(state),
+            ValueType::Complex128 => {
+                let c = self.as_complex128();
+                c.0.hash(state);
+                c.1.hash(state);
             }
+            ValueType::Struct => {
+                self.as_struct().0.borrow().hash(state);
+            }
+            ValueType::Interface => match self.as_interface() {
+                Some(iface) => iface.borrow().hash(state),
+                None => 0.hash(state),
+            },
+            ValueType::Pointer => match self.as_pointer() {
+                Some(p) => PointerObj::hash(&p, state),
+                None => 0.hash(state),
+            },
+            ValueType::UnsafePtr => match self.as_unsafe_ptr() {
+                Some(p) => Rc::as_ptr(&p).hash(state),
+                None => 0.hash(state),
+            },
+            _ => unreachable!(),
         }
     }
 }

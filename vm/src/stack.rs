@@ -24,7 +24,7 @@ macro_rules! stack_binary_op {
 macro_rules! stack_binary_op_shift {
     ($stack:ident, $op:tt, $t0:ident, $t1:ident) => {{
         let mut right = $stack.pop_value();
-        right.data_mut().to_uint32($t1);
+        right.cast_copyable($t1, ValueType::Uint32);
         $stack
             .get_data_mut($stack.len() - 1)
             .$op(right.as_uint32(), $t0);
@@ -82,7 +82,7 @@ macro_rules! store_local_val {
     ($stack:ident, $to:expr, $s_index:ident, $r_index:ident, $t:ident, $gcos:ident) => {{
         if $r_index < 0 {
             let ri = Stack::offset($stack.len(), $r_index);
-            $to.set_value($s_index, $stack.copy_semantic(ri, $t, $gcos));
+            $to.set_value($s_index, $stack.copy_semantic(ri, $gcos));
         } else {
             $to.set_value(
                 $s_index,
@@ -128,22 +128,17 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
-        unsafe { self.vec.get_unchecked_mut(index).data_mut() }
-    }
-
-    #[inline]
     pub fn get_value(&self, index: usize) -> &GosValue {
         unsafe { self.vec.get_unchecked(index) }
     }
 
     #[inline]
-    pub fn set_value(&mut self, index: usize, val: GosValue) {
-        self.vec[index] = val;
+    pub fn get_value_mut(&mut self, index: usize) -> &mut GosValue {
+        unsafe { self.vec.get_unchecked_mut(index) }
     }
 
     #[inline]
-    pub fn replace_value(&mut self, index: usize, old_type: ValueType, val: GosValue) {
+    pub fn set_value(&mut self, index: usize, val: GosValue) {
         self.vec[index] = val;
     }
 
@@ -330,7 +325,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, index: usize, t: ValueType, gcv: &GcoVec) -> GosValue {
+    pub fn copy_semantic(&self, index: usize, gcv: &GcoVec) -> GosValue {
         self.get_value(index).copy_semantic(gcv)
     }
 
@@ -345,7 +340,7 @@ impl Stack {
     pub fn store_val(&self, target: &mut GosValue, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
         *target = if r_index < 0 {
             let i = Stack::offset(self.len(), r_index);
-            self.copy_semantic(i, t, gcos)
+            self.copy_semantic(i, gcos)
         } else {
             self.read_with_ops(target.data(), r_index, t).into_value(t)
         };
@@ -353,9 +348,7 @@ impl Stack {
 
     #[inline]
     pub fn store_local(&mut self, s_index: usize, r_index: OpIndex, t: ValueType, gcos: &GcoVec) {
-        //dbg!("store_local1");
         store_local_val!(self, self, s_index, r_index, t, gcos);
-        //dbg!("store_local2");
     }
 
     #[inline]
@@ -515,7 +508,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(&mut self, index: usize, t: ValueType, gcos: &GcoVec) {
+    pub fn pack_variadic(&mut self, index: usize, gcos: &GcoVec) {
         if index <= self.len() {
             let mut v = Vec::new();
             v.append(&mut self.split_off_with_type(index));
@@ -683,6 +676,11 @@ impl Stack {
     #[inline]
     pub fn offset(base: usize, offset: OpIndex) -> usize {
         (base as isize + offset as isize) as usize
+    }
+
+    #[inline]
+    fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
+        unsafe { self.get_value_mut(index).data_mut() }
     }
 }
 
