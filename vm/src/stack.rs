@@ -123,13 +123,13 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get_data(&self, index: usize) -> &ValueData {
-        self.get(index).data()
+    pub fn get(&self, index: usize) -> &GosValue {
+        unsafe { self.vec.get_unchecked(index) }
     }
 
     #[inline]
-    pub fn get(&self, index: usize) -> &GosValue {
-        unsafe { self.vec.get_unchecked(index) }
+    pub fn get_data(&self, index: usize) -> &ValueData {
+        self.get(index).data()
     }
 
     #[inline]

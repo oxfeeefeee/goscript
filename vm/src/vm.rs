@@ -44,6 +44,14 @@ macro_rules! go_panic_str {
     }};
 }
 
+macro_rules! panic_if_err {
+    ($result:expr, $panic:ident, $frame:ident, $code:ident) => {{
+        if let Err(e) = $result {
+            go_panic_str!($panic, e, $frame, $code);
+        }
+    }};
+}
+
 macro_rules! read_imm_key {
     ($code:ident, $frame:ident, $objs:ident) => {{
         let inst = $code[$frame.pc];
@@ -363,39 +371,31 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_INDEX => {
                         let ind = stack.pop_value();
                         let val = &stack.pop_value();
-                        if inst.t2_as_index() == 0 {
-                            match val.load_index(&ind, gcv) {
-                                Ok(v) => stack.push(v),
-                                Err(e) => {
-                                    go_panic_str!(panic, e, frame, code);
-                                }
-                            }
+                        let result = if inst.t2_as_index() == 0 {
+                            val.load_index(&ind, gcv).and_then(|v| Ok(stack.push(v)))
                         } else {
-                            stack.push_index_comma_ok(val, &ind, gcv);
-                        }
+                            stack.push_index_comma_ok(val, &ind, gcv)
+                        };
+                        panic_if_err!(result, panic, frame, code);
                     }
                     Opcode::LOAD_INDEX_IMM => {
                         let val = &stack.pop_value();
                         let index = inst.imm() as usize;
-                        if inst.t2_as_index() == 0 {
-                            match val.load_index_int(index, gcv) {
-                                Ok(v) => stack.push(v),
-                                Err(e) => {
-                                    go_panic_str!(panic, e, frame, code);
-                                }
-                            }
+                        let result = if inst.t2_as_index() == 0 {
+                            val.load_index_int(index, gcv)
+                                .and_then(|v| Ok(stack.push(v)))
                         } else {
-                            stack.push_index_comma_ok(val, &GosValue::new_int(index as isize), gcv);
-                        }
+                            stack.push_index_comma_ok(val, &GosValue::new_int(index as isize), gcv)
+                        };
+                        panic_if_err!(result, panic, frame, code);
                     }
                     Opcode::STORE_INDEX => {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
                         let key = stack.get(s_index + 1);
                         let target = &stack.get(s_index);
-                        if let Err(e) = stack.store_index(target, &key, rhs_index, inst.t0(), gcv) {
-                            go_panic_str!(panic, e, frame, code);
-                        }
+                        let result = stack.store_index(target, &key, rhs_index, inst.t0(), gcv);
+                        panic_if_err!(result, panic, frame, code);
                     }
                     Opcode::STORE_INDEX_IMM => {
                         // the only place we can store the immediate index is t2
@@ -403,11 +403,8 @@ impl<'a> Fiber<'a> {
                         let index = inst.t2_as_index();
                         let s_index = Stack::offset(stack.len(), index);
                         let target = &stack.get(s_index);
-                        if let Err(e) =
-                            stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv)
-                        {
-                            go_panic_str!(panic, e, frame, code);
-                        }
+                        let result = stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv);
+                        panic_if_err!(result, panic, frame, code);
                     }
                     Opcode::LOAD_FIELD => {
                         let ind = stack.pop_value();
@@ -507,20 +504,10 @@ impl<'a> Fiber<'a> {
                         let (rhs_index, index) = inst.imm824();
                         let s_index = Stack::offset(stack.len(), index);
                         let p = stack.get(s_index).clone();
-                        match p.as_some_pointer() {
-                            Ok(ptr_obj) => {
-                                stack.store_to_pointer(
-                                    ptr_obj,
-                                    rhs_index,
-                                    inst.t0(),
-                                    &objs.packages,
-                                    gcv,
-                                );
-                            }
-                            Err(e) => {
-                                go_panic_str!(panic, e, frame, code);
-                            }
-                        }
+                        let result = p.as_some_pointer().and_then(|p| {
+                            stack.store_to_pointer(p, rhs_index, inst.t0(), &objs.packages, gcv)
+                        });
+                        panic_if_err!(result, panic, frame, code);
                     }
                     Opcode::CAST => {
                         let (target, mapping) = inst.imm824();
@@ -642,9 +629,7 @@ impl<'a> Fiber<'a> {
                             },
                         };
                         restore_stack_ref!(self, stack, stack_mut_ref);
-                        if let Err(e) = re {
-                            go_panic_str!(panic, e, frame, code);
-                        }
+                        panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RECV => {
                         match stack.pop_channel() {
@@ -721,10 +706,8 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::DEREF => {
                         let boxed = stack.pop_value();
-                        match deref_value(&boxed, stack, objs) {
-                            Ok(val) => stack.push(val),
-                            Err(e) => go_panic_str!(panic, e, frame, code),
-                        }
+                        let re = deref_value(&boxed, stack, objs).and_then(|v| Ok(stack.push(v)));
+                        panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::PRE_CALL => {
                         let cls_rc = stack.pop_closure().unwrap();
@@ -1037,8 +1020,11 @@ impl<'a> Fiber<'a> {
                     Opcode::RANGE_INIT => {
                         let len = stack.len();
                         let t = stack.get(len - 1);
-                        self.rstack.range_init(&t);
-                        stack.pop_value();
+                        let re = self
+                            .rstack
+                            .range_init(&t)
+                            .and_then(|_| Ok(stack.pop_value()));
+                        panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RANGE => {
                         let offset = inst.imm();
