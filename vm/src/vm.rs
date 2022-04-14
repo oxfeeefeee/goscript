@@ -669,7 +669,7 @@ impl<'a> Fiber<'a> {
                         let arr_or_slice = stack.pop_value();
                         match typ {
                             ValueType::Array => stack.push(GosValue::new_pointer(
-                                PointerObj::new_array_member(&arr_or_slice, i, gcv),
+                                PointerObj::new_array_member(arr_or_slice, i, gcv),
                             )),
                             ValueType::Slice => match arr_or_slice.clone().into_some_slice() {
                                 Ok(_) => stack.push(GosValue::new_pointer(
@@ -1120,7 +1120,7 @@ impl<'a> Fiber<'a> {
                                 Ok(GosValue::from_str(Rc::new(s.slice(begin, end))))
                             }
                             ValueType::Array => Ok(GosValue::slice_with_array(
-                                &stack.pop_value(),
+                                stack.pop_value(),
                                 begin,
                                 end,
                                 gcv,
@@ -1268,7 +1268,7 @@ impl<'a> Fiber<'a> {
                                 GosValue::slice_with_len(
                                     len,
                                     cap,
-                                    Some(&vmeta.zero(&objs.metas, gcv)),
+                                    &vmeta.zero(&objs.metas, gcv),
                                     gcv,
                                 )
                             }
@@ -1400,7 +1400,7 @@ impl<'a> Fiber<'a> {
                                         .iter()
                                         .map(|x| GosValue::new_uint8(*x))
                                         .collect();
-                                    let b_slice = SliceObj::with_data(bytes);
+                                    let b_slice = SliceObj::with_data(bytes, gcv);
                                     left.0.copy_from(&b_slice)
                                 }
                                 ValueType::Slice => match b.as_slice() {

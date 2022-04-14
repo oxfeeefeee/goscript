@@ -255,7 +255,7 @@ impl Meta {
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Array(m, size) => {
                     let val = m.zero(mobjs, gcv);
-                    GosValue::array_with_size(*size, &val, gcv)
+                    GosValue::array_with_size(*size, *size, &val, gcv)
                 }
                 MetadataType::Slice(_) => GosValue::new_nil(ValueType::Slice),
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),

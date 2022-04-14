@@ -1464,8 +1464,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn array_with_size(size: usize, val: &GosValue, gcv: &GcoVec) -> GosValue {
-        GosValue::new_array(ArrayObj::with_size(size, val, gcv), gcv)
+    pub fn array_with_size(size: usize, cap: usize, val: &GosValue, gcv: &GcoVec) -> GosValue {
+        GosValue::new_array(ArrayObj::with_size(size, cap, val, gcv), gcv)
     }
 
     #[inline]
@@ -1474,23 +1474,18 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn slice_with_len(
-        len: usize,
-        cap: usize,
-        dval: Option<&GosValue>,
-        gcv: &GcoVec,
-    ) -> GosValue {
-        GosValue::new_slice(SliceObj::new(len, cap, dval), gcv)
+    pub fn slice_with_len(len: usize, cap: usize, dval: &GosValue, gcv: &GcoVec) -> GosValue {
+        GosValue::new_slice(SliceObj::new(len, cap, dval, gcv), gcv)
     }
 
     #[inline]
     pub fn slice_with_data(data: Vec<GosValue>, gcv: &GcoVec) -> GosValue {
-        GosValue::new_slice(SliceObj::with_data(data), gcv)
+        GosValue::new_slice(SliceObj::with_data(data, gcv), gcv)
     }
 
     #[inline]
-    pub fn slice_with_array(arr: &GosValue, begin: isize, end: isize, gcv: &GcoVec) -> GosValue {
-        GosValue::new_slice(SliceObj::with_array(&arr.as_array().0, begin, end), gcv)
+    pub fn slice_with_array(arr: GosValue, begin: isize, end: isize, gcv: &GcoVec) -> GosValue {
+        GosValue::new_slice(SliceObj::with_array(arr, begin, end), gcv)
     }
 
     #[inline]
@@ -2311,6 +2306,9 @@ mod test {
     use std::mem;
 
     #[test]
+    fn test_container() {}
+
+    #[test]
     fn test_size() {
         dbg!(mem::size_of::<HashMap<GosValue, GosValue>>());
         dbg!(mem::size_of::<String>());
@@ -2327,6 +2325,9 @@ mod test {
 
         dbg!(mem::size_of::<Option<bool>>());
         dbg!(mem::size_of::<ValueData>());
+        dbg!(mem::size_of::<Cell<bool>>());
+        dbg!(mem::size_of::<Cell<u8>>());
+        dbg!(mem::size_of::<RefCell<u8>>());
 
         let s = GosValue::new_str("aaa".to_owned());
         dbg!(s.data());

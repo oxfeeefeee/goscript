@@ -280,29 +280,26 @@ impl Display for MapObj {
 // ----------------------------------------------------------------------------
 // ArrayObj
 
-pub type GosVec = Vec<RefCell<GosValue>>;
-
 #[derive(Debug)]
 pub struct ArrayObj {
-    pub vec: Rc<RefCell<GosVec>>,
+    vec: RefCell<Vec<RefCell<GosValue>>>,
 }
 
 impl ArrayObj {
-    pub fn with_size(size: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj {
-        let mut v = GosVec::with_capacity(size);
+    pub fn with_size(size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj {
+        assert!(cap >= size);
+        let mut v = Vec::with_capacity(cap);
         for _ in 0..size {
             v.push(RefCell::new(val.copy_semantic(gcos)))
         }
         ArrayObj {
-            vec: Rc::new(RefCell::new(v)),
+            vec: RefCell::new(v),
         }
     }
 
     pub fn with_data(data: Vec<GosValue>) -> ArrayObj {
         ArrayObj {
-            vec: Rc::new(RefCell::new(
-                data.into_iter().map(|x| RefCell::new(x)).collect(),
-            )),
+            vec: RefCell::new(data.into_iter().map(|x| RefCell::new(x)).collect()),
         }
     }
 
@@ -312,12 +309,12 @@ impl ArrayObj {
     }
 
     #[inline]
-    pub fn borrow_data_mut(&self) -> std::cell::RefMut<GosVec> {
+    pub fn borrow_data_mut(&self) -> std::cell::RefMut<Vec<RefCell<GosValue>>> {
         self.vec.borrow_mut()
     }
 
     #[inline]
-    pub fn borrow_data(&self) -> std::cell::Ref<GosVec> {
+    pub fn borrow_data(&self) -> std::cell::Ref<Vec<RefCell<GosValue>>> {
         self.vec.borrow()
     }
 
@@ -372,9 +369,7 @@ impl PartialEq for ArrayObj {
 impl Clone for ArrayObj {
     fn clone(&self) -> Self {
         ArrayObj {
-            vec: Rc::new(RefCell::new(
-                self.borrow_data().iter().map(|x| x.clone()).collect(),
-            )),
+            vec: RefCell::new(self.borrow_data().iter().map(|x| x.clone()).collect()),
         }
     }
 }
@@ -386,38 +381,35 @@ impl Clone for ArrayObj {
 pub struct SliceObj {
     begin: Cell<usize>,
     end: Cell<usize>,
+    // This is not capacity, but rather the max index that can be sliced.
     cap_end: Cell<usize>,
-    pub vec: Rc<RefCell<GosVec>>,
+    array: GosValue,
 }
 
 impl<'a> SliceObj {
-    pub fn new(len: usize, cap: usize, zero_val: Option<&GosValue>) -> SliceObj {
-        assert!(cap >= len);
-        let mut val: GosVec = Vec::with_capacity(cap);
-        for _ in 0..cap {
-            val.push(RefCell::new(zero_val.unwrap().clone()));
-        }
+    pub fn new(len: usize, cap: usize, zero_val: &GosValue, gcv: &GcoVec) -> SliceObj {
+        let array = GosValue::array_with_size(len, cap, zero_val, gcv);
         SliceObj {
             begin: Cell::from(0),
             end: Cell::from(len),
             cap_end: Cell::from(cap),
-            vec: Rc::new(RefCell::new(val)),
+            array: array,
         }
     }
 
-    pub fn with_data(val: Vec<GosValue>) -> SliceObj {
+    pub fn with_data(data: Vec<GosValue>, gcv: &GcoVec) -> SliceObj {
+        let len = data.len();
+        let array = GosValue::array_with_data(data, gcv);
         SliceObj {
             begin: Cell::from(0),
-            end: Cell::from(val.len()),
-            cap_end: Cell::from(val.len()),
-            vec: Rc::new(RefCell::new(
-                val.into_iter().map(|x| RefCell::new(x)).collect(),
-            )),
+            end: Cell::from(len),
+            cap_end: Cell::from(len),
+            array: array,
         }
     }
 
-    pub fn with_array(arr: &ArrayObj, begin: isize, end: isize) -> SliceObj {
-        let len = arr.len();
+    pub fn with_array(arr: GosValue, begin: isize, end: isize) -> SliceObj {
+        let len = arr.as_array().0.len();
         let self_end = len as isize + 1;
         let bi = begin as usize;
         let ei = ((self_end + end) % self_end) as usize;
@@ -425,7 +417,7 @@ impl<'a> SliceObj {
             begin: Cell::from(bi),
             end: Cell::from(ei),
             cap_end: Cell::from(bi + len),
-            vec: arr.vec.clone(),
+            array: arr,
         }
     }
 
@@ -433,7 +425,12 @@ impl<'a> SliceObj {
         self.begin.set(other.begin());
         self.end.set(other.end());
         self.cap_end.set(other.cap_end.get());
-        *self.borrow_all_data_mut() = other.borrow_all_data().clone()
+        self.array_obj().set_from(other.array_obj());
+    }
+
+    #[inline]
+    pub fn array_obj(&self) -> &ArrayObj {
+        &self.array.as_array().0
     }
 
     #[inline]
@@ -535,16 +532,12 @@ impl<'a> SliceObj {
         } else {
             max as usize
         };
-        let mut data = self.borrow_all_data_mut();
-        let more_cap = cap as isize - data.len() as isize;
-        for _ in 0..more_cap {
-            data.push(RefCell::new(GosValue::new_nil(ValueType::Void))); // todo: is nil ok?
-        }
+        assert!(cap <= self.array_obj().len());
         SliceObj {
             begin: Cell::from(self.begin() + bi),
             end: Cell::from(self.begin() + ei),
             cap_end: Cell::from(cap),
-            vec: self.vec.clone(),
+            array: self.array.clone(),
         }
     }
 
@@ -554,13 +547,13 @@ impl<'a> SliceObj {
     }
 
     #[inline]
-    pub fn borrow_all_data_mut(&self) -> std::cell::RefMut<GosVec> {
-        self.vec.as_ref().borrow_mut()
+    pub fn borrow_all_data_mut(&self) -> std::cell::RefMut<Vec<RefCell<GosValue>>> {
+        self.array_obj().borrow_data_mut()
     }
 
     #[inline]
-    fn borrow_all_data(&self) -> std::cell::Ref<GosVec> {
-        self.vec.as_ref().borrow()
+    fn borrow_all_data(&self) -> std::cell::Ref<Vec<RefCell<GosValue>>> {
+        self.array_obj().borrow_data()
     }
 }
 
@@ -570,7 +563,7 @@ impl Clone for SliceObj {
             begin: self.begin.clone(),
             end: self.end.clone(),
             cap_end: self.cap_end.clone(),
-            vec: self.vec.clone(),
+            array: self.array.clone(),
         }
     }
 }
@@ -597,7 +590,7 @@ impl PartialEq for SliceObj {
 impl Eq for SliceObj {}
 
 pub struct SliceRef<'a> {
-    vec_ref: Ref<'a, GosVec>,
+    vec_ref: Ref<'a, Vec<RefCell<GosValue>>>,
     begin: usize,
     end: usize,
 }
@@ -917,7 +910,7 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn new_array_member(val: &GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
+    pub fn new_array_member(val: GosValue, i: OpIndex, gcv: &GcoVec) -> PointerObj {
         let slice = GosValue::slice_with_array(val, 0, -1, gcv);
         PointerObj::SliceMember(slice, i)
     }

@@ -403,7 +403,7 @@ impl StdValue {
         match container.typ() {
             ValueType::Array => match container.as_array().0.len() > iusize {
                 true => {
-                    let p = Box::new(PointerObj::new_array_member(&container, i, ctx.gcv));
+                    let p = Box::new(PointerObj::new_array_member(container, i, ctx.gcv));
                     let metas = &ctx.vm_objs.metas;
                     let array_meta = metas[self.meta().unwrap().underlying(metas).key].as_array();
                     Ok(wrap_ptr_std_val(p, Some(array_meta.0.clone())))
