@@ -128,9 +128,7 @@ impl Meta {
             .iter()
             .map(|x| x.0.zero(&objs.metas, gcv))
             .collect();
-        let struct_val = StructObj {
-            fields: field_zeros,
-        };
+        let struct_val = StructObj::new(field_zeros);
         let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
         Meta::new(key, 0, false)
     }

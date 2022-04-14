@@ -370,7 +370,7 @@ impl StdValue {
 
     fn num_field(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         match self.val(ctx).try_as_struct() {
-            Some(s) => Ok(GosValue::new_int(s.0.borrow().fields.len() as isize)),
+            Some(s) => Ok(GosValue::new_int(s.0.borrow_fields().len() as isize)),
             None => err_wrong_type!(),
         }
     }
@@ -380,11 +380,11 @@ impl StdValue {
         let val = self.val(ctx);
         match val.typ() {
             ValueType::Struct => {
-                let fields = &val.as_struct().0.borrow().fields;
+                let fields = &val.as_struct().0.borrow_fields();
                 if fields.len() <= i {
                     err_index_oor!()
                 } else {
-                    let p = Box::new(PointerObj::StructField(val.clone().into_struct(), i as i32));
+                    let p = Box::new(PointerObj::StructField(val.clone(), i as i32));
                     let metas = &ctx.vm_objs.metas;
                     let fields = &metas[self.meta().unwrap().underlying(metas).key]
                         .as_struct()
@@ -417,10 +417,7 @@ impl StdValue {
             },
             ValueType::Slice => match container.as_some_slice()?.0.len() > iusize {
                 true => {
-                    let p = Box::new(PointerObj::SliceMember(
-                        container.clone().into_slice().unwrap(),
-                        i,
-                    ));
+                    let p = Box::new(PointerObj::SliceMember(container.clone(), i));
                     let metas = &ctx.vm_objs.metas;
                     let slice_meta = metas[self.meta().unwrap().underlying(metas).key].as_slice();
                     Ok(wrap_ptr_std_val(p, Some(slice_meta.clone())))
@@ -476,13 +473,13 @@ impl StdValue {
             Self::Value(_, _) => err,
             Self::Pointer(p, _, exported) => match p as &PointerObj {
                 PointerObj::SliceMember(s, i) => {
-                    let vborrow = s.0.borrow();
-                    *vborrow[s.0.begin() + *i as usize].borrow_mut() = val;
+                    let vborrow = s.as_slice().unwrap().0.borrow();
+                    *vborrow[s.as_slice().unwrap().0.begin() + *i as usize].borrow_mut() = val;
                     Ok(())
                 }
                 PointerObj::StructField(s, i) => {
                     if exported.unwrap() {
-                        s.0.borrow_mut().fields[*i as usize] = val;
+                        s.as_struct().0.borrow_fields_mut()[*i as usize] = val;
                         Ok(())
                     } else {
                         err

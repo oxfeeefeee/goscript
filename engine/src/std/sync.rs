@@ -19,7 +19,7 @@ macro_rules! create_mutex {
         if p.is_nil() {
             let inner = $typ::new();
             let p = GosValue::new_unsafe_ptr(inner.clone());
-            pp.set_value(p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcv);
+            pp.set_value(&p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcv);
             inner
         } else {
             p.as_unsafe_ptr()

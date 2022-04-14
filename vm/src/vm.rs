@@ -416,7 +416,7 @@ impl<'a> Fiber<'a> {
                         match pop_try_deref_value(stack, inst.t0(), objs) {
                             Ok(target) => {
                                 let val =
-                                    target.as_struct().0.borrow().fields[ind as usize].clone();
+                                    target.as_struct().0.borrow_fields()[ind as usize].clone();
                                 stack.push(val);
                             }
                             Err(e) => go_panic_str!(panic, e, frame, code),
@@ -470,7 +470,7 @@ impl<'a> Fiber<'a> {
                         match get_try_deref_value(stack, s_index, inst.t1(), objs) {
                             Ok(target) => {
                                 let field =
-                                    &mut target.as_struct().0.borrow_mut().fields[imm as usize];
+                                    &mut target.as_struct().0.borrow_fields_mut()[imm as usize];
                                 stack.store_val(field, rhs_index, inst.t0(), gcv);
                             }
                             Err(e) => go_panic_str!(panic, e, frame, code),
@@ -673,9 +673,9 @@ impl<'a> Fiber<'a> {
                                 PointerObj::new_array_member(&arr_or_slice, i, gcv),
                             )),
                             ValueType::Slice => match arr_or_slice.clone().into_some_slice() {
-                                Ok(s) => {
-                                    stack.push(GosValue::new_pointer(PointerObj::SliceMember(s, i)))
-                                }
+                                Ok(_) => stack.push(GosValue::new_pointer(
+                                    PointerObj::SliceMember(arr_or_slice, i),
+                                )),
                                 Err(e) => {
                                     go_panic_str!(panic, e, frame, code);
                                 }
@@ -686,7 +686,7 @@ impl<'a> Fiber<'a> {
                     Opcode::REF_STRUCT_FIELD => match pop_try_deref_value(stack, inst.t0(), objs) {
                         Ok(target) => {
                             stack.push(GosValue::new_pointer(PointerObj::StructField(
-                                target.clone().into_struct(),
+                                target,
                                 inst.imm(),
                             )));
                         }
@@ -1226,12 +1226,14 @@ impl<'a> Fiber<'a> {
                                     }
                                     MetadataType::Struct(_, _) => {
                                         let struct_val = md.zero(&objs.metas, gcv);
-                                        let mut sref = struct_val.as_struct().0.borrow_mut();
-                                        for _ in 0..count {
-                                            let index = stack.pop_uint();
-                                            sref.fields[index] = stack.pop_value();
+                                        {
+                                            let fields =
+                                                &mut struct_val.as_struct().0.borrow_fields_mut();
+                                            for _ in 0..count {
+                                                let index = stack.pop_uint();
+                                                fields[index] = stack.pop_value();
+                                            }
                                         }
-                                        drop(sref);
                                         struct_val
                                     }
                                     _ => unreachable!(),

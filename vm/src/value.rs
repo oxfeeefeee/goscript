@@ -269,7 +269,7 @@ pub union ValueData {
     complex128: *mut (F64, F64),
     str: *const StringObj, // "String" is taken
     array: *const (ArrayObj, RCount),
-    structure: *const (RefCell<StructObj>, RCount),
+    structure: *const (StructObj, RCount),
     pointer: *mut PointerObj,
     unsafe_ptr: *mut Rc<dyn UnsafePtr>,
     closure: *const (RefCell<ClosureObj>, RCount),
@@ -498,7 +498,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> &(RefCell<StructObj>, RCount) {
+    pub fn as_struct(&self) -> &(StructObj, RCount) {
         unsafe { &self.structure.as_ref().unwrap() }
     }
 
@@ -907,7 +907,7 @@ impl ValueData {
 
     #[inline]
     fn new_struct(obj: StructObj, gcv: &GcoVec) -> ValueData {
-        let s = Rc::new((RefCell::new(obj), Cell::new(0)));
+        let s = Rc::new((obj, Cell::new(0)));
         gcv.add_struct(&s);
         ValueData {
             structure: Rc::into_raw(s),
@@ -1004,7 +1004,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_struct(s: Rc<(RefCell<StructObj>, RCount)>) -> ValueData {
+    fn from_struct(s: Rc<(StructObj, RCount)>) -> ValueData {
         ValueData {
             structure: Rc::into_raw(s),
         }
@@ -1080,7 +1080,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn into_struct(self) -> Rc<(RefCell<StructObj>, RCount)> {
+    fn into_struct(self) -> Rc<(StructObj, RCount)> {
         unsafe { Rc::from_raw(self.structure) }
     }
 
@@ -1190,9 +1190,7 @@ impl ValueData {
                 self.copy()
             },
             ValueType::Array => ValueData::new_array(self.as_array().0.clone(), gcv),
-            ValueType::Struct => {
-                ValueData::new_struct(StructObj::clone(&self.as_struct().0.borrow()), gcv)
-            }
+            ValueType::Struct => ValueData::new_struct(StructObj::clone(&self.as_struct().0), gcv),
             ValueType::Pointer => {
                 ValueData::from_pointer(self.as_pointer().map(|x| Box::new(x.clone())))
             }
@@ -1533,7 +1531,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn from_struct(s: Rc<(RefCell<StructObj>, RCount)>) -> GosValue {
+    pub fn from_struct(s: Rc<(StructObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Struct, ValueData::from_struct(s))
     }
 
@@ -1591,7 +1589,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_struct(mut self) -> Rc<(RefCell<StructObj>, RCount)> {
+    pub fn into_struct(mut self) -> Rc<(StructObj, RCount)> {
         debug_assert!(self.typ == ValueType::Struct);
         self.typ = ValueType::Void;
         self.data.copy().into_struct()
@@ -1808,7 +1806,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> &(RefCell<StructObj>, RCount) {
+    pub fn as_struct(&self) -> &(StructObj, RCount) {
         debug_assert!(self.typ == ValueType::Struct);
         self.data.as_struct()
     }
@@ -1920,7 +1918,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn try_as_struct(&self) -> Option<&(RefCell<StructObj>, RCount)> {
+    pub fn try_as_struct(&self) -> Option<&(StructObj, RCount)> {
         match &self.typ {
             ValueType::Struct => Some(self.as_struct()),
             _ => None,
@@ -2013,7 +2011,7 @@ impl GosValue {
     #[inline]
     pub fn load_field(&self, ind: &GosValue, objs: &VMObjects) -> GosValue {
         match self.typ {
-            ValueType::Struct => self.as_struct().0.borrow().fields[*ind.as_int() as usize].clone(),
+            ValueType::Struct => self.as_struct().0.borrow_fields()[*ind.as_int() as usize].clone(),
             ValueType::Package => {
                 let pkg = &objs.packages[*self.as_package()];
                 pkg.member(*ind.as_int() as OpIndex).clone()
@@ -2139,7 +2137,7 @@ impl PartialEq for GosValue {
             (ValueType::Str, ValueType::Str) => self.as_str() == b.as_str(),
             (ValueType::Array, ValueType::Array) => self.as_array().0 == b.as_array().0,
             (ValueType::Struct, ValueType::Struct) => {
-                StructObj::eq(&self.as_struct().0.borrow(), &b.as_struct().0.borrow())
+                StructObj::eq(&self.as_struct().0, &b.as_struct().0)
             }
             (ValueType::Pointer, ValueType::Pointer) => self.as_pointer() == b.as_pointer(),
             (ValueType::UnsafePtr, ValueType::UnsafePtr) => {
@@ -2190,7 +2188,7 @@ impl Hash for GosValue {
                 c.1.hash(state);
             }
             ValueType::Struct => {
-                self.as_struct().0.borrow().hash(state);
+                self.as_struct().0.hash(state);
             }
             ValueType::Interface => match self.as_interface() {
                 Some(iface) => iface.borrow().hash(state),
@@ -2264,7 +2262,7 @@ impl Display for GosValue {
             }
             ValueType::Str => f.write_str(self.as_str().as_str()),
             ValueType::Array => write!(f, "{:#?}", self.as_array().0),
-            ValueType::Struct => write!(f, "{}", self.as_struct().0.borrow()),
+            ValueType::Struct => write!(f, "{}", self.as_struct().0),
             ValueType::Pointer => match self.as_pointer() {
                 Some(p) => p.fmt(f),
                 None => f.write_str("<nil(pointer)>"),

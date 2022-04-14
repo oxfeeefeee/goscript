@@ -33,7 +33,7 @@ impl GcoVec {
         self.add_weak(GcWeak::new_map(m))
     }
 
-    pub fn add_struct(&self, s: &Rc<(RefCell<StructObj>, RCount)>) {
+    pub fn add_struct(&self, s: &Rc<(StructObj, RCount)>) {
         self.add_weak(GcWeak::new_struct(s))
     }
 
@@ -53,7 +53,7 @@ pub enum GcWeak {
     Closure(Weak<(RefCell<ClosureObj>, RCount)>),
     Slice(Weak<(SliceObj, RCount)>),
     Map(Weak<(MapObj, RCount)>),
-    Struct(Weak<(RefCell<StructObj>, RCount)>),
+    Struct(Weak<(StructObj, RCount)>),
     // todo:
     // GC doesn't support channel for now, because we can't access the
     // underlying objects (unless we don't use smol::channel and write
@@ -80,7 +80,7 @@ impl GcWeak {
         GcWeak::Map(Rc::downgrade(m))
     }
 
-    pub fn new_struct(s: &Rc<(RefCell<StructObj>, RCount)>) -> GcWeak {
+    pub fn new_struct(s: &Rc<(StructObj, RCount)>) -> GcWeak {
         GcWeak::Struct(Rc::downgrade(s))
     }
 
@@ -143,8 +143,7 @@ fn children_ref_sub_one(val: &GosValue) {
         ValueType::Struct => val
             .as_struct()
             .0
-            .borrow()
-            .fields
+            .borrow_fields()
             .iter()
             .for_each(|obj| obj.ref_sub_one()),
         _ => unreachable!(),
@@ -184,8 +183,7 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
         ValueType::Struct => val
             .as_struct()
             .0
-            .borrow()
-            .fields
+            .borrow_fields()
             .iter()
             .for_each(|obj| obj.mark_dirty(queue)),
         _ => unreachable!(),
@@ -213,7 +211,7 @@ fn break_cycle(val: &GosValue) {
             Some(m) => m.0.borrow_data_mut().clear(),
             None => {}
         },
-        ValueType::Struct => RefCell::borrow_mut(&val.as_struct().0).fields.clear(),
+        ValueType::Struct => val.as_struct().0.borrow_fields_mut().clear(),
         _ => unreachable!(),
     };
 }

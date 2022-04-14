@@ -422,7 +422,7 @@ impl Stack {
         t: ValueType,
         gcos: &GcoVec,
     ) {
-        let target = &mut target.as_struct().0.borrow_mut().fields[*key.as_int() as usize];
+        let target = &mut target.as_struct().0.borrow_fields_mut()[*key.as_int() as usize];
         self.store_val(target, r_index, t, gcos);
     }
 
@@ -436,23 +436,21 @@ impl Stack {
     ) -> RuntimeResult<()> {
         match p {
             PointerObj::Default(obj) => {
-                PointerObj::set_pointee_from(
-                    obj,
-                    self.get(Stack::offset(self.len(), rhs_index))
-                        .copy_semantic(gcv),
-                );
+                PointerObj::set_pointee_from(obj, self.get(Stack::offset(self.len(), rhs_index)));
             }
             PointerObj::UpVal(uv) => {
                 self.store_up_value(uv, rhs_index, typ, gcv);
             }
             PointerObj::SliceMember(s, index) => {
-                let vborrow = s.0.borrow();
+                let slice = &s.as_slice().unwrap().0;
+                let vborrow = slice.borrow();
                 let target: &mut GosValue =
-                    &mut vborrow[s.0.begin() + *index as usize].borrow_mut();
+                    &mut vborrow[slice.begin() + *index as usize].borrow_mut();
                 self.store_val(target, rhs_index, typ, gcv);
             }
             PointerObj::StructField(s, index) => {
-                let target: &mut GosValue = &mut s.0.borrow_mut().fields[*index as usize];
+                let target: &mut GosValue =
+                    &mut s.as_struct().0.borrow_fields_mut()[*index as usize];
                 self.store_val(target, rhs_index, typ, gcv);
             }
             PointerObj::PkgMember(p, index) => {
