@@ -231,14 +231,9 @@ impl Reflect {
         let arg0 = iter.next();
         let arg1 = iter.next();
         let arg2 = iter.next();
-        let iface = arg0.as_ref().unwrap().as_interface().unwrap().borrow();
-        let mut vec = iface
-            .underlying_value()
-            .unwrap()
-            .as_slice()
-            .unwrap()
-            .0
-            .borrow_all_data_mut();
+        let iface = arg0.as_ref().unwrap().as_interface().unwrap();
+        let obj = iface.underlying_value().unwrap();
+        let mut vec = obj.as_slice().unwrap().0.borrow_all_data_mut();
         let a = arg1.as_ref().unwrap().as_int();
         let b = arg2.as_ref().unwrap().as_int();
         vec.swap(*a as usize, *b as usize);
@@ -268,7 +263,7 @@ impl StdValue {
 
     fn value_from_iface(v: &GosValue) -> RuntimeResult<GosValue> {
         let iface = v.as_interface().unwrap();
-        match &iface.borrow() as &InterfaceObj {
+        match &iface as &InterfaceObj {
             InterfaceObj::Gos(v, m) => Ok(wrap_std_val(v.clone(), m.as_ref().map(|x| x.0))),
             // todo: should we return something else?
             InterfaceObj::Ffi(_) => Err("reflect: ffi objects are not supported".to_owned()),

@@ -275,7 +275,7 @@ pub union ValueData {
     closure: *const (RefCell<ClosureObj>, RCount),
     slice: *const (SliceObj, RCount),
     map: *const (MapObj, RCount),
-    interface: *const RefCell<InterfaceObj>,
+    interface: *const InterfaceObj,
     channel: *const ChannelObj,
 }
 
@@ -528,7 +528,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_interface(&self) -> Option<&RefCell<InterfaceObj>> {
+    pub fn as_interface(&self) -> Option<&InterfaceObj> {
         unsafe { self.interface.as_ref() }
     }
 
@@ -964,7 +964,7 @@ impl ValueData {
 
     #[inline]
     fn new_interface(obj: InterfaceObj) -> ValueData {
-        let iface = Rc::into_raw(Rc::new(RefCell::new(obj)));
+        let iface = Rc::into_raw(Rc::new(obj));
         ValueData { interface: iface }
     }
 
@@ -1046,7 +1046,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_interface(i: OptionRc<RefCell<InterfaceObj>>) -> ValueData {
+    fn from_interface(i: OptionRc<InterfaceObj>) -> ValueData {
         ValueData {
             interface: i.map_or(ptr::null(), |x| Rc::into_raw(x)),
         }
@@ -1110,7 +1110,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn into_interface(self) -> OptionRc<RefCell<InterfaceObj>> {
+    fn into_interface(self) -> OptionRc<InterfaceObj> {
         unsafe { (!self.interface.is_null()).then(|| Rc::from_raw(self.interface)) }
     }
 
@@ -1512,7 +1512,7 @@ impl GosValue {
 
     #[inline]
     pub fn empty_iface_with_val(val: GosValue) -> GosValue {
-        GosValue::new_interface(InterfaceObj::Gos(val, None))
+        GosValue::new_interface(InterfaceObj::with_value(val, None))
     }
 
     #[inline]
@@ -1551,7 +1551,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn from_interface(i: OptionRc<RefCell<InterfaceObj>>) -> GosValue {
+    pub fn from_interface(i: OptionRc<InterfaceObj>) -> GosValue {
         GosValue::new(ValueType::Interface, ValueData::from_interface(i))
     }
 
@@ -1631,7 +1631,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_interface(mut self) -> OptionRc<RefCell<InterfaceObj>> {
+    pub fn into_interface(mut self) -> OptionRc<InterfaceObj> {
         debug_assert!(self.typ == ValueType::Interface);
         self.typ = ValueType::Void;
         self.data.copy().into_interface()
@@ -1670,7 +1670,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_some_interface(self) -> RuntimeResult<Rc<RefCell<InterfaceObj>>> {
+    pub fn into_some_interface(self) -> RuntimeResult<Rc<InterfaceObj>> {
         self.into_interface().ok_or(nil_err_str!())
     }
 
@@ -1842,7 +1842,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_interface(&self) -> Option<&RefCell<InterfaceObj>> {
+    pub fn as_interface(&self) -> Option<&InterfaceObj> {
         debug_assert!(self.typ == ValueType::Interface);
         self.data.as_interface()
     }
@@ -1879,7 +1879,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_some_interface(&self) -> RuntimeResult<&RefCell<InterfaceObj>> {
+    pub fn as_some_interface(&self) -> RuntimeResult<&InterfaceObj> {
         self.as_interface().ok_or(nil_err_str!())
     }
 
@@ -1945,7 +1945,7 @@ impl GosValue {
     #[inline]
     pub fn iface_underlying(&self) -> RuntimeResult<Option<GosValue>> {
         let iface = self.as_some_interface()?;
-        Ok(iface.borrow().underlying_value().map(|x| x.clone()))
+        Ok(iface.underlying_value().map(|x| x.clone()))
     }
 
     pub fn identical(&self, other: &GosValue) -> bool {
@@ -2031,7 +2031,7 @@ impl GosValue {
                 self.as_unsafe_ptr().map(|p| p.ref_sub_one());
             }
             ValueType::Interface => {
-                self.as_interface().map(|x| x.borrow().ref_sub_one());
+                self.as_interface().map(|x| x.ref_sub_one());
             }
             ValueType::Array => self.as_array().1.set(self.as_array().1.get() - 1),
             ValueType::Struct => self.as_struct().1.set(self.as_struct().1.get() - 1),
@@ -2069,7 +2069,7 @@ impl GosValue {
                 self.as_map().map(|x| rcount_mark_and_queue(&x.1, queue));
             }
             ValueType::Interface => {
-                self.as_interface().map(|x| x.borrow().mark_dirty(queue));
+                self.as_interface().map(|x| x.mark_dirty(queue));
             }
             ValueType::Struct => rcount_mark_and_queue(&self.as_struct().1, queue),
             _ => {}
@@ -2160,10 +2160,10 @@ impl PartialEq for GosValue {
             (ValueType::Void, _) => b.is_nil(),
             (ValueType::Interface, _) => self
                 .as_interface()
-                .map_or(b.is_nil(), |x| x.borrow().equals_value(b)),
+                .map_or(b.is_nil(), |x| x.equals_value(b)),
             (_, ValueType::Interface) => b
                 .as_interface()
-                .map_or(self.is_nil(), |x| x.borrow().equals_value(self)),
+                .map_or(self.is_nil(), |x| x.equals_value(self)),
             _ => false,
         }
     }
@@ -2191,7 +2191,7 @@ impl Hash for GosValue {
                 self.as_struct().0.hash(state);
             }
             ValueType::Interface => match self.as_interface() {
-                Some(iface) => iface.borrow().hash(state),
+                Some(iface) => iface.hash(state),
                 None => 0.hash(state),
             },
             ValueType::Pointer => match self.as_pointer() {
@@ -2284,7 +2284,7 @@ impl Display for GosValue {
                 None => f.write_str("<nil(map)>"),
             },
             ValueType::Interface => match self.as_interface() {
-                Some(i) => write!(f, "{}", i.borrow()),
+                Some(i) => write!(f, "{}", i),
                 None => f.write_str("<nil(interface)>"),
             },
             ValueType::Channel => match self.as_channel() {

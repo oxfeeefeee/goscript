@@ -254,12 +254,12 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_interface(&mut self) -> Option<Rc<RefCell<InterfaceObj>>> {
+    pub fn pop_interface(&mut self) -> Option<Rc<InterfaceObj>> {
         self.pop_value().into_interface()
     }
 
     #[inline]
-    pub fn pop_some_interface(&mut self) -> RuntimeResult<Rc<RefCell<InterfaceObj>>> {
+    pub fn pop_some_interface(&mut self) -> RuntimeResult<Rc<InterfaceObj>> {
         self.pop_value().into_some_interface()
     }
 

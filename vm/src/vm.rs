@@ -442,8 +442,7 @@ impl<'a> Fiber<'a> {
                     Opcode::BIND_INTERFACE_METHOD => {
                         let val = stack.pop_interface().unwrap();
                         let index = inst.imm() as usize;
-                        let borrowed = val.borrow();
-                        match bind_method(&borrowed, index, stack, objs, gcv) {
+                        match bind_method(&val, index, stack, objs, gcv) {
                             Ok(cls) => stack.push(cls),
                             Err(e) => {
                                 go_panic_str!(panic, e, frame, code);
@@ -530,7 +529,7 @@ impl<'a> Fiber<'a> {
                             ValueType::Interface => {
                                 let binding = ifaces[mapping as usize].clone();
                                 let under = stack.copy_semantic(index, gcv);
-                                let val = GosValue::new_interface(InterfaceObj::Gos(
+                                let val = GosValue::new_interface(InterfaceObj::with_value(
                                     under,
                                     Some(binding),
                                 ));
@@ -1036,7 +1035,7 @@ impl<'a> Fiber<'a> {
 
                     Opcode::TYPE_ASSERT => {
                         if let Some(err) = match stack.pop_some_interface() {
-                            Ok(iface) => match &iface.borrow() as &InterfaceObj {
+                            Ok(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
                                     let val = v.copy_semantic(gcv);
                                     let meta = b.as_ref().unwrap().0;
@@ -1075,7 +1074,7 @@ impl<'a> Fiber<'a> {
                     Opcode::TYPE => {
                         let iface_value = stack.pop_value();
                         let (val, meta) = match iface_value.as_interface() {
-                            Some(iface) => match &iface.borrow() as &InterfaceObj {
+                            Some(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
                                     (v.copy_semantic(gcv), b.as_ref().unwrap().0)
                                 }
@@ -1488,8 +1487,8 @@ impl<'a> Fiber<'a> {
                         }
 
                         // a hack to make the test case fail
-                        let borrow = p.msg.as_interface().as_ref().unwrap().borrow();
-                        let val = borrow.underlying_value().unwrap();
+                        let iface = p.msg.as_interface().unwrap();
+                        let val = iface.underlying_value().unwrap();
                         if val.typ() == ValueType::Str
                             && val.as_str().as_str().starts_with("Opcode::ASSERT")
                         {
@@ -1628,16 +1627,10 @@ pub fn bind_method(
                 }
                 Binding4Runtime::Iface(i, indices) => {
                     let bind = |obj: &GosValue| {
-                        bind_method(
-                            &obj.as_interface().as_ref().unwrap().borrow(),
-                            *i,
-                            stack,
-                            objs,
-                            gcv,
-                        )
+                        bind_method(&obj.as_interface().unwrap(), *i, stack, objs, gcv)
                     };
                     match indices {
-                        None => bind(obj),
+                        None => bind(&obj),
                         Some(inds) => bind(&StructObj::get_embeded(obj.clone(), inds)),
                     }
                 }

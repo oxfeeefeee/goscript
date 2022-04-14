@@ -768,6 +768,10 @@ pub enum InterfaceObj {
 }
 
 impl InterfaceObj {
+    pub fn with_value(val: GosValue, meta: Option<(Meta, Vec<Binding4Runtime>)>) -> InterfaceObj {
+        InterfaceObj::Gos(val, meta)
+    }
+
     #[inline]
     pub fn underlying_value(&self) -> Option<&GosValue> {
         match self {
