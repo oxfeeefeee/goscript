@@ -538,6 +538,11 @@ impl ValueData {
     }
 
     #[inline]
+    pub fn as_addr(&self) -> *const usize {
+        unsafe { self.untyped_nil }
+    }
+
+    #[inline]
     pub fn into_value(self, t: ValueType) -> GosValue {
         GosValue::new(t, self)
     }
@@ -1932,6 +1937,11 @@ impl GosValue {
     pub fn as_index(&self) -> usize {
         debug_assert!(self.typ.copyable());
         self.data.as_index(self.typ)
+    }
+
+    #[inline]
+    pub fn as_addr(&self) -> *const usize {
+        self.data.as_addr()
     }
 
     #[inline]

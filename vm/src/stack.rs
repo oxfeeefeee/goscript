@@ -435,30 +435,15 @@ impl Stack {
         gcv: &GcoVec,
     ) -> RuntimeResult<()> {
         match p {
+            PointerObj::Default(obj) => {
+                PointerObj::set_pointee_from(
+                    obj,
+                    self.get(Stack::offset(self.len(), rhs_index))
+                        .copy_semantic(gcv),
+                );
+            }
             PointerObj::UpVal(uv) => {
                 self.store_up_value(uv, rhs_index, typ, gcv);
-            }
-            PointerObj::Struct(r) => {
-                let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get(rhs_s_index).copy_semantic(gcv);
-                let mref: &mut StructObj = &mut r.0.borrow_mut();
-                *mref = val.as_struct().0.borrow().clone();
-            }
-            PointerObj::Array(a) => {
-                let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get(rhs_s_index);
-                a.0.set_from(&val.as_array().0);
-            }
-            PointerObj::Slice(r) => {
-                let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get(rhs_s_index);
-                r.0.set_from(&val.as_some_slice()?.0);
-            }
-            PointerObj::Map(m) => {
-                let rhs_s_index = Stack::offset(self.len(), rhs_index);
-                let val = self.get(rhs_s_index);
-                let mref: &mut GosHashMap = &mut m.0.borrow_data_mut();
-                *mref = val.as_some_map()?.0.borrow_data().clone();
             }
             PointerObj::SliceMember(s, index) => {
                 let vborrow = s.0.borrow();
