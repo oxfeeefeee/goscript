@@ -5,7 +5,7 @@ use super::metadata::*;
 pub use super::objects::*;
 use crate::channel::Channel;
 use ordered_float;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
@@ -272,7 +272,7 @@ pub union ValueData {
     structure: *const (StructObj, RCount),
     pointer: *mut PointerObj,
     unsafe_ptr: *mut Rc<dyn UnsafePtr>,
-    closure: *const (RefCell<ClosureObj>, RCount),
+    closure: *const (ClosureObj, RCount),
     slice: *const (SliceObj, RCount),
     map: *const (MapObj, RCount),
     interface: *const InterfaceObj,
@@ -513,7 +513,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> Option<&(RefCell<ClosureObj>, RCount)> {
+    pub fn as_closure(&self) -> Option<&(ClosureObj, RCount)> {
         unsafe { self.closure.as_ref() }
     }
 
@@ -930,7 +930,7 @@ impl ValueData {
 
     #[inline]
     fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> ValueData {
-        let cls = Rc::new((RefCell::new(obj), Cell::new(0)));
+        let cls = Rc::new((obj, Cell::new(0)));
         gcv.add_closure(&cls);
         ValueData {
             closure: Rc::into_raw(cls),
@@ -940,7 +940,7 @@ impl ValueData {
     #[inline]
     fn new_closure_static(fkey: FunctionKey, fobjs: &FunctionObjs) -> ValueData {
         let obj = ClosureObj::new_gos(fkey, fobjs, None);
-        let cls = Rc::into_raw(Rc::new((RefCell::new(obj), Cell::new(0))));
+        let cls = Rc::into_raw(Rc::new((obj, Cell::new(0))));
         ValueData { closure: cls }
     }
 
@@ -1025,7 +1025,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_closure(cls: OptionRc<(RefCell<ClosureObj>, RCount)>) -> ValueData {
+    fn from_closure(cls: OptionRc<(ClosureObj, RCount)>) -> ValueData {
         ValueData {
             closure: cls.map_or(ptr::null(), |x| Rc::into_raw(x)),
         }
@@ -1095,7 +1095,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn into_closure(self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
+    fn into_closure(self) -> OptionRc<(ClosureObj, RCount)> {
         unsafe { (!self.closure.is_null()).then(|| Rc::from_raw(self.closure)) }
     }
 
@@ -1536,7 +1536,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn from_closure(cls: OptionRc<(RefCell<ClosureObj>, RCount)>) -> GosValue {
+    pub fn from_closure(cls: OptionRc<(ClosureObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Closure, ValueData::from_closure(cls))
     }
 
@@ -1610,7 +1610,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_closure(mut self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
+    pub fn into_closure(mut self) -> OptionRc<(ClosureObj, RCount)> {
         debug_assert!(self.typ == ValueType::Closure);
         self.typ = ValueType::Void;
         self.data.copy().into_closure()
@@ -1655,7 +1655,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_some_closure(self) -> RuntimeResult<Rc<(RefCell<ClosureObj>, RCount)>> {
+    pub fn into_some_closure(self) -> RuntimeResult<Rc<(ClosureObj, RCount)>> {
         self.into_closure().ok_or(nil_err_str!())
     }
 
@@ -1824,7 +1824,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_closure(&self) -> Option<&(RefCell<ClosureObj>, RCount)> {
+    pub fn as_closure(&self) -> Option<&(ClosureObj, RCount)> {
         debug_assert!(self.typ == ValueType::Closure);
         self.data.as_closure()
     }
@@ -1864,7 +1864,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_some_closure(&self) -> RuntimeResult<&(RefCell<ClosureObj>, RCount)> {
+    pub fn as_some_closure(&self) -> RuntimeResult<&(ClosureObj, RCount)> {
         self.as_closure().ok_or(nil_err_str!())
     }
 
@@ -2306,6 +2306,7 @@ impl fmt::Debug for GosValue {
 #[cfg(test)]
 mod test {
     use super::super::value::*;
+    use std::cell::RefCell;
     use std::collections::HashMap;
     use std::mem;
 

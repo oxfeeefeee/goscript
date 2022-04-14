@@ -1329,6 +1329,14 @@ impl WeakUpValue {
 }
 
 #[derive(Clone, Debug)]
+pub struct GosClosureObj {
+    pub func: FunctionKey,
+    pub uvs: Option<HashMap<usize, UpValue>>,
+    pub recv: Option<GosValue>,
+    pub meta: Meta,
+}
+
+#[derive(Clone, Debug)]
 pub struct FfiClosureObj {
     pub ffi: Rc<RefCell<dyn Ffi>>,
     pub func_name: String,
@@ -1336,14 +1344,9 @@ pub struct FfiClosureObj {
 }
 
 #[derive(Clone, Debug)]
-pub struct ClosureObj {
-    pub func: Option<FunctionKey>,
-    pub uvs: Option<HashMap<usize, UpValue>>,
-    pub recv: Option<GosValue>,
-
-    pub ffi: Option<Box<FfiClosureObj>>,
-
-    pub meta: Meta,
+pub enum ClosureObj {
+    Gos(GosClosureObj),
+    Ffi(FfiClosureObj),
 }
 
 impl ClosureObj {
@@ -1361,52 +1364,72 @@ impl ClosureObj {
         } else {
             None
         };
-        ClosureObj {
-            func: Some(key),
+        ClosureObj::Gos(GosClosureObj {
+            func: key,
             uvs: uvs,
             recv: recv,
-            ffi: None,
             meta: func.meta,
-        }
+        })
     }
 
     #[inline]
     pub fn new_ffi(ffi: FfiClosureObj) -> ClosureObj {
-        let m = ffi.meta;
-        ClosureObj {
-            func: None,
-            uvs: None,
-            recv: None,
-            ffi: Some(Box::new(ffi)),
-            meta: m,
+        ClosureObj::Ffi(ffi)
+    }
+
+    #[inline]
+    pub fn as_gos(&self) -> &GosClosureObj {
+        match self {
+            Self::Gos(c) => c,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn total_param_count(&self, metas: &MetadataObjs) -> usize {
+        match self {
+            Self::Gos(g) => {
+                let sig = &metas[g.meta.key].as_signature();
+                sig.params.len() + sig.results.len()
+            }
+            Self::Ffi(f) => {
+                let sig = &metas[f.meta.key].as_signature();
+                sig.params.len()
+            }
         }
     }
 
     /// for gc
     pub fn ref_sub_one(&self) {
-        if self.func.is_some() {
-            if let Some(uvs) = &self.uvs {
-                for (_, v) in uvs.iter() {
-                    v.ref_sub_one()
+        match self {
+            Self::Gos(obj) => {
+                if let Some(uvs) = &obj.uvs {
+                    for (_, v) in uvs.iter() {
+                        v.ref_sub_one()
+                    }
+                }
+                if let Some(recv) = &obj.recv {
+                    recv.ref_sub_one()
                 }
             }
-            if let Some(recv) = &self.recv {
-                recv.ref_sub_one()
-            }
+            Self::Ffi(_) => {}
         }
     }
 
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
-        if self.func.is_some() {
-            if let Some(uvs) = &self.uvs {
-                for (_, v) in uvs.iter() {
-                    v.mark_dirty(queue)
+        match self {
+            Self::Gos(obj) => {
+                if let Some(uvs) = &obj.uvs {
+                    for (_, v) in uvs.iter() {
+                        v.mark_dirty(queue)
+                    }
+                }
+                if let Some(recv) = &obj.recv {
+                    recv.mark_dirty(queue)
                 }
             }
-            if let Some(recv) = &self.recv {
-                recv.mark_dirty(queue)
-            }
+            Self::Ffi(_) => {}
         }
     }
 }

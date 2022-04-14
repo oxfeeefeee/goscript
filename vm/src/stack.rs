@@ -2,7 +2,6 @@ use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::Meta;
 use super::value::*;
-use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::fmt::{self, Display};
 use std::mem;
@@ -264,7 +263,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_closure(&mut self) -> OptionRc<(RefCell<ClosureObj>, RCount)> {
+    pub fn pop_closure(&mut self) -> OptionRc<(ClosureObj, RCount)> {
         self.pop_value().into_closure()
     }
 

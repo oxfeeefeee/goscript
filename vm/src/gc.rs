@@ -21,7 +21,7 @@ impl GcoVec {
         self.add_weak(GcWeak::new_array(arr))
     }
 
-    pub fn add_closure(&self, cls: &Rc<(RefCell<ClosureObj>, RCount)>) {
+    pub fn add_closure(&self, cls: &Rc<(ClosureObj, RCount)>) {
         self.add_weak(GcWeak::new_closure(cls))
     }
 
@@ -50,7 +50,7 @@ impl GcoVec {
 #[derive(Debug, Clone)]
 pub enum GcWeak {
     Array(Weak<(ArrayObj, RCount)>),
-    Closure(Weak<(RefCell<ClosureObj>, RCount)>),
+    Closure(Weak<(ClosureObj, RCount)>),
     Slice(Weak<(SliceObj, RCount)>),
     Map(Weak<(MapObj, RCount)>),
     Struct(Weak<(StructObj, RCount)>),
@@ -68,7 +68,7 @@ impl GcWeak {
         GcWeak::Array(Rc::downgrade(arr))
     }
 
-    pub fn new_closure(cls: &Rc<(RefCell<ClosureObj>, RCount)>) -> GcWeak {
+    pub fn new_closure(cls: &Rc<(ClosureObj, RCount)>) -> GcWeak {
         GcWeak::Closure(Rc::downgrade(cls))
     }
 
@@ -119,7 +119,7 @@ fn children_ref_sub_one(val: &GosValue) {
             .iter()
             .for_each(|obj| obj.borrow().ref_sub_one()),
         ValueType::Closure => match val.as_closure() {
-            Some(cls) => cls.0.borrow().ref_sub_one(),
+            Some(cls) => cls.0.ref_sub_one(),
             None => {}
         },
         ValueType::Slice => {
@@ -159,7 +159,7 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
             .iter()
             .for_each(|obj| obj.borrow().mark_dirty(queue)),
         ValueType::Closure => match val.as_closure() {
-            Some(cls) => cls.0.borrow().mark_dirty(queue),
+            Some(cls) => cls.0.mark_dirty(queue),
             None => {}
         },
         ValueType::Slice => {
@@ -190,28 +190,16 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
     };
 }
 
+/// break_cycle clears all values held by containers
 fn break_cycle(val: &GosValue) {
     match val.typ() {
         ValueType::Array => val.as_array().0.borrow_data_mut().clear(),
-        ValueType::Closure => match val.as_closure() {
-            Some(cls) => {
-                let r: &mut ClosureObj = &mut RefCell::borrow_mut(&cls.0);
-                if let Some(uvs) = &mut r.uvs {
-                    uvs.clear();
-                }
-                r.recv = None;
-                r.ffi = None;
-            }
-            None => {}
-        },
-        ValueType::Slice => {
-            // slices share data, we cannot clear the data here
-        }
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data_mut().clear(),
             None => {}
         },
         ValueType::Struct => val.as_struct().0.borrow_fields_mut().clear(),
+        ValueType::Slice | ValueType::Closure => {}
         _ => unreachable!(),
     };
 }
