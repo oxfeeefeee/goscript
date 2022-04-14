@@ -691,10 +691,7 @@ impl StdMapIter {
 
     fn next(&self) -> GosValue {
         let mut inner = self.inner.borrow_mut();
-        inner.item = inner
-            .iter
-            .next()
-            .map(|x| (x.0.clone(), x.1.clone().into_inner()));
+        inner.item = inner.iter.next().map(|x| (x.0.clone(), x.1.clone()));
         GosValue::new_bool(inner.item.is_some())
     }
 

@@ -136,7 +136,7 @@ fn children_ref_sub_one(val: &GosValue) {
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
                 k.ref_sub_one();
-                v.borrow().ref_sub_one();
+                v.ref_sub_one();
             }),
             None => {}
         },
@@ -176,7 +176,7 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
                 k.mark_dirty(queue);
-                v.borrow().mark_dirty(queue);
+                v.mark_dirty(queue);
             }),
             None => {}
         },

@@ -172,41 +172,39 @@ impl Ord for StringObj {
 // ----------------------------------------------------------------------------
 // MapObj
 
-pub type GosHashMap = HashMap<GosValue, RefCell<GosValue>>;
+pub type GosHashMap = HashMap<GosValue, GosValue>;
 
-pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, RefCell<GosValue>>;
+pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, GosValue>;
 
 #[derive(Debug)]
 pub struct MapObj {
-    default_val: GosValue,
-    pub map: Rc<RefCell<GosHashMap>>,
+    zero_val: GosValue,
+    map: RefCell<GosHashMap>,
 }
 
 impl MapObj {
-    pub fn new(default_val: GosValue) -> MapObj {
+    pub fn new(zero_val: GosValue) -> MapObj {
         MapObj {
-            default_val: default_val,
-            map: Rc::new(RefCell::new(HashMap::new())),
+            zero_val: zero_val,
+            map: RefCell::new(HashMap::new()),
         }
     }
 
     #[inline]
     pub fn insert(&self, key: GosValue, val: GosValue) -> Option<GosValue> {
-        self.borrow_data_mut()
-            .insert(key, RefCell::new(val))
-            .map(|x| x.into_inner())
+        self.borrow_data_mut().insert(key, val)
     }
 
     #[inline]
     pub fn new_default_val(&self, gcv: &GcoVec) -> GosValue {
-        self.default_val.copy_semantic(gcv)
+        self.zero_val.copy_semantic(gcv)
     }
 
     #[inline]
     pub fn get(&self, key: &GosValue, gcv: &GcoVec) -> (GosValue, bool) {
         let mref = self.borrow_data();
         match mref.get(key) {
-            Some(v) => (v.clone().into_inner(), true),
+            Some(v) => (v.clone(), true),
             None => (self.new_default_val(gcv), false),
         }
     }
@@ -223,7 +221,7 @@ impl MapObj {
     pub fn touch_key(&self, key: &GosValue, gcv: &GcoVec) {
         if self.borrow_data().get(&key).is_none() {
             self.borrow_data_mut()
-                .insert(key.clone(), RefCell::new(self.new_default_val(gcv)));
+                .insert(key.clone(), self.new_default_val(gcv));
         }
     }
 
@@ -234,16 +232,16 @@ impl MapObj {
 
     #[inline]
     pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
-        self.map.as_ref().borrow_mut()
+        self.map.borrow_mut()
     }
 
     #[inline]
     pub fn borrow_data(&self) -> Ref<GosHashMap> {
-        self.map.as_ref().borrow()
+        self.map.borrow()
     }
 
     #[inline]
-    pub fn clone_inner(&self) -> Rc<RefCell<GosHashMap>> {
+    pub fn clone_inner(&self) -> RefCell<GosHashMap> {
         self.map.clone()
     }
 }
@@ -251,7 +249,7 @@ impl MapObj {
 impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
-            default_val: self.default_val.clone(),
+            zero_val: self.zero_val.clone(),
             map: self.map.clone(),
         }
     }
@@ -259,7 +257,7 @@ impl Clone for MapObj {
 
 impl PartialEq for MapObj {
     fn eq(&self, _other: &MapObj) -> bool {
-        unreachable!() //false
+        unreachable!()
     }
 }
 
@@ -272,7 +270,7 @@ impl Display for MapObj {
             if i > 0 {
                 f.write_char(' ')?;
             }
-            let v: &GosValue = &kv.1.borrow();
+            let v: &GosValue = &kv.1;
             write!(f, "{}:{}", kv.0, v)?
         }
         f.write_char(']')
@@ -393,11 +391,11 @@ pub struct SliceObj {
 }
 
 impl<'a> SliceObj {
-    pub fn new(len: usize, cap: usize, default_val: Option<&GosValue>) -> SliceObj {
+    pub fn new(len: usize, cap: usize, zero_val: Option<&GosValue>) -> SliceObj {
         assert!(cap >= len);
         let mut val: GosVec = Vec::with_capacity(cap);
         for _ in 0..cap {
-            val.push(RefCell::new(default_val.unwrap().clone()));
+            val.push(RefCell::new(zero_val.unwrap().clone()));
         }
         SliceObj {
             begin: Cell::from(0),

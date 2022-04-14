@@ -387,9 +387,9 @@ impl Stack {
             ValueType::Map => {
                 let map = target.as_some_map()?;
                 map.0.touch_key(&key, gcv);
-                let borrowed = map.0.borrow_data();
-                let target_cell = borrowed.get(&key).unwrap();
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
+                let mut borrowed = map.0.borrow_data_mut();
+                let mut target_cell = borrowed.get_mut(&key).unwrap();
+                self.store_val(&mut target_cell, r_index, t, gcv);
                 Ok(())
             }
             _ => {
@@ -708,7 +708,7 @@ impl RangeStack {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.push(k.clone());
-                    stack.push(v.clone().into_inner());
+                    stack.push(v.clone());
                     false
                 }
                 None => {
