@@ -424,12 +424,18 @@ impl<'a> CodeGen<'a> {
                     && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
                 {
                     let comma_ok = lhs.len() == 2;
+                    let types = if comma_ok {
+                        self.t.expr_tuple_tc_types(val0)
+                    } else {
+                        vec![self.t.expr_tc_type(val0)]
+                    };
                     match val0 {
                         Expr::TypeAssert(tae) => {
                             self.gen_type_assert(&tae.expr, &tae.typ, comma_ok);
                         }
                         Expr::Index(ie) => {
-                            self.gen_map_index(&ie.expr, &ie.index, comma_ok);
+                            let t = self.t.tc_type_to_value_type(types[0]);
+                            self.gen_index(&ie.expr, &ie.index, t, comma_ok);
                         }
                         Expr::Unary(recv_expr) => {
                             assert_eq!(recv_expr.op, Token::ARROW);
@@ -445,15 +451,10 @@ impl<'a> CodeGen<'a> {
                             );
                         }
                         _ => {
-                            dbg!(val0, val0_mode);
                             unreachable!()
                         }
                     }
-                    if comma_ok {
-                        self.t.expr_tuple_tc_types(val0)
-                    } else {
-                        vec![self.t.expr_tc_type(val0)]
-                    }
+                    types
                 } else if values.len() == lhs.len() {
                     // define or assign with values
                     let mut types = Vec::with_capacity(values.len());
@@ -947,20 +948,19 @@ impl<'a> CodeGen<'a> {
         func.emit_code_with_flag_imm(Opcode::TYPE_ASSERT, comma_ok, index.into(), Some(pos));
     }
 
-    fn gen_map_index(&mut self, expr: &Expr, index: &Expr, comma_ok: bool) {
-        let t0 = self.t.expr_value_type(expr);
+    fn gen_index(&mut self, container: &Expr, index: &Expr, t_result: ValueType, comma_ok: bool) {
         let t1 = self.t.expr_value_type(index);
-        self.visit_expr(expr);
-        let pos = Some(expr.pos(&self.ast_objs));
+        self.visit_expr(container);
+        let pos = Some(container.pos(&self.ast_objs));
         if let Some(const_val) = self.t.try_tc_const_value(index.id()) {
             let (ival, _) = const_val.to_int().int_as_i64();
             if let Ok(i) = OpIndex::try_from(ival) {
-                current_func_emitter!(self).emit_load_index_imm(i, t0, comma_ok, pos);
+                current_func_emitter!(self).emit_load_index_imm(i, t_result, comma_ok, pos);
                 return;
             }
         }
         self.visit_expr(index);
-        current_func_emitter!(self).emit_load_index(t0, t1, comma_ok, pos);
+        current_func_emitter!(self).emit_load_index(t_result, t1, comma_ok, pos);
     }
 
     fn try_cast_to_iface(
@@ -1400,8 +1400,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_index(&mut self, _: &Expr, expr: &Expr, index: &Expr) {
-        self.gen_map_index(expr, index, false);
+    fn visit_expr_index(&mut self, e: &Expr, container: &Expr, index: &Expr) {
+        let t = self.t.expr_value_type(e);
+        self.gen_index(container, index, t, false);
     }
 
     fn visit_expr_slice(
