@@ -394,15 +394,23 @@ impl<'a> Emitter<'a> {
             .emit_inst(Opcode::PRE_CALL, [None, None, None], None, pos);
     }
 
-    pub fn emit_call(&mut self, style: CallStyle, pack: bool, pos: Option<usize>) {
+    pub fn emit_call(
+        &mut self,
+        style: CallStyle,
+        variadic_typ: Option<ValueType>,
+        pos: Option<usize>,
+    ) {
         let style_flag = match style {
             CallStyle::Default => ValueType::Void,
             CallStyle::Async => ValueType::FlagA,
             CallStyle::Defer => ValueType::FlagB,
         };
-        let pack_flag = if pack { Some(ValueType::FlagA) } else { None };
-        self.f
-            .emit_inst(Opcode::CALL, [Some(style_flag), pack_flag, None], None, pos);
+        self.f.emit_inst(
+            Opcode::CALL,
+            [Some(style_flag), variadic_typ, None],
+            None,
+            pos,
+        );
     }
 
     pub fn emit_literal(

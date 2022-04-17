@@ -208,7 +208,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_complex64(&mut self) -> (F32, F32) {
+    pub fn pop_complex64(&mut self) -> Complex64 {
         *self.pop_value().as_complex64()
     }
 
@@ -233,12 +233,17 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_slice(&mut self) -> OptionRc<(SliceObj, RCount)> {
+    pub fn pop_array<T>(&mut self) -> Rc<(ArrayObj<T>, RCount)> {
+        self.pop_value().into_array()
+    }
+
+    #[inline]
+    pub fn pop_slice<T>(&mut self) -> OptionRc<(SliceObj<T>, RCount)> {
         self.pop_value().into_slice()
     }
 
     #[inline]
-    pub fn pop_some_slice(&mut self) -> RuntimeResult<Rc<(SliceObj, RCount)>> {
+    pub fn pop_some_slice<T>(&mut self) -> RuntimeResult<Rc<(SliceObj<T>, RCount)>> {
         self.pop_value().into_some_slice()
     }
 
@@ -298,7 +303,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get_slice(&mut self, index: usize) -> Option<&(SliceObj, RCount)> {
+    pub fn get_slice<T>(&mut self, index: usize) -> Option<&(SliceObj<T>, RCount)> {
         self.get(index).as_slice()
     }
 
@@ -374,27 +379,11 @@ impl Stack {
         gcv: &GcoVec,
     ) -> RuntimeResult<()> {
         match target.typ() {
-            ValueType::Array => {
-                let target_cell = &target.as_array().0.borrow_data()[*key.as_int() as usize];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
-                Ok(())
-            }
-            ValueType::Slice => {
-                let target_cell = &target.as_some_slice()?.0.borrow()[*key.as_int() as usize];
-                self.store_val(&mut target_cell.borrow_mut(), r_index, t, gcv);
-                Ok(())
-            }
-            ValueType::Map => {
-                let map = target.as_some_map()?;
-                map.0.touch_key(&key, gcv);
-                let mut borrowed = map.0.borrow_data_mut();
-                let mut target_cell = borrowed.get_mut(&key).unwrap();
-                self.store_val(&mut target_cell, r_index, t, gcv);
-                Ok(())
-            }
+            ValueType::Array => self.store_array_entry(target, *key.as_uint(), r_index, t, gcv),
+            ValueType::Slice => self.store_slice_entry(target, *key.as_uint(), r_index, t, gcv),
+            ValueType::Map => self.store_map_entry(target, key, r_index, t, gcv),
             _ => {
-                dbg!(target);
-                unreachable!()
+                unreachable!();
             }
         }
     }
@@ -406,10 +395,18 @@ impl Stack {
         i: OpIndex,
         r_index: OpIndex,
         t: ValueType,
-        gcos: &GcoVec,
+        gcv: &GcoVec,
     ) -> RuntimeResult<()> {
-        let index = GosValue::new_int(i as isize);
-        self.store_index(target, &index, r_index, t, gcos)
+        match target.typ() {
+            ValueType::Array => self.store_array_entry(target, i as usize, r_index, t, gcv),
+            ValueType::Slice => self.store_slice_entry(target, i as usize, r_index, t, gcv),
+            ValueType::Map => {
+                self.store_map_entry(target, &GosValue::new_int(i as isize), r_index, t, gcv)
+            }
+            _ => {
+                unreachable!();
+            }
+        }
     }
 
     #[inline]
@@ -441,11 +438,9 @@ impl Stack {
                 self.store_up_value(uv, rhs_index, typ, gcv);
             }
             PointerObj::SliceMember(s, index) => {
-                let slice = &s.as_slice().unwrap().0;
-                let vborrow = slice.borrow();
-                let target: &mut GosValue =
-                    &mut vborrow[slice.begin() + *index as usize].borrow_mut();
-                self.store_val(target, rhs_index, typ, gcv);
+                let index = *index as usize;
+                let (array, index) = s.as_some_slice::<AnyElem>()?.0.get_array_equivalent(index);
+                self.store_array_entry(array, index, rhs_index, typ, gcv)?;
             }
             PointerObj::StructField(s, index) => {
                 let target: &mut GosValue =
@@ -474,11 +469,10 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pack_variadic(&mut self, index: usize, gcos: &GcoVec) {
+    pub fn pack_variadic(&mut self, index: usize, t: ValueType, gcos: &GcoVec) {
         if index <= self.len() {
-            let mut v = Vec::new();
-            v.append(&mut self.split_off_with_type(index));
-            self.push(GosValue::slice_with_data(v, gcos))
+            let v = self.split_off_with_type(index);
+            self.push(GosValue::slice_with_data(v, t, gcos))
         }
     }
 
@@ -648,6 +642,64 @@ impl Stack {
     fn get_data_mut(&mut self, index: usize) -> &mut ValueData {
         unsafe { self.get_mut(index).data_mut() }
     }
+
+    /// helper function for store_index
+    #[inline(always)]
+    fn store_array_entry(
+        &self,
+        target: &GosValue,
+        index: usize,
+        r_index: OpIndex,
+        t: ValueType,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<()> {
+        if r_index < 0 {
+            let val = self
+                .get(Stack::offset(self.len(), r_index))
+                .copy_semantic(gcv);
+            target.dispatcher_a_s().array_set(target, &val, index)?;
+        } else {
+            let val = target.dispatcher_a_s().array_get(target, index)?;
+            let val = self.read_with_ops(val.data(), r_index, t).into_value(t);
+            target.dispatcher_a_s().array_set(target, &val, index)?;
+        }
+        Ok(())
+    }
+
+    /// helper function for store_index
+    #[inline(always)]
+    fn store_slice_entry(
+        &self,
+        target: &GosValue,
+        index: usize,
+        r_index: OpIndex,
+        t: ValueType,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<()> {
+        let (array, index) = target
+            .as_some_slice::<AnyElem>()?
+            .0
+            .get_array_equivalent(index);
+        self.store_array_entry(array, index, r_index, t, gcv)
+    }
+
+    /// helper function for store_index
+    #[inline(always)]
+    fn store_map_entry(
+        &self,
+        target: &GosValue,
+        key: &GosValue,
+        r_index: OpIndex,
+        t: ValueType,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<()> {
+        let map = target.as_some_map()?;
+        map.0.touch_key(&key, gcv);
+        let mut borrowed = map.0.borrow_data_mut();
+        let mut target_cell = borrowed.get_mut(&key).unwrap();
+        self.store_val(&mut target_cell, r_index, t, gcv);
+        Ok(())
+    }
 }
 
 impl Display for Stack {
@@ -669,7 +721,7 @@ impl fmt::Debug for Stack {
 /// store iterators for Opcode::RANGE
 pub struct RangeStack {
     maps: Vec<GosHashMapIter<'static>>,
-    slices: Vec<SliceEnumIter<'static>>,
+    slices: Vec<SliceEnumIter<'static, AnyElem>>,
     strings: Vec<StringEnumIter<'static>>,
 }
 
@@ -682,16 +734,20 @@ impl RangeStack {
         }
     }
 
-    pub fn range_init(&mut self, target: &GosValue) -> RuntimeResult<()> {
-        match target.typ() {
+    pub fn range_init(
+        &mut self,
+        target: &GosValue,
+        typ: ValueType,
+        t_elem: ValueType,
+    ) -> RuntimeResult<()> {
+        match typ {
             ValueType::Map => {
                 let map = target.as_some_map()?.0.borrow_data();
                 let iter = unsafe { mem::transmute(map.iter()) };
                 self.maps.push(iter);
             }
             ValueType::Slice => {
-                let slice = target.as_some_slice()?.0.borrow();
-                let iter = unsafe { mem::transmute(slice.iter().enumerate()) };
+                let iter = dispatcher_a_s_for(t_elem).slice_iter(&target)?;
                 self.slices.push(iter);
             }
             ValueType::Str => {
@@ -703,7 +759,7 @@ impl RangeStack {
         Ok(())
     }
 
-    pub fn range_body(&mut self, typ: ValueType, stack: &mut Stack) -> bool {
+    pub fn range_body(&mut self, typ: ValueType, t_elem: ValueType, stack: &mut Stack) -> bool {
         match typ {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
@@ -716,17 +772,19 @@ impl RangeStack {
                     true
                 }
             },
-            ValueType::Slice => match self.slices.last_mut().unwrap().next() {
-                Some((k, v)) => {
-                    stack.push_int(k as isize);
-                    stack.push(v.clone().into_inner());
-                    false
+            ValueType::Slice => {
+                match dispatcher_a_s_for(t_elem).slice_next(self.slices.last_mut().unwrap()) {
+                    Some((k, v)) => {
+                        stack.push_int(k as isize);
+                        stack.push(v);
+                        false
+                    }
+                    None => {
+                        self.slices.pop();
+                        true
+                    }
                 }
-                None => {
-                    self.slices.pop();
-                    true
-                }
-            },
+            }
             ValueType::Str => match self.strings.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.push_int(k as isize);

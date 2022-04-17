@@ -823,6 +823,14 @@ impl<'a> CodeGen<'a> {
                         (param0t, Some(self.t.tc_type_to_value_type(t)))
                     }
                     Opcode::PANIC => (Some(ValueType::Interface), None),
+                    Opcode::APPEND | Opcode::COPY => {
+                        let (_, t_elem) = self.t.sliceable_expr_value_types(
+                            &params[0],
+                            self.objects,
+                            self.dummy_gcv,
+                        );
+                        (Some(t_elem), None)
+                    }
                     _ => (param0t, None),
                 };
                 let func = current_func_mut!(self);
@@ -930,10 +938,15 @@ impl<'a> CodeGen<'a> {
 
                 // do not pack params if there is ellipsis
                 let ftc = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
-                let func_detail = self.tc_objs.types[ftc].try_as_signature().unwrap();
-                let variadic = func_detail.variadic();
-                let pack = variadic && !ellipsis;
-                current_func_emitter!(self).emit_call(style, pack, pos);
+                let variadic_typ = if !ellipsis {
+                    let meta = self.t.tc_type_to_meta(ftc, self.objects, self.dummy_gcv);
+                    let metas = &self.objects.metas;
+                    let call_meta = metas[meta.key].as_signature();
+                    call_meta.variadic.map(|x| x.1.value_type(metas))
+                } else {
+                    None
+                };
+                current_func_emitter!(self).emit_call(style, variadic_typ, pos);
             }
         }
     }
@@ -1414,7 +1427,9 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         max: &Option<Expr>,
     ) -> Self::Result {
         self.visit_expr(expr);
-        let t = self.t.expr_value_type(expr);
+        let (t0, t1) = self
+            .t
+            .sliceable_expr_value_types(expr, self.objects, self.dummy_gcv);
         let pos = Some(expr.pos(&self.ast_objs));
         match low {
             None => current_func_emitter!(self).emit_push_imm(ValueType::Int, 0, pos),
@@ -1425,10 +1440,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             Some(e) => self.visit_expr(e),
         }
         match max {
-            None => current_func_mut!(self).emit_code_with_type(Opcode::SLICE, t, pos),
+            None => current_func_mut!(self).emit_code_with_type2(Opcode::SLICE, t0, Some(t1), pos),
             Some(e) => {
                 self.visit_expr(e);
-                current_func_mut!(self).emit_code_with_type(Opcode::SLICE_FULL, t, pos);
+                current_func_mut!(self).emit_code_with_type2(Opcode::SLICE_FULL, t0, Some(t1), pos);
             }
         }
     }
@@ -1527,14 +1542,18 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     }
                 }
                 Expr::Index(iexpr) => {
-                    let t0 = self.t.expr_value_type(&iexpr.expr);
+                    let (t0, t2) = self.t.sliceable_expr_value_types(
+                        &iexpr.expr,
+                        self.objects,
+                        self.dummy_gcv,
+                    );
                     let t1 = self.t.expr_value_type(&iexpr.index);
                     self.visit_expr(&iexpr.expr);
                     self.visit_expr(&iexpr.index);
                     let pos = Some(iexpr.index.pos(&self.ast_objs));
                     current_func_mut!(self).emit_inst(
                         Opcode::REF_SLICE_MEMBER,
-                        [Some(t0), Some(t1), None],
+                        [Some(t0), Some(t1), Some(t2)],
                         None,
                         pos,
                     );

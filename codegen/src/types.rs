@@ -154,6 +154,23 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn sliceable_expr_value_types(
+        &mut self,
+        e: &Expr,
+        vm_objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+    ) -> (ValueType, ValueType) {
+        let tc_type = self.expr_tc_type(&e);
+        let meta = self.tc_type_to_meta(tc_type, vm_objs, dummy_gcv);
+        let metas = &vm_objs.metas;
+        match &metas[meta.key] {
+            MetadataType::Array(m, _) => (ValueType::Array, m.value_type(&metas)),
+            MetadataType::Slice(m) => (ValueType::Slice, m.value_type(&metas)),
+            MetadataType::Str(_) => (ValueType::Str, ValueType::Uint8),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn node_meta(
         &mut self,
         id: NodeId,

@@ -17,16 +17,12 @@ impl GcoVec {
         }
     }
 
-    pub fn add_array(&self, arr: &Rc<(ArrayObj, RCount)>) {
+    pub fn add_array(&self, arr: &Rc<(GosArrayObj, RCount)>) {
         self.add_weak(GcWeak::new_array(arr))
     }
 
     pub fn add_closure(&self, cls: &Rc<(ClosureObj, RCount)>) {
         self.add_weak(GcWeak::new_closure(cls))
-    }
-
-    pub fn add_slice(&self, s: &Rc<(SliceObj, RCount)>) {
-        self.add_weak(GcWeak::new_slice(s))
     }
 
     pub fn add_map(&self, m: &Rc<(MapObj, RCount)>) {
@@ -49,9 +45,8 @@ impl GcoVec {
 
 #[derive(Debug, Clone)]
 pub enum GcWeak {
-    Array(Weak<(ArrayObj, RCount)>),
+    Array(Weak<(GosArrayObj, RCount)>),
     Closure(Weak<(ClosureObj, RCount)>),
-    Slice(Weak<(SliceObj, RCount)>),
     Map(Weak<(MapObj, RCount)>),
     Struct(Weak<(StructObj, RCount)>),
     // todo:
@@ -64,16 +59,12 @@ pub enum GcWeak {
 }
 
 impl GcWeak {
-    pub fn new_array(arr: &Rc<(ArrayObj, RCount)>) -> GcWeak {
+    pub fn new_array(arr: &Rc<(GosArrayObj, RCount)>) -> GcWeak {
         GcWeak::Array(Rc::downgrade(arr))
     }
 
     pub fn new_closure(cls: &Rc<(ClosureObj, RCount)>) -> GcWeak {
         GcWeak::Closure(Rc::downgrade(cls))
-    }
-
-    pub fn new_slice(s: &Rc<(SliceObj, RCount)>) -> GcWeak {
-        GcWeak::Slice(Rc::downgrade(s))
     }
 
     pub fn new_map(m: &Rc<(MapObj, RCount)>) -> GcWeak {
@@ -88,15 +79,11 @@ impl GcWeak {
         match &self {
             GcWeak::Array(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::from_array(v)
+                GosValue::from_gos_array(v)
             }),
             GcWeak::Closure(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
                 GosValue::from_closure(Some(v))
-            }),
-            GcWeak::Slice(w) => w.upgrade().map(|v| {
-                v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
-                GosValue::from_slice(Some(v))
             }),
             GcWeak::Map(w) => w.upgrade().map(|v| {
                 v.1.set(i32::try_from(w.strong_count()).unwrap() - 1);
@@ -113,26 +100,15 @@ impl GcWeak {
 fn children_ref_sub_one(val: &GosValue) {
     match val.typ() {
         ValueType::Array => val
-            .as_array()
+            .as_gos_array()
             .0
             .borrow_data_mut()
             .iter()
-            .for_each(|obj| obj.borrow().ref_sub_one()),
+            .for_each(|obj| obj.ref_sub_one()),
         ValueType::Closure => match val.as_closure() {
             Some(cls) => cls.0.ref_sub_one(),
             None => {}
         },
-        ValueType::Slice => {
-            // todo: slice shares data, could use some optimization
-            match val.as_slice() {
-                Some(s) => {
-                    s.0.borrow()
-                        .iter()
-                        .for_each(|obj| obj.borrow().ref_sub_one())
-                }
-                None => {}
-            }
-        }
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
                 k.ref_sub_one();
@@ -153,26 +129,15 @@ fn children_ref_sub_one(val: &GosValue) {
 fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
     match val.typ() {
         ValueType::Array => val
-            .as_array()
+            .as_gos_array()
             .0
             .borrow_data_mut()
             .iter()
-            .for_each(|obj| obj.borrow().mark_dirty(queue)),
+            .for_each(|obj| obj.mark_dirty(queue)),
         ValueType::Closure => match val.as_closure() {
             Some(cls) => cls.0.mark_dirty(queue),
             None => {}
         },
-        ValueType::Slice => {
-            // todo: slice shares data, could use some optimization
-            match val.as_slice() {
-                Some(s) => {
-                    s.0.borrow()
-                        .iter()
-                        .for_each(|obj| obj.borrow().mark_dirty(queue))
-                }
-                None => {}
-            }
-        }
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data().iter().for_each(|(k, v)| {
                 k.mark_dirty(queue);
@@ -193,13 +158,13 @@ fn children_mark_dirty(val: &GosValue, queue: &mut RCQueue) {
 /// break_cycle clears all values held by containers
 fn break_cycle(val: &GosValue) {
     match val.typ() {
-        ValueType::Array => val.as_array().0.borrow_data_mut().clear(),
+        ValueType::Array => val.as_gos_array().0.borrow_data_mut().clear(),
         ValueType::Map => match val.as_map() {
             Some(m) => m.0.borrow_data_mut().clear(),
             None => {}
         },
         ValueType::Struct => val.as_struct().0.borrow_fields_mut().clear(),
-        ValueType::Slice | ValueType::Closure => {}
+        ValueType::Closure => {}
         _ => unreachable!(),
     };
 }

@@ -74,7 +74,7 @@ impl<'a> EntryGen<'a> {
             None,
         );
         emitter.emit_pre_call(None);
-        emitter.emit_call(CallStyle::Default, false, None);
+        emitter.emit_call(CallStyle::Default, None, None);
         emitter.emit_return(None, None);
         *f.as_function()
     }

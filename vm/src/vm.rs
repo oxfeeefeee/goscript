@@ -537,27 +537,32 @@ impl<'a> Fiber<'a> {
                             }
                             ValueType::Str => {
                                 let result = match from {
-                                    ValueType::Slice => match stack.get_slice(index) {
-                                        Some(slice) => match inst.t2() {
-                                            ValueType::Int32 => slice
-                                                .0
-                                                .borrow()
-                                                .iter()
-                                                .map(|x| char_from_i32(*(x.borrow().as_int32())))
-                                                .collect(),
-                                            ValueType::Uint8 => {
+                                    ValueType::Slice => match inst.t2() {
+                                        ValueType::Int32 => {
+                                            match stack.get_slice::<Elem32>(index) {
+                                                Some(slice) => slice
+                                                    .0
+                                                    .borrow()
+                                                    .iter()
+                                                    .map(|x| char_from_i32(x.cell.get() as i32))
+                                                    .collect(),
+                                                None => "".to_owned(),
+                                            }
+                                        }
+                                        ValueType::Uint8 => match stack.get_slice::<Elem8>(index) {
+                                            Some(slice) => {
                                                 let buf: Vec<u8> = slice
                                                     .0
                                                     .borrow()
                                                     .iter()
-                                                    .map(|x| *(x.borrow().as_uint8()))
+                                                    .map(|x| x.cell.get())
                                                     .collect();
                                                 // todo: error handling
                                                 str::from_utf8(&buf).unwrap().to_string()
                                             }
-                                            _ => unreachable!(),
+                                            None => "".to_owned(),
                                         },
-                                        None => "".to_owned(),
+                                        _ => unreachable!(),
                                     },
                                     _ => {
                                         let val = stack.get_mut(index);
@@ -584,7 +589,7 @@ impl<'a> Fiber<'a> {
 
                                     _ => unreachable!(),
                                 };
-                                let v = GosValue::slice_with_data(result, gcv);
+                                let v = GosValue::slice_with_data(result, inst.t2(), gcv);
                                 stack.set(index, v);
                             }
                             ValueType::UnsafePtr => {
@@ -667,20 +672,12 @@ impl<'a> Fiber<'a> {
                         let i = stack.pop_int() as OpIndex;
                         let typ = inst.t0();
                         let arr_or_slice = stack.pop_value();
-                        match typ {
-                            ValueType::Array => stack.push(GosValue::new_pointer(
-                                PointerObj::new_array_member(arr_or_slice, i, gcv),
-                            )),
-                            ValueType::Slice => match arr_or_slice.clone().into_some_slice() {
-                                Ok(_) => stack.push(GosValue::new_pointer(
-                                    PointerObj::SliceMember(arr_or_slice, i),
-                                )),
-                                Err(e) => {
-                                    go_panic_str!(panic, e, frame, code);
-                                }
-                            },
-                            _ => unreachable!(),
-                        };
+                        match PointerObj::new_slice_member(arr_or_slice, i, typ, inst.t2()) {
+                            Ok(p) => stack.push(GosValue::new_pointer(p)),
+                            Err(e) => {
+                                go_panic_str!(panic, e, frame, code)
+                            }
+                        }
                     }
                     Opcode::REF_STRUCT_FIELD => match pop_try_deref_value(stack, inst.t0(), objs) {
                         Ok(target) => {
@@ -731,10 +728,10 @@ impl<'a> Fiber<'a> {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let cls = nframe.closure().clone();
                         let call_style = inst.t0();
-                        let pack = inst.t1() == ValueType::FlagA;
-                        if pack {
+                        let variadic_typ = inst.t1();
+                        if variadic_typ != ValueType::Void {
                             let index = nframe.stack_base + cls.total_param_count(&objs.metas) - 1;
-                            stack.pack_variadic(index, gcv);
+                            stack.pack_variadic(index, variadic_typ, gcv);
                         }
                         match cls {
                             ClosureObj::Gos(gosc) => {
@@ -1012,16 +1009,16 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::RANGE_INIT => {
                         let len = stack.len();
-                        let t = stack.get(len - 1);
+                        let target = stack.get(len - 1);
                         let re = self
                             .rstack
-                            .range_init(&t)
+                            .range_init(target, inst.t0(), inst.t2())
                             .and_then(|_| Ok(stack.pop_value()));
                         panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RANGE => {
                         let offset = inst.imm();
-                        if self.rstack.range_body(inst.t0(), stack) {
+                        if self.rstack.range_body(inst.t0(), inst.t2(), stack) {
                             frame.pc = Stack::offset(frame.pc, offset);
                         }
                     }
@@ -1105,26 +1102,17 @@ impl<'a> Fiber<'a> {
                         let end = stack.pop_int();
                         let begin = stack.pop_int();
                         let result = match inst.t0() {
-                            ValueType::Slice => match stack.pop_some_slice() {
-                                Ok(sl) => {
-                                    if max > sl.0.cap() as isize {
-                                        Err(format!("index {} out of range", max).to_string())
-                                    } else {
-                                        Ok(GosValue::new_slice(sl.0.slice(begin, end, max), gcv))
-                                    }
-                                }
-                                Err(e) => Err(e),
-                            },
+                            ValueType::Slice => {
+                                let s = stack.pop_value();
+                                s.dispatcher_a_s().slice_slice(&s, begin, end, max)
+                            }
                             ValueType::Str => {
                                 let s = stack.pop_str();
                                 Ok(GosValue::from_str(Rc::new(s.slice(begin, end))))
                             }
-                            ValueType::Array => Ok(GosValue::slice_with_array(
-                                stack.pop_value(),
-                                begin,
-                                end,
-                                gcv,
-                            )),
+                            ValueType::Array => {
+                                GosValue::slice_with_array(stack.pop_value(), begin, end, inst.t1())
+                            }
                             _ => unreachable!(),
                         };
 
@@ -1199,17 +1187,17 @@ impl<'a> Fiber<'a> {
                                             val[cur_index as usize] = elem;
                                         }
                                     }
-                                    val
+                                    (val, zero_val.typ())
                                 };
                                 let md = arg.as_metadata();
                                 match &objs.metas[md.key] {
                                     MetadataType::Slice(m) => {
-                                        let val = build_val(m);
-                                        GosValue::slice_with_data(val, gcv)
+                                        let (val, typ) = build_val(m);
+                                        GosValue::slice_with_data(val, typ, gcv)
                                     }
                                     MetadataType::Array(m, _) => {
-                                        let val = build_val(m);
-                                        GosValue::array_with_data(val, gcv)
+                                        let (val, typ) = build_val(m);
+                                        GosValue::array_with_data(val, typ, gcv)
                                     }
                                     MetadataType::Map(_, vm) => {
                                         let map_val = GosValue::map_with_default_val(
@@ -1265,12 +1253,8 @@ impl<'a> Fiber<'a> {
                                     }
                                     _ => unreachable!(),
                                 };
-                                GosValue::slice_with_len(
-                                    len,
-                                    cap,
-                                    &vmeta.zero(&objs.metas, gcv),
-                                    gcv,
-                                )
+                                let zero = vmeta.zero(&objs.metas, gcv);
+                                GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcv)
                             }
                             MetadataType::Map(_, v) => {
                                 let default = v.zero(&objs.metas, gcv);
@@ -1312,9 +1296,9 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::REAL => {
                         let val = match inst.t0() {
-                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().0),
+                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().r),
                             ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_value().as_complex128().0)
+                                GosValue::new_float64(stack.pop_value().as_complex128().r)
                             }
                             _ => unreachable!(),
                         };
@@ -1322,30 +1306,20 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::IMAG => {
                         let val = match inst.t0() {
-                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().1),
+                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().i),
                             ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_value().as_complex128().1)
+                                GosValue::new_float64(stack.pop_value().as_complex128().i)
                             }
                             _ => unreachable!(),
                         };
                         stack.push(val);
                     }
                     Opcode::LEN => {
-                        let l = match inst.t0() {
-                            ValueType::Slice => stack.pop_slice().map_or(0, |x| x.0.len()),
-                            ValueType::Map => stack.pop_map().map_or(0, |x| x.0.len()),
-                            ValueType::Str => stack.pop_str().len(),
-                            ValueType::Channel => stack.pop_channel().map_or(0, |x| x.len()),
-                            _ => unreachable!(),
-                        };
+                        let l = stack.pop_value().len();
                         stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::CAP => {
-                        let l = match inst.t0() {
-                            ValueType::Slice => stack.pop_slice().map_or(0, |x| x.0.cap()),
-                            ValueType::Channel => stack.pop_channel().map_or(0, |x| x.cap()),
-                            _ => unreachable!(),
-                        };
+                        let l = stack.pop_value().cap();
                         stack.push(GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
@@ -1362,28 +1336,18 @@ impl<'a> Fiber<'a> {
                                     .iter()
                                     .map(|x| GosValue::new_uint8(*x))
                                     .collect();
-                                let b_slice = GosValue::slice_with_data(bytes, gcv);
+                                let b_slice =
+                                    GosValue::slice_with_data(bytes, ValueType::Uint8, gcv);
                                 stack.push(b_slice);
                             }
                             _ => {
                                 // pack args into a slice
-                                stack.pack_variadic(index + 1, gcv);
+                                stack.pack_variadic(index + 1, inst.t2(), gcv);
                             }
                         };
-                        let b = stack.pop_slice();
-                        let a = stack.pop_slice();
-                        let result = match b {
-                            Some(y) => match a {
-                                Some(x) => {
-                                    let mut to = x.0.clone();
-                                    to.append(&y.0);
-                                    GosValue::new_slice(to, gcv)
-                                }
-                                None => GosValue::new_slice(SliceObj::clone(&y.0), gcv),
-                            },
-                            None => GosValue::from_slice(None),
-                        };
-                        stack.push(result);
+                        let b = stack.pop_value();
+                        let a = stack.pop_value();
+                        stack.push(dispatcher_a_s_for(inst.t0()).slice_append(a, b));
                     }
                     Opcode::COPY => {
                         let t2 = match inst.t2() {
@@ -1391,25 +1355,28 @@ impl<'a> Fiber<'a> {
                             _ => ValueType::Slice,
                         };
                         let b = stack.pop_value();
-                        let count = match stack.pop_slice() {
-                            Some(left) => match t2 {
-                                ValueType::Str => {
-                                    let bytes: Vec<GosValue> = b
-                                        .as_str()
-                                        .as_bytes()
-                                        .iter()
-                                        .map(|x| GosValue::new_uint8(*x))
-                                        .collect();
-                                    let b_slice = SliceObj::with_data(bytes, gcv);
-                                    left.0.copy_from(&b_slice)
-                                }
-                                ValueType::Slice => match b.as_slice() {
-                                    Some(right) => left.0.copy_from(&right.0),
+                        let a = stack.pop_value();
+                        let count = match t2 {
+                            ValueType::Str => {
+                                let bytes: Vec<GosValue> = b
+                                    .as_str()
+                                    .as_bytes()
+                                    .iter()
+                                    .map(|x| GosValue::new_uint8(*x))
+                                    .collect();
+                                let b_slice = SliceObj::with_array(
+                                    GosValue::array_with_data(bytes, ValueType::Uint8, gcv),
+                                    0,
+                                    -1,
+                                )
+                                .unwrap();
+                                match a.as_slice::<Elem8>() {
+                                    Some(s) => s.0.copy_from(&b_slice),
                                     None => 0,
-                                },
-                                _ => unreachable!(),
-                            },
-                            None => 0,
+                                }
+                            }
+                            ValueType::Slice => dispatcher_a_s_for(inst.t0()).slice_copy_from(a, b),
+                            _ => unreachable!(),
                         };
                         stack.push_int(count as isize);
                     }
@@ -1528,6 +1495,9 @@ impl<'a> GosVM<'a> {
     }
 
     pub fn run(&self) {
+        // Init array/slice dispatcher
+        dispatcher_a_s_for(ValueType::Uint);
+
         let exec = Rc::new(LocalExecutor::new());
         let ctx = Context::new(exec.clone(), &self.code, &self.gcv, self.ffi, self.fs);
         let entry = ctx.new_entry_frame(self.code.entry);
@@ -1554,7 +1524,7 @@ fn char_from_i32(i: i32) -> char {
 }
 
 fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<GosValue> {
-    Ok(v.as_some_pointer()?.deref(stack, &objs.packages))
+    v.as_some_pointer()?.deref(stack, &objs.packages)
 }
 
 #[inline]
@@ -1563,11 +1533,10 @@ fn pop_try_deref_value(
     t: ValueType,
     objs: &VMObjects,
 ) -> RuntimeResult<GosValue> {
-    let v = match t {
+    match t {
         ValueType::Pointer => stack.pop_some_pointer()?.deref(stack, &objs.packages),
-        _ => stack.pop_value(),
-    };
-    Ok(v)
+        _ => Ok(stack.pop_value()),
+    }
 }
 
 #[inline]
@@ -1577,14 +1546,13 @@ fn get_try_deref_value(
     t: ValueType,
     objs: &VMObjects,
 ) -> RuntimeResult<GosValue> {
-    let v = match t {
+    match t {
         ValueType::Pointer => stack
             .get(index)
             .as_some_pointer()?
             .deref(stack, &objs.packages),
-        _ => stack.get(index).clone(),
-    };
-    Ok(v)
+        _ => Ok(stack.get(index).clone()),
+    }
 }
 
 #[inline]

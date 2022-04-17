@@ -1,7 +1,7 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
-use goscript_vm::metadata::Meta;
+use goscript_vm::metadata::{Meta, MetadataType};
 use goscript_vm::objects::*;
 use goscript_vm::value::{GosValue, InterfaceObj, PointerObj, UnsafePtr};
 use std::any::Any;
@@ -150,7 +150,7 @@ impl Reflect {
 
     fn ffi_is_nil(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
         Ok(GosValue::new_bool(
-            arg_as!(&args[0], StdValue)?.val(ctx).is_nil(),
+            arg_as!(&args[0], StdValue)?.val(ctx)?.is_nil(),
         ))
     }
 
@@ -159,7 +159,7 @@ impl Reflect {
     }
 
     fn ffi_map_range_init(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(StdMapIter::map_range(ctx, arg_as!(&args[0], StdValue)?))
+        StdMapIter::map_range(ctx, arg_as!(&args[0], StdValue)?)
     }
 
     fn ffi_map_range_next(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
@@ -182,46 +182,46 @@ impl Reflect {
         Ok(GosValue::new_bool(arg_as!(&args[0], StdValue)?.can_set()))
     }
 
-    fn ffi_set(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
-        arg_as!(&args[0], StdValue)?.set(arg_as!(&args[1], StdValue)?.val(ctx))
+    fn ffi_set(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+        arg_as!(&args[0], StdValue)?.set(ctx, arg_as!(&args[1], StdValue)?.val(ctx)?)
     }
 
-    fn ffi_set_bool(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_bool(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_bool(ctx, val)
     }
 
-    fn ffi_set_string(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_string(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_string(ctx, val)
     }
 
-    fn ffi_set_int(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_int(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_int(ctx, val)
     }
 
-    fn ffi_set_uint(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_uint(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_uint(ctx, val)
     }
 
-    fn ffi_set_float(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_float(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_float(ctx, val)
     }
 
-    fn ffi_set_complex(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_complex(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_complex(ctx, val)
     }
 
-    fn ffi_set_bytes(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_bytes(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_bytes(ctx, val)
     }
 
-    fn ffi_set_pointer(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
+    fn ffi_set_pointer(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
         let (to, val) = unwrap_set_args(&args)?;
         to.set_pointer(ctx, val)
     }
@@ -231,13 +231,20 @@ impl Reflect {
         let arg0 = iter.next();
         let arg1 = iter.next();
         let arg2 = iter.next();
-        let iface = arg0.as_ref().unwrap().as_interface().unwrap();
-        let obj = iface.underlying_value().unwrap();
-        let mut vec = obj.as_slice().unwrap().0.borrow_all_data_mut();
         let a = arg1.as_ref().unwrap().as_int();
         let b = arg2.as_ref().unwrap().as_int();
-        vec.swap(*a as usize, *b as usize);
-        Ok(())
+        let iface = arg0.as_ref().unwrap().as_interface().unwrap();
+        match iface.underlying_value() {
+            Some(obj) => {
+                if obj.typ() == ValueType::Slice {
+                    obj.dispatcher_a_s()
+                        .slice_swap(obj, *a as usize, *b as usize)
+                } else {
+                    Err("reflect swap: not a slice".to_owned())
+                }
+            }
+            None => Err("reflect swap: nil value".to_owned()),
+        }
     }
 }
 
@@ -270,9 +277,9 @@ impl StdValue {
         }
     }
 
-    fn val(&self, ctx: &FfiCallCtx) -> GosValue {
+    fn val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
         match self {
-            Self::Value(v, _) => v.clone(),
+            Self::Value(v, _) => Ok(v.clone()),
             Self::Pointer(p, _, _) => p.deref(&ctx.stack, &ctx.vm_objs.packages),
         }
     }
@@ -291,7 +298,7 @@ impl StdValue {
     }
 
     fn bool_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Bool => Ok(val),
             _ => err_wrong_type!(),
@@ -299,7 +306,7 @@ impl StdValue {
     }
 
     fn int_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Int => Ok(*val.as_int() as i64),
             ValueType::Int8 => Ok(*val.as_int8() as i64),
@@ -312,7 +319,7 @@ impl StdValue {
     }
 
     fn uint_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Uint => Ok(*val.as_uint() as u64),
             ValueType::Uint8 => Ok(*val.as_uint8() as u64),
@@ -325,7 +332,7 @@ impl StdValue {
     }
 
     fn float_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Float32 => Ok((Into::<f32>::into(*val.as_float32()) as f64).into()),
             ValueType::Float64 => Ok(*val.as_float64()),
@@ -335,23 +342,15 @@ impl StdValue {
     }
 
     fn bytes_val(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
-        match val.typ() {
-            ValueType::Slice => {
-                let slice = &val.as_some_slice()?.0;
-                if let Some(v) = slice.get(0) {
-                    if v.typ() != ValueType::Uint8 {
-                        return err_wrong_type!();
-                    }
-                }
-                Ok(val)
-            }
-            _ => err_wrong_type!(),
+        let val = self.val(ctx)?;
+        if val.typ() != ValueType::Slice || val.t_elem() != ValueType::Uint8 {
+            return err_wrong_type!();
         }
+        Ok(val)
     }
 
     fn elem(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Interface => StdValue::value_from_iface(&val),
             ValueType::Pointer => {
@@ -364,7 +363,7 @@ impl StdValue {
     }
 
     fn num_field(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        match self.val(ctx).try_as_struct() {
+        match self.val(ctx)?.try_as_struct() {
             Some(s) => Ok(GosValue::new_int(s.0.borrow_fields().len() as isize)),
             None => err_wrong_type!(),
         }
@@ -372,7 +371,7 @@ impl StdValue {
 
     fn field(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
         let i = *ival.as_int() as usize;
-        let val = self.val(ctx);
+        let val = self.val(ctx)?;
         match val.typ() {
             ValueType::Struct => {
                 let fields = &val.as_struct().0.borrow_fields();
@@ -399,26 +398,23 @@ impl StdValue {
     fn index(&self, ctx: &FfiCallCtx, ival: &GosValue) -> RuntimeResult<GosValue> {
         let i = *ival.as_int() as i32;
         let iusize = i as usize;
-        let container = self.val(ctx);
-        match container.typ() {
-            ValueType::Array => match container.as_array().0.len() > iusize {
-                true => {
-                    let p = Box::new(PointerObj::new_array_member(container, i, ctx.gcv));
-                    let metas = &ctx.vm_objs.metas;
-                    let array_meta = metas[self.meta().unwrap().underlying(metas).key].as_array();
-                    Ok(wrap_ptr_std_val(p, Some(array_meta.0.clone())))
-                }
-                false => err_index_oor!(),
-            },
-            ValueType::Slice => match container.as_some_slice()?.0.len() > iusize {
-                true => {
-                    let p = Box::new(PointerObj::SliceMember(container.clone(), i));
-                    let metas = &ctx.vm_objs.metas;
-                    let slice_meta = metas[self.meta().unwrap().underlying(metas).key].as_slice();
-                    Ok(wrap_ptr_std_val(p, Some(slice_meta.clone())))
-                }
-                false => err_index_oor!(),
-            },
+        let container = self.val(ctx)?;
+        let t = container.typ();
+        match t {
+            ValueType::Array | ValueType::Slice => {
+                let metas = &ctx.vm_objs.metas;
+                let elem_meta = match &metas[self.meta().unwrap().underlying(metas).key] {
+                    MetadataType::Array(m, _) | MetadataType::Slice(m) => m,
+                    _ => unreachable!(),
+                };
+                let p = Box::new(PointerObj::new_slice_member(
+                    container,
+                    i,
+                    t,
+                    elem_meta.value_type(metas),
+                )?);
+                Ok(wrap_ptr_std_val(p, Some(elem_meta.clone())))
+            }
             ValueType::Str => match container.as_str().len() > iusize {
                 true => Ok(wrap_std_val(
                     GosValue::new_uint8(*container.as_str().get_byte(iusize).unwrap()),
@@ -431,16 +427,8 @@ impl StdValue {
     }
 
     fn len(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        let val = self.val(ctx);
-        match val.typ() {
-            ValueType::Array => Ok(val.as_array().0.len()),
-            ValueType::Slice => Ok(val.as_slice().map_or(0, |x| x.0.len())),
-            ValueType::Str => Ok(val.as_str().len()),
-            ValueType::Channel => Ok(val.as_channel().map_or(0, |x| x.len())),
-            ValueType::Map => Ok(val.as_map().map_or(0, |x| x.0.len())),
-            _ => err_wrong_type!(),
-        }
-        .map(|x| GosValue::new_int(x as isize))
+        let val = self.val(ctx)?;
+        Ok(GosValue::new_int(val.len() as isize))
     }
 
     fn can_addr(&self) -> bool {
@@ -462,51 +450,35 @@ impl StdValue {
         }
     }
 
-    fn set(&self, val: GosValue) -> RuntimeResult<()> {
+    fn set(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let err = Err("reflect: value is not settable".to_owned());
         match self {
             Self::Value(_, _) => err,
-            Self::Pointer(p, _, exported) => match p as &PointerObj {
-                PointerObj::SliceMember(s, i) => {
-                    let vborrow = s.as_slice().unwrap().0.borrow();
-                    *vborrow[s.as_slice().unwrap().0.begin() + *i as usize].borrow_mut() = val;
-                    Ok(())
+            Self::Pointer(p, _, exported) => {
+                if exported.unwrap_or(false) {
+                    err
+                } else {
+                    p.set_pointee(&val, ctx.stack, &ctx.vm_objs.packages, &ctx.gcv)
                 }
-                PointerObj::StructField(s, i) => {
-                    if exported.unwrap() {
-                        s.as_struct().0.borrow_fields_mut()[*i as usize] = val;
-                        Ok(())
-                    } else {
-                        err
-                    }
-                }
-                PointerObj::UpVal(uv) => match &mut uv.inner.borrow_mut() as &mut UpValueState {
-                    UpValueState::Open(_) => err,
-                    UpValueState::Closed(c) => {
-                        *c = val;
-                        Ok(())
-                    }
-                },
-                _ => err,
-            },
+            }
         }
     }
 
-    fn set_bool(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_bool(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Bool => self.set(val),
+            ValueType::Bool => self.set(ctx, val),
             _ => err_set_val_type!(),
         }
     }
 
-    fn set_string(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_string(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Str => self.set(val),
+            ValueType::Str => self.set(ctx, val),
             _ => err_set_val_type!(),
         }
     }
 
-    fn set_int(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_int(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let ival = *val.as_int64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
             ValueType::Int => Ok(GosValue::new_int(ival as isize)),
@@ -516,10 +488,10 @@ impl StdValue {
             ValueType::Int64 => Ok(GosValue::new_int64(ival as i64)),
             _ => err_set_val_type!(),
         }?;
-        self.set(val)
+        self.set(ctx, val)
     }
 
-    fn set_uint(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_uint(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let ival = *val.as_uint64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
             ValueType::Uint => Ok(GosValue::new_uint(ival as usize)),
@@ -529,33 +501,33 @@ impl StdValue {
             ValueType::Uint64 => Ok(GosValue::new_uint64(ival as u64)),
             _ => err_set_val_type!(),
         }?;
-        self.set(val)
+        self.set(ctx, val)
     }
 
-    fn set_float(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_float(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let fval = *val.as_float64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
             ValueType::Float32 => Ok(GosValue::new_float32((fval.into_inner() as f32).into())),
             ValueType::Float64 => Ok(GosValue::new_float64(fval.into())),
             _ => err_set_val_type!(),
         }?;
-        self.set(val)
+        self.set(ctx, val)
     }
 
-    fn set_complex(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_complex(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let c = val.as_complex128();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
             ValueType::Complex64 => Ok(GosValue::new_complex64(
-                (Into::<f64>::into(c.0) as f32).into(),
-                (Into::<f64>::into(c.1) as f32).into(),
+                (Into::<f64>::into(c.r) as f32).into(),
+                (Into::<f64>::into(c.i) as f32).into(),
             )),
-            ValueType::Complex128 => Ok(GosValue::new_complex128(c.0, c.1)),
+            ValueType::Complex128 => Ok(GosValue::new_complex128(c.r, c.i)),
             _ => err_set_val_type!(),
         }?;
-        self.set(val)
+        self.set(ctx, val)
     }
 
-    fn set_bytes(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_bytes(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         let metas = &ctx.vm_objs.metas;
         let meta = self.settable_meta()?;
         if meta.value_type(metas) != ValueType::Slice {
@@ -565,16 +537,16 @@ impl StdValue {
             if elem_meta.value_type(metas) != ValueType::Uint8 {
                 err_wrong_type!()
             } else {
-                self.set(val)
+                self.set(ctx, val)
             }
         }
     }
 
-    fn set_pointer(&self, ctx: &FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
+    fn set_pointer(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         if self.settable_meta()? != &ctx.vm_objs.s_meta.unsafe_ptr {
             err_wrong_type!()
         } else {
-            self.set(val)
+            self.set(ctx, val)
         }
     }
 }
@@ -671,8 +643,8 @@ impl UnsafePtr for StdMapIter {
 }
 
 impl StdMapIter {
-    fn map_range(ctx: &FfiCallCtx, v: &StdValue) -> GosValue {
-        let val = v.val(ctx);
+    fn map_range(ctx: &FfiCallCtx, v: &StdValue) -> RuntimeResult<GosValue> {
+        let val = v.val(ctx)?;
         let mref = val.as_map().unwrap().0.borrow_data();
         let iter: GosHashMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
         let metas = &ctx.vm_objs.metas;
@@ -686,7 +658,7 @@ impl StdMapIter {
             key_meta: k,
             val_meta: v,
         };
-        GosValue::new_unsafe_ptr(smi)
+        Ok(GosValue::new_unsafe_ptr(smi))
     }
 
     fn next(&self) -> GosValue {
