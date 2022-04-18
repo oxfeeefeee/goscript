@@ -444,23 +444,21 @@ impl StdValue {
             Self::Pointer(p, _, exported) => match p as &PointerObj {
                 PointerObj::SliceMember(_, _) => true,
                 PointerObj::StructField(_, _) => exported.unwrap(),
-                PointerObj::UpVal(uv) => !uv.is_open(),
+                PointerObj::UpVal(_) => true,
                 _ => false,
             },
         }
     }
 
     fn set(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
-        let err = Err("reflect: value is not settable".to_owned());
+        if !self.can_set() {
+            return Err("reflect: value is not settable".to_owned());
+        }
         match self {
-            Self::Value(_, _) => err,
-            Self::Pointer(p, _, exported) => {
-                if exported.unwrap_or(false) {
-                    err
-                } else {
-                    p.set_pointee(&val, ctx.stack, &ctx.vm_objs.packages, &ctx.gcv)
-                }
+            Self::Pointer(p, _, _) => {
+                p.set_pointee(&val, ctx.stack, &ctx.vm_objs.packages, &ctx.gcv)
             }
+            _ => unreachable!(),
         }
     }
 
