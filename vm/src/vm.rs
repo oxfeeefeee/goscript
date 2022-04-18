@@ -14,7 +14,6 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::str;
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -35,7 +34,7 @@ macro_rules! go_panic {
 
 macro_rules! go_panic_str {
     ($panic:ident, $msg:expr, $frame:ident, $code:ident) => {{
-        let str_val = GosValue::new_str($msg);
+        let str_val = GosValue::with_str($msg);
         let iface = GosValue::empty_iface_with_val(str_val);
         let mut data = PanicData::new(iface);
         data.call_stack.push(($frame.func(), $frame.pc - 1));
@@ -47,7 +46,7 @@ macro_rules! go_panic_str {
 macro_rules! panic_if_err {
     ($result:expr, $panic:ident, $frame:ident, $code:ident) => {{
         if let Err(e) = $result {
-            go_panic_str!($panic, e, $frame, $code);
+            go_panic_str!($panic, &e, $frame, $code);
         }
     }};
 }
@@ -419,7 +418,7 @@ impl<'a> Fiber<'a> {
                                     target.as_struct().0.borrow_fields()[ind as usize].clone();
                                 stack.push(val);
                             }
-                            Err(e) => go_panic_str!(panic, e, frame, code),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::BIND_METHOD => {
@@ -436,7 +435,7 @@ impl<'a> Fiber<'a> {
                                     gcv,
                                 ));
                             }
-                            Err(e) => go_panic_str!(panic, e, frame, code),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::BIND_INTERFACE_METHOD => {
@@ -445,7 +444,7 @@ impl<'a> Fiber<'a> {
                         match bind_method(&val, index, stack, objs, gcv) {
                             Ok(cls) => stack.push(cls),
                             Err(e) => {
-                                go_panic_str!(panic, e, frame, code);
+                                go_panic_str!(panic, &e, frame, code);
                             }
                         }
                     }
@@ -459,7 +458,7 @@ impl<'a> Fiber<'a> {
                             Ok(target) => {
                                 stack.store_field(&target, &key, rhs_index, inst.t0(), gcv);
                             }
-                            Err(e) => go_panic_str!(panic, e, frame, code),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::STORE_STRUCT_FIELD => {
@@ -472,7 +471,7 @@ impl<'a> Fiber<'a> {
                                     &mut target.as_struct().0.borrow_fields_mut()[imm as usize];
                                 stack.store_val(field, rhs_index, inst.t0(), gcv);
                             }
-                            Err(e) => go_panic_str!(panic, e, frame, code),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::LOAD_PKG_FIELD => {
@@ -535,62 +534,53 @@ impl<'a> Fiber<'a> {
                                 ));
                                 stack.set(index, val);
                             }
-                            ValueType::Str => {
+                            ValueType::String => {
                                 let result = match from {
                                     ValueType::Slice => match inst.t2() {
                                         ValueType::Int32 => {
-                                            match stack.get_slice::<Elem32>(index) {
+                                            let s = match stack.get_slice::<Elem32>(index) {
                                                 Some(slice) => slice
                                                     .0
-                                                    .borrow()
+                                                    .as_rust_slice()
                                                     .iter()
                                                     .map(|x| char_from_i32(x.cell.get() as i32))
                                                     .collect(),
                                                 None => "".to_owned(),
-                                            }
+                                            };
+                                            GosValue::with_str(&s)
                                         }
                                         ValueType::Uint8 => match stack.get_slice::<Elem8>(index) {
-                                            Some(slice) => {
-                                                let buf: Vec<u8> = slice
-                                                    .0
-                                                    .borrow()
-                                                    .iter()
-                                                    .map(|x| x.cell.get())
-                                                    .collect();
-                                                // todo: error handling
-                                                str::from_utf8(&buf).unwrap().to_string()
-                                            }
-                                            None => "".to_owned(),
+                                            Some(slice) => GosValue::new_string(slice.0.clone()),
+                                            None => GosValue::with_str(""),
                                         },
                                         _ => unreachable!(),
                                     },
                                     _ => {
                                         let val = stack.get_mut(index);
                                         val.cast_copyable(from, ValueType::Uint32);
-                                        char_from_u32(*val.as_uint32()).to_string()
+                                        GosValue::with_str(
+                                            &char_from_u32(*val.as_uint32()).to_string(),
+                                        )
                                     }
                                 };
-                                stack.set(index, GosValue::new_str(result));
+                                stack.set(index, result);
                             }
                             ValueType::Slice => {
-                                let from = stack.get_str(index);
+                                let from = stack.get_string(index);
                                 let result = match inst.t2() {
-                                    ValueType::Int32 => from
-                                        .as_str()
-                                        .chars()
-                                        .map(|x| GosValue::new_int32(x as i32))
-                                        .collect(),
-
-                                    ValueType::Uint8 => from
-                                        .as_str()
-                                        .bytes()
-                                        .map(|x| GosValue::new_uint8(x))
-                                        .collect(),
-
+                                    ValueType::Int32 => {
+                                        let data = StrUtil::as_str(from)
+                                            .chars()
+                                            .map(|x| GosValue::new_int32(x as i32))
+                                            .collect();
+                                        GosValue::slice_with_data(data, inst.t2(), gcv)
+                                    }
+                                    ValueType::Uint8 => {
+                                        GosValue::new_slice(from.clone(), ValueType::Uint8)
+                                    }
                                     _ => unreachable!(),
                                 };
-                                let v = GosValue::slice_with_data(result, inst.t2(), gcv);
-                                stack.set(index, v);
+                                stack.set(index, result);
                             }
                             ValueType::UnsafePtr => {
                                 unimplemented!()
@@ -675,7 +665,7 @@ impl<'a> Fiber<'a> {
                         match PointerObj::new_slice_member(arr_or_slice, i, typ, inst.t2()) {
                             Ok(p) => stack.push(GosValue::new_pointer(p)),
                             Err(e) => {
-                                go_panic_str!(panic, e, frame, code)
+                                go_panic_str!(panic, &e, frame, code)
                             }
                         }
                     }
@@ -686,7 +676,7 @@ impl<'a> Fiber<'a> {
                                 inst.imm(),
                             )));
                         }
-                        Err(e) => go_panic_str!(panic, e, frame, code),
+                        Err(e) => go_panic_str!(panic, &e, frame, code),
                     },
                     Opcode::REF_PKG_MEMBER => {
                         let pkg = read_imm_key!(code, frame, objs);
@@ -809,7 +799,7 @@ impl<'a> Fiber<'a> {
                                 match returns {
                                     Ok(result) => stack.append_vec(result),
                                     Err(e) => {
-                                        go_panic_str!(panic, e, frame, code);
+                                        go_panic_str!(panic, &e, frame, code);
                                     }
                                 }
                             }
@@ -1003,7 +993,7 @@ impl<'a> Fiber<'a> {
                                 frame.pc = Stack::offset(frame.pc, (blocks - 1) + block_offset);
                             }
                             Err(e) => {
-                                go_panic_str!(panic, e, frame, code);
+                                go_panic_str!(panic, &e, frame, code);
                             }
                         }
                     }
@@ -1058,7 +1048,7 @@ impl<'a> Fiber<'a> {
                             },
                             Err(e) => Some(e),
                         } {
-                            go_panic_str!(panic, err, frame, code);
+                            go_panic_str!(panic, &err, frame, code);
                         }
                     }
                     Opcode::TYPE => {
@@ -1106,19 +1096,18 @@ impl<'a> Fiber<'a> {
                                 let s = stack.pop_value();
                                 s.dispatcher_a_s().slice_slice(&s, begin, end, max)
                             }
-                            ValueType::Str => {
-                                let s = stack.pop_str();
-                                Ok(GosValue::from_str(Rc::new(s.slice(begin, end))))
+                            ValueType::String => {
+                                GosValue::slice_string(&stack.pop_value(), begin, end, max)
                             }
                             ValueType::Array => {
-                                GosValue::slice_with_array(stack.pop_value(), begin, end, inst.t1())
+                                GosValue::slice_array(stack.pop_value(), begin, end, inst.t1())
                             }
                             _ => unreachable!(),
                         };
 
                         match result {
                             Ok(v) => stack.push(v),
-                            Err(e) => go_panic_str!(panic, e, frame, code),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::LITERAL => {
@@ -1329,15 +1318,13 @@ impl<'a> Fiber<'a> {
                             ValueType::FlagB => {} // default case, nothing to do
                             ValueType::FlagC => {
                                 // special case, appending string as bytes
-                                let bytes: Vec<GosValue> = stack
-                                    .pop_str()
-                                    .as_str()
-                                    .as_bytes()
-                                    .iter()
-                                    .map(|x| GosValue::new_uint8(*x))
-                                    .collect();
+                                let s = stack.pop_string();
+                                let arr = GosValue::new_non_gc_array(
+                                    ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
+                                    ValueType::Uint8,
+                                );
                                 let b_slice =
-                                    GosValue::slice_with_data(bytes, ValueType::Uint8, gcv);
+                                    GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap();
                                 stack.push(b_slice);
                             }
                             _ => {
@@ -1351,27 +1338,16 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::COPY => {
                         let t2 = match inst.t2() {
-                            ValueType::FlagC => ValueType::Str,
+                            ValueType::FlagC => ValueType::String,
                             _ => ValueType::Slice,
                         };
                         let b = stack.pop_value();
                         let a = stack.pop_value();
                         let count = match t2 {
-                            ValueType::Str => {
-                                let bytes: Vec<GosValue> = b
-                                    .as_str()
-                                    .as_bytes()
-                                    .iter()
-                                    .map(|x| GosValue::new_uint8(*x))
-                                    .collect();
-                                let b_slice = SliceObj::with_array(
-                                    GosValue::array_with_data(bytes, ValueType::Uint8, gcv),
-                                    0,
-                                    -1,
-                                )
-                                .unwrap();
+                            ValueType::String => {
+                                let string = b.as_string();
                                 match a.as_slice::<Elem8>() {
-                                    Some(s) => s.0.copy_from(&b_slice),
+                                    Some(s) => s.0.copy_from(&string),
                                     None => 0,
                                 }
                             }
@@ -1403,8 +1379,7 @@ impl<'a> Fiber<'a> {
                     Opcode::ASSERT => {
                         let ok = stack.pop_bool();
                         if !ok {
-                            let msg = "Opcode::ASSERT: not true!".to_owned();
-                            go_panic_str!(panic, msg, frame, code);
+                            go_panic_str!(panic, "Opcode::ASSERT: not true!", frame, code);
                         }
                     }
                     Opcode::FFI => {
@@ -1413,12 +1388,12 @@ impl<'a> Fiber<'a> {
                         let index = Stack::offset(stack.len(), -total_params);
                         let itype = stack.get(index).clone();
                         let name = stack.get(index + 1).clone();
-                        let name_str = name.as_str().as_str();
                         let ptypes = &objs.metas[meta.as_metadata().key]
                             .as_signature()
                             .params_type[2..];
                         let params = stack.pop_value_n(ptypes.len());
-                        let v = match self.context.ffi_factory.create_by_name(name_str, params) {
+                        let name_str = StrUtil::as_str(name.as_string());
+                        let v = match self.context.ffi_factory.create_by_name(&name_str, params) {
                             Ok(v) => {
                                 let meta = itype.as_metadata().underlying(&objs.metas).clone();
                                 let info = objs.metas[meta.key].as_interface().iface_methods_info();
@@ -1427,11 +1402,11 @@ impl<'a> Fiber<'a> {
                                 )))
                             }
                             Err(e) => {
-                                go_panic_str!(panic, e, frame, code);
+                                go_panic_str!(panic, &e, frame, code);
                                 continue;
                             }
                         };
-                        stack.pop_str();
+                        stack.pop_string();
                         stack.pop_metadata();
                         stack.push(v);
                     }
@@ -1457,8 +1432,8 @@ impl<'a> Fiber<'a> {
                         // a hack to make the test case fail
                         let iface = p.msg.as_interface().unwrap();
                         let val = iface.underlying_value().unwrap();
-                        if val.typ() == ValueType::Str
-                            && val.as_str().as_str().starts_with("Opcode::ASSERT")
+                        if val.typ() == ValueType::String
+                            && StrUtil::as_str(val.as_string()).starts_with("Opcode::ASSERT")
                         {
                             panic!("ASSERT");
                         }

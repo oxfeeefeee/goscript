@@ -166,7 +166,7 @@ impl<'a> TypeLookup<'a> {
         match &metas[meta.key] {
             MetadataType::Array(m, _) => (ValueType::Array, m.value_type(&metas)),
             MetadataType::Slice(m) => (ValueType::Slice, m.value_type(&metas)),
-            MetadataType::Str(_) => (ValueType::Str, ValueType::Uint8),
+            MetadataType::Str(_) => (ValueType::String, ValueType::Uint8),
             _ => unreachable!(),
         }
     }
@@ -425,7 +425,7 @@ impl<'a> TypeLookup<'a> {
                 (GosValue::new_complex128(cr, ci), ValueType::Complex128)
             }
             BasicType::Str | BasicType::UntypedString => {
-                (GosValue::new_str(val.str_as_string()), ValueType::Str)
+                (GosValue::with_str(&val.str_as_string()), ValueType::String)
             }
             BasicType::UnsafePointer => (
                 GosValue::new_nil(ValueType::UnsafePtr),
@@ -573,7 +573,7 @@ impl<'a> TypeLookup<'a> {
                 BasicType::Float64 | BasicType::UntypedFloat => ValueType::Float64,
                 BasicType::Complex64 => ValueType::Complex64,
                 BasicType::Complex128 => ValueType::Complex128,
-                BasicType::Str | BasicType::UntypedString => ValueType::Str,
+                BasicType::Str | BasicType::UntypedString => ValueType::String,
                 BasicType::UnsafePointer => ValueType::UnsafePtr,
                 BasicType::UntypedNil => ValueType::Void,
                 _ => {

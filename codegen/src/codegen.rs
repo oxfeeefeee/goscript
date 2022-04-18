@@ -801,7 +801,7 @@ impl<'a> CodeGen<'a> {
                 let bf = self.tc_objs.universe().builtins()[&builtin];
                 let param_count = params.len() as OpIndex;
                 let special_case = (opcode == Opcode::APPEND || opcode == Opcode::COPY)
-                    && param_last_t.map_or(false, |x| x == ValueType::Str);
+                    && param_last_t.map_or(false, |x| x == ValueType::String);
                 let (t_variadic, count) = match special_case {
                     true => (Some(ValueType::FlagC), Some(0)), // special case,
                     false => match bf.variadic {
@@ -904,10 +904,10 @@ impl<'a> CodeGen<'a> {
                         | ValueType::Float64
                         | ValueType::Complex64
                         | ValueType::Complex128
-                        | ValueType::Str
+                        | ValueType::String
                         | ValueType::Slice => {
                             let t_extra = match typ_to {
-                                ValueType::Str => (typ_from == ValueType::Slice).then(|| {
+                                ValueType::String => (typ_from == ValueType::Slice).then(|| {
                                     self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()
                                 }),
                                 ValueType::Slice => {

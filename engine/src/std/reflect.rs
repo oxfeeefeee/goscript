@@ -415,9 +415,10 @@ impl StdValue {
                 )?);
                 Ok(wrap_ptr_std_val(p, Some(elem_meta.clone())))
             }
-            ValueType::Str => match container.as_str().len() > iusize {
+            // specs: a[x] is the non-constant byte value at index x and the type of a[x] is byte
+            ValueType::String => match container.as_string().len() > iusize {
                 true => Ok(wrap_std_val(
-                    GosValue::new_uint8(*container.as_str().get_byte(iusize).unwrap()),
+                    GosValue::new_uint8(StrUtil::index_elem(container.as_string(), iusize)),
                     Some(ctx.vm_objs.s_meta.mint8),
                 )),
                 false => err_index_oor!(),
@@ -471,7 +472,7 @@ impl StdValue {
 
     fn set_string(&self, ctx: &mut FfiCallCtx, val: GosValue) -> RuntimeResult<()> {
         match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Str => self.set(ctx, val),
+            ValueType::String => self.set(ctx, val),
             _ => err_set_val_type!(),
         }
     }
@@ -610,7 +611,7 @@ impl StdType {
             ValueType::Pointer => GosKind::Ptr,
             ValueType::UnsafePtr => GosKind::UnsafePtr,
             ValueType::Slice => GosKind::Slice,
-            ValueType::Str => GosKind::String,
+            ValueType::String => GosKind::String,
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };

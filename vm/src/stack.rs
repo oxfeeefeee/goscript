@@ -218,8 +218,8 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_str(&mut self) -> Rc<StringObj> {
-        self.pop_value().into_str()
+    pub fn pop_string(&mut self) -> Rc<StringObj> {
+        self.pop_value().into_string()
     }
 
     #[inline]
@@ -308,8 +308,8 @@ impl Stack {
     }
 
     #[inline]
-    pub fn get_str(&mut self, index: usize) -> &StringObj {
-        self.get(index).as_str()
+    pub fn get_string(&mut self, index: usize) -> &StringObj {
+        self.get(index).as_string()
     }
 
     #[inline]
@@ -734,6 +734,13 @@ impl RangeStack {
         }
     }
 
+    /// range_init creates iters and transmute them to 'static, then save them on stacks.
+    /// it's safe because they are held only during 'ranging', which can never be longer
+    /// than their real lifetime
+    ///
+    /// But it's not rust-safe just go-safe. because the Ref is dropped inside the transmute
+    /// that means if you write to the container we are ranging, it'll not be stopped by
+    /// the borrow checker. Which is not safe to Rust, but it's exactly what Go does.
     pub fn range_init(
         &mut self,
         target: &GosValue,
@@ -750,8 +757,10 @@ impl RangeStack {
                 let iter = dispatcher_a_s_for(t_elem).slice_iter(&target)?;
                 self.slices.push(iter);
             }
-            ValueType::Str => {
-                let iter = unsafe { mem::transmute(target.as_str().iter().enumerate()) };
+            ValueType::String => {
+                let iter = unsafe {
+                    mem::transmute(StrUtil::as_str(target.as_string()).chars().enumerate())
+                };
                 self.strings.push(iter);
             }
             _ => unreachable!(),
@@ -785,7 +794,7 @@ impl RangeStack {
                     }
                 }
             }
-            ValueType::Str => match self.strings.last_mut().unwrap().next() {
+            ValueType::String => match self.strings.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.push_int(k as isize);
                     stack.push_int(v as isize);

@@ -10,7 +10,6 @@ use crate::value::GosElem;
 use slotmap::{new_key_type, DenseSlotMap, KeyData};
 use std::any::Any;
 use std::cell::{Cell, Ref, RefCell, RefMut};
-use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::convert::TryInto;
@@ -18,9 +17,9 @@ use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::ops::Index;
 use std::ptr::{self};
 use std::rc::{Rc, Weak};
+use std::str;
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -73,101 +72,6 @@ impl VMObjects {
             packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             s_meta: md,
         }
-    }
-}
-
-// ----------------------------------------------------------------------------
-// StringObj
-
-pub type StringIter<'a> = std::str::Chars<'a>;
-
-pub type StringEnumIter<'a> = std::iter::Enumerate<StringIter<'a>>;
-
-#[derive(Debug)]
-pub struct StringObj {
-    data: Rc<String>,
-    begin: usize,
-    end: usize,
-}
-
-impl StringObj {
-    #[inline]
-    pub fn with_str(s: String) -> StringObj {
-        let len = s.len();
-        StringObj {
-            data: Rc::new(s),
-            begin: 0,
-            end: len,
-        }
-    }
-
-    #[inline]
-    pub fn as_str(&self) -> &str {
-        &self.data.as_ref()[self.begin..self.end]
-    }
-
-    #[inline]
-    pub fn as_bytes(&self) -> &[u8] {
-        self.as_str().as_bytes()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.end - self.begin
-    }
-
-    #[inline]
-    pub fn get_byte(&self, i: usize) -> Option<&u8> {
-        self.as_str().as_bytes().get(i)
-    }
-
-    pub fn slice(&self, begin: isize, end: isize) -> StringObj {
-        let self_end = self.len() as isize + 1;
-        let bi = begin as usize;
-        let ei = ((self_end + end) % self_end) as usize;
-        StringObj {
-            data: Rc::clone(&self.data),
-            begin: bi,
-            end: ei,
-        }
-    }
-
-    pub fn iter(&self) -> StringIter {
-        self.as_str().chars()
-    }
-}
-
-impl Clone for StringObj {
-    #[inline]
-    fn clone(&self) -> Self {
-        StringObj {
-            data: Rc::clone(&self.data),
-            begin: self.begin,
-            end: self.end,
-        }
-    }
-}
-
-impl PartialEq for StringObj {
-    #[inline]
-    fn eq(&self, other: &StringObj) -> bool {
-        self.as_str().eq(other.as_str())
-    }
-}
-
-impl Eq for StringObj {}
-
-impl PartialOrd for StringObj {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for StringObj {
-    #[inline]
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.as_str().cmp(other.as_str())
     }
 }
 
@@ -310,6 +214,12 @@ where
         }
     }
 
+    pub fn with_raw_data(data: Vec<T>) -> ArrayObj<T> {
+        ArrayObj {
+            vec: RefCell::new(data),
+        }
+    }
+
     #[inline(always)]
     pub fn len(&self) -> usize {
         self.borrow_data().len()
@@ -323,6 +233,11 @@ where
     #[inline(always)]
     pub fn borrow_data(&self) -> std::cell::Ref<Vec<T>> {
         self.vec.borrow()
+    }
+
+    #[inline(always)]
+    pub fn index_elem(&self, i: usize) -> T {
+        self.borrow_data()[i].clone()
     }
 
     #[inline(always)]
@@ -475,9 +390,32 @@ where
         self.cap_end.get() - self.begin()
     }
 
+    #[inline]
+    pub fn as_rust_slice(&self) -> Ref<[T]> {
+        Ref::map(self.borrow_all_data(), |x| {
+            &x[self.begin.get()..self.end.get()]
+        })
+    }
+
+    /// get_array_equivalent returns the underlying array and mapped index
+    #[inline]
+    pub fn get_array_equivalent(&self, i: usize) -> (&GosValue, usize) {
+        (self.array(), self.begin() + i)
+    }
+
     #[inline(always)]
-    pub fn borrow(&self) -> SliceRef<T> {
-        SliceRef::new(self)
+    pub fn index_elem(&self, i: usize) -> T {
+        self.array_obj().index_elem(self.begin() + i)
+    }
+
+    #[inline(always)]
+    pub fn get(&self, i: usize, t: ValueType) -> RuntimeResult<GosValue> {
+        self.array_obj().get(self.begin() + i, t)
+    }
+
+    #[inline(always)]
+    pub fn set(&self, i: usize, val: &GosValue) -> RuntimeResult<()> {
+        self.array_obj().set(i, val)
     }
 
     #[inline]
@@ -502,9 +440,9 @@ where
         let after_end_len = data.len() - self.end();
         if after_end_len <= other.len() {
             data.truncate(self.end());
-            data.extend_from_slice(other.borrow().as_slice());
+            data.extend_from_slice(&other.as_rust_slice());
         } else {
-            data[self.end()..new_end].clone_from_slice(other.borrow().as_slice());
+            data[self.end()..new_end].clone_from_slice(&other.as_rust_slice());
         }
         drop(data);
         *self.end.get_mut() = new_end;
@@ -515,13 +453,13 @@ where
 
     #[inline]
     pub fn copy_from(&self, other: &SliceObj<T>) -> usize {
-        let mut data = self.borrow_all_data_mut();
-        let ref_other = other.borrow();
-        let data_other = ref_other.as_slice();
+        let data = &mut self.borrow_all_data_mut()[..];
+        //let ref_other = other.borrow();
+        let data_other = other.as_rust_slice();
         let (left, right) = match self.len() >= other.len() {
             true => (
                 &mut data[self.begin()..self.begin() + other.len()],
-                data_other,
+                &data_other[..],
             ),
             false => (
                 &mut data[self.begin()..self.end()],
@@ -530,22 +468,6 @@ where
         };
         left.clone_from_slice(right);
         right.len()
-    }
-
-    /// get_array_equivalent returns the underlying array and mapped index
-    #[inline]
-    pub fn get_array_equivalent(&self, i: usize) -> (&GosValue, usize) {
-        (self.array(), self.begin() + i)
-    }
-
-    #[inline(always)]
-    pub fn get(&self, i: usize, t: ValueType) -> RuntimeResult<GosValue> {
-        self.array_obj().get(self.begin() + i, t)
-    }
-
-    #[inline(always)]
-    pub fn set(&self, i: usize, val: &GosValue) -> RuntimeResult<()> {
-        self.array_obj().set(i, val)
     }
 
     #[inline]
@@ -569,7 +491,7 @@ where
 
     #[inline]
     pub fn get_vec(&self, t: ValueType) -> Vec<GosValue> {
-        self.borrow()
+        self.as_rust_slice()
             .iter()
             .map(|x: &T| x.clone().into_value(t))
             .collect()
@@ -626,7 +548,7 @@ where
 
     pub fn display_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_char('[')?;
-        for (i, e) in self.borrow().iter().enumerate() {
+        for (i, e) in self.as_rust_slice().iter().enumerate() {
             if i > 0 {
                 f.write_char(' ')?;
             }
@@ -644,54 +566,57 @@ impl<T> PartialEq for SliceObj<T> {
 
 impl<T> Eq for SliceObj<T> {}
 
-pub struct SliceRef<'a, T>
-where
-    T: Element,
-{
-    vec_ref: Ref<'a, Vec<T>>,
-    begin: usize,
-    end: usize,
-}
-
 pub type SliceIter<'a, T> = std::slice::Iter<'a, T>;
 
 pub type SliceEnumIter<'a, T> = std::iter::Enumerate<SliceIter<'a, T>>;
 
-impl<'a, T> SliceRef<'a, T>
-where
-    T: Element,
-{
-    pub fn new(s: &SliceObj<T>) -> SliceRef<T> {
-        SliceRef {
-            vec_ref: s.borrow_all_data(),
-            begin: s.begin(),
-            end: s.end(),
-        }
+// ----------------------------------------------------------------------------
+// StringObj
+
+pub type StringIter<'a> = std::str::Chars<'a>;
+
+pub type StringEnumIter<'a> = std::iter::Enumerate<StringIter<'a>>;
+
+pub type StringObj = SliceObj<Elem8>;
+
+pub struct StrUtil;
+
+impl StrUtil {
+    #[inline]
+    pub fn with_str(s: &str) -> StringObj {
+        let buf: Vec<Elem8> = unsafe { std::mem::transmute(s.as_bytes().to_vec()) };
+        StrUtil::buf_into_string(buf)
+    }
+
+    /// It's safe because strings are readonly
+    /// https://stackoverflow.com/questions/50431702/is-it-safe-and-defined-behavior-to-transmute-between-a-t-and-an-unsafecellt
+    /// https://doc.rust-lang.org/src/core/str/converts.rs.html#173
+    #[inline]
+    pub fn as_str(this: &StringObj) -> Ref<str> {
+        unsafe { std::mem::transmute(this.as_rust_slice()) }
     }
 
     #[inline]
-    pub fn iter(&self) -> SliceIter<T> {
-        self.vec_ref[self.begin..self.end].iter()
+    pub fn index(this: &StringObj, i: usize) -> RuntimeResult<GosValue> {
+        this.get(i, ValueType::Uint8)
     }
 
     #[inline]
-    pub fn get(&self, i: usize) -> Option<&T> {
-        self.vec_ref.get(self.begin + i)
+    pub fn index_elem(this: &StringObj, i: usize) -> u8 {
+        this.index_elem(i).into_inner()
     }
 
-    pub fn as_slice(&self) -> &[T] {
-        &self.vec_ref[self.begin..self.end]
+    #[inline]
+    pub fn add(a: &StringObj, b: &StringObj) -> StringObj {
+        let mut buf = a.as_rust_slice().to_vec();
+        buf.extend_from_slice(&b.as_rust_slice());
+        StrUtil::buf_into_string(buf)
     }
-}
 
-impl<'a, T> Index<usize> for SliceRef<'a, T>
-where
-    T: Element,
-{
-    type Output = T;
-
-    fn index(&self, i: usize) -> &T {
-        self.get(i).as_ref().unwrap()
+    #[inline]
+    fn buf_into_string(buf: Vec<Elem8>) -> StringObj {
+        let arr = GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), ValueType::Uint8);
+        SliceObj::with_array(arr, 0, -1).unwrap()
     }
 }
 
@@ -979,7 +904,7 @@ impl PointerObj {
         i: OpIndex,
         t_elem: ValueType,
     ) -> RuntimeResult<PointerObj> {
-        let slice = GosValue::slice_with_array(val, 0, -1, t_elem)?;
+        let slice = GosValue::slice_array(val, 0, -1, t_elem)?;
         // todo: index check!
         Ok(PointerObj::SliceMember(slice, i))
     }

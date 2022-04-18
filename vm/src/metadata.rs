@@ -57,7 +57,7 @@ impl StaticMeta {
             mfloat64: Meta::with_type(MetadataType::Float64, objs),
             mcomplex64: Meta::with_type(MetadataType::Complex64, objs),
             mcomplex128: Meta::with_type(MetadataType::Complex128, objs),
-            mstr: Meta::with_type(MetadataType::Str(GosValue::new_str("".to_owned())), objs),
+            mstr: Meta::with_type(MetadataType::Str(GosValue::with_str("")), objs),
             unsafe_ptr: Meta::with_type(MetadataType::UnsafePtr, objs),
             default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
             empty_iface: Meta::with_type(
@@ -214,7 +214,7 @@ impl Meta {
                     MetadataType::Complex64 => ValueType::Complex64,
                     MetadataType::Complex128 => ValueType::Complex128,
                     MetadataType::UnsafePtr => ValueType::UnsafePtr,
-                    MetadataType::Str(_) => ValueType::Str,
+                    MetadataType::Str(_) => ValueType::String,
                     MetadataType::Struct(_, _) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
                     MetadataType::Array(_, _) => ValueType::Array,

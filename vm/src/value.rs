@@ -101,7 +101,7 @@ macro_rules! binary_op_int_float_str {
             ValueType::Uint64 => union_op_wrap!($a, $b, uint64, $op),
             ValueType::Float32 => union_op!($a, $b, float32, $op),
             ValueType::Float64 => union_op!($a, $b, float64, $op),
-            ValueType::Str => $a.add_str($b),
+            ValueType::String => $a.add_str($b),
             _ => unreachable!(),
         }
     };
@@ -280,7 +280,7 @@ pub union ValueData {
     package: PackageKey,
     metadata: *mut Meta, // not visible to users
     complex128: *mut Complex128,
-    str: *const StringObj, // "String" is taken
+    string: *const StringObj,
     array: *const (GosArrayObj, RCount),
     structure: *const (StructObj, RCount),
     pointer: *mut PointerObj,
@@ -503,8 +503,8 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_str(&self) -> &StringObj {
-        unsafe { &self.str.as_ref().unwrap() }
+    pub fn as_string(&self) -> &StringObj {
+        unsafe { &self.string.as_ref().unwrap() }
     }
 
     #[inline]
@@ -623,9 +623,8 @@ impl ValueData {
 
     #[inline]
     pub fn add_str(&self, b: &ValueData) -> ValueData {
-        let mut s = self.as_str().as_str().to_string();
-        s.push_str(b.as_str().as_str());
-        ValueData::new_str(s)
+        let s = StrUtil::add(self.as_string(), b.as_string());
+        ValueData::new_string(s)
     }
 
     #[inline]
@@ -884,7 +883,7 @@ impl ValueData {
             ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
             ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
             ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
-            ValueType::Str => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_str()),
+            ValueType::String => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_string()),
             ValueType::Array => dispatcher_a_s_for(t_elem).array_debug_fmt(self, f),
             ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
             ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
@@ -925,9 +924,9 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_str(s: Rc<StringObj>) -> ValueData {
+    fn from_string(s: Rc<StringObj>) -> ValueData {
         ValueData {
-            str: Rc::into_raw(s),
+            string: Rc::into_raw(s),
         }
     }
 
@@ -1009,8 +1008,8 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_str(s: String) -> ValueData {
-        ValueData::from_str(Rc::new(StringObj::with_str(s)))
+    fn new_string(s: StringObj) -> ValueData {
+        ValueData::from_string(Rc::new(s))
     }
 
     #[inline]
@@ -1022,6 +1021,16 @@ impl ValueData {
         if T::need_gc() {
             gcv.add_array(&ValueData::from_array(rc.clone()).into_array::<GosElem>());
         }
+        ValueData::from_array(rc)
+    }
+
+    #[inline]
+    fn new_non_gc_array<T>(arr: ArrayObj<T>) -> ValueData
+    where
+        T: Element,
+    {
+        debug_assert!(!T::need_gc());
+        let rc = Rc::new((arr, Cell::new(0)));
         ValueData::from_array(rc)
     }
 
@@ -1089,8 +1098,8 @@ impl ValueData {
     }
 
     #[inline]
-    fn into_str(self) -> Rc<StringObj> {
-        unsafe { Rc::from_raw(self.str) }
+    fn into_string(self) -> Rc<StringObj> {
+        unsafe { Rc::from_raw(self.string) }
     }
 
     #[inline]
@@ -1147,8 +1156,8 @@ impl ValueData {
             ValueType::Complex128 => {
                 ValueData::from_complex128(Box::new(self.as_complex128().clone()))
             }
-            ValueType::Str => unsafe {
-                Rc::increment_strong_count(self.str);
+            ValueType::String => unsafe {
+                Rc::increment_strong_count(self.string);
                 self.copy()
             },
             ValueType::Array => unsafe {
@@ -1234,8 +1243,8 @@ impl ValueData {
             ValueType::Complex128 => {
                 self.copy().into_complex128();
             }
-            ValueType::Str => {
-                self.copy().into_str();
+            ValueType::String => {
+                self.copy().into_string();
             }
             ValueType::Array => {
                 dispatcher_a_s_for(t_elem).array_drop_data(self);
@@ -1420,8 +1429,13 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_str(s: String) -> GosValue {
-        GosValue::new(ValueType::Str, ValueData::new_str(s))
+    pub fn new_string(s: StringObj) -> GosValue {
+        GosValue::new(ValueType::String, ValueData::new_string(s))
+    }
+
+    #[inline]
+    pub fn with_str(s: &str) -> GosValue {
+        GosValue::new_string(StrUtil::with_str(s))
     }
 
     #[inline]
@@ -1430,6 +1444,15 @@ impl GosValue {
         T: Element,
     {
         let data = ValueData::new_array(obj, gcv);
+        GosValue::with_elem_type(ValueType::Array, t_elem, data)
+    }
+
+    #[inline]
+    pub fn new_non_gc_array<T>(obj: ArrayObj<T>, t_elem: ValueType) -> GosValue
+    where
+        T: Element,
+    {
+        let data = ValueData::new_non_gc_array(obj);
         GosValue::with_elem_type(ValueType::Array, t_elem, data)
     }
 
@@ -1495,17 +1518,13 @@ impl GosValue {
         t_elem: ValueType,
         gcv: &GcoVec,
     ) -> GosValue {
-        if t_elem == ValueType::Void {
-            panic!("qqq");
-        }
+        debug_assert!(t_elem != ValueType::Void);
         dispatcher_a_s_for(t_elem).array_with_size(size, cap, val, gcv)
     }
 
     #[inline]
     pub fn array_with_data(data: Vec<GosValue>, t_elem: ValueType, gcv: &GcoVec) -> GosValue {
-        if t_elem == ValueType::Void {
-            panic!("qqq");
-        }
+        debug_assert!(t_elem != ValueType::Void);
         dispatcher_a_s_for(t_elem).array_with_data(data, gcv)
     }
 
@@ -1521,7 +1540,7 @@ impl GosValue {
             panic!("qqq");
         }
         let arr = GosValue::array_with_size(size, cap, val, t_elem, gcv);
-        GosValue::slice_with_array(arr, 0, size as isize, t_elem).unwrap()
+        GosValue::slice_array(arr, 0, size as isize, t_elem).unwrap()
     }
 
     #[inline]
@@ -1531,17 +1550,17 @@ impl GosValue {
         }
         let len = data.len();
         let arr = GosValue::array_with_data(data, t_elem, gcv);
-        GosValue::slice_with_array(arr, 0, len as isize, t_elem).unwrap()
+        GosValue::slice_array(arr, 0, len as isize, t_elem).unwrap()
     }
 
     #[inline]
-    pub fn slice_with_array(
+    pub fn slice_array(
         arr: GosValue,
         begin: isize,
         end: isize,
         t_elem: ValueType,
     ) -> RuntimeResult<GosValue> {
-        dispatcher_a_s_for(t_elem).slice_with_array(arr, begin, end)
+        dispatcher_a_s_for(t_elem).slice_array(arr, begin, end)
     }
 
     #[inline]
@@ -1572,8 +1591,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn from_str(s: Rc<StringObj>) -> GosValue {
-        GosValue::new(ValueType::Str, ValueData::from_str(s))
+    pub fn from_string(s: Rc<StringObj>) -> GosValue {
+        GosValue::new(ValueType::String, ValueData::from_string(s))
     }
 
     #[inline]
@@ -1630,10 +1649,10 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_str(mut self) -> Rc<StringObj> {
-        debug_assert!(self.typ == ValueType::Str);
+    pub fn into_string(mut self) -> Rc<StringObj> {
+        debug_assert!(self.typ == ValueType::String);
         self.typ = ValueType::Void;
-        self.data.copy().into_str()
+        self.data.copy().into_string()
     }
 
     #[inline]
@@ -1856,9 +1875,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_str(&self) -> &StringObj {
-        debug_assert!(self.typ == ValueType::Str);
-        self.data.as_str()
+    pub fn as_string(&self) -> &StringObj {
+        debug_assert!(self.typ == ValueType::String);
+        self.data.as_string()
     }
 
     #[inline]
@@ -2025,6 +2044,17 @@ impl GosValue {
         Ok(iface.underlying_value().map(|x| x.clone()))
     }
 
+    #[inline]
+    pub fn slice_string(
+        s: &GosValue,
+        begin: isize,
+        end: isize,
+        max: isize,
+    ) -> RuntimeResult<GosValue> {
+        Ok(GosValue::new_string(s.as_string().slice(begin, end, max)?))
+    }
+
+    #[inline]
     pub fn identical(&self, other: &GosValue) -> bool {
         self.typ() == other.typ() && self == other
     }
@@ -2037,12 +2067,9 @@ impl GosValue {
                 let index = ind.as_index();
                 self.dispatcher_a_s().slice_get(self, index)
             }
-            ValueType::Str => {
+            ValueType::String => {
                 let index = ind.as_index();
-                self.as_str().get_byte(index).map_or_else(
-                    || Err(format!("index {} out of range", index)),
-                    |x| Ok(GosValue::new_int(*x as isize)),
-                )
+                StrUtil::index(self.as_string(), index)
             }
             ValueType::Array => {
                 let index = ind.as_index();
@@ -2060,10 +2087,7 @@ impl GosValue {
                 let ind = GosValue::new_int(i as isize);
                 Ok(self.as_some_map()?.0.get(&ind, gcv).0.clone())
             }
-            ValueType::Str => self.as_str().get_byte(i).map_or_else(
-                || Err(format!("index {} out of range", i)),
-                |x| Ok(GosValue::new_int((*x).into())),
-            ),
+            ValueType::String => StrUtil::index(self.as_string(), i),
             ValueType::Array => self.dispatcher_a_s().array_get(self, i),
             _ => {
                 unreachable!();
@@ -2092,7 +2116,7 @@ impl GosValue {
                 None => 0,
             },
             ValueType::Map => self.as_map().map_or(0, |x| x.0.len()),
-            ValueType::Str => self.as_str().len(),
+            ValueType::String => self.as_string().len(),
             ValueType::Channel => self.as_channel().map_or(0, |x| x.len()),
             _ => unreachable!(),
         }
@@ -2234,7 +2258,9 @@ impl PartialEq for GosValue {
                 let y = b.as_complex128();
                 x.r == y.r && x.i == y.i
             }
-            (ValueType::Str, ValueType::Str) => self.as_str() == b.as_str(),
+            (ValueType::String, ValueType::String) => {
+                *StrUtil::as_str(self.as_string()) == *StrUtil::as_str(b.as_string())
+            }
             (ValueType::Array, ValueType::Array) => {
                 self.dispatcher_a_s().array_eq(self.data(), b.data())
             }
@@ -2282,7 +2308,7 @@ impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self.typ {
             _ if self.typ.copyable() => self.as_uint().hash(state),
-            ValueType::Str => self.as_str().as_str().hash(state),
+            ValueType::String => StrUtil::as_str(self.as_string()).hash(state),
             ValueType::Array => self.dispatcher_a_s().array_hash(self, state),
             ValueType::Complex128 => {
                 let c = self.as_complex128();
@@ -2326,7 +2352,9 @@ impl Ord for GosValue {
             (ValueType::Uint64, ValueType::Uint64) => self.as_uint64().cmp(b.as_uint64()),
             (ValueType::Float32, ValueType::Float32) => self.as_float32().cmp(b.as_float32()),
             (ValueType::Float64, ValueType::Float64) => self.as_float64().cmp(b.as_float64()),
-            (ValueType::Str, ValueType::Str) => self.as_str().cmp(b.as_str()),
+            (ValueType::String, ValueType::String) => {
+                StrUtil::as_str(self.as_string()).cmp(&StrUtil::as_str(b.as_string()))
+            }
             _ => {
                 unreachable!()
             }
@@ -2362,7 +2390,7 @@ impl Display for GosValue {
                 let c = self.as_complex128();
                 write!(f, "({}, {})", c.r, c.i)
             }
-            ValueType::Str => f.write_str(self.as_str().as_str()),
+            ValueType::String => f.write_str(&StrUtil::as_str(self.as_string())),
             ValueType::Array => self.dispatcher_a_s().array_display_fmt(self.data(), f),
             ValueType::Struct => write!(f, "{}", self.as_struct().0),
             ValueType::Pointer => match self.as_pointer() {
@@ -2480,6 +2508,15 @@ where
     pub cell: Cell<T>,
 }
 
+impl<T> CellElem<T>
+where
+    T: Copy + PartialEq,
+{
+    pub fn into_inner(self) -> T {
+        self.cell.into_inner()
+    }
+}
+
 pub type Elem8 = CellElem<u8>;
 pub type Elem16 = CellElem<u16>;
 pub type Elem32 = CellElem<u32>;
@@ -2585,8 +2622,6 @@ pub trait Dispatcher {
 
     fn array_with_data(&self, data: Vec<GosValue>, gcv: &GcoVec) -> GosValue;
 
-    fn slice_with_array(&self, arr: GosValue, begin: isize, end: isize) -> RuntimeResult<GosValue>;
-
     fn array_copy_semantic(&self, vdata: &ValueData, gcv: &GcoVec) -> ValueData;
 
     fn slice_copy_semantic(&self, vdata: &ValueData) -> ValueData;
@@ -2621,6 +2656,8 @@ pub trait Dispatcher {
         end: isize,
         max: isize,
     ) -> RuntimeResult<GosValue>;
+
+    fn slice_array(&self, arr: GosValue, begin: isize, end: isize) -> RuntimeResult<GosValue>;
 
     fn slice_append(&self, this: GosValue, other: GosValue) -> GosValue;
 
@@ -2676,19 +2713,6 @@ macro_rules! define_dispatcher {
             #[inline]
             fn array_with_data(&self, data: Vec<GosValue>, gcv: &GcoVec) -> GosValue {
                 GosValue::new_array(ArrayObj::<$elem>::with_data(data), self.typ, gcv)
-            }
-
-            #[inline]
-            fn slice_with_array(
-                &self,
-                arr: GosValue,
-                begin: isize,
-                end: isize,
-            ) -> RuntimeResult<GosValue> {
-                Ok(GosValue::new_slice::<$elem>(
-                    SliceObj::with_array(arr, begin, end)?,
-                    self.typ,
-                ))
             }
 
             #[inline]
@@ -2783,6 +2807,19 @@ macro_rules! define_dispatcher {
             }
 
             #[inline]
+            fn slice_array(
+                &self,
+                arr: GosValue,
+                begin: isize,
+                end: isize,
+            ) -> RuntimeResult<GosValue> {
+                Ok(GosValue::new_slice::<$elem>(
+                    SliceObj::with_array(arr, begin, end)?,
+                    self.typ,
+                ))
+            }
+
+            #[inline]
             fn slice_append(&self, this: GosValue, other: GosValue) -> GosValue {
                 let a = this.as_slice::<$elem>();
                 let b = other.as_slice::<$elem>();
@@ -2834,8 +2871,8 @@ macro_rules! define_dispatcher {
                 &self,
                 slice: &GosValue,
             ) -> RuntimeResult<SliceEnumIter<'static, AnyElem>> {
-                let s = slice.as_some_slice::<$elem>()?.0.borrow();
-                Ok(unsafe { std::mem::transmute(s.iter().enumerate()) })
+                let s = &slice.as_some_slice::<$elem>()?.0;
+                Ok(unsafe { std::mem::transmute(s.as_rust_slice().iter().enumerate()) })
             }
 
             #[inline]
@@ -2934,7 +2971,7 @@ pub fn dispatcher_a_s_for(t: ValueType) -> &'static Box<dyn Dispatcher> {
                         typ: ValueType::Complex128,
                     }),
                     Box::new(DispatcherGos {
-                        typ: ValueType::Str,
+                        typ: ValueType::String,
                     }),
                     Box::new(DispatcherGos {
                         typ: ValueType::Array,
@@ -3000,9 +3037,9 @@ mod test {
         dbg!(mem::size_of::<Cell<u8>>());
         dbg!(mem::size_of::<RefCell<u8>>());
 
-        let s = GosValue::new_str("aaa".to_owned());
+        let s = GosValue::with_str("aaa");
         dbg!(s.data());
-        let s2 = s.clone().into_str();
+        let s2 = s.clone().into_string();
         dbg!(s2);
     }
 }

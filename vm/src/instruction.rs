@@ -254,7 +254,7 @@ pub enum ValueType {
     Package, //COPYABLE_END
     Metadata,
     Complex128,
-    Str,
+    String,
     Array,
     Struct,
     Pointer,
@@ -461,13 +461,13 @@ mod test {
     fn test_instruction() {
         let mut i = Instruction::new(
             Opcode::ADD,
-            Some(ValueType::Str),
+            Some(ValueType::String),
             Some(ValueType::Closure),
             Some(ValueType::Int),
             Some(-99),
         );
         assert_eq!(i.op(), Opcode::ADD);
-        assert_eq!(i.t0(), ValueType::Str);
+        assert_eq!(i.t0(), ValueType::String);
         assert_eq!(i.t1(), ValueType::Closure);
         assert_eq!(i.t2(), ValueType::Int);
         assert_eq!(i.imm(), -99);
@@ -485,7 +485,7 @@ mod test {
         assert_eq!(i.t2_as_index(), -128);
         let _ = i.set_t2_with_index(90);
         assert_eq!(i.t2_as_index(), 90);
-        assert_eq!(i.t0(), ValueType::Str);
+        assert_eq!(i.t0(), ValueType::String);
         assert_eq!(i.t1(), ValueType::Closure);
         assert_ne!(i.t2(), ValueType::Int);
         assert_eq!(i.imm824().0, 127);
