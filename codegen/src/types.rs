@@ -161,7 +161,8 @@ impl<'a> TypeLookup<'a> {
         dummy_gcv: &mut GcoVec,
     ) -> (ValueType, ValueType) {
         let tc_type = self.expr_tc_type(&e);
-        let meta = self.tc_type_to_meta(tc_type, vm_objs, dummy_gcv);
+        let typ = self.tc_objs.types[tc_type].underlying().unwrap_or(tc_type);
+        let meta = self.tc_type_to_meta(typ, vm_objs, dummy_gcv);
         let metas = &vm_objs.metas;
         match &metas[meta.key] {
             MetadataType::Array(m, _) => (ValueType::Array, m.value_type(&metas)),
@@ -599,12 +600,14 @@ impl<'a> TypeLookup<'a> {
 
     fn range_tc_types(&self, typ: TCTypeKey) -> [TCTypeKey; 3] {
         let t_int = self.tc_objs.universe().types()[&BasicType::Int];
+        let typ = self.tc_objs.types[typ].underlying().unwrap_or(typ);
         match &self.tc_objs.types[typ] {
             Type::Basic(detail) => match detail.typ() {
                 BasicType::Str | BasicType::UntypedString => [typ, t_int, t_int],
                 _ => unreachable!(),
             },
             Type::Slice(detail) => [typ, t_int, detail.elem()],
+            Type::Array(detail) => [typ, t_int, detail.elem()],
             Type::Map(detail) => [typ, detail.key(), detail.elem()],
             _ => {
                 dbg!(&self.tc_objs.types[typ]);

@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"path"
+	"path"
 )
 
 type PathTest struct {
@@ -59,10 +59,10 @@ var cleantests = []PathTest{
 }
 
 func main() {
-	/*
+	
 	for _, test := range cleantests {
         assert(path.Clean(test.path) == test.result)
         assert(path.Clean(test.result) == test.result)
 	}
-	*/
+	
 }

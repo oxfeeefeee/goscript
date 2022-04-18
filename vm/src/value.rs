@@ -2671,9 +2671,12 @@ pub trait Dispatcher {
 
     fn slice_set(&self, to: &GosValue, val: &GosValue, i: usize) -> RuntimeResult<()>;
 
-    fn slice_iter(&self, slice: &GosValue) -> RuntimeResult<SliceEnumIter<'static, AnyElem>>;
+    fn array_slice_iter(&self, val: &GosValue) -> RuntimeResult<SliceEnumIter<'static, AnyElem>>;
 
-    fn slice_next(&self, iter: &mut SliceEnumIter<'static, AnyElem>) -> Option<(usize, GosValue)>;
+    fn array_slice_next(
+        &self,
+        iter: &mut SliceEnumIter<'static, AnyElem>,
+    ) -> Option<(usize, GosValue)>;
 
     fn slice_swap(&self, slice: &GosValue, i: usize, j: usize) -> RuntimeResult<()>;
 }
@@ -2867,16 +2870,20 @@ macro_rules! define_dispatcher {
             }
 
             #[inline]
-            fn slice_iter(
+            fn array_slice_iter(
                 &self,
-                slice: &GosValue,
+                val: &GosValue,
             ) -> RuntimeResult<SliceEnumIter<'static, AnyElem>> {
-                let s = &slice.as_some_slice::<$elem>()?.0;
-                Ok(unsafe { std::mem::transmute(s.as_rust_slice().iter().enumerate()) })
+                let rust_slice = match val.typ() {
+                    ValueType::Slice => val.as_some_slice::<$elem>()?.0.as_rust_slice(),
+                    ValueType::Array => val.as_array::<$elem>().0.as_rust_slice(),
+                    _ => unreachable!(),
+                };
+                Ok(unsafe { std::mem::transmute(rust_slice.iter().enumerate()) })
             }
 
             #[inline]
-            fn slice_next(
+            fn array_slice_next(
                 &self,
                 iter: &mut SliceEnumIter<'static, AnyElem>,
             ) -> Option<(usize, GosValue)> {

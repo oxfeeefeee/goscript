@@ -107,6 +107,19 @@ func ret() *int {
 }
 
 
+func ret2() (*int, *int) {
+    i := 666
+    return &i, &i
+}
+
+
+func test_ret2() {
+    i, j := ret2()
+    *i = 888
+    assert(*j == 888)
+}
+
+
 func main() {
     a := 1
     b := &a
@@ -115,4 +128,6 @@ func main() {
     assert(*ret() + 1 == 667)
 
     test()
+
+    test_ret2()
 }

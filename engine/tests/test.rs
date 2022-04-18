@@ -137,8 +137,8 @@ fn test_pkg() {
 }
 
 #[test]
-fn test_type() {
-    let err_cnt = run("./tests/group1/type.gos", true);
+fn test_type1() {
+    let err_cnt = run("./tests/group1/type1.gos", true);
     assert!(err_cnt == 0);
 }
 
@@ -167,8 +167,8 @@ fn test_for() {
 }
 
 #[test]
-fn test_interface() {
-    let err_cnt = run("./tests/group1/interface.gos", true);
+fn test_interface1() {
+    let err_cnt = run("./tests/group1/interface1.gos", true);
     assert!(err_cnt == 0);
 }
 
@@ -351,6 +351,14 @@ fn test_std_bytes() {
     time_test!();
 
     let err_cnt = run("./tests/std/bytes.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
+fn test_std_strings() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/strings.gos", false);
     assert!(err_cnt == 0);
 }
 

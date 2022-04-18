@@ -738,7 +738,7 @@ impl RangeStack {
     /// it's safe because they are held only during 'ranging', which can never be longer
     /// than their real lifetime
     ///
-    /// But it's not rust-safe just go-safe. because the Ref is dropped inside the transmute
+    /// But it's not rust-safe just go-safe. because the Ref is dropped inside the transmute.
     /// that means if you write to the container we are ranging, it'll not be stopped by
     /// the borrow checker. Which is not safe to Rust, but it's exactly what Go does.
     pub fn range_init(
@@ -753,8 +753,8 @@ impl RangeStack {
                 let iter = unsafe { mem::transmute(map.iter()) };
                 self.maps.push(iter);
             }
-            ValueType::Slice => {
-                let iter = dispatcher_a_s_for(t_elem).slice_iter(&target)?;
+            ValueType::Array | ValueType::Slice => {
+                let iter = dispatcher_a_s_for(t_elem).array_slice_iter(&target)?;
                 self.slices.push(iter);
             }
             ValueType::String => {
@@ -781,8 +781,8 @@ impl RangeStack {
                     true
                 }
             },
-            ValueType::Slice => {
-                match dispatcher_a_s_for(t_elem).slice_next(self.slices.last_mut().unwrap()) {
+            ValueType::Array | ValueType::Slice => {
+                match dispatcher_a_s_for(t_elem).array_slice_next(self.slices.last_mut().unwrap()) {
                     Some((k, v)) => {
                         stack.push_int(k as isize);
                         stack.push(v);

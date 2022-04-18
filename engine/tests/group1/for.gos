@@ -244,6 +244,15 @@ FOR1:
     assert(total == 109)
 }
 
+func range_array() {
+    s2 := [3]string{"a", "b", "c"}
+    t := ""
+    for _, s := range s2 {
+        t += s
+    }
+    assert(t == "abc")
+}
+
 
 func main() {
    f1()
@@ -251,6 +260,8 @@ func main() {
    f3()
 
    range_set()
+
+   range_array()
 
    break_cont()
    break_cont_2()

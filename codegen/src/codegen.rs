@@ -905,7 +905,8 @@ impl<'a> CodeGen<'a> {
                         | ValueType::Complex64
                         | ValueType::Complex128
                         | ValueType::String
-                        | ValueType::Slice => {
+                        | ValueType::Slice
+                        | ValueType::UnsafePtr => {
                             let t_extra = match typ_to {
                                 ValueType::String => (typ_from == ValueType::Slice).then(|| {
                                     self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()

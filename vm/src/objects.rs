@@ -235,6 +235,11 @@ where
         self.vec.borrow()
     }
 
+    #[inline]
+    pub fn as_rust_slice(&self) -> Ref<[T]> {
+        Ref::map(self.borrow_data(), |x| &x[..])
+    }
+
     #[inline(always)]
     pub fn index_elem(&self, i: usize) -> T {
         self.borrow_data()[i].clone()
@@ -1156,7 +1161,7 @@ impl PointerHandle {
 // ----------------------------------------------------------------------------
 // ClosureObj
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
@@ -1171,7 +1176,8 @@ impl Eq for ValueDesc {}
 impl PartialEq for ValueDesc {
     #[inline]
     fn eq(&self, other: &ValueDesc) -> bool {
-        self.index == other.index
+        self.stack_base + self.index == other.stack_base + other.index
+            && self.stack.ptr_eq(&other.stack)
     }
 }
 
@@ -1200,8 +1206,13 @@ impl ValueDesc {
     }
 
     #[inline]
+    pub fn abs_index(&self) -> usize {
+        (self.stack_base + self.index) as usize
+    }
+
+    #[inline]
     pub fn load(&self, stack: &Stack) -> GosValue {
-        let index = (self.stack_base + self.index) as usize;
+        let index = self.abs_index();
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
             stack.get(index).clone()
@@ -1212,7 +1223,7 @@ impl ValueDesc {
 
     #[inline]
     pub fn store(&self, val: GosValue, stack: &mut Stack) {
-        let index = (self.stack_base + self.index) as usize;
+        let index = self.abs_index();
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
             stack.set(index, val);
@@ -1222,7 +1233,18 @@ impl ValueDesc {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl std::fmt::Debug for ValueDesc {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("ValueDesc")
+            .field("type", &self.typ)
+            .field("is_up_value", &self.is_up_value)
+            .field("index", &self.abs_index())
+            .field("stack", &self.stack.as_ptr())
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub enum UpValueState {
     /// Parent CallFrame is still alive, pointing to a local variable
     Open(ValueDesc), // (what func is the var defined, the index of the var)
@@ -1230,7 +1252,16 @@ pub enum UpValueState {
     Closed(GosValue),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+impl std::fmt::Debug for UpValueState {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match &self {
+            Self::Open(desc) => write!(f, "UpValue::Open(  {:#?} )", desc),
+            Self::Closed(v) => write!(f, "UpValue::Closed(  {:#018x} )", v.data().as_uint()),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct UpValue {
     pub inner: Rc<RefCell<UpValueState>>,
 }
@@ -1306,12 +1337,35 @@ impl UpValue {
     }
 }
 
+impl Eq for UpValue {}
+
+impl PartialEq for UpValue {
+    #[inline]
+    fn eq(&self, b: &UpValue) -> bool {
+        let state_a: &UpValueState = &self.inner.borrow();
+        let state_b: &UpValueState = &b.inner.borrow();
+        match (state_a, state_b) {
+            (UpValueState::Closed(va), UpValueState::Closed(vb)) => {
+                if va.typ().copyable() {
+                    Rc::ptr_eq(&self.inner, &b.inner)
+                } else {
+                    va.data().as_addr() == vb.data().as_addr()
+                }
+            }
+            (UpValueState::Open(da), UpValueState::Open(db)) => {
+                da.abs_index() == db.abs_index() && Weak::ptr_eq(&da.stack, &db.stack)
+            }
+            _ => false,
+        }
+    }
+}
+
 impl Hash for UpValue {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         let b: &UpValueState = &self.inner.borrow();
         match b {
-            UpValueState::Open(desc) => desc.index.hash(state),
+            UpValueState::Open(desc) => desc.abs_index().hash(state),
             UpValueState::Closed(_) => Rc::as_ptr(&self.inner).hash(state),
         }
     }
