@@ -262,11 +262,6 @@ where
     }
 
     #[inline]
-    pub fn set_from(&self, other: &ArrayObj<T>) {
-        *self.borrow_data_mut() = other.borrow_data().clone()
-    }
-
-    #[inline]
     pub fn size_of_data(&self) -> usize {
         std::mem::size_of::<T>() * self.len()
     }
@@ -354,13 +349,6 @@ where
             array: arr,
             phantom: PhantomData,
         })
-    }
-
-    pub fn set_from(&self, other: &SliceObj<T>) {
-        self.begin.set(other.begin());
-        self.end.set(other.end());
-        self.cap_end.set(other.cap_end.get());
-        self.array_obj().set_from(other.array_obj());
     }
 
     /// Get a reference to the slice obj's array.
@@ -873,19 +861,16 @@ impl ChannelObj {
 // ----------------------------------------------------------------------------
 // PointerObj
 
-/// Logically there are 4 types of pointers, they point to:
+/// There are 4 types of pointers, they point to:
 /// - local
 /// - slice member
 /// - struct field
 /// - package member
-/// and for pointers to locals, the default way of handling it is to use "UpValue"
-/// (PointerObj::UpVal). Struct/Map/Slice are optimizations for this type, when
-/// the pointee has a "real" pointer
-///
+/// References to outer function's local vars and pointers to local vars are all
+/// UpValues
 
 #[derive(Debug, Clone)]
 pub enum PointerObj {
-    Default(RefCell<GosValue>),
     UpVal(UpValue),
     SliceMember(GosValue, OpIndex),
     StructField(GosValue, OpIndex),
@@ -894,13 +879,8 @@ pub enum PointerObj {
 
 impl PointerObj {
     #[inline]
-    pub fn try_new_local(val: &GosValue) -> Option<PointerObj> {
-        match val.typ() {
-            ValueType::Struct | ValueType::Array | ValueType::Slice | ValueType::Map => {
-                Some(PointerObj::Default(RefCell::new(val.clone())))
-            }
-            _ => None,
-        }
+    pub fn new_closed_up_value(val: &GosValue) -> Option<PointerObj> {
+        Some(PointerObj::UpVal(UpValue::new_closed(val.clone())))
     }
 
     #[inline]
@@ -934,7 +914,6 @@ impl PointerObj {
     #[inline]
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> RuntimeResult<GosValue> {
         match self {
-            PointerObj::Default(obj) => Ok(obj.clone().into_inner()),
             PointerObj::UpVal(uv) => Ok(uv.value(stack)),
             PointerObj::SliceMember(s, index) => s.dispatcher_a_s().slice_get(s, *index as usize),
             PointerObj::StructField(s, index) => {
@@ -944,25 +923,18 @@ impl PointerObj {
         }
     }
 
-    pub fn set_pointee_from(this: &RefCell<GosValue>, other: &GosValue) {
-        let typ = this.borrow().typ();
-        match typ {
-            ValueType::Struct => {
-                *this.borrow().as_struct().0.borrow_fields_mut() =
-                    other.as_struct().0.borrow_fields().clone()
-            }
-            ValueType::Array => this.borrow().dispatcher_a_s().array_set_from(this, other),
-            ValueType::Slice => this.borrow().dispatcher_a_s().slice_set_from(this, other),
-            ValueType::Map => match this.borrow().as_map() {
-                Some(s) => {
-                    if let Some(other) = other.as_map() {
-                        *s.0.borrow_data_mut() = other.0.borrow_data().clone()
-                    }
-                }
-                None => *this.borrow_mut() = other.clone(),
-            },
-            _ => unreachable!(),
-        }
+    /// cast returns the GosValue the pointer points to, with a new type
+    /// obviously this is very unsafe, more rigorous checks should be done here.
+    #[inline]
+    pub fn cast(
+        &self,
+        new_type: ValueType,
+        stack: &Stack,
+        pkgs: &PackageObjs,
+    ) -> RuntimeResult<PointerObj> {
+        let val = self.deref(stack, pkgs)?;
+        let val = unsafe { val.cast(new_type) };
+        Ok(PointerObj::new_closed_up_value(&val).unwrap())
     }
 
     /// set_value is not used by VM, it's for FFI
@@ -974,9 +946,6 @@ impl PointerObj {
         gcv: &GcoVec,
     ) -> RuntimeResult<()> {
         match self {
-            PointerObj::Default(obj) => {
-                PointerObj::set_pointee_from(obj, val);
-            }
             PointerObj::UpVal(uv) => uv.set_value(val.copy_semantic(gcv), stack),
             PointerObj::SliceMember(s, index) => {
                 s.dispatcher_a_s()
@@ -998,7 +967,6 @@ impl PointerObj {
     /// for gc
     pub fn ref_sub_one(&self) {
         match &self {
-            PointerObj::Default(c) => c.borrow().ref_sub_one(),
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
             PointerObj::SliceMember(s, _) => {
                 let rc = &s.as_gos_slice().unwrap().1;
@@ -1015,7 +983,6 @@ impl PointerObj {
     /// for gc
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
-            PointerObj::Default(c) => c.borrow().mark_dirty(queue),
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
             PointerObj::SliceMember(s, _) => {
                 rcount_mark_and_queue(&s.as_gos_slice().unwrap().1, queue)
@@ -1032,7 +999,6 @@ impl PartialEq for PointerObj {
     #[inline]
     fn eq(&self, other: &PointerObj) -> bool {
         match (self, other) {
-            (Self::Default(x), Self::Default(y)) => x == y,
             (Self::UpVal(x), Self::UpVal(y)) => x == y,
             (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => {
                 x.as_addr() == y.as_addr() && ix == iy
@@ -1049,7 +1015,6 @@ impl PartialEq for PointerObj {
 impl Hash for PointerObj {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::Default(c) => c.borrow().hash(state),
             Self::UpVal(x) => x.hash(state),
             Self::SliceMember(s, index) => {
                 s.as_addr().hash(state);
@@ -1070,7 +1035,6 @@ impl Hash for PointerObj {
 impl Display for PointerObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Default(c) => write!(f, "{:p}", c.borrow().as_addr()),
             Self::UpVal(uv) => write!(f, "{:p}", Rc::as_ptr(&uv.inner)),
             Self::SliceMember(s, i) => write!(f, "{:p}i{}", s.as_addr(), i),
             Self::StructField(s, i) => write!(f, "{:p}i{}", s.as_addr(), i),
@@ -1143,18 +1107,19 @@ impl UnsafePtr for PointerHandle {
 }
 
 impl PointerHandle {
-    pub fn from_pointer(ptr: GosValue) -> GosValue {
-        match ptr.into_pointer() {
+    pub fn new(ptr: &GosValue) -> GosValue {
+        match ptr.as_pointer() {
             Some(p) => {
-                let handle = PointerHandle { ptr: *p };
+                let handle = PointerHandle { ptr: p.clone() };
                 GosValue::new_unsafe_ptr(handle)
             }
             None => GosValue::new_nil(ValueType::UnsafePtr),
         }
     }
 
-    pub fn to_pointer(self) -> GosValue {
-        GosValue::new_pointer(self.ptr)
+    /// Get a reference to the pointer handle's ptr.
+    pub fn ptr(&self) -> &PointerObj {
+        &self.ptr
     }
 }
 

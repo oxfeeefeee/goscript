@@ -5,7 +5,6 @@
 package strings
 
 import (
-	"fmt2"
 	"unicode/utf8"
 	"unsafe"
 )
@@ -19,12 +18,9 @@ type Builder struct {
 }
 
 func (b *Builder) copyCheck() {
-	fmt2.Println(b.addr)
 	if b.addr == nil {
 		b.addr = b
-		fmt2.Println(b.addr, b)
 	} else if b.addr != b {
-		fmt2.Println("xxx", b.addr, b)
 		panic("strings: illegal use of non-zero Builder copied by value")
 	}
 }

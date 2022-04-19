@@ -262,7 +262,7 @@ impl UnsafePtr for StdValue {
 
 impl StdValue {
     fn new(v: GosValue, meta: Option<Meta>) -> StdValue {
-        match PointerObj::try_new_local(&v) {
+        match PointerObj::new_closed_up_value(&v) {
             Some(p) => StdValue::Pointer(Box::new(p), meta, None),
             None => StdValue::Value(v, meta),
         }
@@ -445,7 +445,7 @@ impl StdValue {
             Self::Pointer(p, _, exported) => match p as &PointerObj {
                 PointerObj::SliceMember(_, _) => true,
                 PointerObj::StructField(_, _) => exported.unwrap(),
-                PointerObj::UpVal(_) => true,
+                PointerObj::UpVal(uv) => !uv.is_open(),
                 _ => false,
             },
         }

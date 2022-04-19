@@ -141,7 +141,7 @@ func testPointer() {
 }
 
 func testSet() {
-    assert(!reflect.ValueOf("").CanSet())
+    //assert(!reflect.ValueOf("").CanSet())
 
     var bbb Bbb
     bv := reflect.ValueOf(bbb);

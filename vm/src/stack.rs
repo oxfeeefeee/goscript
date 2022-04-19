@@ -81,6 +81,7 @@ macro_rules! store_local_val {
     ($stack:ident, $to:expr, $s_index:ident, $r_index:ident, $t:ident, $gcos:ident) => {{
         if $r_index < 0 {
             let ri = Stack::offset($stack.len(), $r_index);
+            //dbg!($r_index, $stack.copy_semantic(ri, $gcos));
             $to.set($s_index, $stack.copy_semantic(ri, $gcos));
         } else {
             $to.set(
@@ -349,7 +350,7 @@ impl Stack {
     ) {
         match &mut upvalue.inner.borrow_mut() as &mut UpValueState {
             UpValueState::Open(desc) => {
-                let index = (desc.stack_base + desc.index) as usize;
+                let index = desc.abs_index();
                 let uv_stack = desc.stack.upgrade().unwrap();
                 match ptr::eq(uv_stack.as_ptr(), self) {
                     true => store_local_val!(self, self, index, rhs_index, typ, gcos),
@@ -431,9 +432,6 @@ impl Stack {
         gcv: &GcoVec,
     ) -> RuntimeResult<()> {
         match p {
-            PointerObj::Default(obj) => {
-                PointerObj::set_pointee_from(obj, self.get(Stack::offset(self.len(), rhs_index)));
-            }
             PointerObj::UpVal(uv) => {
                 self.store_up_value(uv, rhs_index, typ, gcv);
             }

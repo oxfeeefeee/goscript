@@ -110,9 +110,6 @@ struct CallFrame {
     closure: ClosureObj,
     pc: usize,
     stack_base: usize,
-    // var pointers are used in two cases
-    // - a real "upvalue" of a real closure
-    // - a local var that has pointer(s) point to it
     var_ptrs: Option<Vec<UpValue>>,
     // closures that have upvalues pointing to this frame
     referred_by: Option<HashMap<OpIndex, Referers>>,
@@ -423,20 +420,15 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::BIND_METHOD => {
                         let val = stack.pop_value();
-                        match cast_receiver(val, inst.t1() == ValueType::Pointer, stack, objs) {
-                            Ok(val) => {
-                                let func = read_imm_key!(code, frame, objs);
-                                stack.push(GosValue::new_closure(
-                                    ClosureObj::new_gos(
-                                        func,
-                                        &objs.functions,
-                                        Some(val.copy_semantic(gcv)),
-                                    ),
-                                    gcv,
-                                ));
-                            }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
-                        }
+                        let func = read_imm_key!(code, frame, objs);
+                        stack.push(GosValue::new_closure(
+                            ClosureObj::new_gos(
+                                func,
+                                &objs.functions,
+                                Some(val.copy_semantic(gcv)),
+                            ),
+                            gcv,
+                        ));
                     }
                     Opcode::BIND_INTERFACE_METHOD => {
                         let val = stack.pop_interface().unwrap();
@@ -510,20 +502,20 @@ impl<'a> Fiber<'a> {
                     Opcode::CAST => {
                         let (target, mapping) = inst.imm824();
                         let index = Stack::offset(stack.len(), target);
-                        let from = inst.t1();
-                        let to = inst.t0();
-                        match to {
-                            ValueType::UintPtr => match from {
+                        let from_type = inst.t1();
+                        let to_type = inst.t0();
+                        match to_type {
+                            ValueType::UintPtr => match from_type {
                                 ValueType::UnsafePtr => {
                                     let up = stack.pop_unsafe_ptr();
                                     stack.push(GosValue::new_uint_ptr(
                                         up.map_or(0, |x| Rc::as_ptr(&x) as *const () as usize),
                                     ));
                                 }
-                                _ => stack.get_mut(index).cast_copyable(from, to),
+                                _ => stack.get_mut(index).cast_copyable(from_type, to_type),
                             },
-                            _ if to.copyable() => {
-                                stack.get_mut(index).cast_copyable(from, to);
+                            _ if to_type.copyable() => {
+                                stack.get_mut(index).cast_copyable(from_type, to_type);
                             }
                             ValueType::Interface => {
                                 let binding = ifaces[mapping as usize].clone();
@@ -535,7 +527,7 @@ impl<'a> Fiber<'a> {
                                 stack.set(index, val);
                             }
                             ValueType::String => {
-                                let result = match from {
+                                let result = match from_type {
                                     ValueType::Slice => match inst.t2() {
                                         ValueType::Int32 => {
                                             let s = match stack.get_slice::<Elem32>(index) {
@@ -557,7 +549,7 @@ impl<'a> Fiber<'a> {
                                     },
                                     _ => {
                                         let val = stack.get_mut(index);
-                                        val.cast_copyable(from, ValueType::Uint32);
+                                        val.cast_copyable(from_type, ValueType::Uint32);
                                         GosValue::with_str(
                                             &char_from_u32(*val.as_uint32()).to_string(),
                                         )
@@ -582,12 +574,44 @@ impl<'a> Fiber<'a> {
                                 };
                                 stack.set(index, result);
                             }
-                            ValueType::UnsafePtr => {
-                                unimplemented!()
-                            }
-
+                            ValueType::Pointer => match from_type {
+                                ValueType::Pointer => {}
+                                ValueType::UnsafePtr => {
+                                    match stack.get(index).as_unsafe_ptr() {
+                                        Some(p) => match p.as_any().downcast_ref::<PointerHandle>()
+                                        {
+                                            Some(h) => {
+                                                match h.ptr().cast(
+                                                    inst.t2(),
+                                                    &stack,
+                                                    &objs.packages,
+                                                ) {
+                                                    Ok(p) => {
+                                                        stack.set(index, GosValue::new_pointer(p))
+                                                    }
+                                                    Err(e) => go_panic_str!(panic, &e, frame, code),
+                                                };
+                                            }
+                                            None => {
+                                                go_panic_str!(panic, "only a unsafe-pointer cast from a pointer can be cast back to a pointer", frame, code);
+                                            }
+                                        },
+                                        None => {
+                                            stack.set(index, GosValue::new_nil(ValueType::Pointer));
+                                        }
+                                    };
+                                }
+                                _ => unimplemented!(),
+                            },
+                            ValueType::UnsafePtr => match from_type {
+                                ValueType::Pointer => {
+                                    let h = PointerHandle::new(stack.get(index));
+                                    stack.set(index, h);
+                                }
+                                _ => unimplemented!(),
+                            },
                             _ => {
-                                dbg!(to);
+                                dbg!(to_type);
                                 unimplemented!()
                             }
                         }
@@ -643,20 +667,15 @@ impl<'a> Fiber<'a> {
                             },
                         };
                     }
+                    Opcode::REF => {
+                        let val = stack.pop_value();
+                        let boxed = PointerObj::new_closed_up_value(&val).unwrap();
+                        stack.push(GosValue::new_pointer(boxed));
+                    }
                     Opcode::REF_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
                         stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
-                    }
-                    Opcode::REF_LOCAL => {
-                        let val = if inst.imm() >= 0 {
-                            let s_index = Stack::offset(stack_base, inst.imm());
-                            stack.get(s_index).clone()
-                        } else {
-                            stack.pop_value()
-                        };
-                        let boxed = PointerObj::try_new_local(&val).unwrap();
-                        stack.push(GosValue::new_pointer(boxed));
                     }
                     Opcode::REF_SLICE_MEMBER => {
                         let i = stack.pop_int() as OpIndex;

@@ -51,7 +51,7 @@ pub enum Opcode {
     UNARY_SUB, // -
     UNARY_XOR, // ^
     //REF,       // &
-    REF_LOCAL,
+    REF,
     REF_UPVALUE,
     REF_SLICE_MEMBER,
     REF_STRUCT_FIELD,
@@ -160,7 +160,7 @@ impl Opcode {
             Opcode::UNARY_ADD => ("UNARY_ADD", 0),
             Opcode::UNARY_SUB => ("UNARY_SUB", 0),
             Opcode::UNARY_XOR => ("UNARY_XOR", 0),
-            Opcode::REF_LOCAL => ("REF_LOCAL", 0),
+            Opcode::REF => ("REF", 0),
             Opcode::REF_UPVALUE => ("REF_UPVALUE", 0),
             Opcode::REF_SLICE_MEMBER => ("REF_SLICE_MEMBER", 0),
             Opcode::REF_STRUCT_FIELD => ("REF_STRUCT_FIELD", 0),

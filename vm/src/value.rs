@@ -2206,6 +2206,11 @@ impl GosValue {
     }
 
     #[inline]
+    pub unsafe fn cast(&self, new_type: ValueType) -> GosValue {
+        GosValue::new(new_type, self.data.clone(self.typ))
+    }
+
+    #[inline]
     fn new(typ: ValueType, data: ValueData) -> GosValue {
         debug_assert!(typ != ValueType::Slice && typ != ValueType::Array);
         GosValue {
@@ -2645,10 +2650,6 @@ pub trait Dispatcher {
 
     fn array_len(&self, val: &GosValue) -> usize;
 
-    fn array_set_from(&self, this: &RefCell<GosValue>, other: &GosValue);
-
-    fn slice_set_from(&self, this: &RefCell<GosValue>, other: &GosValue);
-
     fn slice_slice(
         &self,
         slice: &GosValue,
@@ -2773,26 +2774,6 @@ macro_rules! define_dispatcher {
             #[inline]
             fn array_len(&self, val: &GosValue) -> usize {
                 val.as_array::<$elem>().0.len()
-            }
-
-            #[inline]
-            fn array_set_from(&self, this: &RefCell<GosValue>, other: &GosValue) {
-                this.borrow()
-                    .as_array::<$elem>()
-                    .0
-                    .set_from(&other.as_array::<$elem>().0)
-            }
-
-            #[inline]
-            fn slice_set_from(&self, this: &RefCell<GosValue>, other: &GosValue) {
-                match this.borrow().as_slice::<$elem>() {
-                    Some(s) => {
-                        if let Some(other) = other.as_slice() {
-                            s.0.set_from(&other.0)
-                        }
-                    }
-                    None => *this.borrow_mut() = other.clone(),
-                }
             }
 
             #[inline]
