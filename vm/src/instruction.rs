@@ -56,7 +56,6 @@ pub enum Opcode {
     REF_SLICE_MEMBER,
     REF_STRUCT_FIELD,
     REF_PKG_MEMBER,
-    REF_LITERAL,
     DEREF, // *
     SEND,  // <-
     RECV,  // <-
@@ -165,7 +164,6 @@ impl Opcode {
             Opcode::REF_SLICE_MEMBER => ("REF_SLICE_MEMBER", 0),
             Opcode::REF_STRUCT_FIELD => ("REF_STRUCT_FIELD", 0),
             Opcode::REF_PKG_MEMBER => ("REF_PKG_MEMBER", 0),
-            Opcode::REF_LITERAL => ("REF_LITERAL", 0),
             Opcode::DEREF => ("DEREF", 0),
             Opcode::SEND => ("SEND", -1),
             Opcode::RECV => ("RECV", 1),

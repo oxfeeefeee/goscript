@@ -704,12 +704,6 @@ impl<'a> Fiber<'a> {
                             inst.imm(),
                         )));
                     }
-                    Opcode::REF_LITERAL => {
-                        let v = stack.pop_value();
-                        stack.push(GosValue::new_pointer(PointerObj::UpVal(
-                            UpValue::new_closed(v),
-                        )))
-                    }
                     Opcode::DEREF => {
                         let boxed = stack.pop_value();
                         let re = deref_value(&boxed, stack, objs).and_then(|v| Ok(stack.push(v)));
