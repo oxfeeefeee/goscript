@@ -669,7 +669,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::REF => {
                         let val = stack.pop_value();
-                        let boxed = PointerObj::new_closed_up_value(&val).unwrap();
+                        let boxed = PointerObj::new_closed_up_value(&val);
                         stack.push(GosValue::new_pointer(boxed));
                     }
                     Opcode::REF_UPVALUE => {

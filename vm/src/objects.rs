@@ -879,8 +879,8 @@ pub enum PointerObj {
 
 impl PointerObj {
     #[inline]
-    pub fn new_closed_up_value(val: &GosValue) -> Option<PointerObj> {
-        Some(PointerObj::UpVal(UpValue::new_closed(val.clone())))
+    pub fn new_closed_up_value(val: &GosValue) -> PointerObj {
+        PointerObj::UpVal(UpValue::new_closed(val.clone()))
     }
 
     #[inline]
@@ -934,7 +934,7 @@ impl PointerObj {
     ) -> RuntimeResult<PointerObj> {
         let val = self.deref(stack, pkgs)?;
         let val = unsafe { val.cast(new_type) };
-        Ok(PointerObj::new_closed_up_value(&val).unwrap())
+        Ok(PointerObj::new_closed_up_value(&val))
     }
 
     /// set_value is not used by VM, it's for FFI
