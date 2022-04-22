@@ -19,6 +19,7 @@ macro_rules! type_panic {
     };
 }
 
+#[derive(PartialEq)]
 enum FfiReturnType {
     ZeroVal,
     OneVal,
@@ -36,28 +37,39 @@ pub fn ffi_impl_implement(
         syn::parse2::<ItemImpl>(input.clone()).expect("ffi_impl only applies to impl blocks");
     let mut output_block = impl_block.clone();
     let mut output = TokenStream::new();
+    let mut new_method: Option<ImplItemMethod> = None;
     let func_name_args: Vec<(String, Vec<Box<Type>>)> = impl_block
         .items
         .iter()
         .filter_map(|x| match x {
             ImplItem::Method(method) => {
                 let ffi_name = method.sig.ident.to_string();
-                ffi_name.strip_prefix(FFI_FUNC_PREFIX).map(|x| {
-                    let wrapper_name = format!("{}{}", WRAPPER_FUNC_PREFIX, x);
-                    let m = gen_wrapper_method(&method, &wrapper_name);
-                    output_block.items.push(ImplItem::Method(m));
-                    (wrapper_name, get_arg_types(&method.sig))
-                })
+                if ffi_name == "new" {
+                    new_method = Some(method.clone());
+                    None
+                } else {
+                    ffi_name.strip_prefix(FFI_FUNC_PREFIX).map(|x| {
+                        let wrapper_name = format!("{}{}", WRAPPER_FUNC_PREFIX, x);
+                        let m = gen_wrapper_method(&method, &wrapper_name);
+                        output_block.items.push(ImplItem::Method(m));
+                        (wrapper_name, get_arg_types(&method.sig))
+                    })
+                }
             }
             _ => None,
         })
         .collect();
     let type_name = get_type_name(&impl_block.self_ty).unwrap().ident;
 
+    if new_method.is_none() {
+        panic!("new method not found!");
+    }
+
     let mut methods: Vec<ImplItem> = vec![
         gen_dispatch_method(&func_name_args),
-        get_wrapper_new_method(&type_name),
-        gen_register_method(&type_name, &args),
+        get_wrapper_new_method(&type_name, &new_method.unwrap()),
+        gen_id_method(&type_name, &args),
+        gen_register_method(),
     ]
     .into_iter()
     .map(|x| (ImplItem::Method(x)))
@@ -117,8 +129,16 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
     method
 }
 
-fn get_wrapper_new_method(type_name: &Ident) -> ImplItemMethod {
+fn get_wrapper_new_method(type_name: &Ident, method: &ImplItemMethod) -> ImplItemMethod {
     let wrapper_ident = Ident::new("wrapper_new", Span::call_site());
+    let (is_result, rcount) =
+        get_return_type_attributes(&method.sig.output, &type_name.to_string());
+    if rcount != FfiReturnType::OneVal {
+        panic!("the new method must have one and only one return value");
+    }
+    if is_result {
+        panic!("the new method must not fail");
+    }
     parse_quote! {
         pub fn #wrapper_ident(args: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
             Ok(Rc::new(RefCell::new(#type_name::new(args))))
@@ -126,7 +146,15 @@ fn get_wrapper_new_method(type_name: &Ident) -> ImplItemMethod {
     }
 }
 
-fn gen_register_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMethod {
+fn gen_register_method() -> ImplItemMethod {
+    parse_quote! {
+        pub fn register(engine: &mut goscript_engine::Engine) {
+            engine.register_extension(Self::ffi__id(), Box::new(Self::wrapper_new));
+        }
+    }
+}
+
+fn gen_id_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMethod {
     let rname = meta
         .iter()
         .find_map(|x| match x {
@@ -147,10 +175,13 @@ fn gen_register_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMet
             },
             NestedMeta::Lit(_) => None,
         })
-        .unwrap_or(type_name.to_string().to_lowercase());
+        .unwrap_or({
+            let name = type_name.to_string().to_lowercase();
+            name.strip_suffix("ffi").unwrap_or(&name).to_string()
+        });
     parse_quote! {
-        pub fn register(engine: &mut goscript_engine::Engine) {
-            engine.register_extension(#rname, Box::new(Self::wrapper_new));
+        pub fn ffi__id() -> &'static str {
+            #rname
         }
     }
 }
@@ -161,7 +192,7 @@ fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {
     let callee = &m.sig.ident;
     let args = get_args(&m.sig);
     let is_async = m.sig.asyncness.is_some();
-    let (is_result, rcount) = get_return_type_attributes(&m.sig.output);
+    let (is_result, rcount) = get_return_type_attributes(&m.sig.output, "GosValue");
     wrapper.block = match (is_async, is_result, rcount) {
         (false, true, FfiReturnType::ZeroVal) => {
             parse_quote! {{
@@ -218,7 +249,7 @@ fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {
     wrapper
 }
 
-fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
+fn get_return_type_attributes(rt: &ReturnType, return_elem_name: &str) -> (bool, FfiReturnType) {
     match rt {
         ReturnType::Default => (false, FfiReturnType::ZeroVal),
         ReturnType::Type(_, t) => match get_type_name(t) {
@@ -230,14 +261,14 @@ fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
                             let typ_name: &str = &seg.ident.to_string();
                             match typ_name {
                                 "Vec" => (true, FfiReturnType::MultipleVal), // todo: futher validation
-                                "GosValue" => (true, FfiReturnType::OneVal),
+                                _ if typ_name == return_elem_name => (true, FfiReturnType::OneVal),
                                 _ => type_panic!(),
                             }
                         }
                         None => (true, FfiReturnType::ZeroVal), // todo: futher validation
                     },
                     "Vec" => (false, FfiReturnType::MultipleVal), // todo: futher validation
-                    "GosValue" => (false, FfiReturnType::OneVal), // todo: futher validation
+                    _ if typ_name == return_elem_name => (false, FfiReturnType::OneVal), // todo: futher validation
                     "Pin" => (false, FfiReturnType::AlreadyBoxed), // todo: futher validation
                     _ => type_panic!(),
                 }

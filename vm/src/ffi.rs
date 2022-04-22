@@ -19,7 +19,7 @@ pub struct FfiCallCtx<'a> {
     pub gcv: &'a GcoVec,
 }
 
-/// A FFI function call
+/// A FFI Object implemented in Rust for Goscript to call
 pub trait Ffi {
     fn call(
         &self,
@@ -46,7 +46,7 @@ impl FfiFactory {
     }
 
     pub fn register(&mut self, name: &'static str, ctor: Box<Ctor>) {
-        self.registry.insert(name, ctor);
+        assert!(self.registry.insert(name, ctor).is_none());
     }
 
     pub fn create_by_name(

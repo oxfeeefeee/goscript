@@ -509,7 +509,7 @@ impl<'a> Fiber<'a> {
                                 ValueType::UnsafePtr => {
                                     let up = stack.pop_unsafe_ptr();
                                     stack.push(GosValue::new_uint_ptr(
-                                        up.map_or(0, |x| Rc::as_ptr(&x) as *const () as usize),
+                                        up.map_or(0, |x| x.as_rust_ptr() as *const () as usize),
                                     ));
                                 }
                                 _ => stack.get_mut(index).cast_copyable(from_type, to_type),
@@ -578,24 +578,26 @@ impl<'a> Fiber<'a> {
                                 ValueType::Pointer => {}
                                 ValueType::UnsafePtr => {
                                     match stack.get(index).as_unsafe_ptr() {
-                                        Some(p) => match p.as_any().downcast_ref::<PointerHandle>()
-                                        {
-                                            Some(h) => {
-                                                match h.ptr().cast(
-                                                    inst.t2(),
-                                                    &stack,
-                                                    &objs.packages,
-                                                ) {
-                                                    Ok(p) => {
-                                                        stack.set(index, GosValue::new_pointer(p))
-                                                    }
-                                                    Err(e) => go_panic_str!(panic, &e, frame, code),
-                                                };
+                                        Some(p) => {
+                                            match p.ptr().as_any().downcast_ref::<PointerHandle>() {
+                                                Some(h) => {
+                                                    match h.ptr().cast(
+                                                        inst.t2(),
+                                                        &stack,
+                                                        &objs.packages,
+                                                    ) {
+                                                        Ok(p) => stack
+                                                            .set(index, GosValue::new_pointer(p)),
+                                                        Err(e) => {
+                                                            go_panic_str!(panic, &e, frame, code)
+                                                        }
+                                                    };
+                                                }
+                                                None => {
+                                                    go_panic_str!(panic, "only a unsafe-pointer cast from a pointer can be cast back to a pointer", frame, code);
+                                                }
                                             }
-                                            None => {
-                                                go_panic_str!(panic, "only a unsafe-pointer cast from a pointer can be cast back to a pointer", frame, code);
-                                            }
-                                        },
+                                        }
                                         None => {
                                             stack.set(index, GosValue::new_nil(ValueType::Pointer));
                                         }
@@ -1027,41 +1029,37 @@ impl<'a> Fiber<'a> {
                     }
 
                     Opcode::TYPE_ASSERT => {
-                        if let Some(err) = match stack.pop_some_interface() {
+                        let val = stack.pop_value();
+                        let do_try = inst.t2_as_index() > 0;
+                        let result = match val.as_some_interface() {
                             Ok(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
-                                    let val = v.copy_semantic(gcv);
                                     let meta = b.as_ref().unwrap().0;
-                                    stack.push(val);
                                     let want_meta = consts[inst.imm() as usize].as_metadata();
-                                    let do_try = inst.t2_as_index() > 0;
-                                    match *want_meta == meta {
-                                        true => {
-                                            stack.push(v.copy_semantic(gcv));
-                                            if do_try {
-                                                stack.push_bool(true);
-                                            }
-                                            None
+                                    if *want_meta == meta {
+                                        Ok((v.copy_semantic(gcv), true))
+                                    } else {
+                                        if do_try {
+                                            Ok((want_meta.zero(&objs.metas, gcv), false))
+                                        } else {
+                                            Err("interface conversion: wrong type".to_owned())
                                         }
-                                        false => match do_try {
-                                            true => {
-                                                stack.push(want_meta.zero(&objs.metas, gcv));
-                                                stack.push_bool(false);
-                                                None
-                                            }
-                                            false => {
-                                                Some("interface conversion: wrong type".to_owned())
-                                            }
-                                        },
                                     }
                                 }
                                 InterfaceObj::Ffi(_) => {
-                                    Some("FFI interface do not support type assertion".to_owned())
+                                    Err("FFI interface do not support type assertion".to_owned())
                                 }
                             },
-                            Err(e) => Some(e),
-                        } {
-                            go_panic_str!(panic, &err, frame, code);
+                            Err(e) => Err(e),
+                        };
+                        match result {
+                            Ok((val, ok)) => {
+                                stack.push(val);
+                                if do_try {
+                                    stack.push_bool(ok);
+                                }
+                            }
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::TYPE => {
@@ -1409,9 +1407,8 @@ impl<'a> Fiber<'a> {
                         let v = match self.context.ffi_factory.create_by_name(&name_str, params) {
                             Ok(v) => {
                                 let meta = itype.as_metadata().underlying(&objs.metas).clone();
-                                let info = objs.metas[meta.key].as_interface().iface_methods_info();
                                 GosValue::new_interface(InterfaceObj::Ffi(UnderlyingFfi::new(
-                                    v, info,
+                                    v, meta,
                                 )))
                             }
                             Err(e) => {
@@ -1594,7 +1591,8 @@ pub fn bind_method(
             }
         }
         InterfaceObj::Ffi(ffi) => {
-            let (name, meta) = ffi.methods[index].clone();
+            let methods = objs.metas[ffi.meta.key].as_interface().iface_methods_info();
+            let (name, meta) = methods[index].clone();
             let cls = FfiClosureObj {
                 ffi: ffi.ffi_obj.clone(),
                 func_name: name,

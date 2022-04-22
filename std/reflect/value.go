@@ -37,7 +37,7 @@ type ffiReflect interface {
 
 	can_addr(p unsafe.Pointer) bool
 	can_set(p unsafe.Pointer) bool
-	set(p unsafe.Pointer, v unsafe.Pointer) bool
+	set(p unsafe.Pointer, v unsafe.Pointer)
 	set_bool(p unsafe.Pointer, b bool)
 	set_bytes(p unsafe.Pointer, x []byte)
 	set_complex(p unsafe.Pointer, x complex128)

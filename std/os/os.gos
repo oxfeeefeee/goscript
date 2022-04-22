@@ -1,0 +1,56 @@
+package os
+
+import "unsafe"
+
+var fileInterface ffiFile
+
+var Stdin *File
+var Stdout *File
+var Stderr *File
+
+func init() {
+	fileInterface = ffi(ffiFile, "os.file")
+}
+
+type ffiFile interface {
+    get_std_io(which int) unsafe.Pointer
+    open(name string, flags int) unsafe.Pointer
+    read(f unsafe.Pointer, b []byte) (n int, errKind int, err string)
+    write(f unsafe.Pointer, b []byte) (n int, errKind int, err string)
+    seek(f unsafe.Pointer, offset int64, whence int) (ret int64, errKind int, err string)
+}
+
+
+// Flags to OpenFile 
+const (
+	// Exactly one of O_RDONLY, O_WRONLY, or O_RDWR must be specified.
+	O_RDONLY int = 0x00000 // open the file read-only.
+	O_WRONLY int = 0x00001 // open the file write-only.
+	O_RDWR   int = 0x00002   // open the file read-write.
+	// The remaining values may be or'ed in to control behavior.
+	O_APPEND int = 0x00400 // append data to the file when writing.
+	O_CREATE int = 0x00040  // create a new file if none exists.
+	O_EXCL   int = 0x00080   // used with O_CREATE, file must not exist.
+	//O_SYNC   int = syscall.O_SYNC   // open for synchronous I/O.
+	O_TRUNC  int = 0x00200  // truncate regular writable file when opened.
+)
+
+// Seek whence values.
+//
+// Deprecated: Use io.SeekStart, io.SeekCurrent, and io.SeekEnd.
+const (
+	SEEK_SET int = 0 // seek relative to the origin of the file
+	SEEK_CUR int = 1 // seek relative to the current offset
+	SEEK_END int = 2 // seek relative to the end
+)
+
+type File struct{
+    native unsafe.Pointer
+    name string
+}
+
+func Open(name string) (*File, error) {
+	p, errId, msg := fileInterface.open(name, O_RDONLY)
+    
+    &File{native: native, name: name}
+}

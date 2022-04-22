@@ -229,7 +229,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_unsafe_ptr(&mut self) -> OptionBox<Rc<dyn UnsafePtr>> {
+    pub fn pop_unsafe_ptr(&mut self) -> OptionBox<UnsafePtrObj> {
         self.pop_value().into_unsafe_ptr()
     }
 

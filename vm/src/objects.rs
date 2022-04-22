@@ -19,7 +19,7 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ptr::{self};
 use std::rc::{Rc, Weak};
-use std::str;
+use std::{panic, str};
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -240,6 +240,11 @@ where
         Ref::map(self.borrow_data(), |x| &x[..])
     }
 
+    #[inline]
+    pub fn as_rust_slice_mut(&self) -> RefMut<[T]> {
+        RefMut::map(self.borrow_data_mut(), |x| &mut x[..])
+    }
+
     #[inline(always)]
     pub fn index_elem(&self, i: usize) -> T {
         self.borrow_data()[i].clone()
@@ -388,6 +393,25 @@ where
         Ref::map(self.borrow_all_data(), |x| {
             &x[self.begin.get()..self.end.get()]
         })
+    }
+
+    #[inline]
+    pub fn as_rust_slice_mut(&self) -> RefMut<[T]> {
+        RefMut::map(self.borrow_all_data_mut(), |x| {
+            &mut x[self.begin.get()..self.end.get()]
+        })
+    }
+
+    #[inline]
+    pub unsafe fn as_raw_slice<U>(&self) -> Ref<[U]> {
+        assert!(std::mem::size_of::<U>() == std::mem::size_of::<T>());
+        std::mem::transmute(self.as_rust_slice())
+    }
+
+    #[inline]
+    pub unsafe fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
+        assert!(std::mem::size_of::<U>() == std::mem::size_of::<T>());
+        std::mem::transmute(self.as_rust_slice_mut())
     }
 
     /// get_array_equivalent returns the underlying array and mapped index
@@ -692,14 +716,14 @@ impl Display for StructObj {
 #[derive(Clone, Debug)]
 pub struct UnderlyingFfi {
     pub ffi_obj: Rc<RefCell<dyn Ffi>>,
-    pub methods: Vec<(String, Meta)>,
+    pub meta: Meta,
 }
 
 impl UnderlyingFfi {
-    pub fn new(obj: Rc<RefCell<dyn Ffi>>, methods: Vec<(String, Meta)>) -> UnderlyingFfi {
+    pub fn new(obj: Rc<RefCell<dyn Ffi>>, meta: Meta) -> UnderlyingFfi {
         UnderlyingFfi {
             ffi_obj: obj,
-            methods: methods,
+            meta: meta,
         }
     }
 }
@@ -1051,7 +1075,7 @@ pub trait UnsafePtr {
     fn as_any(&self) -> &dyn Any;
 
     fn eq(&self, _: &dyn UnsafePtr) -> bool {
-        false
+        panic!("implement your own eq for your type");
     }
 
     /// for gc
@@ -1123,6 +1147,47 @@ impl PointerHandle {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct UnsafePtrObj {
+    ptr: Rc<dyn UnsafePtr>,
+}
+
+impl UnsafePtrObj {
+    pub fn new<T: 'static + UnsafePtr>(p: T) -> UnsafePtrObj {
+        UnsafePtrObj { ptr: Rc::new(p) }
+    }
+
+    /// Get a reference to the unsafe ptr obj's ptr.
+    pub fn ptr(&self) -> &dyn UnsafePtr {
+        &*self.ptr
+    }
+
+    pub fn as_rust_ptr(&self) -> *const dyn UnsafePtr {
+        &*self.ptr
+    }
+
+    pub fn downcast_ref<T: Any>(&self) -> RuntimeResult<&T> {
+        self.ptr
+            .as_any()
+            .downcast_ref::<T>()
+            .ok_or("Unexpected unsafe pointer type".to_owned())
+    }
+}
+
+impl Eq for UnsafePtrObj {}
+
+impl PartialEq for UnsafePtrObj {
+    #[inline]
+    fn eq(&self, other: &UnsafePtrObj) -> bool {
+        self.ptr.eq(other.ptr())
+    }
+}
+
+impl Display for UnsafePtrObj {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:p}", &*self.ptr as *const dyn UnsafePtr)
+    }
+}
 // ----------------------------------------------------------------------------
 // ClosureObj
 

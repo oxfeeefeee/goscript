@@ -7,12 +7,12 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 #[derive(Ffi)]
-pub struct Bits {}
+pub struct BitsFfi {}
 
 #[ffi_impl]
-impl Bits {
-    pub fn new(_v: Vec<GosValue>) -> Bits {
-        Bits {}
+impl BitsFfi {
+    pub fn new(_v: Vec<GosValue>) -> BitsFfi {
+        BitsFfi {}
     }
 
     fn ffi_f32_to_bits(&self, args: Vec<GosValue>) -> GosValue {

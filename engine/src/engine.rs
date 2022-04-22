@@ -2,7 +2,6 @@ extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
-use super::std::{bits, fmt2, reflect, sync};
 
 pub struct Config {
     // working directory
@@ -31,16 +30,8 @@ impl Engine {
         }
     }
 
-    fn register_std(&mut self) {
-        fmt2::Fmt2::register(self);
-        bits::Bits::register(self);
-        sync::Mutex::register(self);
-        sync::RWMutex::register(self);
-        reflect::Reflect::register(self);
-    }
-
     pub fn run(&mut self, path: &str) -> usize {
-        self.register_std();
+        crate::std::register(self);
 
         let config = types::Config {
             work_dir: self.config.work_dir.clone(),

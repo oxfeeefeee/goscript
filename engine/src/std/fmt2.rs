@@ -8,12 +8,12 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 #[derive(Ffi)]
-pub struct Fmt2 {}
+pub struct Fmt2Ffi {}
 
 #[ffi_impl]
-impl Fmt2 {
-    pub fn new(_v: Vec<GosValue>) -> Fmt2 {
-        Fmt2 {}
+impl Fmt2Ffi {
+    pub fn new(_v: Vec<GosValue>) -> Fmt2Ffi {
+        Fmt2Ffi {}
     }
 
     fn ffi_println(&self, args: Vec<GosValue>) -> RuntimeResult<()> {

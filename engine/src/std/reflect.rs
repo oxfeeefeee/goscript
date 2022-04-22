@@ -11,20 +11,6 @@ use std::mem;
 use std::pin::Pin;
 use std::rc::Rc;
 
-macro_rules! arg_as {
-    ($arg:expr, $t:ty) => {{
-        match $arg.typ() {
-            ValueType::UnsafePtr => Ok($arg
-                .as_unsafe_ptr()
-                .unwrap()
-                .as_any()
-                .downcast_ref::<$t>()
-                .unwrap()),
-            _ => Err("reflect: expect UnsafePtr".to_owned()),
-        }
-    }};
-}
-
 macro_rules! err_wrong_type {
     () => {
         Err("reflect: wrong type".to_owned())
@@ -55,7 +41,20 @@ fn wrap_ptr_std_val(p: Box<PointerObj>, m: Option<Meta>) -> GosValue {
 
 #[inline]
 fn unwrap_set_args(args: &Vec<GosValue>) -> RuntimeResult<(&StdValue, GosValue)> {
-    Ok((arg_as!(&args[0], StdValue)?, args[1].clone()))
+    Ok((
+        args[0].as_some_unsafe_ptr()?.downcast_ref::<StdValue>()?,
+        args[1].clone(),
+    ))
+}
+
+#[inline]
+fn val_to_std_val(val: &GosValue) -> RuntimeResult<&StdValue> {
+    val.as_some_unsafe_ptr()?.downcast_ref::<StdValue>()
+}
+
+#[inline]
+fn val_to_map_iter(val: &GosValue) -> RuntimeResult<&StdMapIter> {
+    val.as_some_unsafe_ptr()?.downcast_ref::<StdMapIter>()
 }
 
 #[inline]
@@ -94,12 +93,12 @@ enum GosKind {
 }
 
 #[derive(Ffi)]
-pub struct Reflect {}
+pub struct ReflectFfi {}
 
 #[ffi_impl]
-impl Reflect {
-    pub fn new(_v: Vec<GosValue>) -> Reflect {
-        Reflect {}
+impl ReflectFfi {
+    pub fn new(_v: Vec<GosValue>) -> ReflectFfi {
+        ReflectFfi {}
     }
 
     fn ffi_value_of(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
@@ -107,83 +106,83 @@ impl Reflect {
     }
 
     fn ffi_type_of(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let v = arg_as!(&args[0], StdValue)?;
+        let v = val_to_std_val(&args[0])?;
         let (t, k) = StdType::type_of(v, ctx);
         Ok(vec![t, k])
     }
 
     fn ffi_bool_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.bool_val(ctx)
+        val_to_std_val(&args[0])?.bool_val(ctx)
     }
 
     fn ffi_int_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.int_val(ctx)
+        val_to_std_val(&args[0])?.int_val(ctx)
     }
 
     fn ffi_uint_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.uint_val(ctx)
+        val_to_std_val(&args[0])?.uint_val(ctx)
     }
 
     fn ffi_float_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.float_val(ctx)
+        val_to_std_val(&args[0])?.float_val(ctx)
     }
 
     fn ffi_bytes_val(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.bytes_val(ctx)
+        val_to_std_val(&args[0])?.bytes_val(ctx)
     }
 
     fn ffi_elem(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.elem(ctx)
+        val_to_std_val(&args[0])?.elem(ctx)
     }
 
     fn ffi_num_field(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.num_field(ctx)
+        val_to_std_val(&args[0])?.num_field(ctx)
     }
 
     fn ffi_field(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.field(ctx, &args[1])
+        val_to_std_val(&args[0])?.field(ctx, &args[1])
     }
 
     fn ffi_index(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.index(ctx, &args[1])
+        val_to_std_val(&args[0])?.index(ctx, &args[1])
     }
 
     fn ffi_is_nil(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
         Ok(GosValue::new_bool(
-            arg_as!(&args[0], StdValue)?.val(ctx)?.is_nil(),
+            val_to_std_val(&args[0])?.val(ctx)?.is_nil(),
         ))
     }
 
     fn ffi_len(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdValue)?.len(ctx)
+        val_to_std_val(&args[0])?.len(ctx)
     }
 
     fn ffi_map_range_init(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        StdMapIter::map_range(ctx, arg_as!(&args[0], StdValue)?)
+        StdMapIter::map_range(ctx, val_to_std_val(&args[0])?)
     }
 
     fn ffi_map_range_next(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(arg_as!(&args[0], StdMapIter)?.next())
+        Ok(val_to_map_iter(&args[0])?.next())
     }
 
     fn ffi_map_range_key(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdMapIter)?.key()
+        val_to_map_iter(&args[0])?.key()
     }
 
     fn ffi_map_range_value(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        arg_as!(&args[0], StdMapIter)?.value()
+        val_to_map_iter(&args[0])?.value()
     }
 
     fn ffi_can_addr(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::new_bool(arg_as!(&args[0], StdValue)?.can_addr()))
+        Ok(GosValue::new_bool(val_to_std_val(&args[0])?.can_addr()))
     }
 
     fn ffi_can_set(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::new_bool(arg_as!(&args[0], StdValue)?.can_set()))
+        Ok(GosValue::new_bool(val_to_std_val(&args[0])?.can_set()))
     }
 
     fn ffi_set(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
-        arg_as!(&args[0], StdValue)?.set(ctx, arg_as!(&args[1], StdValue)?.val(ctx)?)
+        val_to_std_val(&args[0])?.set(ctx, val_to_std_val(&args[1])?.val(ctx)?)
     }
 
     fn ffi_set_bool(&self, ctx: &mut FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
@@ -248,16 +247,10 @@ impl Reflect {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, UnsafePtr)]
 enum StdValue {
     Value(GosValue, Option<Meta>),
     Pointer(Box<PointerObj>, Option<Meta>, Option<bool>),
-}
-
-impl UnsafePtr for StdValue {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 impl StdValue {

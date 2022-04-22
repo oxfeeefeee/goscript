@@ -24,7 +24,6 @@ macro_rules! create_mutex {
         } else {
             Ok(p.as_unsafe_ptr()
                 .unwrap()
-                .as_any()
                 .downcast_ref::<$typ>()
                 .unwrap()
                 .clone())
@@ -33,12 +32,12 @@ macro_rules! create_mutex {
 }
 
 #[derive(Ffi)]
-pub struct Mutex {}
+pub struct MutexFfi {}
 
 #[ffi_impl(rename = "sync.mutex")]
-impl Mutex {
-    pub fn new(_v: Vec<GosValue>) -> Mutex {
-        Mutex {}
+impl MutexFfi {
+    pub fn new(_v: Vec<GosValue>) -> MutexFfi {
+        MutexFfi {}
     }
 
     fn ffi_lock(
@@ -48,7 +47,7 @@ impl Mutex {
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
         // It'd probably be cleaner if we use interface{} instead of pointer as
         // the argument, but let's leave it like this to serve as an example.
-        match Mutex::create_mutex(&args[0], ctx) {
+        match MutexFfi::create_mutex(&args[0], ctx) {
             Ok(mutex) => Box::pin((|| async move { mutex.lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
@@ -56,34 +55,29 @@ impl Mutex {
 
     async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud
-            .unwrap()
-            .as_any()
-            .downcast_ref::<MutexInner>()
-            .unwrap()
-            .clone();
+        let mutex = ud.unwrap().downcast_ref::<Mutex>().unwrap().clone();
         mutex.unlock().await
     }
 
-    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<MutexInner> {
-        create_mutex!(arg, ctx, MutexInner)
+    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<Mutex> {
+        create_mutex!(arg, ctx, Mutex)
     }
 }
 
 #[derive(Clone)]
-struct MutexInner {
+struct Mutex {
     locked: Rc<Cell<bool>>,
 }
 
-impl UnsafePtr for MutexInner {
+impl UnsafePtr for Mutex {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-impl MutexInner {
-    fn new() -> MutexInner {
-        MutexInner {
+impl Mutex {
+    fn new() -> Mutex {
+        Mutex {
             locked: Rc::new(Cell::new(false)),
         }
     }
@@ -109,12 +103,12 @@ impl MutexInner {
 }
 
 #[derive(Ffi)]
-pub struct RWMutex {}
+pub struct RWMutexFfi {}
 
 #[ffi_impl(rename = "sync.rw_mutex")]
-impl RWMutex {
-    pub fn new(_v: Vec<GosValue>) -> RWMutex {
-        RWMutex {}
+impl RWMutexFfi {
+    pub fn new(_v: Vec<GosValue>) -> RWMutexFfi {
+        RWMutexFfi {}
     }
 
     fn ffi_r_lock(
@@ -122,7 +116,7 @@ impl RWMutex {
         ctx: &mut FfiCallCtx,
         args: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
-        match RWMutex::create_mutex(&args[0], ctx) {
+        match RWMutexFfi::create_mutex(&args[0], ctx) {
             Ok(m) => Box::pin((|| async move { m.r_lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
@@ -130,12 +124,7 @@ impl RWMutex {
 
     async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud
-            .unwrap()
-            .as_any()
-            .downcast_ref::<RWMutexInner>()
-            .unwrap()
-            .clone();
+        let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.r_unlock().await
     }
 
@@ -144,7 +133,7 @@ impl RWMutex {
         ctx: &mut FfiCallCtx,
         args: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
-        match RWMutex::create_mutex(&args[0], ctx) {
+        match RWMutexFfi::create_mutex(&args[0], ctx) {
             Ok(m) => Box::pin((|| async move { m.w_lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
@@ -152,17 +141,12 @@ impl RWMutex {
 
     async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let ud = args[0].as_unsafe_ptr();
-        let mutex = ud
-            .unwrap()
-            .as_any()
-            .downcast_ref::<RWMutexInner>()
-            .unwrap()
-            .clone();
+        let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.w_unlock().await
     }
 
-    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<RWMutexInner> {
-        create_mutex!(arg, ctx, RWMutexInner)
+    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<RWMutex> {
+        create_mutex!(arg, ctx, RWMutex)
     }
 }
 
@@ -217,19 +201,19 @@ impl RWMutexData {
 }
 
 #[derive(Clone)]
-pub struct RWMutexInner {
+pub struct RWMutex {
     data: Rc<RefCell<RWMutexData>>,
 }
 
-impl UnsafePtr for RWMutexInner {
+impl UnsafePtr for RWMutex {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-impl RWMutexInner {
-    fn new() -> RWMutexInner {
-        RWMutexInner {
+impl RWMutex {
+    fn new() -> RWMutex {
+        RWMutex {
             data: Rc::new(RefCell::new(RWMutexData::new())),
         }
     }

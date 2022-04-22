@@ -16,6 +16,20 @@ import (
 	"errors"
 )
 
+////////////////////////////////////////////
+// FFI
+var nativeIO ffiIO
+
+func init() {
+	//nativeIO = ffi(ffiIO, "io")
+}
+
+type ffiIO interface {
+	init(erros map[int]error)
+}
+
+////////////////////////////////////////////
+
 // Seek whence values.
 const (
 	SeekStart   = 0 // seek relative to the origin of the file

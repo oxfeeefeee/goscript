@@ -1,6 +1,6 @@
 //#![allow(dead_code)]
 use super::gc::GcoVec;
-use super::instruction::{OpIndex, ValueType};
+pub use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
 use crate::channel::Channel;
@@ -37,16 +37,6 @@ fn ref_ptr_eq<T>(x: Option<&T>, y: Option<&T>) -> bool {
         (None, None) => true,
         _ => false,
     }
-}
-
-macro_rules! rc_ptr_eq {
-    ($x:expr, $y:expr) => {
-        match ($x, $y) {
-            (Some(a), Some(b)) => Rc::ptr_eq(a, b),
-            (None, None) => true,
-            _ => false,
-        }
-    };
 }
 
 macro_rules! nil_err_str {
@@ -284,7 +274,7 @@ pub union ValueData {
     array: *const (GosArrayObj, RCount),
     structure: *const (StructObj, RCount),
     pointer: *mut PointerObj,
-    unsafe_ptr: *mut Rc<dyn UnsafePtr>,
+    unsafe_ptr: *mut UnsafePtrObj,
     closure: *const (ClosureObj, RCount),
     slice: *const (GosSliceObj, RCount),
     map: *const (MapObj, RCount),
@@ -531,7 +521,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_unsafe_ptr(&self) -> Option<&Rc<dyn UnsafePtr>> {
+    pub fn as_unsafe_ptr(&self) -> Option<&UnsafePtrObj> {
         unsafe { self.unsafe_ptr.as_ref() }
     }
 
@@ -953,7 +943,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn from_unsafe_ptr(p: OptionBox<Rc<dyn UnsafePtr>>) -> ValueData {
+    fn from_unsafe_ptr(p: OptionBox<UnsafePtrObj>) -> ValueData {
         ValueData {
             unsafe_ptr: p.map_or(ptr::null_mut(), |x| Box::into_raw(x)),
         }
@@ -1048,7 +1038,7 @@ impl ValueData {
 
     #[inline]
     fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> ValueData {
-        ValueData::from_unsafe_ptr(Some(Box::new(Rc::new(p))))
+        ValueData::from_unsafe_ptr(Some(Box::new(UnsafePtrObj::new(p))))
     }
 
     #[inline]
@@ -1119,7 +1109,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn into_unsafe_ptr(self) -> OptionBox<Rc<dyn UnsafePtr>> {
+    fn into_unsafe_ptr(self) -> OptionBox<UnsafePtrObj> {
         unsafe { (!self.unsafe_ptr.is_null()).then(|| Box::from_raw(self.unsafe_ptr)) }
     }
 
@@ -1684,7 +1674,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_unsafe_ptr(mut self) -> OptionBox<Rc<dyn UnsafePtr>> {
+    pub fn into_unsafe_ptr(mut self) -> OptionBox<UnsafePtrObj> {
         debug_assert!(self.typ == ValueType::UnsafePtr);
         self.typ = ValueType::Void;
         self.data.copy().into_unsafe_ptr()
@@ -1731,7 +1721,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_some_unsafe_ptr(self) -> RuntimeResult<Box<Rc<dyn UnsafePtr>>> {
+    pub fn into_some_unsafe_ptr(self) -> RuntimeResult<Box<UnsafePtrObj>> {
         self.into_unsafe_ptr().ok_or(nil_err_str!())
     }
 
@@ -1904,7 +1894,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_unsafe_ptr(&self) -> Option<&Rc<dyn UnsafePtr>> {
+    pub fn as_unsafe_ptr(&self) -> Option<&UnsafePtrObj> {
         debug_assert!(self.typ == ValueType::UnsafePtr);
         self.data.as_unsafe_ptr()
     }
@@ -1951,7 +1941,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_some_unsafe_ptr(&self) -> RuntimeResult<&Rc<dyn UnsafePtr>> {
+    pub fn as_some_unsafe_ptr(&self) -> RuntimeResult<&UnsafePtrObj> {
         self.as_unsafe_ptr().ok_or(nil_err_str!())
     }
 
@@ -2141,7 +2131,7 @@ impl GosValue {
                 self.as_pointer().map(|p| p.ref_sub_one());
             }
             ValueType::UnsafePtr => {
-                self.as_unsafe_ptr().map(|p| p.ref_sub_one());
+                self.as_unsafe_ptr().map(|p| p.ptr().ref_sub_one());
             }
             ValueType::Interface => {
                 self.as_interface().map(|x| x.ref_sub_one());
@@ -2169,7 +2159,7 @@ impl GosValue {
                 self.as_pointer().map(|x| x.mark_dirty(queue));
             }
             ValueType::UnsafePtr => {
-                self.as_unsafe_ptr().map(|x| x.mark_dirty(queue));
+                self.as_unsafe_ptr().map(|x| x.ptr().mark_dirty(queue));
             }
             ValueType::Closure => {
                 self.as_closure()
@@ -2274,7 +2264,7 @@ impl PartialEq for GosValue {
             }
             (ValueType::Pointer, ValueType::Pointer) => self.as_pointer() == b.as_pointer(),
             (ValueType::UnsafePtr, ValueType::UnsafePtr) => {
-                rc_ptr_eq!(self.as_unsafe_ptr(), b.as_unsafe_ptr())
+                self.as_unsafe_ptr() == b.as_unsafe_ptr()
             }
             (ValueType::Closure, ValueType::Closure) => {
                 ref_ptr_eq(self.as_closure(), b.as_closure())
@@ -2329,10 +2319,6 @@ impl Hash for GosValue {
             },
             ValueType::Pointer => match self.as_pointer() {
                 Some(p) => PointerObj::hash(&p, state),
-                None => 0.hash(state),
-            },
-            ValueType::UnsafePtr => match self.as_unsafe_ptr() {
-                Some(p) => Rc::as_ptr(&p).hash(state),
                 None => 0.hash(state),
             },
             _ => unreachable!(),
@@ -2403,7 +2389,7 @@ impl Display for GosValue {
                 None => f.write_str("<nil(pointer)>"),
             },
             ValueType::UnsafePtr => match self.as_unsafe_ptr() {
-                Some(p) => write!(f, "{:p}", Rc::as_ptr(p)),
+                Some(p) => std::fmt::Display::fmt(p, f),
                 None => f.write_str("<nil(unsafe pointer)>"),
             },
             ValueType::Closure => match self.as_closure() {
