@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::package::PkgVarPairs;
 use super::types::TypeLookup;
 use goscript_parser::ast::*;
@@ -18,18 +16,11 @@ pub enum CallStyle {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum IndexSelType {
-    Indexing,
-    StructField,
-}
-
-#[derive(Clone, Copy, Debug)]
 pub struct IndexSelInfo {
     pub index: i8,
     pub imm_index: Option<OpIndex>, // for IMM instructions
     pub t1: ValueType,
     pub t2: Option<ValueType>, // for non-IMM instructions
-    pub typ: IndexSelType,
 }
 
 impl IndexSelInfo {
@@ -38,14 +29,12 @@ impl IndexSelInfo {
         imm_index: Option<OpIndex>,
         t1: ValueType,
         t2: Option<ValueType>,
-        typ: IndexSelType,
     ) -> IndexSelInfo {
         IndexSelInfo {
             index: index,
             imm_index: imm_index,
             t1: t1,
             t2: t2,
-            typ: typ,
         }
     }
 
@@ -53,10 +42,6 @@ impl IndexSelInfo {
         let mut v = *self;
         v.index = i8::try_from(i).unwrap();
         v
-    }
-
-    pub fn stack_space(&self) -> OpIndex {
-        self.t2.map_or(1, |_| 2)
     }
 }
 
@@ -67,7 +52,8 @@ impl IndexSelInfo {
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    IndexSelExpr(IndexSelInfo),
+    IndexExpr(IndexSelInfo),
+    SelExpr(IndexSelInfo),
     Deref(OpIndex),
 }
 
@@ -223,32 +209,30 @@ impl<'a> Emitter<'a> {
                 EntIndex::TypeMeta(_) => unreachable!(),
                 EntIndex::Blank => unreachable!(),
             },
-            LeftHandSide::IndexSelExpr(info) => match info.typ {
-                IndexSelType::Indexing => match info.imm_index {
-                    Some(i) => (
-                        Opcode::STORE_INDEX_IMM,
-                        i,
-                        Some(info.t1),
-                        None,
-                        Some(info.index),
-                    ),
-
-                    None => (
-                        Opcode::STORE_INDEX,
-                        info.index as i32,
-                        Some(info.t1),
-                        info.t2,
-                        None,
-                    ),
-                },
-                IndexSelType::StructField => (
-                    Opcode::STORE_STRUCT_FIELD,
-                    info.imm_index.unwrap(),
+            LeftHandSide::IndexExpr(info) => match info.imm_index {
+                Some(i) => (
+                    Opcode::STORE_INDEX_IMM,
+                    i,
                     Some(info.t1),
                     None,
                     Some(info.index),
                 ),
+
+                None => (
+                    Opcode::STORE_INDEX,
+                    info.index as i32,
+                    Some(info.t1),
+                    info.t2,
+                    None,
+                ),
             },
+            LeftHandSide::SelExpr(info) => (
+                Opcode::STORE_STRUCT_FIELD,
+                info.imm_index.unwrap(),
+                Some(info.t1),
+                None,
+                Some(info.index),
+            ),
             LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, *i, None, None, None),
         };
         let mut inst = Instruction::new(code, Some(typ), t1, t2, None);
@@ -436,19 +420,5 @@ impl<'a> Emitter<'a> {
     pub fn emit_push_zero_val(&mut self, imm: OpIndex, pos: Option<usize>) {
         self.f
             .emit_inst(Opcode::PUSH_ZERO_VALUE, [None, None, None], Some(imm), pos);
-    }
-
-    pub fn emit_raw_inst(&mut self, u: u64, pos: Option<usize>) {
-        self.f.emit_raw_inst(u, pos);
-    }
-
-    pub fn emit_ops(
-        &mut self,
-        code: Opcode,
-        t0: ValueType,
-        t1: Option<ValueType>,
-        pos: Option<usize>,
-    ) {
-        self.f.emit_code_with_type2(code, t0, t1, pos);
     }
 }

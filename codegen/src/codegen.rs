@@ -277,12 +277,11 @@ impl<'a> CodeGen<'a> {
                             index_typ = Some(self.t.expr_value_type(ind));
                         }
                         (
-                            LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                            LeftHandSide::IndexExpr(IndexSelInfo::new(
                                 0,
                                 index_const,
                                 obj_typ,
                                 index_typ,
-                                IndexSelType::Indexing,
                             )), // the true index will be calculated later
                             Some(self.t.expr_tc_type(expr)),
                             pos,
@@ -314,12 +313,11 @@ impl<'a> CodeGen<'a> {
                                 let obj_typ = self.t.expr_value_type(&sexpr.expr);
                                 (
                                     // the true index will be calculated later
-                                    LeftHandSide::IndexSelExpr(IndexSelInfo::new(
+                                    LeftHandSide::SelExpr(IndexSelInfo::new(
                                         0,
                                         Some(i),
                                         obj_typ,
                                         None,
-                                        IndexSelType::StructField,
                                     )),
                                     Some(self.t.expr_tc_type(expr)),
                                     pos,
@@ -539,11 +537,21 @@ impl<'a> CodeGen<'a> {
                             pos,
                         );
                     }
-                    LeftHandSide::IndexSelExpr(info) => {
+                    LeftHandSide::IndexExpr(info) => {
                         current_func_emitter!(self).emit_store(
-                            &LeftHandSide::IndexSelExpr(
-                                info.with_index(current_indexing_deref_index),
-                            ),
+                            &LeftHandSide::IndexExpr(info.with_index(current_indexing_deref_index)),
+                            rhs_index,
+                            None,
+                            None,
+                            typ,
+                            pos,
+                        );
+                        // the lhs of IndexSelExpr takes two spots
+                        current_indexing_deref_index += 2;
+                    }
+                    LeftHandSide::SelExpr(info) => {
+                        current_func_emitter!(self).emit_store(
+                            &LeftHandSide::SelExpr(info.with_index(current_indexing_deref_index)),
                             rhs_index,
                             None,
                             None,
@@ -621,13 +629,23 @@ impl<'a> CodeGen<'a> {
                     pos,
                 );
             }
-            LeftHandSide::IndexSelExpr(info) => {
+            LeftHandSide::IndexExpr(info) => {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::IndexSelExpr(
-                        info.with_index(-(on_stack_types.len() as OpIndex)),
-                    ),
+                    &LeftHandSide::IndexExpr(info.with_index(-(on_stack_types.len() as OpIndex))),
+                    -1,
+                    Some(op),
+                    None,
+                    typ,
+                    pos,
+                );
+            }
+            LeftHandSide::SelExpr(info) => {
+                // stack looks like this(bottom to top) :
+                //  [... target, index, value] or [... target, value]
+                current_func_emitter!(self).emit_store(
+                    &LeftHandSide::SelExpr(info.with_index(-(on_stack_types.len() as OpIndex))),
                     -1,
                     Some(op),
                     None,
@@ -1348,11 +1366,14 @@ impl<'a> CodeGen<'a> {
         let mut on_stack_types = vec![];
         match lhs {
             LeftHandSide::Primitive(_) => {}
-            LeftHandSide::IndexSelExpr(info) => {
+            LeftHandSide::IndexExpr(info) => {
                 on_stack_types.push(info.t1);
                 if let Some(t) = info.t2 {
                     on_stack_types.push(t);
                 }
+            }
+            LeftHandSide::SelExpr(info) => {
+                on_stack_types.push(info.t1);
             }
             LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
         }
