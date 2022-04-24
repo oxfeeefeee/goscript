@@ -116,11 +116,21 @@ impl<'a> CodeGen<'a> {
         let mode = expr.map_or(&OperandMode::Value, |x| self.t.expr_mode(x));
         match mode {
             OperandMode::TypeExpr => {
-                let lookup = &self.t;
-                let tctype = lookup.underlying_tc(lookup.obj_use_tc_type(*ident));
-                match lookup.basic_type_meta(tctype, self.objects) {
+                let tctype = self.t.underlying_tc(self.t.obj_use_tc_type(*ident));
+                match self.t.basic_type_meta(tctype, self.objects) {
                     Some(meta) => EntIndex::TypeMeta(meta),
-                    None => self.resolve_var_ident(ident),
+                    None => {
+                        let id = &self.ast_objs.idents[*ident];
+                        if id.name == "error" {
+                            EntIndex::TypeMeta(self.t.tc_type_to_meta(
+                                tctype,
+                                self.objects,
+                                self.dummy_gcv,
+                            ))
+                        } else {
+                            self.resolve_var_ident(ident)
+                        }
+                    }
                 }
             }
             OperandMode::Value => {

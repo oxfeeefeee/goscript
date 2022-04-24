@@ -419,11 +419,11 @@ impl<'a> TypeLookup<'a> {
                 (GosValue::new_float64(f.into()), ValueType::Float64)
             }
             BasicType::Complex64 => {
-                let (cr, ci, _) = val.complex_as_complex64();
+                let (cr, ci, _) = val.to_complex().complex_as_complex64();
                 (GosValue::new_complex64(cr, ci), ValueType::Complex64)
             }
             BasicType::Complex128 => {
-                let (cr, ci, _) = val.complex_as_complex128();
+                let (cr, ci, _) = val.to_complex().complex_as_complex128();
                 (GosValue::new_complex128(cr, ci), ValueType::Complex128)
             }
             BasicType::Str | BasicType::UntypedString => {

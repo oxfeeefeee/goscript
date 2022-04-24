@@ -24,7 +24,7 @@ const O_TRUNC: usize = 0x00200;
 #[derive(Ffi)]
 pub struct FileFfi {}
 
-#[ffi_impl]
+#[ffi_impl(rename = "os.file")]
 impl FileFfi {
     pub fn new(_v: Vec<GosValue>) -> FileFfi {
         FileFfi {}

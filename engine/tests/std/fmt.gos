@@ -1,9 +1,12 @@
 package main
 
 import (
-    //"fmt"
+    "fmt"
 )
 
 func main() {
-  //  fmt.Println(123)
+    const name, age = "Kim", 22
+	fmt.Println(name, "is", age, "years old.")
+
+    //fmt.Sprintf("%d %d %#[1]x %#x", 16, 17)
 }
