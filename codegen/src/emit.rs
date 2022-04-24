@@ -16,21 +16,21 @@ pub enum CallStyle {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct IndexSelInfo {
+pub struct IndexLhsInfo {
     pub index: i8,
     pub imm_index: Option<OpIndex>, // for IMM instructions
     pub t1: ValueType,
     pub t2: Option<ValueType>, // for non-IMM instructions
 }
 
-impl IndexSelInfo {
+impl IndexLhsInfo {
     pub fn new(
         index: i8,
         imm_index: Option<OpIndex>,
         t1: ValueType,
         t2: Option<ValueType>,
-    ) -> IndexSelInfo {
-        IndexSelInfo {
+    ) -> IndexLhsInfo {
+        IndexLhsInfo {
             index: index,
             imm_index: imm_index,
             t1: t1,
@@ -38,8 +38,31 @@ impl IndexSelInfo {
         }
     }
 
-    pub fn with_index(&self, i: OpIndex) -> IndexSelInfo {
-        let mut v = *self;
+    pub fn clone_with_index(&self, i: OpIndex) -> IndexLhsInfo {
+        let mut v = self.clone();
+        v.index = i8::try_from(i).unwrap();
+        v
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SelLhsInfo {
+    pub index: i8,
+    pub field_indices: Vec<usize>, // for IMM instructions
+    pub t1: ValueType,
+}
+
+impl SelLhsInfo {
+    pub fn new(index: i8, field_indices: Vec<usize>, t1: ValueType) -> SelLhsInfo {
+        SelLhsInfo {
+            index: index,
+            field_indices: field_indices,
+            t1: t1,
+        }
+    }
+
+    pub fn clone_with_index(&self, i: OpIndex) -> SelLhsInfo {
+        let mut v = self.clone();
         v.index = i8::try_from(i).unwrap();
         v
     }
@@ -52,8 +75,8 @@ impl IndexSelInfo {
 #[derive(Clone, Debug)]
 pub enum LeftHandSide {
     Primitive(EntIndex),
-    IndexExpr(IndexSelInfo),
-    SelExpr(IndexSelInfo),
+    IndexExpr(IndexLhsInfo),
+    SelExpr(SelLhsInfo),
     Deref(OpIndex),
 }
 
@@ -190,6 +213,7 @@ impl<'a> Emitter<'a> {
         }
 
         let mut pkg_info = None;
+        let mut struct_indices = None;
         let (code, int32, t1, t2, int8) = match lhs {
             LeftHandSide::Primitive(index) => match index {
                 EntIndex::Const(_) => unreachable!(),
@@ -226,13 +250,23 @@ impl<'a> Emitter<'a> {
                     None,
                 ),
             },
-            LeftHandSide::SelExpr(info) => (
-                Opcode::STORE_STRUCT_FIELD,
-                info.imm_index.unwrap(),
-                Some(info.t1),
-                None,
-                Some(info.index),
-            ),
+            LeftHandSide::SelExpr(info) => {
+                let imm = match info.field_indices.len() {
+                    1 => info.field_indices[0] as OpIndex,
+                    0 => unreachable!(),
+                    _ => {
+                        struct_indices = Some(info.field_indices.clone());
+                        -(info.field_indices.len() as OpIndex)
+                    }
+                };
+                (
+                    Opcode::STORE_STRUCT_FIELD,
+                    imm,
+                    Some(info.t1),
+                    None,
+                    Some(info.index),
+                )
+            }
             LeftHandSide::Deref(i) => (Opcode::STORE_DEREF, *i, None, None, None),
         };
         let mut inst = Instruction::new(code, Some(typ), t1, t2, None);
@@ -248,10 +282,17 @@ impl<'a> Emitter<'a> {
         });
         inst.set_imm824(imm0, int32);
         self.f.push_inst_pos(inst, pos);
+
         if let Some((pkg, ident)) = pkg_info {
             self.f.emit_raw_inst(key_to_u64(pkg), pos);
             let (pairs, func) = patch_info.unwrap();
             pairs.add_pair(pkg, ident.into(), func, self.f.code().len() - 2, true);
+        }
+
+        if let Some(indices) = struct_indices {
+            for i in indices {
+                self.f.emit_raw_inst(i as u64, pos)
+            }
         }
     }
 
@@ -325,13 +366,25 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    pub fn emit_load_struct_field(&mut self, imm: OpIndex, typ: ValueType, pos: Option<usize>) {
-        self.f.emit_inst(
-            Opcode::LOAD_STRUCT_FIELD,
-            [Some(typ), None, None],
-            Some(imm),
-            pos,
-        );
+    pub fn emit_struct_field_op(
+        &mut self,
+        op: Opcode,
+        indices: &[usize],
+        typ: ValueType,
+        pos: Option<usize>,
+    ) {
+        let imm = if indices.len() == 1 {
+            indices[0] as OpIndex
+        } else {
+            -(indices.len() as OpIndex)
+        };
+        self.f
+            .emit_inst(op, [Some(typ), None, None], Some(imm), pos);
+        if imm < 0 {
+            for i in indices {
+                self.f.emit_raw_inst(*i as u64, pos)
+            }
+        }
     }
 
     pub fn emit_load_index(

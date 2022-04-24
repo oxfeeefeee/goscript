@@ -373,11 +373,11 @@ impl StdValue {
                     let fields = &metas[self.meta().unwrap().underlying(metas).key]
                         .as_struct()
                         .0
-                        .fields;
+                        .all();
                     Ok(GosValue::new_unsafe_ptr(StdValue::Pointer(
                         p,
-                        Some(fields[i].0),
-                        Some(fields[i].2),
+                        Some(fields[i].meta),
+                        Some(fields[i].exported),
                     )))
                 }
             }

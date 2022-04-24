@@ -11,6 +11,7 @@ use goscript_vm::instruction::ValueType;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
+use std::vec;
 
 pub type TypeCache = HashMap<TCTypeKey, Meta>;
 
@@ -633,15 +634,35 @@ impl<'a> TypeLookup<'a> {
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
     ) -> Fields {
-        let mut vec = Vec::new();
-        let mut map = HashMap::<String, usize>::new();
+        let mut infos = Vec::new();
+        let mut map = HashMap::<String, Vec<usize>>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
             let f_type = self.tc_type_to_meta(field.typ().unwrap(), vm_objs, dummy_gcv);
-            let exported = field.name().chars().next().unwrap().is_uppercase();
-            vec.push((f_type, field.name().clone(), exported));
-            map.insert(field.name().clone(), i);
+            let is_exported = field.name().chars().next().unwrap().is_uppercase();
+            let is_embedded =
+                field.entity_type().is_var() && field.entity_type().var_property().embedded;
+            infos.push(FieldInfo {
+                meta: f_type,
+                name: field.name().clone(),
+                exported: is_exported,
+                embedded: is_embedded,
+            });
+            map.insert(field.name().clone(), vec![i]);
+            if is_embedded {
+                match f_type.mtype_unwraped(&vm_objs.metas) {
+                    MetadataType::Struct(fields, _) => {
+                        for (k, v) in fields.mapping() {
+                            let mut indices = vec![i];
+                            indices.append(&mut v.clone());
+                            map.insert(k.clone(), indices);
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
-        Fields::new(vec, map)
+
+        Fields::new(infos, map)
     }
 }

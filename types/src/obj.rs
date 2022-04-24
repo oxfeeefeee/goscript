@@ -136,6 +136,13 @@ impl EntityType {
         }
     }
 
+    pub fn var_property(&self) -> &VarProperty {
+        match self {
+            EntityType::Var(prop) => prop,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn var_property_mut(&mut self) -> &mut VarProperty {
         match self {
             EntityType::Var(prop) => prop,

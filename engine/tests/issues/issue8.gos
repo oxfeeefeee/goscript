@@ -58,5 +58,12 @@ func main() {
 
     p := &t
     p.PrintField()
-   
+
+    test2();
+}
+
+func test2() {
+    t := Container{&Base{1, "go"}, Base2{1, 1, "go2"}}
+    t.j = 456
+    assert(t.j == 456)
 }

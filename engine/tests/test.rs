@@ -363,6 +363,14 @@ fn test_std_strings() {
 }
 
 #[test]
+fn test_std_fmt() {
+    time_test!();
+
+    let err_cnt = run("./tests/std/fmt.gos", false);
+    assert!(err_cnt == 0);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 

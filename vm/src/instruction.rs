@@ -29,8 +29,6 @@ pub enum Opcode {
     LOAD_PKG_FIELD,
     LOAD_PKG_INIT,
     STORE_PKG_FIELD,
-    LOAD_FIELD,
-    STORE_FIELD,
     STORE_DEREF,
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
@@ -138,8 +136,6 @@ impl Opcode {
             Opcode::LOAD_PKG_FIELD => ("LOAD_PKG_FIELD", 1),
             Opcode::LOAD_PKG_INIT => ("LOAD_PKG_INIT", -128),
             Opcode::STORE_PKG_FIELD => ("STORE_PKG_FIELD", 0),
-            Opcode::LOAD_FIELD => ("LOAD_FIELD", -1),
-            Opcode::STORE_FIELD => ("STORE_FIELD", 0),
             Opcode::STORE_DEREF => ("STORE_DEREF", 0),
             Opcode::BIND_METHOD => ("BIND_METHOD", 0),
             Opcode::BIND_INTERFACE_METHOD => ("BIND_INTERFACE_METHOD", 0),
@@ -426,7 +422,6 @@ impl fmt::Debug for Instruction {
         match op {
             Opcode::STORE_LOCAL
             | Opcode::STORE_UPVALUE
-            | Opcode::STORE_FIELD
             | Opcode::STORE_STRUCT_FIELD
             | Opcode::STORE_PKG_FIELD
             | Opcode::STORE_DEREF => {

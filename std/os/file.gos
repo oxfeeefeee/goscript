@@ -1,0 +1,81 @@
+package os
+
+import "unsafe"
+import "errors"
+
+var fileIface ffiFile
+
+type ffiFile interface {
+    get_std_io(which int) unsafe.Pointer
+    open(name string, flags int) (p unsafe.Pointer, errKind int, err string)
+    read(f unsafe.Pointer, b []byte) (n int, errKind int, err string)
+    write(f unsafe.Pointer, b []byte) (n int, errKind int, err string)
+    seek(f unsafe.Pointer, offset int64, whence int) (ret int64, errKind int, err string)
+}
+
+var Stdin *File
+var Stdout *File
+var Stderr *File
+
+func init() {
+	fileIface = ffi(ffiFile, "os.file")
+
+    Stdin = &File{fileIface.get_std_io(0), "Stdin"}
+    Stdout = &File{fileIface.get_std_io(1), "Stdout"}
+    Stderr = &File{fileIface.get_std_io(2), "Stderr"}
+}
+
+// Flags to OpenFile 
+const (
+	// Exactly one of O_RDONLY, O_WRONLY, or O_RDWR must be specified.
+	O_RDONLY int = 0x00000 // open the file read-only.
+	O_WRONLY int = 0x00001 // open the file write-only.
+	O_RDWR   int = 0x00002   // open the file read-write.
+	// The remaining values may be or'ed in to control behavior.
+	O_APPEND int = 0x00400 // append data to the file when writing.
+	O_CREATE int = 0x00040  // create a new file if none exists.
+	O_EXCL   int = 0x00080   // used with O_CREATE, file must not exist.
+	//O_SYNC   int = syscall.O_SYNC   // open for synchronous I/O.
+	O_TRUNC  int = 0x00200  // truncate regular writable file when opened.
+)
+
+type File struct{
+    ptr unsafe.Pointer
+    name string
+}
+
+func Open(name string) (*File, error) {
+	p, _, msg := fileIface.open(name, O_RDONLY)
+    if msg != "" {
+        return nil, errors.New(msg)
+    } else {
+        return &File{ptr: p, name: name}, nil
+    }
+}
+
+func (f *File) Read(b []byte) (n int, err error) {
+    n, _, msg := fileIface.read(f.ptr, b)
+    if msg != "" {
+        return n, errors.New(msg)
+    } else {
+        return n, nil
+    }
+}
+
+func (f *File) Write(b []byte) (n int, err error) {
+    n, _, msg := fileIface.write(f.ptr, b)
+    if msg != "" {
+        return n, errors.New(msg)
+    } else {
+        return n, nil
+    }
+}
+
+func (f *File) Seek(offset int64, whence int) (ret int64, err error) {
+    n, _, msg := fileIface.seek(f.ptr, offset, whence)
+    if msg != "" {
+        return n, errors.New(msg)
+    } else {
+        return n, nil
+    }
+}

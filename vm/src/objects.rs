@@ -652,16 +652,6 @@ impl StructObj {
         }
     }
 
-    pub fn get_embeded(struct_: GosValue, indices: &Vec<usize>) -> GosValue {
-        let mut cur_val: GosValue = struct_;
-        for &i in indices.iter() {
-            let s = &cur_val.as_struct().0;
-            let v = s.borrow_fields()[i].clone();
-            cur_val = v;
-        }
-        cur_val
-    }
-
     #[inline]
     pub fn borrow_fields(&self) -> Ref<Vec<GosValue>> {
         self.fields.borrow()

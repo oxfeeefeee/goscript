@@ -402,18 +402,18 @@ impl<'a> Fiber<'a> {
                         let result = stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv);
                         panic_if_err!(result, panic, frame, code);
                     }
-                    Opcode::LOAD_FIELD => {
-                        let ind = stack.pop_value();
-                        let val = stack.pop_value();
-                        stack.push(val.load_field(&ind, objs));
-                    }
                     Opcode::LOAD_STRUCT_FIELD => {
-                        let ind = inst.imm();
-                        match pop_try_deref_value(stack, inst.t0(), objs) {
-                            Ok(target) => {
-                                let val =
-                                    target.as_struct().0.borrow_fields()[ind as usize].clone();
-                                stack.push(val);
+                        let (struct_, index) = get_struct_and_index(
+                            inst.imm(),
+                            stack.pop_value(),
+                            stack,
+                            code,
+                            frame,
+                            objs,
+                        );
+                        match struct_ {
+                            Ok(t) => {
+                                stack.push(t.as_struct().0.borrow_fields()[index].clone());
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
@@ -440,27 +440,21 @@ impl<'a> Fiber<'a> {
                             }
                         }
                     }
-                    Opcode::STORE_FIELD => {
-                        let (rhs_index, _) = inst.imm824();
-                        let index = inst.t2_as_index();
-                        let s_index = Stack::offset(stack.len(), index);
-                        let key = stack.get(s_index + 1).clone();
-
-                        match get_try_deref_value(stack, s_index, inst.t1(), objs) {
-                            Ok(target) => {
-                                stack.store_field(&target, &key, rhs_index, inst.t0(), gcv);
-                            }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
-                        }
-                    }
                     Opcode::STORE_STRUCT_FIELD => {
                         let (rhs_index, imm) = inst.imm824();
                         let index = inst.t2_as_index();
                         let s_index = Stack::offset(stack.len(), index);
-                        match get_try_deref_value(stack, s_index, inst.t1(), objs) {
+                        let (struct_, index) = get_struct_and_index(
+                            imm,
+                            stack.get(s_index).clone(),
+                            stack,
+                            code,
+                            frame,
+                            objs,
+                        );
+                        match struct_ {
                             Ok(target) => {
-                                let field =
-                                    &mut target.as_struct().0.borrow_fields_mut()[imm as usize];
+                                let field = &mut target.as_struct().0.borrow_fields_mut()[index];
                                 stack.store_val(field, rhs_index, inst.t0(), gcv);
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -690,15 +684,25 @@ impl<'a> Fiber<'a> {
                             }
                         }
                     }
-                    Opcode::REF_STRUCT_FIELD => match pop_try_deref_value(stack, inst.t0(), objs) {
-                        Ok(target) => {
-                            stack.push(GosValue::new_pointer(PointerObj::StructField(
-                                target,
-                                inst.imm(),
-                            )));
+                    Opcode::REF_STRUCT_FIELD => {
+                        let (struct_, index) = get_struct_and_index(
+                            inst.imm(),
+                            stack.pop_value(),
+                            stack,
+                            code,
+                            frame,
+                            objs,
+                        );
+                        match struct_ {
+                            Ok(target) => {
+                                stack.push(GosValue::new_pointer(PointerObj::StructField(
+                                    target,
+                                    index as OpIndex,
+                                )));
+                            }
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
-                        Err(e) => go_panic_str!(panic, &e, frame, code),
-                    },
+                    }
                     Opcode::REF_PKG_MEMBER => {
                         let pkg = read_imm_key!(code, frame, objs);
                         stack.push(GosValue::new_pointer(PointerObj::PkgMember(
@@ -1508,36 +1512,63 @@ fn char_from_i32(i: i32) -> char {
     unsafe { char::from_u32_unchecked(i as u32) }
 }
 
+#[inline]
 fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<GosValue> {
     v.as_some_pointer()?.deref(stack, &objs.packages)
 }
 
-#[inline]
-fn pop_try_deref_value(
+#[inline(always)]
+fn get_struct_and_index(
+    op_index: OpIndex,
+    val: GosValue,
     stack: &mut Stack,
-    t: ValueType,
+    code: &Vec<Instruction>,
+    frame: &mut CallFrame,
     objs: &VMObjects,
-) -> RuntimeResult<GosValue> {
-    match t {
-        ValueType::Pointer => stack.pop_some_pointer()?.deref(stack, &objs.packages),
-        _ => Ok(stack.pop_value()),
-    }
+) -> (RuntimeResult<GosValue>, usize) {
+    let (target, index) = if op_index >= 0 {
+        (Ok(val), op_index as usize)
+    } else {
+        let count = -op_index as usize;
+        let mut indices = Vec::with_capacity(count);
+        for c in &code[frame.pc..frame.pc + count - 1] {
+            indices.push(c.get_u64() as usize);
+        }
+        let index = code[frame.pc + count - 1].get_u64() as usize;
+        frame.pc += count;
+        let val = get_embeded(val, &indices, stack, &objs.packages);
+        (val, index)
+    };
+    (
+        match target {
+            Ok(v) => match v.typ() {
+                ValueType::Pointer => deref_value(&v, stack, objs),
+                _ => Ok(v.clone()),
+            },
+            Err(e) => Err(e),
+        },
+        index,
+    )
 }
 
 #[inline]
-fn get_try_deref_value(
-    stack: &mut Stack,
-    index: usize,
-    t: ValueType,
-    objs: &VMObjects,
+pub fn get_embeded(
+    val: GosValue,
+    indices: &Vec<usize>,
+    stack: &Stack,
+    pkgs: &PackageObjs,
 ) -> RuntimeResult<GosValue> {
-    match t {
-        ValueType::Pointer => stack
-            .get(index)
-            .as_some_pointer()?
-            .deref(stack, &objs.packages),
-        _ => Ok(stack.get(index).clone()),
+    let typ = val.typ();
+    let mut cur_val: GosValue = val;
+    if typ == ValueType::Pointer {
+        cur_val = cur_val.as_some_pointer()?.deref(stack, pkgs)?;
     }
+    for &i in indices.iter() {
+        let s = &cur_val.as_struct().0;
+        let v = s.borrow_fields()[i].clone();
+        cur_val = v;
+    }
+    Ok(cur_val)
 }
 
 #[inline]
@@ -1573,7 +1604,8 @@ pub fn bind_method(
                 Binding4Runtime::Struct(func, ptr_recv, indices) => {
                     let obj = match indices {
                         None => obj.copy_semantic(gcv),
-                        Some(inds) => StructObj::get_embeded(obj.clone(), inds).copy_semantic(gcv),
+                        Some(inds) => get_embeded(obj.clone(), inds, stack, &objs.packages)?
+                            .copy_semantic(gcv),
                     };
                     let obj = cast_receiver(obj, *ptr_recv, stack, objs)?;
                     let cls = ClosureObj::new_gos(*func, &objs.functions, Some(obj));
@@ -1585,7 +1617,7 @@ pub fn bind_method(
                     };
                     match indices {
                         None => bind(&obj),
-                        Some(inds) => bind(&StructObj::get_embeded(obj.clone(), inds)),
+                        Some(inds) => bind(&get_embeded(obj.clone(), inds, stack, &objs.packages)?),
                     }
                 }
             }

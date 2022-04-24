@@ -277,7 +277,7 @@ impl<'a> CodeGen<'a> {
                             index_typ = Some(self.t.expr_value_type(ind));
                         }
                         (
-                            LeftHandSide::IndexExpr(IndexSelInfo::new(
+                            LeftHandSide::IndexExpr(IndexLhsInfo::new(
                                 0,
                                 index_const,
                                 obj_typ,
@@ -307,18 +307,12 @@ impl<'a> CodeGen<'a> {
                                     self.t
                                         .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
                                 let name = &self.ast_objs.idents[sexpr.sel].name;
-                                let i = t.field_index(name, &self.objects.metas);
-
+                                let indices = t.field_indices(name, &self.objects.metas).to_vec();
                                 self.visit_expr(&sexpr.expr);
                                 let obj_typ = self.t.expr_value_type(&sexpr.expr);
                                 (
                                     // the true index will be calculated later
-                                    LeftHandSide::SelExpr(IndexSelInfo::new(
-                                        0,
-                                        Some(i),
-                                        obj_typ,
-                                        None,
-                                    )),
+                                    LeftHandSide::SelExpr(SelLhsInfo::new(0, indices, obj_typ)),
                                     Some(self.t.expr_tc_type(expr)),
                                     pos,
                                 )
@@ -539,7 +533,9 @@ impl<'a> CodeGen<'a> {
                     }
                     LeftHandSide::IndexExpr(info) => {
                         current_func_emitter!(self).emit_store(
-                            &LeftHandSide::IndexExpr(info.with_index(current_indexing_deref_index)),
+                            &LeftHandSide::IndexExpr(
+                                info.clone_with_index(current_indexing_deref_index),
+                            ),
                             rhs_index,
                             None,
                             None,
@@ -551,7 +547,9 @@ impl<'a> CodeGen<'a> {
                     }
                     LeftHandSide::SelExpr(info) => {
                         current_func_emitter!(self).emit_store(
-                            &LeftHandSide::SelExpr(info.with_index(current_indexing_deref_index)),
+                            &LeftHandSide::SelExpr(
+                                info.clone_with_index(current_indexing_deref_index),
+                            ),
                             rhs_index,
                             None,
                             None,
@@ -633,7 +631,9 @@ impl<'a> CodeGen<'a> {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::IndexExpr(info.with_index(-(on_stack_types.len() as OpIndex))),
+                    &LeftHandSide::IndexExpr(
+                        info.clone_with_index(-(on_stack_types.len() as OpIndex)),
+                    ),
                     -1,
                     Some(op),
                     None,
@@ -645,7 +645,9 @@ impl<'a> CodeGen<'a> {
                 // stack looks like this(bottom to top) :
                 //  [... target, index, value] or [... target, value]
                 current_func_emitter!(self).emit_store(
-                    &LeftHandSide::SelExpr(info.with_index(-(on_stack_types.len() as OpIndex))),
+                    &LeftHandSide::SelExpr(
+                        info.clone_with_index(-(on_stack_types.len() as OpIndex)),
+                    ),
                     -1,
                     Some(op),
                     None,
@@ -1148,7 +1150,7 @@ impl<'a> CodeGen<'a> {
                     let (expr, index) = match expr {
                         Expr::KeyValue(kv) => {
                             let ident = kv.key.try_as_ident().unwrap();
-                            let index = f.mapping[&self.ast_objs.idents[*ident].name];
+                            let index = f.index_by_name(&self.ast_objs.idents[*ident].name);
                             (&kv.val, index)
                         }
                         _ => (expr, i),
@@ -1252,20 +1254,11 @@ impl<'a> CodeGen<'a> {
                 }
                 None => {
                     self.visit_expr(&sexpr.expr);
-                    let lhs_meta = self
-                        .t
-                        .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
                     let (t0, _, indices, _) = self.t.selection_vtypes_indices_sel_typ(sexpr.id());
-                    let index_count = indices.len();
-                    let index = indices[index_count - 1] as OpIndex; // the final index
-                    let embedded_indices =
-                        Vec::from_iter(indices[..index_count - 1].iter().cloned());
-                    let (_, typ) =
-                        self.gen_load_embedded_member(&embedded_indices, lhs_meta, t0, false, pos);
-                    current_func_mut!(self).emit_code_with_type_imm(
+                    current_func_emitter!(self).emit_struct_field_op(
                         Opcode::REF_STRUCT_FIELD,
-                        typ,
-                        index,
+                        indices,
+                        t0,
                         pos,
                     );
                 }
@@ -1297,31 +1290,31 @@ impl<'a> CodeGen<'a> {
         emitter.emit_load(i, None, t, pos);
     }
 
-    fn gen_load_embedded_member(
+    fn gen_load_field(
         &mut self,
         indices: &[usize],
         mdata: Meta,
         typ: ValueType,
-        dry_run: bool,
         pos: Option<usize>,
     ) -> (Meta, ValueType) {
-        let mut lhs_meta = mdata;
-        let mut lhs_type = typ;
-        for &i in indices.iter() {
-            let embed_index = i as OpIndex;
-            if !dry_run {
-                current_func_emitter!(self).emit_load_struct_field(embed_index, lhs_type, pos);
-            }
-            lhs_meta = self.get_embedded_member_meta(&lhs_meta, i);
-            lhs_type = lhs_meta.value_type(&self.objects.metas);
+        if indices.len() > 0 {
+            current_func_emitter!(self).emit_struct_field_op(
+                Opcode::LOAD_STRUCT_FIELD,
+                indices,
+                typ,
+                pos,
+            );
+            let field_meta = self.get_field_meta(&mdata, indices);
+            let field_type = field_meta.value_type(&self.objects.metas);
+            (field_meta, field_type)
+        } else {
+            (mdata, typ)
         }
-        (lhs_meta, lhs_type)
     }
 
-    fn get_embedded_member_meta(&self, parent: &Meta, index: usize) -> Meta {
-        match &self.objects.metas[parent.key] {
-            MetadataType::Named(_, m) => self.objects.metas[m.key].as_struct().0.fields[index].0,
-            MetadataType::Struct(f, _) => f.fields[index].0,
+    fn get_field_meta(&self, parent: &Meta, indices: &[usize]) -> Meta {
+        match parent.mtype_unwraped(&self.objects.metas) {
+            MetadataType::Struct(f, _) => f.get(indices, &self.objects.metas).meta,
             _ => unreachable!(),
         }
     }
@@ -1489,75 +1482,56 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
 
         let lhs_meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
-        let lhs_typ = lhs_meta.value_type(&self.objects.metas);
-        let (t0, _, indices, stype) = self.t.selection_vtypes_indices_sel_typ(this.id());
-        let index_count = indices.len();
-        let index = indices[index_count - 1] as OpIndex; // the final index
-        let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
-        let lhs_type = t0;
-        let lhs_has_embedded = index_count > 1;
-        let mut final_lhs_meta = lhs_meta;
-        let mut final_lhs_typ = lhs_typ;
-        if lhs_has_embedded {
-            let (m, t) =
-                self.gen_load_embedded_member(&embedded_indices[..], lhs_meta, lhs_typ, true, pos);
-            final_lhs_meta = m;
-            final_lhs_typ = t;
-        }
-
-        if (final_lhs_typ != ValueType::Pointer && final_lhs_typ != ValueType::Interface)
-            && stype == SelectionType::MethodPtrRecv
-        {
-            if !lhs_has_embedded {
-                self.gen_ref_expr(expr, None);
-            } else {
-                self.visit_expr(expr);
-                let (m, _) = self.gen_load_embedded_member(
-                    &embedded_indices[..embedded_indices.len() - 1],
-                    lhs_meta,
-                    lhs_type,
-                    false,
-                    pos,
-                );
-                let index = embedded_indices[embedded_indices.len() - 1];
-                let t = self
-                    .get_embedded_member_meta(&m, index)
-                    .value_type(&self.objects.metas);
-                current_func_mut!(self).emit_code_with_type_imm(
-                    Opcode::REF_STRUCT_FIELD,
-                    t,
-                    index as OpIndex,
-                    pos,
-                );
-            }
-        } else {
-            self.visit_expr(expr);
-            if lhs_has_embedded {
-                self.gen_load_embedded_member(
-                    &embedded_indices[..],
-                    lhs_meta,
-                    lhs_type,
-                    false,
-                    pos,
-                );
-            }
-            if final_lhs_typ == ValueType::Pointer && stype == SelectionType::MethodNonPtrRecv {
-                current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_typ, pos);
-            }
-        }
-
+        let lhs_type = lhs_meta.value_type(&self.objects.metas);
+        let (_, _, indices, stype) = self.t.selection_vtypes_indices_sel_typ(this.id());
+        let indices = indices.clone();
         match &stype {
             SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
-                if final_lhs_typ == ValueType::Interface {
+                let index_count = indices.len();
+                let index = indices[index_count - 1] as OpIndex; // the final index
+                let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
+                let lhs_has_embedded = index_count > 1;
+                let final_lhs_meta = match lhs_has_embedded {
+                    false => lhs_meta,
+                    true => self.get_field_meta(&lhs_meta, &embedded_indices),
+                };
+                let final_lhs_type = final_lhs_meta.value_type(&self.objects.metas);
+                if (final_lhs_type != ValueType::Pointer && final_lhs_type != ValueType::Interface)
+                    && stype == SelectionType::MethodPtrRecv
+                {
+                    if !lhs_has_embedded {
+                        self.gen_ref_expr(expr, None);
+                    } else {
+                        self.visit_expr(expr);
+                        current_func_emitter!(self).emit_struct_field_op(
+                            Opcode::REF_STRUCT_FIELD,
+                            &embedded_indices,
+                            lhs_type,
+                            pos,
+                        );
+                    }
+                } else {
+                    self.visit_expr(expr);
+                    if lhs_has_embedded {
+                        self.gen_load_field(&embedded_indices, lhs_meta, lhs_type, pos);
+                    }
+                    if final_lhs_type == ValueType::Pointer
+                        && stype == SelectionType::MethodNonPtrRecv
+                    {
+                        current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
+                    }
+                }
+
+                if final_lhs_type == ValueType::Interface {
                     current_func_mut!(self).emit_code_with_type_imm(
                         Opcode::BIND_INTERFACE_METHOD,
-                        final_lhs_typ,
+                        final_lhs_type,
                         index,
                         pos,
                     );
                 } else {
                     let func = current_func_mut!(self);
-                    func.emit_code_with_type(Opcode::BIND_METHOD, final_lhs_typ, pos);
+                    func.emit_code_with_type(Opcode::BIND_METHOD, final_lhs_type, pos);
                     let point = func.next_code_index();
                     func.emit_raw_inst(0, pos); // placeholder for FunctionKey
                     let fkey = *self.func_stack.last().unwrap();
@@ -1566,7 +1540,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                 }
             }
             SelectionType::NonMethod => {
-                current_func_emitter!(self).emit_load_struct_field(index, final_lhs_typ, pos);
+                self.visit_expr(expr);
+                self.gen_load_field(&indices, lhs_meta, lhs_type, pos);
             }
         }
     }
@@ -1709,9 +1684,8 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         }
     }
 
-    fn visit_expr_key_value(&mut self, e: &Expr, _key: &Expr, _val: &Expr) {
-        dbg!(e);
-        unimplemented!();
+    fn visit_expr_key_value(&mut self, _e: &Expr, _key: &Expr, _val: &Expr) {
+        unreachable!();
     }
 
     fn visit_expr_array_type(&mut self, this: &Expr, _: &Option<Expr>, _: &Expr) {

@@ -126,7 +126,7 @@ impl Meta {
         let field_zeros: Vec<GosValue> = f
             .fields
             .iter()
-            .map(|x| x.0.zero(&objs.metas, gcv))
+            .map(|x| x.meta.zero(&objs.metas, gcv))
             .collect();
         let struct_val = StructObj::new(field_zeros);
         let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
@@ -158,11 +158,7 @@ impl Meta {
 
     #[inline]
     pub fn mtype_unwraped<'a>(&self, metas: &'a MetadataObjs) -> &'a MetadataType {
-        let mt = &metas[self.key];
-        match mt {
-            MetadataType::Named(_, m) => &metas[m.key],
-            _ => mt,
-        }
+        metas[self.key].unwrap_named(metas)
     }
 
     #[inline]
@@ -272,10 +268,10 @@ impl Meta {
     }
 
     #[inline]
-    pub fn field_index(&self, name: &str, metas: &MetadataObjs) -> OpIndex {
+    pub fn field_indices<'a, 'b: 'a>(&'a self, name: &str, metas: &'b MetadataObjs) -> &'b [usize] {
         let key = self.recv_meta_key();
         match &metas[Meta::new(key, 0, false).underlying(metas).key] {
-            MetadataType::Struct(m, _) => m.mapping[name] as OpIndex,
+            MetadataType::Struct(m, _) => &m.mapping[name],
             _ => unreachable!(),
         }
     }
@@ -329,10 +325,10 @@ impl Meta {
             MetadataType::Interface(fields) => fields
                 .mapping
                 .get(name)
-                .map(|x| IfaceBinding::Iface(*x, None)),
+                .map(|x| IfaceBinding::Iface(x[0], None)),
             MetadataType::Struct(fields, _) => {
                 for (i, f) in fields.fields.iter().enumerate() {
-                    if let Some(mut re) = f.0.get_iface_binding(name, metas) {
+                    if let Some(mut re) = f.meta.get_iface_binding(name, metas) {
                         let indices = match &mut re {
                             IfaceBinding::Struct(_, indices) | IfaceBinding::Iface(_, indices) => {
                                 indices
@@ -368,37 +364,86 @@ impl Meta {
 }
 
 #[derive(Debug, Clone)]
+pub struct FieldInfo {
+    pub meta: Meta,
+    pub name: String,
+    pub exported: bool,
+    pub embedded: bool,
+}
+
+#[derive(Debug, Clone)]
 pub struct Fields {
-    pub fields: Vec<(Meta, String, bool)>,
-    pub mapping: HashMap<String, usize>,
+    fields: Vec<FieldInfo>,
+    mapping: HashMap<String, Vec<usize>>,
 }
 
 impl Fields {
     #[inline]
-    pub fn new(fields: Vec<(Meta, String, bool)>, mapping: HashMap<String, usize>) -> Fields {
+    pub fn new(fields: Vec<FieldInfo>, mapping: HashMap<String, Vec<usize>>) -> Fields {
         Fields {
             fields: fields,
             mapping: mapping,
         }
     }
 
+    #[inline]
+    pub fn all(&self) -> &[FieldInfo] {
+        self.fields.as_ref()
+    }
+
+    #[inline]
+    pub fn mapping(&self) -> &HashMap<String, Vec<usize>> {
+        &self.mapping
+    }
+
+    #[inline]
+    pub fn get<'a, 'b: 'a>(&'a self, indices: &[usize], metas: &'b MetadataObjs) -> &'a FieldInfo {
+        debug_assert!(indices.len() > 0);
+        if indices.len() == 1 {
+            self.get_non_embedded(indices[0])
+        } else {
+            metas[self.fields[indices[0] as usize].meta.key]
+                .unwrap_named(metas)
+                .as_struct()
+                .0
+                .get(&indices[1..], metas)
+        }
+    }
+
+    #[inline]
+    pub fn get_non_embedded(&self, index: usize) -> &FieldInfo {
+        &self.fields[index]
+    }
+
+    #[inline]
+    pub fn indices_by_name(&self, name: &str) -> &[usize] {
+        &self.mapping[name]
+    }
+
+    #[inline]
+    pub fn index_by_name(&self, name: &str) -> usize {
+        self.mapping[name][0]
+    }
+
+    #[inline]
     pub fn iface_methods_info(&self) -> Vec<(String, Meta)> {
         let mut ret = vec![];
         for f in self.fields.iter() {
-            ret.push((String::new(), f.0));
+            ret.push((String::new(), f.meta));
         }
-        for (name, index) in self.mapping.iter() {
-            ret[*index as usize].0 = name.clone();
+        for (name, indices) in self.mapping.iter() {
+            ret[indices[0]].0 = name.clone();
         }
         ret
     }
 
+    #[inline]
     pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         if self.fields.len() != other.fields.len() {
             return false;
         }
         for (i, f) in self.fields.iter().enumerate() {
-            if f.1 == other.fields[i].1 && !f.0.identical(&other.fields[i].0, metas) {
+            if f.name == other.fields[i].name && !f.meta.identical(&other.fields[i].meta, metas) {
                 return false;
             }
         }
@@ -584,6 +629,14 @@ impl MetadataType {
         match self {
             Self::Named(meth, meta) => (meth, meta),
             _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn unwrap_named<'a, 'b: 'a>(&'a self, metas: &'b MetadataObjs) -> &'a Self {
+        match self {
+            Self::Named(_, meta) => &metas[meta.key],
+            _ => self,
         }
     }
 
