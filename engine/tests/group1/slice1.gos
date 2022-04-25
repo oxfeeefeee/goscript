@@ -87,6 +87,16 @@ func copy_slice() {
 }
 
 
+func appendToNil() {
+    var a []int
+    b := []int{6,6,6}
+    a = append(a, b...)
+    a[0] = 123
+    assert(a[0] == 123)
+    assert(b[0] == 6)
+}
+
+
 
 func main() {
     var s1 = [][]int{{0},{99},{2}}
@@ -105,4 +115,6 @@ func main() {
     append_slice()
 
     copy_slice()
+
+    appendToNil()
 }

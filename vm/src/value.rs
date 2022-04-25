@@ -2646,7 +2646,12 @@ pub trait Dispatcher {
 
     fn slice_array(&self, arr: GosValue, begin: isize, end: isize) -> RuntimeResult<GosValue>;
 
-    fn slice_append(&self, this: GosValue, other: GosValue) -> GosValue;
+    fn slice_append(
+        &self,
+        this: GosValue,
+        other: GosValue,
+        gcv: &GcoVec,
+    ) -> RuntimeResult<GosValue>;
 
     fn slice_copy_from(&self, this: GosValue, other: GosValue) -> usize;
 
@@ -2793,7 +2798,12 @@ macro_rules! define_dispatcher {
             }
 
             #[inline]
-            fn slice_append(&self, this: GosValue, other: GosValue) -> GosValue {
+            fn slice_append(
+                &self,
+                this: GosValue,
+                other: GosValue,
+                gcv: &GcoVec,
+            ) -> RuntimeResult<GosValue> {
                 let a = this.as_slice::<$elem>();
                 let b = other.as_slice::<$elem>();
                 match b {
@@ -2801,11 +2811,20 @@ macro_rules! define_dispatcher {
                         Some(x) => {
                             let mut to = x.0.clone();
                             to.append(&y.0);
-                            GosValue::new_slice(to, other.t_elem())
+                            Ok(GosValue::new_slice(to, other.t_elem()))
                         }
-                        None => GosValue::new_slice(SliceObj::clone(&y.0), other.t_elem()),
+                        None => {
+                            let data = y.0.as_rust_slice().to_vec();
+                            let arr = ArrayObj::<$elem>::with_raw_data(data);
+                            let slice = SliceObj::<$elem>::with_array(
+                                GosValue::new_array(arr, other.t_elem(), gcv),
+                                0,
+                                -1,
+                            )?;
+                            Ok(GosValue::new_slice(slice, other.t_elem()))
+                        }
                     },
-                    None => this,
+                    None => Ok(this),
                 }
             }
 

@@ -1351,7 +1351,10 @@ impl<'a> Fiber<'a> {
                         };
                         let b = stack.pop_value();
                         let a = stack.pop_value();
-                        stack.push(dispatcher_a_s_for(inst.t0()).slice_append(a, b));
+                        match dispatcher_a_s_for(inst.t0()).slice_append(a, b, gcv) {
+                            Ok(slice) => stack.push(slice),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        };
                     }
                     Opcode::COPY => {
                         let t2 = match inst.t2() {
