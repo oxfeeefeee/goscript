@@ -17,6 +17,7 @@ use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ops::Range;
 use std::ptr::{self};
 use std::rc::{Rc, Weak};
 use std::{panic, str};
@@ -186,7 +187,6 @@ impl Display for MapObj {
 // ----------------------------------------------------------------------------
 // ArrayObj
 
-#[derive(Debug)]
 pub struct ArrayObj<T> {
     vec: RefCell<Vec<T>>,
 }
@@ -281,6 +281,17 @@ where
         }
         f.write_char(']')
     }
+
+    pub fn debug_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_char('[')?;
+        for (i, e) in self.vec.borrow().iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
+            }
+            write!(f, "{:#?}", e.clone().into_value(t))?
+        }
+        f.write_char(']')
+    }
 }
 
 impl<T> Hash for ArrayObj<T>
@@ -328,7 +339,7 @@ where
 // ----------------------------------------------------------------------------
 // SliceObj
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SliceObj<T> {
     array: GosValue,
     begin: Cell<usize>,
@@ -388,6 +399,11 @@ where
         self.cap_end.get() - self.begin()
     }
 
+    #[inline(always)]
+    pub fn range(&self) -> Range<usize> {
+        self.begin.get()..self.end.get()
+    }
+
     #[inline]
     pub fn as_rust_slice(&self) -> Ref<[T]> {
         Ref::map(self.borrow_all_data(), |x| {
@@ -412,6 +428,11 @@ where
     pub unsafe fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
         assert!(std::mem::size_of::<U>() == std::mem::size_of::<T>());
         std::mem::transmute(self.as_rust_slice_mut())
+    }
+
+    #[inline]
+    pub fn sharing_with(&self, other: &SliceObj<T>) -> bool {
+        self.array.as_addr() == other.array.as_addr()
     }
 
     /// get_array_equivalent returns the underlying array and mapped index
@@ -455,11 +476,22 @@ where
         let mut data = self.borrow_all_data_mut();
         let new_end = self.end() + other.len();
         let after_end_len = data.len() - self.end();
+        let sharing = self.sharing_with(other);
         if after_end_len <= other.len() {
             data.truncate(self.end());
-            data.extend_from_slice(&other.as_rust_slice());
+            if !sharing {
+                data.extend_from_slice(&other.as_rust_slice());
+            } else {
+                data.extend_from_within(other.range());
+            }
         } else {
-            data[self.end()..new_end].clone_from_slice(&other.as_rust_slice());
+            // todo: optimization for copy types
+            if !sharing {
+                data[self.end()..new_end].clone_from_slice(&other.as_rust_slice());
+            } else {
+                let cloned = data[other.range()].to_vec();
+                data[self.end()..new_end].clone_from_slice(&cloned);
+            }
         }
         drop(data);
         *self.end.get_mut() = new_end;
@@ -470,21 +502,25 @@ where
 
     #[inline]
     pub fn copy_from(&self, other: &SliceObj<T>) -> usize {
-        let data = &mut self.borrow_all_data_mut()[..];
-        //let ref_other = other.borrow();
-        let data_other = other.as_rust_slice();
+        let other_range = other.range();
         let (left, right) = match self.len() >= other.len() {
-            true => (
-                &mut data[self.begin()..self.begin() + other.len()],
-                &data_other[..],
-            ),
+            true => (self.begin()..self.begin() + other.len(), other_range),
             false => (
-                &mut data[self.begin()..self.end()],
-                &data_other[..self.len()],
+                self.begin()..self.end(),
+                other_range.start..other_range.start + self.len(),
             ),
         };
-        left.clone_from_slice(right);
-        right.len()
+        let len = left.len();
+        let sharing = self.sharing_with(other);
+        let data = &mut self.borrow_all_data_mut();
+        // todo: optimization for copy types
+        if !sharing {
+            data[left].clone_from_slice(&other.borrow_all_data()[right]);
+        } else {
+            let cloned = data[right].to_vec();
+            data[left].clone_from_slice(&cloned);
+        }
+        len
     }
 
     #[inline]
@@ -498,8 +534,8 @@ where
             max,
         )?;
         Ok(SliceObj {
-            begin: Cell::from(self.begin() + bi),
-            end: Cell::from(self.begin() + ei),
+            begin: Cell::from(bi),
+            end: Cell::from(ei),
             cap_end: Cell::from(cap),
             array: self.array.clone(),
             phantom: PhantomData,
@@ -570,6 +606,17 @@ where
                 f.write_char(' ')?;
             }
             write!(f, "{}", e.clone().into_value(t))?
+        }
+        f.write_char(']')
+    }
+
+    pub fn debug_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_char('[')?;
+        for (i, e) in self.as_rust_slice().iter().enumerate() {
+            if i > 0 {
+                f.write_char(' ')?;
+            }
+            write!(f, "{:#?}", e.clone().into_value(t))?
         }
         f.write_char(']')
     }

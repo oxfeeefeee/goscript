@@ -873,7 +873,7 @@ impl ValueData {
             ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
             ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
             ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
-            ValueType::String => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_string()),
+            ValueType::String => dispatcher_a_s_for(t_elem).slice_debug_fmt(self, f),
             ValueType::Array => dispatcher_a_s_for(t_elem).array_debug_fmt(self, f),
             ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
             ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
@@ -2739,11 +2739,14 @@ macro_rules! define_dispatcher {
             }
 
             fn array_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "Array: {:#?}", vdata.as_array::<$elem>())
+                vdata.as_array::<$elem>().0.debug_fmt(self.typ, f)
             }
 
             fn slice_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "Slice: {:#?}", vdata.as_array::<$elem>())
+                match vdata.as_slice::<$elem>() {
+                    Some(s) => s.0.debug_fmt(self.typ, f),
+                    None => f.write_str("<nil(slice)>"),
+                }
             }
 
             fn array_display_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
@@ -3013,7 +3016,7 @@ mod test {
 
         let s = GosValue::with_str("aaa");
         dbg!(s.data());
-        let s2 = s.clone().into_string();
-        dbg!(s2);
+        //let s2 = s.clone().into_string();
+        //dbg!(s2);
     }
 }

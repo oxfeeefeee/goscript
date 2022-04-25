@@ -43,7 +43,7 @@ impl GcoVec {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum GcWeak {
     Array(Weak<(GosArrayObj, RCount)>),
     Closure(Weak<(ClosureObj, RCount)>),

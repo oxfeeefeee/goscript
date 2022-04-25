@@ -329,6 +329,8 @@ impl<'a> Fiber<'a> {
                         stack.push(meta.zero(&objs.metas, gcv));
                     }
                     Opcode::POP => match inst.imm() {
+                        // this looks weired because it used to require ValueType for every pop
+                        // and we may change it back in the future.
                         1 => {
                             stack.pop_value();
                         }
