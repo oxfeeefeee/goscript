@@ -552,7 +552,7 @@ impl<'a> CodeGen<'a> {
                             typ,
                             pos,
                         );
-                        // the lhs of IndexSelExpr takes two spots
+                        // the lhs of IndexExpr takes two spots
                         current_indexing_deref_index += 2;
                     }
                     LeftHandSide::SelExpr(info) => {
@@ -566,8 +566,8 @@ impl<'a> CodeGen<'a> {
                             typ,
                             pos,
                         );
-                        // the lhs of IndexSelExpr takes two spots
-                        current_indexing_deref_index += 2;
+                        // the lhs of SelExpr takes two spots
+                        current_indexing_deref_index += 1;
                     }
                     LeftHandSide::Deref(_) => {
                         current_func_emitter!(self).emit_store(
