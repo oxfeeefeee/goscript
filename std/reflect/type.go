@@ -381,7 +381,7 @@ func (t reflectType) Size() uintptr {
 }
 
 func (t reflectType) String() string {
-	panic("not implemented")
+	return t.kind.String()
 }
 
 func (t reflectType) Kind() Kind {

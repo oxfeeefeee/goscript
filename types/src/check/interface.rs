@@ -1,3 +1,14 @@
+// Copyright 2022 The Goscript Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+//
+//
+// This code is adapted from the offical Go code written in Go
+// with license as follows:
+// Copyright 2013 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 // This file implements the collection of an interface's methods
 // without relying on partially computed types of methods or interfaces
 // for interface types declared at the package level.

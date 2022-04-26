@@ -1,3 +1,7 @@
+// Copyright 2022 The Goscript Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 

@@ -374,10 +374,6 @@ fn test_std_fmt() {
 fn test_std_temp() {
     time_test!();
 
-    use std::env;
-
-    println!("{}", env::consts::OS); // Prints the current OS.
-
     let err_cnt = run("./tests/std/temp.gos", true);
     assert!(err_cnt == 0);
 }

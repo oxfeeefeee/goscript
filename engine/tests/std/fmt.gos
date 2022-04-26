@@ -2,11 +2,18 @@ package main
 
 import (
     "fmt"
+    "fmt2"
 )
 
 func main() {
+    fmt.Printf("%d %d %#[1]x %#x \n", 16, 17)
     const name, age = "Kim", 22
-	fmt.Println(name, "is", age, "years old.")
+	s := fmt.Sprintf("%d/%d", 16, 1,1)
+    fmt2.Println(s)
+    fmt2.Println(name, "is", age, "years old.")
+    fmt.Println(name, "is", age, "years old.")
+    
+    
 
-    //fmt.Sprintf("%d %d %#[1]x %#x", 16, 17)
+
 }

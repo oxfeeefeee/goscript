@@ -1,3 +1,7 @@
+// Copyright 2022 The Goscript Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 /// Helper for patching function calls
 /// When the code of fuction calls are generated, the callee may not be ready yet,
 /// we need to path them after codegen is all done.

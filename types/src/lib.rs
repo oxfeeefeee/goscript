@@ -1,3 +1,7 @@
+// Copyright 2022 The Goscript Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 /// Goscirpt's type checker
 /// This is a port of the offical Go 1.12 type checker
 /// A lot of comments are directly taken from Go source file.

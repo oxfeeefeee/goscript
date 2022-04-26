@@ -1,4 +1,7 @@
-//#![allow(dead_code)]
+// Copyright 2022 The Goscript Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 use super::gc::GcoVec;
 pub use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
