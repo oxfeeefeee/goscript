@@ -36,9 +36,9 @@ impl FileFfi {
 
     fn ffi_get_std_io(&self, args: Vec<GosValue>) -> GosValue {
         match *args[0].as_int() {
-            0 => VirtualFile::StdIn.into_val(),
-            1 => VirtualFile::StdOut.into_val(),
-            2 => VirtualFile::StdErr.into_val(),
+            0 => VirtualFile::with_std_io(StdIo::StdIn).into_val(),
+            1 => VirtualFile::with_std_io(StdIo::StdOut).into_val(),
+            2 => VirtualFile::with_std_io(StdIo::StdErr).into_val(),
             _ => unreachable!(),
         }
     }
@@ -62,7 +62,7 @@ impl FileFfi {
         };
         let r = options.open(&*path);
         FileFfi::result_to_go(r, |opt| match opt {
-            Some(f) => VirtualFile::File(Rc::new(RefCell::new(f))).into_val(),
+            Some(f) => VirtualFile::with_sys_file(f).into_val(),
             None => GosValue::new_nil(ValueType::UnsafePtr),
         })
     }
@@ -124,18 +124,19 @@ impl FileFfi {
     }
 }
 
-#[derive(UnsafePtr)]
-pub enum VirtualFile {
-    File(Rc<RefCell<fs::File>>),
+trait File: Read + Write + Seek {}
+
+impl File for fs::File {}
+
+pub enum StdIo {
     StdIn,
     StdOut,
     StdErr,
 }
 
-impl VirtualFile {
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+impl Read for StdIo {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
-            Self::File(f) => f.borrow_mut().read(buf),
             Self::StdIn => io::stdin().lock().read(buf),
             Self::StdOut => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -147,27 +148,71 @@ impl VirtualFile {
             )),
         }
     }
+}
 
-    fn write(&self, buf: &[u8]) -> io::Result<usize> {
+impl Write for StdIo {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
-            Self::File(f) => f.borrow_mut().write(buf),
             Self::StdOut => io::stdout().lock().write(buf),
             Self::StdErr => io::stderr().lock().write(buf),
             Self::StdIn => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "read from std in",
+                "write to std in",
             )),
         }
     }
 
-    fn seek(&self, pos: io::SeekFrom) -> io::Result<u64> {
+    fn flush(&mut self) -> io::Result<()> {
         match self {
-            Self::File(f) => f.borrow_mut().seek(pos),
-            _ => Err(io::Error::new(
+            Self::StdOut => io::stdout().lock().flush(),
+            Self::StdErr => io::stderr().lock().flush(),
+            Self::StdIn => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "seek from std io",
+                "call flush for std in",
             )),
         }
+    }
+}
+
+impl Seek for StdIo {
+    fn seek(&mut self, _pos: io::SeekFrom) -> io::Result<u64> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "seek from std io",
+        ))
+    }
+}
+
+impl File for StdIo {}
+
+#[derive(UnsafePtr)]
+pub struct VirtualFile {
+    inner: Rc<RefCell<dyn File>>,
+}
+
+impl VirtualFile {
+    fn with_sys_file(f: fs::File) -> VirtualFile {
+        VirtualFile {
+            inner: Rc::new(RefCell::new(f)),
+        }
+    }
+
+    fn with_std_io(io: StdIo) -> VirtualFile {
+        VirtualFile {
+            inner: Rc::new(RefCell::new(io)),
+        }
+    }
+
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        self.inner.borrow_mut().read(buf)
+    }
+
+    fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.borrow_mut().write(buf)
+    }
+
+    fn seek(&self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.inner.borrow_mut().seek(pos)
     }
 
     fn into_val(self) -> GosValue {
