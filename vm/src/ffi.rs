@@ -6,21 +6,23 @@ use super::gc::GcoVec;
 use super::objects::VMObjects;
 use super::stack::Stack;
 use super::value::{GosValue, RuntimeResult};
-use std::cell::RefCell;
+use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub type FfiCtorResult<T> = std::result::Result<T, String>;
-
-pub type Ctor = dyn Fn(Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>>;
+/// For user to store statics used by FFI
+pub trait FfiStatics {
+    fn as_any(&self) -> &dyn Any;
+}
 
 pub struct FfiCallCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
     pub stack: &'a mut Stack,
     pub gcv: &'a GcoVec,
+    pub statics: &'a dyn FfiStatics,
 }
 
 /// A FFI Object implemented in Rust for Goscript to call
@@ -39,29 +41,32 @@ impl std::fmt::Debug for dyn Ffi {
 }
 
 pub struct FfiFactory {
-    registry: HashMap<&'static str, Box<Ctor>>,
+    registry: HashMap<&'static str, Rc<dyn Ffi>>,
+    statics: Box<dyn FfiStatics>,
 }
 
 impl FfiFactory {
-    pub fn new() -> FfiFactory {
+    pub fn new(statics: Box<dyn FfiStatics>) -> FfiFactory {
         FfiFactory {
             registry: HashMap::new(),
+            statics: statics,
         }
     }
 
-    pub fn register(&mut self, name: &'static str, ctor: Box<Ctor>) {
-        assert!(self.registry.insert(name, ctor).is_none());
+    pub fn register(&mut self, name: &'static str, proto: Rc<dyn Ffi>) {
+        assert!(self.registry.insert(name, proto).is_none());
     }
 
-    pub fn create_by_name(
-        &self,
-        name: &str,
-        params: Vec<GosValue>,
-    ) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
+    pub fn create_by_name(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
         match self.registry.get(name) {
-            Some(ctor) => (*ctor)(params),
+            Some(proto) => Ok(proto.clone()),
             None => Err(format!("FFI named {} not found", name)),
         }
+    }
+
+    /// Get a reference to the ffi factory's statics.
+    pub fn statics(&self) -> &dyn FfiStatics {
+        self.statics.as_ref()
     }
 }
 

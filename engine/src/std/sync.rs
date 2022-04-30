@@ -40,10 +40,6 @@ pub struct MutexFfi {}
 
 #[ffi_impl(rename = "sync.mutex")]
 impl MutexFfi {
-    pub fn new(_v: Vec<GosValue>) -> MutexFfi {
-        MutexFfi {}
-    }
-
     fn ffi_lock(
         &self,
         ctx: &mut FfiCallCtx,
@@ -111,10 +107,6 @@ pub struct RWMutexFfi {}
 
 #[ffi_impl(rename = "sync.rw_mutex")]
 impl RWMutexFfi {
-    pub fn new(_v: Vec<GosValue>) -> RWMutexFfi {
-        RWMutexFfi {}
-    }
-
     fn ffi_r_lock(
         &self,
         ctx: &mut FfiCallCtx,

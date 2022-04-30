@@ -65,13 +65,9 @@ pub fn ffi_impl_implement(
         .collect();
     let type_name = get_type_name(&impl_block.self_ty).unwrap().ident;
 
-    if new_method.is_none() {
-        panic!("new method not found!");
-    }
-
     let mut methods: Vec<ImplItem> = vec![
         gen_dispatch_method(&func_name_args),
-        get_wrapper_new_method(&type_name, &new_method.unwrap()),
+        gen_new_method(&type_name, &new_method),
         gen_id_method(&type_name, &args),
         gen_register_method(),
     ]
@@ -133,19 +129,20 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
     method
 }
 
-fn get_wrapper_new_method(type_name: &Ident, method: &ImplItemMethod) -> ImplItemMethod {
-    let wrapper_ident = Ident::new("wrapper_new", Span::call_site());
-    let (is_result, rcount) =
-        get_return_type_attributes(&method.sig.output, &type_name.to_string());
-    if rcount != FfiReturnType::OneVal {
-        panic!("the new method must have one and only one return value");
-    }
-    if is_result {
-        panic!("the new method must not fail");
-    }
-    parse_quote! {
-        pub fn #wrapper_ident(args: Vec<GosValue>) -> FfiCtorResult<Rc<RefCell<dyn Ffi>>> {
-            Ok(Rc::new(RefCell::new(#type_name::new(args))))
+fn gen_new_method(type_name: &Ident, new_method: &Option<ImplItemMethod>) -> ImplItemMethod {
+    let new_ident = Ident::new("ffi__new", Span::call_site());
+
+    if new_method.is_some() {
+        parse_quote! {
+            pub fn #new_ident() -> Rc<dyn Ffi> {
+                Rc::new(#type_name::new())
+            }
+        }
+    } else {
+        parse_quote! {
+            pub fn #new_ident() -> Rc<dyn Ffi> {
+                Rc::new(#type_name {})
+            }
         }
     }
 }
@@ -153,11 +150,10 @@ fn get_wrapper_new_method(type_name: &Ident, method: &ImplItemMethod) -> ImplIte
 fn gen_register_method() -> ImplItemMethod {
     parse_quote! {
         pub fn register(engine: &mut goscript_engine::Engine) {
-            engine.register_extension(Self::ffi__id(), Box::new(Self::wrapper_new));
+            engine.register_extension(Self::ffi__id(), Self::ffi__new());
         }
     }
 }
-
 fn gen_id_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMethod {
     let rname = meta
         .iter()

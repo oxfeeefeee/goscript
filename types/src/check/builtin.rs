@@ -860,19 +860,21 @@ impl<'a> Checker<'a> {
                     return false;
                 }
 
-                let mut params = vec![arg0t, stype];
-                for i in 2..nargs {
-                    self.expr(x, &call.args[i], fctx);
-                    if x.invalid() {
-                        return false;
-                    }
-                    let msg = format!("argument to {}", self.builtin_info(id).name);
-                    self.assignment(x, None, &msg, fctx);
-                    if x.invalid() {
-                        return false;
-                    }
-                    params.push(x.typ.unwrap());
-                }
+                let params = vec![arg0t, stype];
+
+                // Disable extra arguments
+                // for i in 2..nargs {
+                //     self.expr(x, &call.args[i], fctx);
+                //     if x.invalid() {
+                //         return false;
+                //     }
+                //     let msg = format!("argument to {}", self.builtin_info(id).name);
+                //     self.assignment(x, None, &msg, fctx);
+                //     if x.invalid() {
+                //         return false;
+                //     }
+                //     params.push(x.typ.unwrap());
+                // }
 
                 x.mode = OperandMode::Value;
                 x.typ = Some(arg0t);

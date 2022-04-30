@@ -5,7 +5,6 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::value::GosValue;
-use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -15,10 +14,6 @@ pub struct BitsFfi {}
 
 #[ffi_impl]
 impl BitsFfi {
-    pub fn new(_v: Vec<GosValue>) -> BitsFfi {
-        BitsFfi {}
-    }
-
     fn ffi_f32_to_bits(&self, args: Vec<GosValue>) -> GosValue {
         let result = u32::from_be_bytes(args[0].as_float32().to_be_bytes());
         GosValue::new_uint32(result)

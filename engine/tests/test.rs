@@ -1,6 +1,32 @@
+use std::cell::RefCell;
+use std::io;
+use std::io::Write;
+use std::rc::Rc;
+
 #[macro_use]
 extern crate time_test;
 extern crate goscript_engine as engine;
+
+#[derive(Clone)]
+struct WriteBuf {
+    inner: Rc<RefCell<Vec<u8>>>,
+}
+
+impl WriteBuf {
+    fn as_string(&self) -> String {
+        String::from_utf8_lossy(&self.inner.borrow()).into_owned()
+    }
+}
+
+impl Write for WriteBuf {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.inner.borrow_mut().write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
 
 fn run(path: &str, trace: bool) -> usize {
     let cfg = engine::Config {
@@ -10,8 +36,14 @@ fn run(path: &str, trace: bool) -> usize {
         trace_checker: trace,
         trace_vm: true,
     };
-    let mut engine = engine::Engine::new(cfg);
-    engine.run(path)
+    let mut engine = engine::Engine::new();
+    let wb = WriteBuf {
+        inner: Rc::new(RefCell::new(vec![])),
+    };
+    //engine.set_std_out(Box::new(wb.clone()));
+    let count = engine.run(cfg, path);
+    //dbg!(wb.as_string());
+    count
 }
 
 #[test]

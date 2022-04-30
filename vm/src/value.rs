@@ -2900,6 +2900,7 @@ define_dispatcher!(Dispatcher32, Elem32);
 define_dispatcher!(Dispatcher64, Elem64);
 define_dispatcher!(DispatcherGos, GosElem);
 
+// todo: OnceCell
 static mut __DISPATCHERS: Option<[Box<dyn Dispatcher>; ValueType::Channel as usize + 1]> = None;
 
 #[inline]

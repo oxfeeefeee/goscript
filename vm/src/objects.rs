@@ -756,12 +756,12 @@ impl Display for StructObj {
 
 #[derive(Clone, Debug)]
 pub struct UnderlyingFfi {
-    pub ffi_obj: Rc<RefCell<dyn Ffi>>,
+    pub ffi_obj: Rc<dyn Ffi>,
     pub meta: Meta,
 }
 
 impl UnderlyingFfi {
-    pub fn new(obj: Rc<RefCell<dyn Ffi>>, meta: Meta) -> UnderlyingFfi {
+    pub fn new(obj: Rc<dyn Ffi>, meta: Meta) -> UnderlyingFfi {
         UnderlyingFfi {
             ffi_obj: obj,
             meta: meta,
@@ -870,7 +870,7 @@ impl Display for InterfaceObj {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Gos(v, _) => write!(f, "{}", v),
-            Self::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj.borrow()),
+            Self::Ffi(ffi) => write!(f, "<ffi>{:?}", ffi.ffi_obj),
         }
     }
 }
@@ -1463,7 +1463,7 @@ pub struct GosClosureObj {
 
 #[derive(Clone, Debug)]
 pub struct FfiClosureObj {
-    pub ffi: Rc<RefCell<dyn Ffi>>,
+    pub ffi: Rc<dyn Ffi>,
     pub func_name: String,
     pub meta: Meta,
 }

@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 extern crate self as goscript_engine;
+use crate::engine::Statics;
 use crate::ffi::*;
 use goscript_vm::value::*;
 use std::any::Any;
@@ -30,10 +31,6 @@ pub struct FileFfi {}
 
 #[ffi_impl(rename = "os.file")]
 impl FileFfi {
-    pub fn new(_v: Vec<GosValue>) -> FileFfi {
-        FileFfi {}
-    }
-
     fn ffi_get_std_io(&self, args: Vec<GosValue>) -> GosValue {
         match *args[0].as_int() {
             0 => VirtualFile::with_std_io(StdIo::StdIn).into_val(),
@@ -67,25 +64,25 @@ impl FileFfi {
         })
     }
 
-    fn ffi_read(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_read(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_some_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
         let slice = &args[1].as_some_slice::<Elem8>()?.0;
         let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
-        let r = file.read(&mut buf);
+        let r = file.read(&mut buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
             GosValue::new_int(opt.unwrap_or(0) as isize)
         }))
     }
 
-    fn ffi_write(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_write(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_some_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
         let slice = &args[1].as_some_slice::<Elem8>()?.0;
         let buf = unsafe { slice.as_raw_slice::<u8>() };
-        let r = file.write(&buf);
+        let r = file.write(&buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
             GosValue::new_int(opt.unwrap_or(0) as isize)
         }))
@@ -124,20 +121,21 @@ impl FileFfi {
     }
 }
 
-trait File: Read + Write + Seek {}
-
-impl File for fs::File {}
-
 pub enum StdIo {
     StdIn,
     StdOut,
     StdErr,
 }
 
-impl Read for StdIo {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+impl StdIo {
+    fn read(&self, buf: &mut [u8], ctx: &FfiCallCtx) -> io::Result<usize> {
         match self {
-            Self::StdIn => io::stdin().lock().read(buf),
+            Self::StdIn => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_in
+                as &mut Option<Box<dyn io::Read>>
+            {
+                Some(r) => r.read(buf),
+                None => io::stdin().lock().read(buf),
+            },
             Self::StdOut => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "read from std out",
@@ -148,71 +146,66 @@ impl Read for StdIo {
             )),
         }
     }
-}
 
-impl Write for StdIo {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&self, buf: &[u8], ctx: &FfiCallCtx) -> io::Result<usize> {
         match self {
-            Self::StdOut => io::stdout().lock().write(buf),
-            Self::StdErr => io::stderr().lock().write(buf),
+            Self::StdOut => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_out
+                as &mut Option<Box<dyn io::Write>>
+            {
+                Some(r) => r.write(buf),
+                None => io::stdout().lock().write(buf),
+            },
+            Self::StdErr => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_err
+                as &mut Option<Box<dyn io::Write>>
+            {
+                Some(r) => r.write(buf),
+                None => io::stderr().lock().write(buf),
+            },
             Self::StdIn => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "write to std in",
             )),
         }
     }
-
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Self::StdOut => io::stdout().lock().flush(),
-            Self::StdErr => io::stderr().lock().flush(),
-            Self::StdIn => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "call flush for std in",
-            )),
-        }
-    }
 }
-
-impl Seek for StdIo {
-    fn seek(&mut self, _pos: io::SeekFrom) -> io::Result<u64> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "seek from std io",
-        ))
-    }
-}
-
-impl File for StdIo {}
 
 #[derive(UnsafePtr)]
-pub struct VirtualFile {
-    inner: Rc<RefCell<dyn File>>,
+pub enum VirtualFile {
+    File(Rc<RefCell<fs::File>>),
+    StdIo(StdIo),
 }
 
 impl VirtualFile {
     fn with_sys_file(f: fs::File) -> VirtualFile {
-        VirtualFile {
-            inner: Rc::new(RefCell::new(f)),
-        }
+        VirtualFile::File(Rc::new(RefCell::new(f)))
     }
 
     fn with_std_io(io: StdIo) -> VirtualFile {
-        VirtualFile {
-            inner: Rc::new(RefCell::new(io)),
+        VirtualFile::StdIo(io)
+    }
+
+    fn read(&self, buf: &mut [u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+        match self {
+            Self::File(f) => f.borrow_mut().read(buf),
+            Self::StdIo(io) => io.read(buf, ctx),
         }
     }
 
-    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
-        self.inner.borrow_mut().read(buf)
-    }
-
-    fn write(&self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.borrow_mut().write(buf)
+    fn write(&self, buf: &[u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+        match self {
+            Self::File(f) => f.borrow_mut().write(buf),
+            Self::StdIo(io) => io.write(buf, ctx),
+        }
     }
 
     fn seek(&self, pos: io::SeekFrom) -> io::Result<u64> {
-        self.inner.borrow_mut().seek(pos)
+        match self {
+            Self::File(f) => f.borrow_mut().seek(pos),
+            Self::StdIo(_) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "seek from std io",
+            )),
+        }
     }
 
     fn into_val(self) -> GosValue {

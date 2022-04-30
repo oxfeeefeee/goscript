@@ -6,7 +6,6 @@ extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::instruction::ValueType;
 use goscript_vm::value::{GosElem, GosValue};
-use std::cell::RefCell;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -16,10 +15,6 @@ pub struct Fmt2Ffi {}
 
 #[ffi_impl]
 impl Fmt2Ffi {
-    pub fn new(_v: Vec<GosValue>) -> Fmt2Ffi {
-        Fmt2Ffi {}
-    }
-
     fn ffi_println(&self, args: Vec<GosValue>) -> RuntimeResult<()> {
         let vec = args[0]
             .as_some_slice::<GosElem>()?

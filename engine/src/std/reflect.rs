@@ -101,10 +101,6 @@ pub struct ReflectFfi {}
 
 #[ffi_impl]
 impl ReflectFfi {
-    pub fn new(_v: Vec<GosValue>) -> ReflectFfi {
-        ReflectFfi {}
-    }
-
     fn ffi_value_of(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
         StdValue::value_from_iface(&args[0])
     }
