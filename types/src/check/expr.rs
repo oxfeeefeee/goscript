@@ -944,7 +944,7 @@ impl<'a> Checker<'a> {
         hint: Option<TypeKey>,
         fctx: &mut FilesContext,
     ) -> ExprKind {
-        if self.config().trace_checker {
+        if self.trace() {
             let ed = self.new_dis(e);
             self.trace_begin(ed.pos(), &format!("{}", ed));
         }
@@ -972,7 +972,7 @@ impl<'a> Checker<'a> {
             self.result.record_type_and_value(e, x.mode.clone(), ty);
         }
 
-        if self.config().trace_checker {
+        if self.trace() {
             let pos = e.pos(self.ast_objs);
             self.trace_end(pos, &format!("=> {}", self.new_dis(x)));
         }

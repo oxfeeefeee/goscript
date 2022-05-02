@@ -7,15 +7,14 @@ use criterion::{criterion_group, criterion_main, Criterion};
 extern crate goscript_engine as engine;
 
 fn run(path: &str, trace: bool) -> usize {
-    let cfg = engine::Config {
-        work_dir: Some("./".to_owned()),
-        base_path: Some("./std/".to_owned()),
+    let cfg = engine::run_fs::Config {
+        working_dir: Some("./".to_owned()),
+        base_dir: Some("./std/".to_owned()),
         trace_parser: trace,
         trace_checker: trace,
         trace_vm: true,
     };
-    let mut engine = engine::Engine::new();
-    engine.run(cfg, path)
+    engine::run_fs::run(cfg, path)
 }
 
 fn leetcode5() {

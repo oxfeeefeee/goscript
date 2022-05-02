@@ -195,7 +195,7 @@ impl<'a> Checker<'a> {
         path: &Vec<ObjKey>,
         fctx: &mut FilesContext,
     ) -> Option<RcIfaceInfo> {
-        if self.config().trace_checker {
+        if self.trace() {
             let expr = Expr::Interface(iface.clone());
             let ed = self.new_dis(&expr);
             let pstr = self.obj_path_str(path);
@@ -208,7 +208,7 @@ impl<'a> Checker<'a> {
         }
 
         let end = |ret: Option<RcIfaceInfo>| {
-            if self.config().trace_checker {
+            if self.trace() {
                 let expr = Expr::Interface(iface.clone());
                 let ed = self.new_dis(&expr);
                 self.trace_end(iface.interface, &format!("=> {}", ed));

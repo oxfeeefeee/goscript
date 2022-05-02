@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use cg::SourceRead;
 use vm::ffi::FfiStatics;
 
 use super::ffi::Ffi;
@@ -15,19 +16,6 @@ extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
-
-pub struct Config {
-    // working directory
-    pub work_dir: Option<String>,
-    // base path for non-local imports
-    pub base_path: Option<String>,
-    // print debug info in parser
-    pub trace_parser: bool,
-    // print debug info in checker
-    pub trace_checker: bool,
-    // proint debug info for vm
-    pub trace_vm: bool,
-}
 
 #[derive(Default)]
 pub struct StaticData {
@@ -86,29 +74,6 @@ impl Engine {
         e
     }
 
-    pub fn run(&mut self, config: Config, path: &str) -> usize {
-        let cfg = types::Config {
-            work_dir: config.work_dir,
-            base_path: config.base_path,
-            trace_parser: config.trace_parser,
-            trace_checker: config.trace_checker,
-        };
-        let mut fs = fe::FileSet::new();
-        let el = &mut fe::errors::ErrorList::new();
-        let code = cg::entry::parse_check_gen(path, &cfg, &mut fs, el);
-        if let Ok(bc) = code {
-            let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
-            vm.run();
-            0
-        } else {
-            if config.trace_vm {
-                el.sort();
-                print!("{}", el);
-            }
-            code.unwrap_err()
-        }
-    }
-
     pub fn set_std_in(&self, read: Box<dyn io::Read>) {
         self.statics.borrow_data_mut().std_in = Some(read);
     }
@@ -123,5 +88,33 @@ impl Engine {
 
     pub fn register_extension(&mut self, name: &'static str, proto: Rc<dyn Ffi>) {
         self.ffi.register(name, proto);
+    }
+
+    pub fn run(
+        &self,
+        trace_parser: bool,
+        trace_checker: bool,
+        trace_vm: bool,
+        reader: &dyn SourceRead,
+        path: &str,
+    ) -> usize {
+        let cfg = types::TraceConfig {
+            trace_parser: trace_parser,
+            trace_checker: trace_checker,
+        };
+        let mut fs = fe::FileSet::new();
+        let el = &mut fe::errors::ErrorList::new();
+        let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs, el);
+        if let Ok(bc) = code {
+            let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
+            vm.run();
+            0
+        } else {
+            if trace_vm {
+                el.sort();
+                print!("{}", el);
+            }
+            code.unwrap_err()
+        }
     }
 }

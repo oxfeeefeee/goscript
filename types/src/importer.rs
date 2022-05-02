@@ -9,11 +9,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(dead_code)]
 use super::check::check::{Checker, TypeInfo};
 use super::objects::{PackageKey, TCObjects};
 use goscript_parser::ast;
-use goscript_parser::errors::{ErrorList, FilePosErrors};
+use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::position;
 use goscript_parser::{FileSet, Parser};
@@ -23,25 +22,111 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-pub struct Config {
-    // working directory
-    pub work_dir: Option<String>,
-    // base path for non-local imports
-    pub base_path: Option<String>,
-    // print debug info in parser
+pub struct TraceConfig {
+    //print debug info in parser
     pub trace_parser: bool,
     // print debug info in checker
     pub trace_checker: bool,
 }
 
-impl Config {
-    fn get_working_dir(&self) -> io::Result<PathBuf> {
-        if let Some(wd) = &self.work_dir {
+pub trait SourceRead {
+    fn working_dir(&self) -> io::Result<PathBuf>;
+
+    fn base_dir(&self) -> &Option<String>;
+
+    fn read_file(&self, path: &Path) -> io::Result<String>;
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>>;
+
+    fn is_file(&self, path: &Path) -> bool;
+
+    fn is_dir(&self, path: &Path) -> bool;
+
+    fn canonicalize_path(&self, path: &PathBuf) -> Result<PathBuf, &'static str>;
+}
+
+pub struct FsReader {
+    working_dir: Option<String>,
+    base_dir: Option<String>,
+    temp_file: Option<String>,
+}
+
+impl FsReader {
+    pub fn new(
+        working_dir: Option<String>,
+        base_dir: Option<String>,
+        temp_file: Option<String>,
+    ) -> FsReader {
+        FsReader {
+            working_dir,
+            base_dir,
+            temp_file,
+        }
+    }
+
+    pub fn temp_file_path() -> &'static str {
+        &"./temp_file_in_memory_for_testing_and_you_can_only_have_one.gos"
+    }
+}
+
+impl SourceRead for FsReader {
+    fn working_dir(&self) -> io::Result<PathBuf> {
+        if let Some(wd) = &self.working_dir {
             let mut buf = PathBuf::new();
             buf.push(wd);
             Ok(buf)
         } else {
             env::current_dir()
+        }
+    }
+
+    fn base_dir(&self) -> &Option<String> {
+        &self.base_dir
+    }
+
+    fn read_file(&self, path: &Path) -> io::Result<String> {
+        if path.ends_with(Self::temp_file_path()) {
+            self.temp_file
+                .clone()
+                .ok_or(io::Error::from(io::ErrorKind::NotFound))
+        } else {
+            fs::read_to_string(path)
+        }
+    }
+
+    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
+        Ok(fs::read_dir(path)?
+            .filter_map(|x| {
+                x.map_or(None, |e| {
+                    let path = e.path();
+                    (!path.is_dir()).then(|| path)
+                })
+            })
+            .collect())
+    }
+
+    fn is_file(&self, path: &Path) -> bool {
+        if path.ends_with(Self::temp_file_path()) {
+            true
+        } else {
+            path.is_file()
+        }
+    }
+
+    fn is_dir(&self, path: &Path) -> bool {
+        path.is_dir()
+    }
+
+    fn canonicalize_path(&self, path: &PathBuf) -> Result<PathBuf, &'static str> {
+        if path.ends_with(Self::temp_file_path()) {
+            Ok(path.clone())
+        } else if !path.exists() {
+            Err("failed to locate path")
+        } else {
+            match path.canonicalize() {
+                Ok(p) => Ok(p),
+                Err(_) => Err("failed to canonicalize path"),
+            }
         }
     }
 }
@@ -68,7 +153,8 @@ impl ImportKey {
 }
 
 pub struct Importer<'a> {
-    config: &'a Config,
+    trace_config: &'a TraceConfig,
+    reader: &'a dyn SourceRead,
     fset: &'a mut FileSet,
     pkgs: &'a mut HashMap<String, PackageKey>,
     all_results: &'a mut HashMap<PackageKey, TypeInfo>,
@@ -80,7 +166,8 @@ pub struct Importer<'a> {
 
 impl<'a> Importer<'a> {
     pub fn new(
-        config: &'a Config,
+        config: &'a TraceConfig,
+        reader: &'a dyn SourceRead,
         fset: &'a mut FileSet,
         pkgs: &'a mut HashMap<String, PackageKey>,
         all_results: &'a mut HashMap<PackageKey, TypeInfo>,
@@ -90,7 +177,8 @@ impl<'a> Importer<'a> {
         pos: position::Pos,
     ) -> Importer<'a> {
         Importer {
-            config: config,
+            trace_config: config,
+            reader: reader,
             fset: fset,
             pkgs: pkgs,
             all_results: all_results,
@@ -105,7 +193,7 @@ impl<'a> Importer<'a> {
         if key.path == "unsafe" {
             return Ok(*self.tc_objs.universe().unsafe_pkg());
         }
-        let pb = self.validate_path(key)?;
+        let pb = self.canonicalize_import(key)?;
         let path = pb.0.as_path();
         let import_path = pb.1;
         match self.pkgs.get(&import_path) {
@@ -113,7 +201,7 @@ impl<'a> Importer<'a> {
             None => {
                 let pkg = self.tc_objs.new_package(import_path.clone());
                 self.pkgs.insert(import_path, pkg);
-                let files = self.parse_dir(path)?;
+                let files = self.parse_path(path)?;
                 Checker::new(
                     self.tc_objs,
                     self.ast_objs,
@@ -122,77 +210,54 @@ impl<'a> Importer<'a> {
                     self.pkgs,
                     self.all_results,
                     pkg,
-                    self.config,
+                    self.trace_config,
+                    self.reader,
                 )
                 .check(files)
             }
         }
     }
 
-    fn validate_path(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {
+    fn canonicalize_import(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {
         let mut import_path = key.path.clone();
         let path = if is_local(&key.path) {
-            let working_dir = self.config.get_working_dir();
+            let working_dir = self.reader.working_dir();
             if working_dir.is_err() {
-                self.error(format!("failed to get working dir for: {}", key.path));
-                return Err(());
+                return self.error(format!("failed to get working dir for: {}", key.path));
             }
             let mut wd = working_dir.unwrap();
             wd.push(&key.dir);
             wd.push(&key.path);
-            if let Some(base) = &self.config.base_path {
+            if let Some(base) = &self.reader.base_dir() {
                 if let Ok(rel) = wd.as_path().strip_prefix(base) {
                     import_path = rel.to_string_lossy().to_string()
                 }
             }
             wd
         } else {
-            if let Some(base) = &self.config.base_path {
+            if let Some(base) = &self.reader.base_dir() {
                 let mut p = PathBuf::new();
                 p.push(base);
                 p.push(&key.path);
                 p
             } else {
-                self.error(format!("base dir required for path: {}", key.path));
-                return Err(());
+                return self.error(format!("base dir required for path: {}", key.path));
             }
         };
-        if !path.exists() {
-            self.error(format!("failed to locate path: {}", key.path));
-            return Err(());
-        }
-        match path.canonicalize() {
+        match self.reader.canonicalize_path(&path) {
             Ok(p) => Ok((p, import_path)),
-            Err(_) => {
-                self.error(format!("failed to canonicalize path: {}", key.path));
-                return Err(());
-            }
+            Err(e) => self.error(format!("{} {}", e, key.path)),
         }
     }
 
-    fn parse_dir(&mut self, path: &Path) -> Result<Vec<ast::File>, ()> {
-        let working_dir = self
-            .config
-            .get_working_dir()
-            .ok()
-            .map(|x| x.canonicalize().ok())
-            .flatten();
-        match read_content(path) {
+    fn parse_path(&mut self, path: &Path) -> Result<Vec<ast::File>, ()> {
+        match read_content(path, self.reader) {
             Ok(contents) => {
                 if contents.len() == 0 {
-                    self.error(format!("no source file found in dir: {}", path.display()));
-                    Err(())
+                    self.error(format!("no source file found in dir: {}", path.display()))
                 } else {
                     let mut afiles = vec![];
-                    for (path_buf, content) in contents.into_iter() {
-                        // try get short display name for the file
-                        let p = path_buf.as_path();
-                        let full_name = match &working_dir {
-                            Some(wd) => p.strip_prefix(wd).unwrap_or(p),
-                            None => p,
-                        }
-                        .to_string_lossy()
-                        .to_string();
+                    for (full_name, content) in contents.into_iter() {
                         let mut pfile = self.fset.add_file(
                             full_name,
                             Some(self.fset.base()),
@@ -203,7 +268,7 @@ impl<'a> Importer<'a> {
                             &mut pfile,
                             self.errors,
                             &content,
-                            self.config.trace_parser,
+                            self.trace_config.trace_parser,
                         )
                         .parse_file();
                         if afile.is_none() {
@@ -217,20 +282,23 @@ impl<'a> Importer<'a> {
                     Ok(afiles)
                 }
             }
-            Err(_) => {
-                self.error(format!("failed to read dir: {}", path.display()));
-                Err(())
-            }
+            Err(_) => self.error(format!("failed to read from path: {}", path.display())),
         }
     }
 
-    fn error(&self, err: String) {
-        let pos_file = self.fset.file(self.pos).unwrap();
-        FilePosErrors::new(pos_file, self.errors).add(self.pos, err, false);
+    fn error<T>(&self, err: String) -> Result<T, ()> {
+        self.errors
+            .add(self.fset.position(self.pos), err, false, false);
+        Err(())
     }
 }
 
-fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
+fn read_content(p: &Path, reader: &dyn SourceRead) -> io::Result<Vec<(String, String)>> {
+    let working_dir = reader
+        .working_dir()
+        .ok()
+        .map(|x| x.canonicalize().ok())
+        .flatten();
     let mut result = vec![];
     let mut read = |path: PathBuf| -> io::Result<()> {
         if let Some(ext) = path.extension() {
@@ -238,8 +306,16 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
                 if let Some(fs) = path.file_stem() {
                     let s = fs.to_str();
                     if s.is_some() && !s.unwrap().ends_with("_test") {
-                        let content = fs::read_to_string(path.as_path())?;
-                        result.push((path, content))
+                        let p = path.as_path();
+                        let content = reader.read_file(p)?;
+                        // try get short display name for the file
+                        let full_name = match &working_dir {
+                            Some(wd) => p.strip_prefix(wd).unwrap_or(p),
+                            None => p,
+                        }
+                        .to_string_lossy()
+                        .to_string();
+                        result.push((full_name, content))
                     }
                 }
             }
@@ -247,20 +323,13 @@ fn read_content(p: &Path) -> io::Result<Vec<(PathBuf, String)>> {
         Ok(())
     };
 
-    if p.is_dir() {
-        let mut paths = vec![];
-        for entry in fs::read_dir(p)? {
-            let entry = entry?;
-            let path = entry.path();
-            if !path.is_dir() {
-                paths.push(path);
-            }
-        }
+    if reader.is_dir(p) {
+        let mut paths = reader.read_dir(p)?;
         paths.sort_by(|a, b| a.as_os_str().cmp(b.as_os_str()));
         for p in paths.into_iter() {
             read(p)?;
         }
-    } else if p.is_file() {
+    } else if reader.is_file(p) {
         read(p.to_path_buf())?;
     }
     if result.len() == 0 {

@@ -15,7 +15,7 @@ use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
-use goscript_types::{Config, PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
 use goscript_vm::null_key;
@@ -150,7 +150,8 @@ impl<'a> EntryGen<'a> {
 
 pub fn parse_check_gen(
     path: &str,
-    config: &Config,
+    tconfig: &TraceConfig,
+    reader: &dyn SourceRead,
     fset: &mut FileSet,
     el: &ErrorList,
 ) -> Result<ByteCode, usize> {
@@ -160,10 +161,9 @@ pub fn parse_check_gen(
     let pkgs = &mut HashMap::new();
 
     let importer =
-        &mut goscript_types::Importer::new(&config, fset, pkgs, results, asto, tco, el, 0);
+        &mut goscript_types::Importer::new(&tconfig, reader, fset, pkgs, results, asto, tco, el, 0);
     let key = goscript_types::ImportKey::new(path, "./");
     let main_pkg = importer.import(&key);
-
     if el.len() > 0 {
         Err(el.len())
     } else {

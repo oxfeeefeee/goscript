@@ -57,7 +57,7 @@ impl<'a> Checker<'a> {
     }
 
     pub fn obj_decl(&mut self, okey: ObjKey, def: Option<TypeKey>, fctx: &mut FilesContext) {
-        let trace_end_data = if self.config().trace_checker {
+        let trace_end_data = if self.trace() {
             let lobj = self.lobj(okey);
             let pos = lobj.pos();
             let obj_display = self.new_dis(&okey);

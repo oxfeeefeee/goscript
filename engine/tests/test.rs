@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::cell::RefCell;
 use std::io;
 use std::io::Write;
@@ -29,21 +31,47 @@ impl Write for WriteBuf {
 }
 
 fn run(path: &str, trace: bool) -> usize {
-    let cfg = engine::Config {
-        work_dir: Some("./".to_owned()),
-        base_path: Some("../std/".to_owned()),
+    let cfg = engine::run_fs::Config {
+        working_dir: Some("./".to_owned()),
+        base_dir: Some("../std/".to_owned()),
         trace_parser: trace,
         trace_checker: trace,
         trace_vm: true,
     };
-    let mut engine = engine::Engine::new();
-    let wb = WriteBuf {
-        inner: Rc::new(RefCell::new(vec![])),
-    };
+    // let wb = WriteBuf {
+    //     inner: Rc::new(RefCell::new(vec![])),
+    // };
     //engine.set_std_out(Box::new(wb.clone()));
-    let count = engine.run(cfg, path);
+    let count = engine::run_fs::run(cfg, path);
     //dbg!(wb.as_string());
     count
+}
+
+fn run_string(source: String, trace: bool) -> usize {
+    let cfg = engine::run_fs::Config {
+        working_dir: Some("./".to_owned()),
+        base_dir: Some("../std/".to_owned()),
+        trace_parser: trace,
+        trace_checker: trace,
+        trace_vm: true,
+    };
+    let count = engine::run_fs::run_string(cfg, source);
+    count
+}
+
+#[test]
+fn test_source() {
+    let source = r#"
+    package main
+    import (
+        "fmt"
+    )
+    func main() {
+        fmt.Println("hello from raw source")
+    }
+    "#;
+    let err_cnt = run_string(source.to_owned(), false);
+    assert!(err_cnt == 0);
 }
 
 #[test]

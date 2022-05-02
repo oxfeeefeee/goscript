@@ -154,7 +154,7 @@ impl<'a> Checker<'a> {
         def: Option<TypeKey>,
         fctx: &mut FilesContext,
     ) -> TypeKey {
-        if self.config().trace_checker {
+        if self.trace() {
             let ed = self.new_dis(e);
             self.trace_begin(ed.pos(), &format!("{}", ed));
         }
@@ -162,7 +162,7 @@ impl<'a> Checker<'a> {
         debug_assert!(typ::is_typed(t, self.tc_objs));
         self.result
             .record_type_and_value(e, OperandMode::TypeExpr, t);
-        if self.config().trace_checker {
+        if self.trace() {
             let pos = e.pos(self.ast_objs);
             self.trace_end(pos, &format!("=> {}", self.new_dis(&t)));
         }
@@ -558,6 +558,7 @@ impl<'a> Checker<'a> {
         if iface.methods.list.len() == 0 {
             return self.tc_objs.new_t_empty_interface();
         }
+        let trace = self.trace();
 
         let itype = self.tc_objs.new_t_interface(vec![], vec![]);
         // collect embedded interfaces
@@ -570,7 +571,7 @@ impl<'a> Checker<'a> {
         let expr_clone = expr.clone();
         let iface_clone = iface.clone();
         let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
-            if checker.config().trace_checker {
+            if trace {
                 let ed = checker.new_dis(&expr_clone);
                 let msg = format!("-- delayed checking embedded interfaces of {}", ed);
                 checker.trace_begin(iface_clone.interface, &msg);
@@ -612,7 +613,7 @@ impl<'a> Checker<'a> {
             // restore ctx
             checker.octx = ctx_backup;
             // trace_end
-            if checker.config().trace_checker {
+            if trace {
                 checker.trace_end(
                     iface_clone.interface,
                     "-- end of delayed checking embedded interfaces",

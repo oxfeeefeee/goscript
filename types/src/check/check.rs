@@ -11,7 +11,7 @@
 
 #![allow(dead_code)]
 use super::super::constant::Value;
-use super::super::importer::{Config, ImportKey, Importer};
+use super::super::importer::{ImportKey, Importer, SourceRead, TraceConfig};
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 use super::super::operand::OperandMode;
 use super::super::selection::Selection;
@@ -224,8 +224,10 @@ pub struct Checker<'a> {
     pub imp_map: HashMap<ImportKey, PackageKey>,
     // object context
     pub octx: ObjContext,
-    // import config
-    config: &'a Config,
+
+    trace_config: &'a TraceConfig,
+
+    reader: &'a dyn SourceRead,
     // result of type checking
     pub result: TypeInfo,
     // for debug
@@ -407,7 +409,8 @@ impl<'a> Checker<'a> {
         pkgs: &'a mut HashMap<String, PackageKey>,
         all_results: &'a mut HashMap<PackageKey, TypeInfo>,
         pkg: PackageKey,
-        cfg: &'a Config,
+        cfg: &'a TraceConfig,
+        reader: &'a dyn SourceRead,
     ) -> Checker<'a> {
         Checker {
             tc_objs: tc_objs,
@@ -420,7 +423,8 @@ impl<'a> Checker<'a> {
             obj_map: HashMap::new(),
             imp_map: HashMap::new(),
             octx: ObjContext::new(),
-            config: cfg,
+            trace_config: cfg,
+            reader: reader,
             result: TypeInfo::new(),
             indent: Rc::new(RefCell::new(0)),
         }
@@ -450,17 +454,20 @@ impl<'a> Checker<'a> {
         }
     }
 
+    #[inline]
     pub fn errors(&self) -> &ErrorList {
         self.errors
     }
 
-    pub fn config(&self) -> &Config {
-        &self.config
+    #[inline]
+    pub fn trace(&self) -> bool {
+        self.trace_config.trace_checker
     }
 
     pub fn new_importer(&mut self, pos: Pos) -> Importer {
         Importer::new(
-            self.config,
+            self.trace_config,
+            self.reader,
             self.fset,
             self.all_pkgs,
             self.all_results,

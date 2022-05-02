@@ -113,7 +113,7 @@ impl<'a> Checker<'a> {
     ) {
         let block = body.get_block(self.ast_objs);
         let (pos, end) = (block.pos(), block.end());
-        if self.config().trace_checker {
+        if self.trace() {
             let td = self.new_dis(&sig);
             self.print_trace(pos, &format!("--- {}: {}", name, td));
         }
@@ -152,7 +152,7 @@ impl<'a> Checker<'a> {
 
         std::mem::swap(&mut self.octx, &mut octx); // restore octx
         self.indent.replace(old_indent); //restore indent
-        if self.config().trace_checker {
+        if self.trace() {
             self.print_trace(end, "--- <end>");
         }
     }
