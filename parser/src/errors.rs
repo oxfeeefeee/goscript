@@ -9,14 +9,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use super::position;
+use super::position::{File, FilePos, Pos};
 use std::cell::{Ref, RefCell};
 use std::fmt;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct Error {
-    pub pos: position::Position,
+    pub pos: FilePos,
     pub msg: String,
     pub soft: bool,
     pub by_parser: bool, // reported by parser (not type checker)
@@ -53,7 +53,8 @@ impl ErrorList {
         }
     }
 
-    pub fn add(&self, p: position::Position, msg: String, soft: bool, by_parser: bool) {
+    pub fn add(&self, p: Option<FilePos>, msg: String, soft: bool, by_parser: bool) {
+        let fp = p.unwrap_or(FilePos::null());
         let order = if msg.starts_with('\t') {
             self.errors
                 .borrow()
@@ -64,10 +65,10 @@ impl ErrorList {
                 .pos
                 .offset
         } else {
-            p.offset
+            fp.offset
         };
         self.errors.borrow_mut().push(Error {
-            pos: p,
+            pos: fp,
             msg: msg,
             soft: soft,
             by_parser: by_parser,
@@ -79,7 +80,7 @@ impl ErrorList {
         self.errors.borrow().len()
     }
 
-    pub fn sort(&mut self) {
+    pub fn sort(&self) {
         self.errors.borrow_mut().sort_by_key(|e| e.order);
     }
 
@@ -90,33 +91,33 @@ impl ErrorList {
 
 #[derive(Clone, Debug)]
 pub struct FilePosErrors<'a> {
-    file: &'a position::File,
+    file: &'a File,
     elist: &'a ErrorList,
 }
 
 impl<'a> FilePosErrors<'a> {
-    pub fn new(file: &'a position::File, elist: &'a ErrorList) -> FilePosErrors<'a> {
+    pub fn new(file: &'a File, elist: &'a ErrorList) -> FilePosErrors<'a> {
         FilePosErrors {
             file: file,
             elist: elist,
         }
     }
 
-    pub fn add(&self, pos: position::Pos, msg: String, soft: bool) {
+    pub fn add(&self, pos: Pos, msg: String, soft: bool) {
         let p = self.file.position(pos);
-        self.elist.add(p, msg, soft, false);
+        self.elist.add(Some(p), msg, soft, false);
     }
 
-    pub fn add_str(&self, pos: position::Pos, s: &str, soft: bool) {
+    pub fn add_str(&self, pos: Pos, s: &str, soft: bool) {
         self.add(pos, s.to_string(), soft);
     }
 
-    pub fn parser_add(&self, pos: position::Pos, msg: String) {
+    pub fn parser_add(&self, pos: Pos, msg: String) {
         let p = self.file.position(pos);
-        self.elist.add(p, msg, false, true);
+        self.elist.add(Some(p), msg, false, true);
     }
 
-    pub fn parser_add_str(&self, pos: position::Pos, s: &str) {
+    pub fn parser_add_str(&self, pos: Pos, s: &str) {
         self.parser_add(pos, s.to_string());
     }
 }

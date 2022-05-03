@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::constant;
 use super::super::obj::{EntityType, LangObj};
 use super::super::objects::{DeclInfoKey, ScopeKey, TypeKey};
@@ -101,7 +103,7 @@ impl BodyContainer {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn func_body(
         &mut self,
         di: Option<DeclInfoKey>,
@@ -109,7 +111,7 @@ impl<'a> Checker<'a> {
         sig: TypeKey,
         body: BodyContainer,
         iota: Option<constant::Value>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let block = body.get_block(self.ast_objs);
         let (pos, end) = (block.pos(), block.end());
@@ -190,14 +192,14 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn simple_stmt(&mut self, s: Option<&Stmt>, fctx: &mut FilesContext) {
+    fn simple_stmt(&mut self, s: Option<&Stmt>, fctx: &mut FilesContext<S>) {
         if let Some(s) = s {
             let sctx = StmtContext::new();
             self.stmt(s, &sctx, fctx);
         }
     }
 
-    fn stmt_list(&mut self, list: &Vec<Stmt>, sctx: &StmtContext, fctx: &mut FilesContext) {
+    fn stmt_list(&mut self, list: &Vec<Stmt>, sctx: &StmtContext, fctx: &mut FilesContext<S>) {
         // trailing empty statements are "invisible" to fallthrough analysis
         let index = list
             .iter()
@@ -274,7 +276,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn suspended_call(&mut self, kw: &str, call: &Expr, fctx: &mut FilesContext) {
+    fn suspended_call(&mut self, kw: &str, call: &Expr, fctx: &mut FilesContext<S>) {
         let x = &mut Operand::new();
         let msg = match self.raw_expr(x, call, None, fctx) {
             ExprKind::Conversion => "requires function call, not conversion",
@@ -290,7 +292,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         values: &Option<Vec<Expr>>,
         seen: &mut ValueMap,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         if values.is_none() {
             return;
@@ -345,7 +347,7 @@ impl<'a> Checker<'a> {
         xtype: TypeKey,
         types: &Option<Vec<Expr>>,
         seen: &mut HashMap<Option<TypeKey>, Pos>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Option<TypeKey> {
         if types.is_none() {
             return None;
@@ -382,7 +384,7 @@ impl<'a> Checker<'a> {
             .flatten()
     }
 
-    fn stmt(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext) {
+    fn stmt(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext<S>) {
         let begin_scope = self.octx.scope;
         let begin_delayed_count = fctx.delayed_count();
 
@@ -392,7 +394,7 @@ impl<'a> Checker<'a> {
         debug_assert_eq!(begin_scope, self.octx.scope);
     }
 
-    fn stmt_impl(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext) {
+    fn stmt_impl(&mut self, stmt: &Stmt, ctx: &StmtContext, fctx: &mut FilesContext<S>) {
         let mut inner_ctx = ctx.clone();
         inner_ctx.fallthrough_ok = false;
         inner_ctx.final_switch_case = false;
@@ -513,7 +515,7 @@ impl<'a> Checker<'a> {
                             );
                             return;
                         }
-                        let op = Checker::assign_op(&astmt.token);
+                        let op = Checker::<S>::assign_op(&astmt.token);
                         if op.is_none() {
                             self.invalid_ast(
                                 astmt.token_pos,
@@ -838,7 +840,7 @@ impl<'a> Checker<'a> {
                         _ => continue, // error reported before
                     };
                     // clause.Comm must be a SendStmt, RecvStmt, or default case
-                    let is_recv = |e: &Expr| match Checker::unparen(e) {
+                    let is_recv = |e: &Expr| match Checker::<S>::unparen(e) {
                         Expr::Unary(ue) => ue.op == Token::ARROW,
                         _ => false,
                     };

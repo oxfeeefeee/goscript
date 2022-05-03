@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use cg::SourceRead;
+pub use cg::SourceRead;
 use vm::ffi::FfiStatics;
 
 use super::ffi::Ffi;
@@ -90,31 +90,20 @@ impl Engine {
         self.ffi.register(name, proto);
     }
 
-    pub fn run(
+    pub fn run<S: SourceRead>(
         &self,
         trace_parser: bool,
         trace_checker: bool,
-        trace_vm: bool,
-        reader: &dyn SourceRead,
+        reader: &S,
         path: &str,
-    ) -> usize {
+    ) -> Result<(), fe::errors::ErrorList> {
         let cfg = types::TraceConfig {
             trace_parser: trace_parser,
             trace_checker: trace_checker,
         };
         let mut fs = fe::FileSet::new();
-        let el = &mut fe::errors::ErrorList::new();
-        let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs, el);
-        if let Ok(bc) = code {
-            let vm = vm::vm::GosVM::new(bc, &self.ffi, Some(&fs));
-            vm.run();
-            0
-        } else {
-            if trace_vm {
-                el.sort();
-                print!("{}", el);
-            }
-            code.unwrap_err()
-        }
+        let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs)?;
+        let vm = vm::vm::GosVM::new(code, &self.ffi, Some(&fs));
+        Ok(vm.run())
     }
 }

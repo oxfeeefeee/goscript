@@ -26,6 +26,8 @@
 // to compute an ifaceInfo.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::obj;
 use super::super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects};
 use super::super::scope::Scope;
@@ -177,7 +179,7 @@ impl IfaceInfo {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     /// info_from_type_lit computes the method set for the given interface iface
     /// declared in scope.
     /// If a corresponding type name exists (tname is_some), it is used for
@@ -193,7 +195,7 @@ impl<'a> Checker<'a> {
         iface: &Rc<ast::InterfaceType>,
         tname: Option<ObjKey>,
         path: &Vec<ObjKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Option<RcIfaceInfo> {
         if self.trace() {
             let expr = Expr::Interface(iface.clone());
@@ -329,7 +331,7 @@ impl<'a> Checker<'a> {
         skey: ScopeKey,
         name: IdentKey,
         path: &Vec<ObjKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Option<RcIfaceInfo> {
         // A single call of info_from_type_name handles a sequence of (possibly
         // recursive) type declarations connected via unqualified type names.
@@ -392,7 +394,7 @@ impl<'a> Checker<'a> {
             // lying interface.)
             if let Some(decl_key) = self.obj_map.get(&tname) {
                 let decl = &self.tc_objs.decls[*decl_key].as_type();
-                let ty = Checker::unparen(&decl.typ);
+                let ty = Checker::<S>::unparen(&decl.typ);
                 match ty {
                     Expr::Ident(i) => {
                         // type tname T

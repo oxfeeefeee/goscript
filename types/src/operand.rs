@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::check::{Checker, FilesContext};
 use super::constant;
 use super::lookup::missing_method;
@@ -132,12 +134,12 @@ impl Operand {
     /// assignable_to returns whether self is assignable to a variable of type 't'.
     /// If the result is false and a non-None reason is provided, it may be set
     /// to a more detailed explanation of the failure.
-    pub fn assignable_to(
+    pub fn assignable_to<S: SourceRead>(
         &self,
         t: TypeKey,
         reason: Option<&mut String>,
-        checker: &mut Checker,
-        fctx: &mut FilesContext,
+        checker: &mut Checker<S>,
+        fctx: &mut FilesContext<S>,
     ) -> bool {
         let objs = &checker.tc_objs;
         let u = objs.universe();

@@ -622,7 +622,7 @@ struct StdMapIterInner {
 struct StdMapIter {
     inner: RefCell<StdMapIterInner>,
     key_meta: Meta,
-    val_meta: Meta,
+    //val_meta: Meta,
 }
 
 impl UnsafePtr for StdMapIter {
@@ -638,14 +638,14 @@ impl StdMapIter {
         let iter: GosHashMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
         let metas = &ctx.vm_objs.metas;
         let map_meta = metas[v.meta().unwrap().underlying(metas).key].as_map();
-        let (k, v) = (map_meta.0.clone(), map_meta.1.clone());
+        let (k, _) = (map_meta.0.clone(), map_meta.1.clone());
         let smi = StdMapIter {
             inner: RefCell::new(StdMapIterInner {
                 iter: iter,
                 item: None,
             }),
             key_meta: k,
-            val_meta: v,
+            //val_meta: v,
         };
         Ok(GosValue::new_unsafe_ptr(smi))
     }

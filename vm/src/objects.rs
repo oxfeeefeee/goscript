@@ -1566,7 +1566,6 @@ impl ClosureObj {
 /// vars, funcs declared in a package
 #[derive(Clone, Debug)]
 pub struct PackageVal {
-    name: String,
     members: Vec<Rc<RefCell<GosValue>>>, // imports, const, var, func are all stored here
     member_types: Vec<ValueType>,
     member_indices: HashMap<String, OpIndex>,
@@ -1576,9 +1575,8 @@ pub struct PackageVal {
 }
 
 impl PackageVal {
-    pub fn new(name: String) -> PackageVal {
+    pub fn new() -> PackageVal {
         PackageVal {
-            name: name,
             members: vec![],
             member_types: vec![],
             member_indices: HashMap::new(),

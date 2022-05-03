@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::check::{Checker, FilesContext};
 use super::obj;
 use super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
@@ -249,11 +251,11 @@ pub fn lookup_field_or_method(
 
 /// assertable_to reports whether a value of type iface can be asserted to have type t.
 /// It returns None as affirmative answer. See docs for missing_method for more info
-pub fn assertable_to(
+pub fn assertable_to<S: SourceRead>(
     iface: TypeKey,
     t: TypeKey,
-    checker: &mut Checker,
-    fctx: &mut FilesContext,
+    checker: &mut Checker<S>,
+    fctx: &mut FilesContext<S>,
 ) -> Option<(ObjKey, bool)> {
     let objs = &checker.tc_objs;
     // no static check is required if T is an interface
@@ -335,12 +337,12 @@ pub fn lookup_method<'a>(
 /// that methods of 'intf' which are also present in 't' have matching
 /// types (e.g., for a type assertion x.(T) where x is of
 /// interface type 't').
-pub fn missing_method(
+pub fn missing_method<S: SourceRead>(
     t: TypeKey,
     intf: TypeKey,
     static_: bool,
-    checker: &mut Checker,
-    fctx: &mut FilesContext,
+    checker: &mut Checker<S>,
+    fctx: &mut FilesContext<S>,
 ) -> Option<(ObjKey, bool)> {
     let objs = &checker.tc_objs;
     let ival = &objs.types[intf].try_as_interface().unwrap();

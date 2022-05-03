@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::objects::{DeclInfoKey, ObjKey, TCObjects};
 use super::check::{Checker, Initializer};
 use super::resolver::DeclInfo;
@@ -38,7 +40,7 @@ impl GraphEdges {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn init_order(&mut self) {
         let (mut nodes, edges) = self.dependency_graph();
         nodes.sort_by(|a, b| a.ndeps.cmp(&b.ndeps)); // sort by n_deps

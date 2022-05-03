@@ -13,7 +13,7 @@ use super::stack::{RangeStack, Stack};
 use super::value::*;
 use async_executor::LocalExecutor;
 use futures_lite::future;
-use goscript_parser::FileSet;
+use goscript_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -1448,7 +1448,7 @@ impl<'a> Fiber<'a> {
                             for (fkey, pc) in p.call_stack.iter() {
                                 let func = &objs.functions[*fkey];
                                 if let Some(p) = func.pos()[*pc] {
-                                    println!("{}", files.position(p));
+                                    println!("{}", files.position(p).unwrap_or(FilePos::null()));
                                 } else {
                                     println!("<no debug info available>");
                                 }

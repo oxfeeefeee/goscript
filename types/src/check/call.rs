@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::lookup::{self, LookupResult, MethodSet};
 use super::super::obj::EntityType;
 use super::super::objects::TypeKey;
@@ -23,8 +25,13 @@ use goscript_parser::ast::{CallExpr, Expr, Node, SelectorExpr};
 use goscript_parser::Pos;
 use std::rc::Rc;
 
-impl<'a> Checker<'a> {
-    pub fn call(&mut self, x: &mut Operand, e: &Rc<CallExpr>, fctx: &mut FilesContext) -> ExprKind {
+impl<'a, S: SourceRead> Checker<'a, S> {
+    pub fn call(
+        &mut self,
+        x: &mut Operand,
+        e: &Rc<CallExpr>,
+        fctx: &mut FilesContext<S>,
+    ) -> ExprKind {
         self.expr_or_type(x, &e.func, fctx);
 
         let expr = Some(Expr::Call(e.clone()));
@@ -122,7 +129,7 @@ impl<'a> Checker<'a> {
         sig: TypeKey,
         re: &UnpackedResultLeftovers,
         n: usize,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let sig_val = self.otype(sig).try_as_signature().unwrap();
         let variadic = sig_val.variadic();
@@ -178,7 +185,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         ellipsis: Option<Pos>,
         note: &str,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         self.single_value(x);
         if x.invalid() {
@@ -238,7 +245,7 @@ impl<'a> Checker<'a> {
         self.assignment(x, Some(ty), note, fctx);
     }
 
-    pub fn selector(&mut self, x: &mut Operand, e: &Rc<SelectorExpr>, fctx: &mut FilesContext) {
+    pub fn selector(&mut self, x: &mut Operand, e: &Rc<SelectorExpr>, fctx: &mut FilesContext<S>) {
         let err_exit = |x: &mut Operand| {
             x.mode = OperandMode::Invalid;
             x.expr = Some(Expr::Selector(e.clone()));

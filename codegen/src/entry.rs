@@ -92,8 +92,8 @@ impl<'a> EntryGen<'a> {
         let mut main_pkg_idx = None;
         for (&tcpkg, _) in checker_result.iter() {
             // create vm packages and store the indices
-            let name = self.tc_objs.pkgs[tcpkg].name().clone().unwrap();
-            let pkey = self.objects.packages.insert(PackageVal::new(name));
+            //let name = self.tc_objs.pkgs[tcpkg].name().clone().unwrap();
+            let pkey = self.objects.packages.insert(PackageVal::new());
             self.packages.push(pkey);
             let index = (self.packages.len() - 1) as OpIndex;
             self.pkg_indices.insert(tcpkg, index);
@@ -148,24 +148,25 @@ impl<'a> EntryGen<'a> {
     }
 }
 
-pub fn parse_check_gen(
+pub fn parse_check_gen<S: SourceRead>(
     path: &str,
     tconfig: &TraceConfig,
-    reader: &dyn SourceRead,
+    reader: &S,
     fset: &mut FileSet,
-    el: &ErrorList,
-) -> Result<ByteCode, usize> {
+) -> Result<ByteCode, ErrorList> {
     let asto = &mut AstObjects::new();
     let tco = &mut goscript_types::TCObjects::new();
     let results = &mut HashMap::new();
     let pkgs = &mut HashMap::new();
+    let el = ErrorList::new();
 
-    let importer =
-        &mut goscript_types::Importer::new(&tconfig, reader, fset, pkgs, results, asto, tco, el, 0);
+    let importer = &mut goscript_types::Importer::new(
+        &tconfig, reader, fset, pkgs, results, asto, tco, &el, 0,
+    );
     let key = goscript_types::ImportKey::new(path, "./");
     let main_pkg = importer.import(&key);
     if el.len() > 0 {
-        Err(el.len())
+        Err(el)
     } else {
         let blank_ident = asto.idents.insert(Ident::blank(0));
         let main_ident = asto.idents.insert(Ident::with_str(0, "main"));

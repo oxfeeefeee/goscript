@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::constant;
 use super::super::importer::ImportKey;
 use super::super::obj::EntityType;
@@ -161,8 +163,8 @@ impl DeclInfo {
     }
 }
 
-impl<'a> Checker<'a> {
-    pub fn collect_objects(&mut self, fctx: &mut FilesContext) {
+impl<'a, S: SourceRead> Checker<'a, S> {
+    pub fn collect_objects(&mut self, fctx: &mut FilesContext<S>) {
         let mut all_imported: HashSet<PackageKey> = self
             .package(self.pkg)
             .imports()
@@ -495,7 +497,7 @@ impl<'a> Checker<'a> {
     }
 
     /// package_objects typechecks all package objects, but not function bodies.
-    pub fn package_objects(&mut self, fctx: &mut FilesContext) {
+    pub fn package_objects(&mut self, fctx: &mut FilesContext<S>) {
         // process package objects in source order for reproducible results
         let mut obj_list: Vec<ObjKey> = self.obj_map.iter().map(|(o, _)| *o).collect();
         obj_list.sort_by(|a, b| self.lobj(*a).order().cmp(&self.lobj(*b).order()));
@@ -540,7 +542,7 @@ impl<'a> Checker<'a> {
     }
 
     /// unused_imports checks for unused imports.
-    pub fn unused_imports(&mut self, fctx: &mut FilesContext) {
+    pub fn unused_imports(&mut self, fctx: &mut FilesContext<S>) {
         // check use of regular imported packages
         let pkg_scope = self.scope(*self.package(self.pkg).scope());
         for s in pkg_scope.children().iter() {
@@ -633,14 +635,14 @@ impl<'a> Checker<'a> {
         let mut path = Vec::new();
         let mut ptr = false;
         loop {
-            typ = Checker::unparen(typ);
+            typ = Checker::<S>::unparen(typ);
             if let Expr::Star(t) = typ {
                 // if we've already seen a pointer, we're done
                 if ptr {
                     break;
                 }
                 ptr = true;
-                typ = Checker::unparen(&t.expr);
+                typ = Checker::<S>::unparen(&t.expr);
             }
 
             // typ must be the name

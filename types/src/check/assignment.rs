@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::obj::EntityType;
 use super::super::objects::{ObjKey, TypeKey};
 use super::super::operand::{Operand, OperandMode};
@@ -20,7 +22,7 @@ use goscript_parser::ast::Expr;
 use goscript_parser::ast::Node;
 use goscript_parser::position::Pos;
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     /// assignment reports whether x can be assigned to a variable of type t,
     /// if necessary by attempting to convert untyped values to the appropriate
     /// type. context describes the context in which the assignment takes place.
@@ -31,7 +33,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         t: Option<TypeKey>,
         note: &str,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         self.single_value(x);
         if x.invalid() {
@@ -100,7 +102,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand, fctx: &mut FilesContext) {
+    pub fn init_const(&mut self, lhskey: ObjKey, x: &mut Operand, fctx: &mut FilesContext<S>) {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
         if x.invalid() || x.typ == Some(invalid_type) {
@@ -135,7 +137,7 @@ impl<'a> Checker<'a> {
         lhskey: ObjKey,
         x: &mut Operand,
         msg: &str,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         let lhs = self.lobj_mut(lhskey);
@@ -181,7 +183,7 @@ impl<'a> Checker<'a> {
         &mut self,
         lhs: &Expr,
         x: &mut Operand,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Option<TypeKey> {
         let invalid_type = self.invalid_type();
         if x.invalid() || x.typ == Some(invalid_type) {
@@ -191,7 +193,7 @@ impl<'a> Checker<'a> {
         let mut v: Option<ObjKey> = None;
         let mut v_used = false;
         // determine if the lhs is a (possibly parenthesized) identifier.
-        if let Expr::Ident(ikey) = Checker::unparen(lhs) {
+        if let Expr::Ident(ikey) = Checker::<S>::unparen(lhs) {
             let name = &self.ast_ident(*ikey).name;
             if name == "_" {
                 self.result.record_def(*ikey, None);
@@ -271,7 +273,7 @@ impl<'a> Checker<'a> {
         lhs: &Vec<ObjKey>,
         rhs: &Vec<Expr>,
         return_pos: Option<Pos>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let invalid_type = self.invalid_type();
         let ll = lhs.len();
@@ -328,7 +330,7 @@ impl<'a> Checker<'a> {
             },
         }
         if let UnpackResult::CommaOk(e, types) = result {
-            self.result.record_comma_ok_types(
+            self.result.record_comma_ok_types::<S>(
                 e.as_ref().unwrap(),
                 &types,
                 self.tc_objs,
@@ -338,7 +340,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>, fctx: &mut FilesContext) {
+    pub fn assign_vars(&mut self, lhs: &Vec<Expr>, rhs: &Vec<Expr>, fctx: &mut FilesContext<S>) {
         let ll = lhs.len();
         let result = self.unpack(rhs, ll, ll == 2, false, fctx);
         match result {
@@ -366,7 +368,7 @@ impl<'a> Checker<'a> {
             },
         }
         if let UnpackResult::CommaOk(e, types) = result {
-            self.result.record_comma_ok_types(
+            self.result.record_comma_ok_types::<S>(
                 e.as_ref().unwrap(),
                 &types,
                 self.tc_objs,
@@ -381,7 +383,7 @@ impl<'a> Checker<'a> {
         lhs: &Vec<Expr>,
         rhs: &Vec<Expr>,
         pos: Pos,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let top = fctx.delayed_count();
         let scope_key = self.octx.scope.unwrap();

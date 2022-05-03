@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::constant::Value;
 use super::super::objects::TypeKey;
 use super::super::operand::{Operand, OperandMode};
@@ -17,8 +19,8 @@ use super::super::typ::{self, BasicType, Type};
 use super::check::{Checker, FilesContext};
 use std::char;
 
-impl<'a> Checker<'a> {
-    pub fn conversion(&mut self, x: &mut Operand, t: TypeKey, fctx: &mut FilesContext) {
+impl<'a, S: SourceRead> Checker<'a, S> {
+    pub fn conversion(&mut self, x: &mut Operand, t: TypeKey, fctx: &mut FilesContext<S>) {
         let constv = match &mut x.mode {
             OperandMode::Constant(v) => Some(v),
             _ => None,
@@ -91,7 +93,7 @@ impl<'a> Checker<'a> {
     // convertible_to returns if x is convertable to t.
     // The check parameter may be nil if convertibleTo is invoked through an
     // exported API call, i.e., when all methods have been type-checked.
-    pub fn convertable_to(&mut self, x: &Operand, t: TypeKey, fctx: &mut FilesContext) -> bool {
+    pub fn convertable_to(&mut self, x: &Operand, t: TypeKey, fctx: &mut FilesContext<S>) -> bool {
         // "x is assignable to t"
         if x.assignable_to(t, None, self, fctx) {
             return true;

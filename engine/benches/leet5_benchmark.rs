@@ -6,20 +6,19 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 extern crate goscript_engine as engine;
 
-fn run(path: &str, trace: bool) -> usize {
+fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let cfg = engine::run_fs::Config {
-        working_dir: Some("./".to_owned()),
-        base_dir: Some("./std/".to_owned()),
+        working_dir: Some("./"),
+        base_dir: Some("./std/"),
         trace_parser: trace,
         trace_checker: trace,
-        trace_vm: true,
     };
     engine::run_fs::run(cfg, path)
 }
 
 fn leetcode5() {
-    let err_cnt = run("./tests/demo/leetcode5.gos", false);
-    assert!(err_cnt == 0);
+    let errs = run("./tests/demo/leetcode5.gos", false);
+    assert!(errs.is_ok());
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {

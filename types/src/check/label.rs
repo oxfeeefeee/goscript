@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::objects::ScopeKey;
 use super::super::scope::Scope;
 use super::check::Checker;
@@ -124,7 +126,7 @@ impl StmtBranchesContext {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn labels(&mut self, body: &Rc<BlockStmt>) {
         let (pos, end) = (body.pos(), body.end());
         let comment = "label".to_owned();

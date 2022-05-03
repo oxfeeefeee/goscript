@@ -10,12 +10,14 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::check::Checker;
 use goscript_parser::ast::{BlockStmt, Expr, Stmt};
 use goscript_parser::Token;
 use std::rc::Rc;
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     /// is_terminating returns if s is a terminating statement.
     /// If s is labeled, label is the label name
     pub fn is_terminating(&self, s: &Stmt, label: Option<&String>) -> bool {
@@ -25,7 +27,7 @@ impl<'a> Checker<'a> {
                 let l = &self.ast_ident(ls_val.label).name;
                 self.is_terminating(&ls_val.stmt, Some(l))
             }
-            Stmt::Expr(e) => match Checker::unparen(e) {
+            Stmt::Expr(e) => match Checker::<S>::unparen(e) {
                 Expr::Call(ce) => match &self.octx.panics {
                     Some(pa) => pa.contains(&ce.id()),
                     _ => false,

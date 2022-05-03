@@ -71,7 +71,7 @@ fn test_file(path: &str, trace: bool) {
         trace_parser: trace,
         trace_checker: trace,
     };
-    let reader = FsReader::new(Some("./".to_owned()), None, None);
+    let reader = FsReader::new(Some("./"), None, None);
     let fs = &mut fe::FileSet::new();
     let asto = &mut fe::objects::Objects::new();
     let el = &mut fe::errors::ErrorList::new();

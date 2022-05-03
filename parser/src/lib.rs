@@ -15,7 +15,7 @@ pub mod visitor;
 
 pub use ast::Expr;
 pub use parser::Parser;
-pub use position::{FileSet, Pos, Position};
+pub use position::{FilePos, FileSet, Pos};
 pub use token::Token;
 
 pub fn parse_file<'a>(

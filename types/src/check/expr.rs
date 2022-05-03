@@ -9,6 +9,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use crate::SourceRead;
+
 use super::super::constant::Value;
 use super::super::lookup;
 use super::super::objects::TypeKey;
@@ -61,7 +63,7 @@ use std::collections::{HashMap, HashSet};
 ///on the way down in update_expr_type, or at the end of the type checker run,
 ///the type (and constant value, if any) is recorded via Info.Types, if present.
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     fn op_token(&self, x: &mut Operand, token: &Token, binary: bool) -> bool {
         let pred = |t: &Token, ty: TypeKey| -> Option<bool> {
             if binary {
@@ -113,7 +115,7 @@ impl<'a> Checker<'a> {
             Token::AND => {
                 // spec: "As an exception to the addressability requirement
                 // x may also be a composite literal."
-                match Checker::unparen(x.expr.as_ref().unwrap()) {
+                match Checker::<S>::unparen(x.expr.as_ref().unwrap()) {
                     Expr::CompositeLit(_) => {}
                     _ => {
                         if x.mode != OperandMode::Variable {
@@ -243,7 +245,7 @@ impl<'a> Checker<'a> {
         e: &Expr,
         t: TypeKey,
         final_: bool,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let old_opt = fctx.untyped.get(&e.id());
         if old_opt.is_none() {
@@ -303,10 +305,10 @@ impl<'a> Checker<'a> {
             }
             Expr::Binary(b) => {
                 if old.mode.constant_val().is_none() {
-                    if Checker::is_comparison(&b.op) {
+                    if Checker::<S>::is_comparison(&b.op) {
                         // The result type is independent of operand types
                         // and the operand types must have final types.
-                    } else if Checker::is_shift(&b.op) {
+                    } else if Checker::<S>::is_shift(&b.op) {
                         // The result type depends only on lhs operand.
                         // The rhs type was updated when checking the shift.
                         self.update_expr_type(&b.expr_a, t, final_, fctx);
@@ -365,7 +367,7 @@ impl<'a> Checker<'a> {
     }
 
     /// update_expr_val updates the value of x to val.
-    fn update_expr_val(e: &Expr, val: Value, fctx: &mut FilesContext) {
+    fn update_expr_val(e: &Expr, val: Value, fctx: &mut FilesContext<S>) {
         if let Some(info) = fctx.untyped.get_mut(&e.id()) {
             if let OperandMode::Constant(v) = &mut info.mode {
                 *v = val;
@@ -376,13 +378,18 @@ impl<'a> Checker<'a> {
     }
 
     /// convert_untyped attempts to set the type of an untyped value to the target type.
-    pub fn convert_untyped(&mut self, x: &mut Operand, target: TypeKey, fctx: &mut FilesContext) {
+    pub fn convert_untyped(
+        &mut self,
+        x: &mut Operand,
+        target: TypeKey,
+        fctx: &mut FilesContext<S>,
+    ) {
         let o = &self.tc_objs;
         if x.invalid() || typ::is_typed(x.typ.unwrap(), o) || target == self.invalid_type() {
             return;
         }
 
-        let on_err = |c: &mut Checker, x: &mut Operand| {
+        let on_err = |c: &mut Checker<S>, x: &mut Operand| {
             let xd = c.new_dis(x);
             let td = c.new_dis(&target);
             c.error(xd.pos(), format!("cannot convert {} to {}", xd, td));
@@ -495,7 +502,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         y: &Operand,
         op: &Token,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         // spec: "In any comparison, the first operand must be assignable
         // to the type of the second operand, or vice versa."
@@ -574,7 +581,7 @@ impl<'a> Checker<'a> {
         y: &mut Operand,
         op: &Token,
         e: Option<&Expr>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let o = &self.tc_objs;
         let xtval = self.otype(x.typ.unwrap());
@@ -714,7 +721,7 @@ impl<'a> Checker<'a> {
         lhs: &Expr,
         rhs: &Expr,
         op: &Token,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let mut y = Operand::new();
         self.expr(x, &lhs, fctx);
@@ -729,7 +736,7 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        if Checker::is_shift(op) {
+        if Checker::<S>::is_shift(op) {
             self.shift(x, &mut y, op, e, fctx);
             return;
         }
@@ -745,7 +752,7 @@ impl<'a> Checker<'a> {
             return;
         }
 
-        if Checker::is_comparison(op) {
+        if Checker::<S>::is_comparison(op) {
             self.comparison(x, &y, op, fctx);
             return;
         }
@@ -830,7 +837,7 @@ impl<'a> Checker<'a> {
         &mut self,
         index: &Expr,
         max: Option<u64>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> Result<Option<u64>, ()> {
         let x = &mut Operand::new();
         self.expr(x, index, fctx);
@@ -879,7 +886,7 @@ impl<'a> Checker<'a> {
         elems: &Vec<Expr>,
         t: TypeKey,
         length: Option<u64>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> u64 {
         let mut visited = HashSet::new();
         let (_, max) = elems.iter().fold((0, 0), |(index, max), e| {
@@ -942,7 +949,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         e: &Expr,
         hint: Option<TypeKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> ExprKind {
         if self.trace() {
             let ed = self.new_dis(e);
@@ -987,7 +994,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         e: &Expr,
         hint: Option<TypeKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> ExprKind {
         // make sure x has a valid state in case of bailout
         x.mode = OperandMode::Invalid;
@@ -1022,7 +1029,7 @@ impl<'a> Checker<'a> {
                     let decl = self.octx.decl;
                     let body = BodyContainer::FuncLitExpr(e.clone());
                     let iota = self.octx.iota.clone();
-                    let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+                    let f = move |checker: &mut Checker<S>, fctx: &mut FilesContext<S>| {
                         checker.func_body(decl, "<function literal>", t, body, iota, fctx);
                     };
                     fctx.later(Box::new(f));
@@ -1572,7 +1579,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         xtype: TypeKey,
         t: TypeKey,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         if let Some((method, wrong_type)) = lookup::assertable_to(xtype, t, self, fctx) {
             let dx = self.new_dis(x);
@@ -1626,20 +1633,20 @@ impl<'a> Checker<'a> {
     /// expr typechecks expression e and initializes x with the expression value.
     /// The result must be a single value.
     /// If an error occurred, x.mode is set to invalid.
-    pub fn expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+    pub fn expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext<S>) {
         self.multi_expr(x, e, fctx);
         self.single_value(x);
     }
 
     /// multi_expr is like expr but the result may be a multi-value.
-    pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+    pub fn multi_expr(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext<S>) {
         self.raw_expr(x, e, None, fctx);
         self.expr_value_err(x);
     }
 
     /// expr_or_type typechecks expression or type e and initializes x with the expression
     /// value or type. If an error occurred, x.mode is set to invalid.
-    pub fn expr_or_type(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext) {
+    pub fn expr_or_type(&mut self, x: &mut Operand, e: &Expr, fctx: &mut FilesContext<S>) {
         self.raw_expr(x, e, None, fctx);
         self.single_value(x);
         if x.mode == OperandMode::NoValue {
@@ -1657,7 +1664,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         e: &Expr,
         hint: TypeKey,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         self.raw_expr(x, e, Some(hint), fctx);
         self.single_value(x);

@@ -19,13 +19,14 @@ use super::super::scope::Scope;
 use super::super::typ::{self, Type};
 use super::check::{Checker, FilesContext, ObjContext};
 use super::interface::MethodInfo;
+use crate::SourceRead;
 use goscript_parser::ast::{self, Expr, FieldList, Node};
 use goscript_parser::objects::{FuncTypeKey, IdentKey};
 use goscript_parser::{Pos, Token};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     /// ident type-checks identifier ikey and initializes x with the value or type of ikey.
     /// If an error occurred, x.mode is set to invalid.
     /// For the meaning of def, see Checker.defined_type, below.
@@ -36,7 +37,7 @@ impl<'a> Checker<'a> {
         ikey: IdentKey,
         def: Option<TypeKey>,
         want_type: bool,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         x.mode = OperandMode::Invalid;
         x.expr = Some(Expr::Ident(ikey));
@@ -140,7 +141,7 @@ impl<'a> Checker<'a> {
     }
 
     /// type_expr type-checks the type expression e and returns its type, or Invalid Type.
-    pub fn type_expr(&mut self, e: &Expr, fctx: &mut FilesContext) -> TypeKey {
+    pub fn type_expr(&mut self, e: &Expr, fctx: &mut FilesContext<S>) -> TypeKey {
         self.defined_type(e, None, fctx)
     }
 
@@ -152,7 +153,7 @@ impl<'a> Checker<'a> {
         &mut self,
         e: &Expr,
         def: Option<TypeKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> TypeKey {
         if self.trace() {
             let ed = self.new_dis(e);
@@ -173,7 +174,7 @@ impl<'a> Checker<'a> {
     /// recursivetypes by introducing an indirection. It should be called for components of
     /// types that are not laid out in place in memory, such as pointer base types, slice or
     /// map element types, function parameter types, etc.
-    pub fn indirect_type(&mut self, e: &Expr, fctx: &mut FilesContext) -> TypeKey {
+    pub fn indirect_type(&mut self, e: &Expr, fctx: &mut FilesContext<S>) -> TypeKey {
         fctx.push(*self.tc_objs.universe().indir());
         let t = self.defined_type(e, None, fctx);
         fctx.pop();
@@ -185,7 +186,7 @@ impl<'a> Checker<'a> {
         &mut self,
         recv: Option<&FieldList>,
         ftype: FuncTypeKey,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> TypeKey {
         let skey = self
             .tc_objs
@@ -272,7 +273,7 @@ impl<'a> Checker<'a> {
         &mut self,
         e: &Expr,
         def: Option<TypeKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> TypeKey {
         let set_underlying = |typ: Option<TypeKey>, tc_objs: &mut TCObjects| {
             if let Some(d) = def {
@@ -366,7 +367,7 @@ impl<'a> Checker<'a> {
                 set_underlying(Some(t), self.tc_objs);
 
                 let pos = m.key.pos(self.ast_objs);
-                let f = move |checker: &mut Checker, _: &mut FilesContext| {
+                let f = move |checker: &mut Checker<S>, _: &mut FilesContext<S>| {
                     if !typ::comparable(k, checker.tc_objs) {
                         let td = checker.new_dis(&k);
                         checker.error(pos, format!("invalid map key type {}", td));
@@ -405,7 +406,7 @@ impl<'a> Checker<'a> {
     /// type_or_nil type-checks the type expression (or nil value) e
     /// and returns the typ of e, or None.
     /// If e is neither a type nor nil, typOrNil returns Typ[Invalid].
-    pub fn type_or_nil(&mut self, e: &Expr, fctx: &mut FilesContext) -> Option<TypeKey> {
+    pub fn type_or_nil(&mut self, e: &Expr, fctx: &mut FilesContext<S>) -> Option<TypeKey> {
         let mut x = Operand::new();
         self.raw_expr(&mut x, e, None, fctx);
         let invalid_type = self.invalid_type();
@@ -427,7 +428,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    fn array_len(&mut self, e: &Expr, fctx: &mut FilesContext) -> Option<u64> {
+    fn array_len(&mut self, e: &Expr, fctx: &mut FilesContext<S>) -> Option<u64> {
         let mut x = Operand::new();
         self.expr(&mut x, e, fctx);
         if let OperandMode::Constant(v) = &x.mode {
@@ -464,7 +465,7 @@ impl<'a> Checker<'a> {
         skey: ScopeKey,
         fl: Option<&FieldList>,
         variadic_ok: bool,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> (Vec<ObjKey>, bool) {
         if let Some(l) = fl {
             let (mut named, mut anonymous, mut variadic) = (false, false, false);
@@ -549,7 +550,7 @@ impl<'a> Checker<'a> {
         &mut self,
         expr: &ast::Expr,
         def: Option<TypeKey>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> TypeKey {
         let iface = match expr {
             Expr::Interface(i) => i,
@@ -570,7 +571,7 @@ impl<'a> Checker<'a> {
         let context_clone = self.octx.clone();
         let expr_clone = expr.clone();
         let iface_clone = iface.clone();
-        let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+        let f = move |checker: &mut Checker<S>, fctx: &mut FilesContext<S>| {
             if trace {
                 let ed = checker.new_dis(&expr_clone);
                 let msg = format!("-- delayed checking embedded interfaces of {}", ed);
@@ -642,7 +643,7 @@ impl<'a> Checker<'a> {
         // Correct receiver type for all methods explicitly declared
         // by this interface after we're done with type-checking at
         // this level. See comment below for details.
-        let f = move |checker: &mut Checker, _: &mut FilesContext| {
+        let f = move |checker: &mut Checker<S>, _: &mut FilesContext<S>| {
             for m in checker.otype_interface(itype).methods().clone().iter() {
                 let t = checker.lobj(*m).typ().unwrap();
                 let o = checker.otype_signature(t).recv().unwrap();
@@ -820,14 +821,14 @@ impl<'a> Checker<'a> {
             Expr::Star(s) => match s.expr {
                 // *T is valid, but **T is not
                 Expr::Star(_) => None,
-                _ => Checker::embedded_field_ident(&s.expr),
+                _ => Checker::<S>::embedded_field_ident(&s.expr),
             },
             Expr::Selector(s) => Some(s.sel),
             _ => None,
         }
     }
 
-    fn struct_type(&mut self, st: &ast::StructType, fctx: &mut FilesContext) -> TypeKey {
+    fn struct_type(&mut self, st: &ast::StructType, fctx: &mut FilesContext<S>) -> TypeKey {
         let fields = &st.fields.list;
         if fields.len() == 0 {
             return self.tc_objs.new_t_struct(vec![], None);
@@ -863,7 +864,7 @@ impl<'a> Checker<'a> {
                 let field = &self.ast_objs.fields[*f];
                 let pos = field.typ.pos(self.ast_objs);
                 let invalid_type = self.invalid_type();
-                let mut add_invalid = |c: &mut Checker, ident: IdentKey| {
+                let mut add_invalid = |c: &mut Checker<S>, ident: IdentKey| {
                     c.add_field(
                         &mut field_objs,
                         &mut tags,
@@ -875,7 +876,7 @@ impl<'a> Checker<'a> {
                         pos,
                     );
                 };
-                if let Some(ident) = Checker::embedded_field_ident(&field.typ) {
+                if let Some(ident) = Checker::<S>::embedded_field_ident(&field.typ) {
                     let (t, is_ptr) = lookup::try_deref(ty, self.tc_objs);
                     // Because we have a name, typ must be of the form T or *T, where T is the name
                     // of a (named or alias) type, and t (= deref(typ)) must be the type of T.

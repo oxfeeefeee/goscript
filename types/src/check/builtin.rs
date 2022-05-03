@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::constant::Value;
 use super::super::lookup::{self, LookupResult};
 use super::super::objects::{ObjKey, TCObjects, TypeKey};
@@ -25,7 +27,7 @@ use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::rc::Rc;
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     /// builtin type-checks a call to the built-in specified by id and
     /// reports whether the call is valid, with *x holding the result;
     /// but x.expr is not set. If the call is invalid, the result is
@@ -35,7 +37,7 @@ impl<'a> Checker<'a> {
         x: &mut Operand,
         call: &Rc<CallExpr>,
         id: Builtin,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> bool {
         // append is the only built-in that permits the use of ... for the last argument
         let binfo = self.tc_objs.universe().builtins()[&id];
@@ -60,7 +62,7 @@ impl<'a> Checker<'a> {
         };
         self.octx.has_call_or_recv = false;
 
-        let report_mismatch = |checker: &Checker, ord, rcount| {
+        let report_mismatch = |checker: &Checker<S>, ord, rcount| {
             let msg = match ord {
                 std::cmp::Ordering::Less => "not enough",
                 std::cmp::Ordering::Greater => "too many",
@@ -125,11 +127,12 @@ impl<'a> Checker<'a> {
 
         let invalid_type = self.invalid_type();
         let om_builtin = &OperandMode::Builtin(id);
-        let record = |c: &mut Checker, res: Option<TypeKey>, args: &[TypeKey], variadic: bool| {
-            let sig = make_sig(c.tc_objs, res, args, variadic);
-            c.result.record_builtin_type(om_builtin, &call.func, sig);
-        };
-        let record_with_sig = |c: &mut Checker, sig: TypeKey| {
+        let record =
+            |c: &mut Checker<S>, res: Option<TypeKey>, args: &[TypeKey], variadic: bool| {
+                let sig = make_sig(c.tc_objs, res, args, variadic);
+                c.result.record_builtin_type(om_builtin, &call.func, sig);
+            };
+        let record_with_sig = |c: &mut Checker<S>, sig: TypeKey| {
             c.result.record_builtin_type(om_builtin, &call.func, sig);
         };
         match id {
@@ -688,7 +691,7 @@ impl<'a> Checker<'a> {
                 // unsafe.Offsetof(x T) uintptr, where x must be a selector
                 // (no argument evaluated yet)
                 let arg0 = &call.args[0];
-                if let Expr::Selector(selx) = Checker::unparen(arg0) {
+                if let Expr::Selector(selx) = Checker::<S>::unparen(arg0) {
                     self.expr(x, &selx.expr, fctx);
                     if x.invalid() {
                         return false;

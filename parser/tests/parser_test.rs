@@ -16,10 +16,7 @@ fn load_parse(path: &str, trace: bool) -> usize {
 
 #[test]
 fn test_parser_case0() {
-    load_parse(
-        "./../../../../go/src/github.com/golang/go/src/archive/tar/strconv_test.go",
-        true,
-    );
+    load_parse("./../../go/src/archive/tar/strconv_test.go", true);
 }
 
 #[test]
@@ -47,8 +44,8 @@ fn parse_dir(s: &str, trace: bool) -> usize {
 
 #[test]
 fn test_parser_dir() {
-    //let t = parse_dir("./../../../../go/src/github.com/golang/go/src", false);
-    let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
+    let t = parse_dir("./../../go/src", false);
+    //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
     println!("hohohoh{}", t);
 }
 

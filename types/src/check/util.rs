@@ -9,6 +9,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use crate::SourceRead;
+
 use super::super::display::{Display, Displayer};
 use super::super::obj;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
@@ -22,7 +24,7 @@ use super::resolver::DeclInfo;
 use std::cmp::Ordering;
 
 use goscript_parser::objects::IdentKey;
-use goscript_parser::{ast, ast::Expr, position::Pos, position::Position};
+use goscript_parser::{ast, ast::Expr, position::FilePos, position::Pos};
 use std::collections::HashMap;
 
 macro_rules! error_operand {
@@ -43,7 +45,13 @@ pub enum UnpackResult<'a> {
 }
 
 impl<'a> UnpackResult<'a> {
-    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize, fctx: &mut FilesContext) {
+    pub fn get<S: SourceRead>(
+        &self,
+        checker: &mut Checker<S>,
+        x: &mut Operand,
+        i: usize,
+        fctx: &mut FilesContext<S>,
+    ) {
         match self {
             UnpackResult::Tuple(expr, types, _) => {
                 x.mode = OperandMode::Value;
@@ -81,7 +89,12 @@ impl<'a> UnpackResult<'a> {
         }
     }
 
-    pub fn use_(&self, checker: &mut Checker, from: usize, fctx: &mut FilesContext) {
+    pub fn use_<S: SourceRead>(
+        &self,
+        checker: &mut Checker<S>,
+        from: usize,
+        fctx: &mut FilesContext<S>,
+    ) {
         let exprs = match self {
             UnpackResult::Mutliple(exprs, _) => exprs,
             _ => {
@@ -120,7 +133,7 @@ impl<'a> UnpackedResultLeftovers<'a> {
         }
     }
 
-    pub fn use_all(&self, checker: &mut Checker, fctx: &mut FilesContext) {
+    pub fn use_all<S: SourceRead>(&self, checker: &mut Checker<S>, fctx: &mut FilesContext<S>) {
         let from = if self.consumed.is_none() {
             0
         } else {
@@ -129,7 +142,13 @@ impl<'a> UnpackedResultLeftovers<'a> {
         self.leftovers.use_(checker, from, fctx);
     }
 
-    pub fn get(&self, checker: &mut Checker, x: &mut Operand, i: usize, fctx: &mut FilesContext) {
+    pub fn get<S: SourceRead>(
+        &self,
+        checker: &mut Checker<S>,
+        x: &mut Operand,
+        i: usize,
+        fctx: &mut FilesContext<S>,
+    ) {
         if self.consumed.is_none() {
             self.leftovers.get(checker, x, i, fctx);
             return;
@@ -146,10 +165,10 @@ impl<'a> UnpackedResultLeftovers<'a> {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn unparen(x: &Expr) -> &Expr {
         if let Expr::Paren(p) = x {
-            Checker::unparen(&p.expr)
+            Checker::<S>::unparen(&p.expr)
         } else {
             x
         }
@@ -176,7 +195,7 @@ impl<'a> Checker<'a> {
     pub fn dump(&self, pos: Option<Pos>, msg: &str) {
         if let Some(p) = pos {
             let p = self.fset.position(p);
-            print!("checker dump({}):{}\n", p, msg);
+            print!("checker dump({}):{}\n", p.unwrap_or(FilePos::null()), msg);
         } else {
             print!("checker dump:{}\n", msg);
         }
@@ -184,7 +203,12 @@ impl<'a> Checker<'a> {
 
     pub fn print_trace(&self, pos: Pos, msg: &str) {
         let p = self.fset.position(pos);
-        print!("{}:\t{}{}\n", p, ".  ".repeat(*self.indent.borrow()), msg);
+        print!(
+            "{}:\t{}{}\n",
+            p.unwrap_or(FilePos::null()),
+            ".  ".repeat(*self.indent.borrow()),
+            msg
+        );
     }
 
     pub fn trace_begin(&self, pos: Pos, msg: &str) {
@@ -248,7 +272,7 @@ impl<'a> Checker<'a> {
         lhs_len: usize,
         allow_comma_ok: bool,
         variadic: bool,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) -> UnpackResult<'b> {
         let do_match = |rhs_len: usize| {
             let order = rhs_len.cmp(&lhs_len);
@@ -289,7 +313,7 @@ impl<'a> Checker<'a> {
         UnpackResult::Single(x, do_match(1))
     }
 
-    pub fn use_exprs(&mut self, exprs: &Vec<Expr>, fctx: &mut FilesContext) {
+    pub fn use_exprs(&mut self, exprs: &Vec<Expr>, fctx: &mut FilesContext<S>) {
         let x = &mut Operand::new();
         for e in exprs.iter() {
             self.raw_expr(x, &e, None, fctx);
@@ -300,10 +324,10 @@ impl<'a> Checker<'a> {
     // It should be called instead of use_exprs if the arguments are
     // expressions on the lhs of an assignment.
     // The arguments must not be nil.
-    pub fn use_lhs(&mut self, lhs: &Vec<Expr>, fctx: &mut FilesContext) {
+    pub fn use_lhs(&mut self, lhs: &Vec<Expr>, fctx: &mut FilesContext<S>) {
         let x = &mut Operand::new();
         for e in lhs.iter() {
-            let v = match Checker::unparen(e) {
+            let v = match Checker::<S>::unparen(e) {
                 Expr::Ident(ikey) => match &self.ast_ident(*ikey).name {
                     s if s == "_" => continue,
                     s => Scope::lookup_parent(
@@ -422,7 +446,7 @@ impl<'a> Checker<'a> {
         &self.tc_objs.decls[key]
     }
 
-    pub fn position(&self, pos: Pos) -> Position {
+    pub fn position(&self, pos: Pos) -> FilePos {
         self.fset.file(pos).unwrap().position(pos)
     }
 

@@ -16,7 +16,7 @@ use std::iter::Peekable;
 use std::path::Path;
 use std::str::Chars;
 
-type ErrorHandler = fn(pos: position::Position, msg: &str);
+type ErrorHandler = fn(pos: position::FilePos, msg: &str);
 
 pub struct Scanner<'a> {
     file: &'a mut position::File, // source file handle
@@ -57,7 +57,7 @@ impl<'a> Scanner<'a> {
         errors::FilePosErrors::new(self.file, self.errors).add_str(self.offset, msg, false);
     }
 
-    fn position(&self) -> position::Position {
+    fn position(&self) -> position::FilePos {
         self.file.position(self.pos())
     }
 
@@ -854,7 +854,7 @@ mod test {
     use super::position::FileSet;
     use super::*;
 
-    fn error_handler(pos: position::Position, msg: &str) {
+    fn error_handler(pos: position::FilePos, msg: &str) {
         print!("scan error at {}: {}\n", pos, msg);
     }
 

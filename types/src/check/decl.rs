@@ -10,6 +10,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+use crate::SourceRead;
+
 use super::super::constant;
 use super::super::obj::{type_name_is_alias, EntityType, ObjColor};
 use super::super::objects::{DeclInfoKey, ObjKey, ScopeKey, TypeKey};
@@ -24,7 +26,7 @@ use goscript_parser::position::Pos;
 use goscript_parser::Token;
 use std::collections::HashMap;
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn report_alt_decl(&self, okey: ObjKey) {
         let lobj = self.lobj(okey);
         let pos = lobj.pos();
@@ -56,7 +58,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn obj_decl(&mut self, okey: ObjKey, def: Option<TypeKey>, fctx: &mut FilesContext) {
+    pub fn obj_decl(&mut self, okey: ObjKey, def: Option<TypeKey>, fctx: &mut FilesContext<S>) {
         let trace_end_data = if self.trace() {
             let lobj = self.lobj(okey);
             let pos = lobj.pos();
@@ -202,7 +204,7 @@ impl<'a> Checker<'a> {
 
     /// invalid_type_cycle returns true if the cycle starting with obj is invalid and
     /// reports an error.
-    pub fn invalid_type_cycle(&self, okey: ObjKey, fctx: &mut FilesContext) -> bool {
+    pub fn invalid_type_cycle(&self, okey: ObjKey, fctx: &mut FilesContext<S>) -> bool {
         // Given the number of constants and variables (nval) in the cycle
         // and the cycle length (ncycle = number of named objects in the cycle),
         // we distinguish between cycles involving only constants and variables
@@ -298,7 +300,7 @@ impl<'a> Checker<'a> {
         okey: ObjKey,
         typ: &Option<Expr>,
         init: &Option<Expr>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         let lobj = self.lobj(okey);
         assert!(lobj.typ().is_none());
@@ -343,7 +345,7 @@ impl<'a> Checker<'a> {
         lhs: Option<&Vec<ObjKey>>,
         typ: &Option<Expr>,
         init: &Option<Expr>,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         debug_assert!(self.lobj(okey).typ().is_none());
 
@@ -402,7 +404,7 @@ impl<'a> Checker<'a> {
         typ: &Expr,
         def: Option<TypeKey>,
         alias: bool,
-        fctx: &mut FilesContext,
+        fctx: &mut FilesContext<S>,
     ) {
         debug_assert!(self.lobj(okey).typ().is_none());
         if alias {
@@ -446,7 +448,7 @@ impl<'a> Checker<'a> {
         self.add_method_decls(okey, fctx);
     }
 
-    pub fn func_decl(&mut self, okey: ObjKey, dkey: DeclInfoKey, fctx: &mut FilesContext) {
+    pub fn func_decl(&mut self, okey: ObjKey, dkey: DeclInfoKey, fctx: &mut FilesContext<S>) {
         debug_assert!(self.lobj(okey).typ().is_none());
         // func declarations cannot use iota
         debug_assert!(self.octx.iota.is_none());
@@ -479,14 +481,14 @@ impl<'a> Checker<'a> {
         if let Some(_) = &fdecl.body {
             let name = lobj.name().clone();
             let body = BodyContainer::FuncDecl(fdecl_key);
-            let f = move |checker: &mut Checker, fctx: &mut FilesContext| {
+            let f = move |checker: &mut Checker<S>, fctx: &mut FilesContext<S>| {
                 checker.func_body(Some(dkey), &name, sig_key, body, None, fctx);
             };
             fctx.later(Box::new(f));
         }
     }
 
-    pub fn add_method_decls(&mut self, okey: ObjKey, fctx: &mut FilesContext) {
+    pub fn add_method_decls(&mut self, okey: ObjKey, fctx: &mut FilesContext<S>) {
         // get associated methods
         // (Checker.collect_objects only collects methods with non-blank names;
         // Checker.resolve_base_type_name ensures that obj is not an alias name
@@ -563,7 +565,7 @@ impl<'a> Checker<'a> {
             });
     }
 
-    pub fn decl_stmt(&mut self, decl: ast::Decl, fctx: &mut FilesContext) {
+    pub fn decl_stmt(&mut self, decl: ast::Decl, fctx: &mut FilesContext<S>) {
         match decl {
             ast::Decl::Bad(_) => { /*ignore*/ }
             ast::Decl::Func(_) => {

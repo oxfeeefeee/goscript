@@ -177,13 +177,13 @@ pub struct ObjContext {
     pub has_call_or_recv: bool,
 }
 
-type DelayedAction = Box<dyn FnOnce(&mut Checker, &mut FilesContext)>;
+type DelayedAction<S> = Box<dyn FnOnce(&mut Checker<S>, &mut FilesContext<S>)>;
 
 pub type RcIfaceInfo = Rc<IfaceInfo>;
 
 /// FilesContext contains information collected during type-checking
 /// of a set of package files
-pub struct FilesContext<'a> {
+pub struct FilesContext<'a, S: SourceRead> {
     // package files
     pub files: &'a Vec<ast::File>,
     // positions of unused dot-imported packages for each file scope
@@ -197,12 +197,12 @@ pub struct FilesContext<'a> {
     // map of expressions(ast::Expr) without final type
     pub untyped: HashMap<NodeId, ExprInfo>,
     // stack of delayed actions
-    pub delayed: Vec<DelayedAction>,
+    pub delayed: Vec<DelayedAction<S>>,
     // path of object dependencies during type inference (for cycle reporting)
     pub obj_path: Vec<ObjKey>,
 }
 
-pub struct Checker<'a> {
+pub struct Checker<'a, S: SourceRead> {
     // object container for type checker
     pub tc_objs: &'a mut TCObjects,
     // object container for AST
@@ -227,7 +227,7 @@ pub struct Checker<'a> {
 
     trace_config: &'a TraceConfig,
 
-    reader: &'a dyn SourceRead,
+    reader: &'a S,
     // result of type checking
     pub result: TypeInfo,
     // for debug
@@ -249,8 +249,8 @@ impl ObjContext {
     }
 }
 
-impl FilesContext<'_> {
-    pub fn new(files: &Vec<ast::File>) -> FilesContext<'_> {
+impl<S: SourceRead> FilesContext<'_, S> {
+    pub fn new(files: &Vec<ast::File>) -> FilesContext<'_, S> {
         FilesContext {
             files: files,
             unused_dot_imports: HashMap::new(),
@@ -263,7 +263,7 @@ impl FilesContext<'_> {
     }
 
     /// file_name returns a filename suitable for debugging output.
-    pub fn file_name(&self, index: usize, checker: &Checker) -> String {
+    pub fn file_name(&self, index: usize, checker: &Checker<S>) -> String {
         let file = &self.files[index];
         let pos = file.pos(checker.ast_objs);
         if pos > 0 {
@@ -291,7 +291,7 @@ impl FilesContext<'_> {
     /// either at the end of the current statement, or in case of a local constant
     /// or variable declaration, before the constant or variable is in scope
     /// (so that f still sees the scope before any new declarations).
-    pub fn later(&mut self, action: DelayedAction) {
+    pub fn later(&mut self, action: DelayedAction<S>) {
         self.delayed.push(action);
     }
 
@@ -299,8 +299,8 @@ impl FilesContext<'_> {
         self.delayed.len()
     }
 
-    pub fn process_delayed(&mut self, top: usize, checker: &mut Checker) {
-        let fs: Vec<DelayedAction> = self.delayed.drain(top..).into_iter().collect();
+    pub fn process_delayed(&mut self, top: usize, checker: &mut Checker<S>) {
+        let fs: Vec<DelayedAction<S>> = self.delayed.drain(top..).into_iter().collect();
         for f in fs {
             f(checker, self);
         }
@@ -354,7 +354,7 @@ impl TypeInfo {
         }
     }
 
-    pub fn record_comma_ok_types(
+    pub fn record_comma_ok_types<S: SourceRead>(
         &mut self,
         e: &Expr,
         t: &[TypeKey; 2],
@@ -366,7 +366,7 @@ impl TypeInfo {
         let mut expr = e;
         loop {
             let tv = self.types.get_mut(&expr.id()).unwrap();
-            tv.typ = Checker::comma_ok_type(tc_objs, pos, pkg, t);
+            tv.typ = Checker::<S>::comma_ok_type(tc_objs, pos, pkg, t);
             match expr {
                 Expr::Paren(p) => expr = &(*p).expr,
                 _ => break,
@@ -400,7 +400,7 @@ impl TypeInfo {
     }
 }
 
-impl<'a> Checker<'a> {
+impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn new(
         tc_objs: &'a mut TCObjects,
         ast_objs: &'a mut AstObjects,
@@ -410,8 +410,8 @@ impl<'a> Checker<'a> {
         all_results: &'a mut HashMap<PackageKey, TypeInfo>,
         pkg: PackageKey,
         cfg: &'a TraceConfig,
-        reader: &'a dyn SourceRead,
-    ) -> Checker<'a> {
+        reader: &'a S,
+    ) -> Checker<'a, S> {
         Checker {
             tc_objs: tc_objs,
             ast_objs: ast_objs,
@@ -445,7 +445,7 @@ impl<'a> Checker<'a> {
         Ok(self.pkg)
     }
 
-    fn record_untyped(&mut self, fctx: &mut FilesContext) {
+    fn record_untyped(&mut self, fctx: &mut FilesContext<S>) {
         for (id, info) in fctx.untyped.drain().into_iter() {
             if info.mode != OperandMode::Invalid {
                 self.result
@@ -464,7 +464,7 @@ impl<'a> Checker<'a> {
         self.trace_config.trace_checker
     }
 
-    pub fn new_importer(&mut self, pos: Pos) -> Importer {
+    pub fn new_importer(&mut self, pos: Pos) -> Importer<S> {
         Importer::new(
             self.trace_config,
             self.reader,

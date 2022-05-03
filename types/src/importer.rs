@@ -32,7 +32,7 @@ pub struct TraceConfig {
 pub trait SourceRead {
     fn working_dir(&self) -> io::Result<PathBuf>;
 
-    fn base_dir(&self) -> &Option<String>;
+    fn base_dir(&self) -> Option<&str>;
 
     fn read_file(&self, path: &Path) -> io::Result<String>;
 
@@ -42,21 +42,21 @@ pub trait SourceRead {
 
     fn is_dir(&self, path: &Path) -> bool;
 
-    fn canonicalize_path(&self, path: &PathBuf) -> Result<PathBuf, &'static str>;
+    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf>;
 }
 
-pub struct FsReader {
-    working_dir: Option<String>,
-    base_dir: Option<String>,
-    temp_file: Option<String>,
+pub struct FsReader<'a> {
+    working_dir: Option<&'a str>,
+    base_dir: Option<&'a str>,
+    temp_file: Option<&'a str>,
 }
 
-impl FsReader {
+impl<'a> FsReader<'a> {
     pub fn new(
-        working_dir: Option<String>,
-        base_dir: Option<String>,
-        temp_file: Option<String>,
-    ) -> FsReader {
+        working_dir: Option<&'a str>,
+        base_dir: Option<&'a str>,
+        temp_file: Option<&'a str>,
+    ) -> FsReader<'a> {
         FsReader {
             working_dir,
             base_dir,
@@ -69,7 +69,7 @@ impl FsReader {
     }
 }
 
-impl SourceRead for FsReader {
+impl<'a> SourceRead for FsReader<'a> {
     fn working_dir(&self) -> io::Result<PathBuf> {
         if let Some(wd) = &self.working_dir {
             let mut buf = PathBuf::new();
@@ -80,14 +80,14 @@ impl SourceRead for FsReader {
         }
     }
 
-    fn base_dir(&self) -> &Option<String> {
-        &self.base_dir
+    fn base_dir(&self) -> Option<&str> {
+        self.base_dir
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {
         if path.ends_with(Self::temp_file_path()) {
             self.temp_file
-                .clone()
+                .map(|x| x.to_owned())
                 .ok_or(io::Error::from(io::ErrorKind::NotFound))
         } else {
             fs::read_to_string(path)
@@ -117,16 +117,13 @@ impl SourceRead for FsReader {
         path.is_dir()
     }
 
-    fn canonicalize_path(&self, path: &PathBuf) -> Result<PathBuf, &'static str> {
+    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
         if path.ends_with(Self::temp_file_path()) {
             Ok(path.clone())
         } else if !path.exists() {
-            Err("failed to locate path")
+            Err(io::Error::from(io::ErrorKind::NotFound))
         } else {
-            match path.canonicalize() {
-                Ok(p) => Ok(p),
-                Err(_) => Err("failed to canonicalize path"),
-            }
+            path.canonicalize()
         }
     }
 }
@@ -152,9 +149,9 @@ impl ImportKey {
     }
 }
 
-pub struct Importer<'a> {
+pub struct Importer<'a, S: SourceRead> {
     trace_config: &'a TraceConfig,
-    reader: &'a dyn SourceRead,
+    reader: &'a S,
     fset: &'a mut FileSet,
     pkgs: &'a mut HashMap<String, PackageKey>,
     all_results: &'a mut HashMap<PackageKey, TypeInfo>,
@@ -164,10 +161,10 @@ pub struct Importer<'a> {
     pos: position::Pos,
 }
 
-impl<'a> Importer<'a> {
+impl<'a, S: SourceRead> Importer<'a, S> {
     pub fn new(
         config: &'a TraceConfig,
-        reader: &'a dyn SourceRead,
+        reader: &'a S,
         fset: &'a mut FileSet,
         pkgs: &'a mut HashMap<String, PackageKey>,
         all_results: &'a mut HashMap<PackageKey, TypeInfo>,
@@ -175,7 +172,7 @@ impl<'a> Importer<'a> {
         tc_objs: &'a mut TCObjects,
         errors: &'a ErrorList,
         pos: position::Pos,
-    ) -> Importer<'a> {
+    ) -> Importer<'a, S> {
         Importer {
             trace_config: config,
             reader: reader,

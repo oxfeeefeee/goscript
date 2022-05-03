@@ -17,20 +17,29 @@ use std::rc::Rc;
 pub type Pos = usize;
 
 #[derive(Clone, Debug)]
-pub struct Position {
+pub struct FilePos {
     pub filename: Rc<String>,
     pub offset: usize, // offset in utf8 char
     pub line: usize,
     pub column: usize,
 }
 
-impl Position {
+impl FilePos {
     pub fn is_valid(&self) -> bool {
         self.line > 0
     }
+
+    pub fn null() -> FilePos {
+        FilePos {
+            filename: Rc::new("non_file_name".to_owned()),
+            line: 0,
+            offset: 0,
+            column: 0,
+        }
+    }
 }
 
-impl fmt::Display for Position {
+impl fmt::Display for FilePos {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s = String::clone(&*self.filename);
         if self.is_valid() {
@@ -153,7 +162,7 @@ impl File {
         self.base() + offset
     }
 
-    pub fn position(&self, p: Pos) -> Position {
+    pub fn position(&self, p: Pos) -> FilePos {
         if p < self.base || p > self.base + self.size {
             panic!("illegal Pos value");
         }
@@ -171,7 +180,7 @@ impl File {
         };
         let column = offset - self.lines[line - 1] + 1;
 
-        Position {
+        FilePos {
             filename: self.name.clone(),
             line: line,
             offset: offset,
@@ -211,17 +220,8 @@ impl FileSet {
         None
     }
 
-    pub fn position(&self, p: Pos) -> Position {
-        if let Some(f) = self.file(p) {
-            f.position(p)
-        } else {
-            return Position {
-                filename: Rc::new("non_file_name".to_owned()),
-                line: 0,
-                offset: 0,
-                column: 0,
-            };
-        }
+    pub fn position(&self, p: Pos) -> Option<FilePos> {
+        self.file(p).map(|f| f.position(p))
     }
 
     pub fn index_file(&mut self, i: usize) -> Option<&mut File> {
@@ -284,7 +284,7 @@ mod test {
 
     #[test]
     fn test_position() {
-        let p = Position {
+        let p = FilePos {
             filename: Rc::new("test.gs".to_owned()),
             offset: 0,
             line: 54321,

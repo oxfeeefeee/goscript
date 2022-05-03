@@ -4,9 +4,12 @@
 
 mod engine;
 pub mod run_fs;
+#[cfg(feature = "run_zip")]
+pub mod run_zip;
 mod std;
 
 #[macro_use]
 mod ffi;
 
 pub use engine::*;
+pub use goscript_parser::errors::ErrorList;
