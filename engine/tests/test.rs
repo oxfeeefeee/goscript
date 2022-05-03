@@ -67,6 +67,7 @@ fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     result
 }
 
+#[cfg(feature = "run_zip")]
 fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let cfg = engine::run_zip::Config {
         working_dir: None,
@@ -99,6 +100,7 @@ fn test_source() {
 }
 
 #[test]
+#[cfg(feature = "run_zip")]
 fn test_zip() {
     let source = r#"
     package main
