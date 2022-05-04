@@ -7,12 +7,11 @@ use criterion::{criterion_group, criterion_main, Criterion};
 extern crate goscript_engine as engine;
 
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let cfg = engine::run_fs::Config {
-        working_dir: Some("./"),
-        base_dir: Some("./std/"),
-        trace_parser: trace,
-        trace_checker: trace,
-    };
+    let mut cfg = engine::run_fs::Config::default();
+    cfg.working_dir = Some("./");
+    cfg.base_dir = Some("./std/");
+    cfg.trace_parser = trace;
+    cfg.trace_checker = trace;
     engine::run_fs::run(cfg, path)
 }
 

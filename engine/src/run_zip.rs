@@ -14,6 +14,7 @@ use std::{io::prelude::*, path::PathBuf};
 use zip::read::ZipArchive;
 use zip::result::{ZipError, ZipResult};
 
+#[derive(Default)]
 pub struct Config<'a> {
     /// working directory
     pub working_dir: Option<&'a str>,
@@ -23,6 +24,38 @@ pub struct Config<'a> {
     pub trace_parser: bool,
     /// print debug info in checker
     pub trace_checker: bool,
+    /// custom std in
+    pub std_in: Option<Box<dyn std::io::Read>>,
+    /// custom std out
+    pub std_out: Option<Box<dyn std::io::Write>>,
+    /// custom std err
+    pub std_err: Option<Box<dyn std::io::Write>>,
+}
+
+pub fn run(archive: &[u8], config: Config, path: &str) -> Result<(), ErrorList> {
+    run_zip_impl(archive, config, None, path)
+}
+
+pub fn run_string(archive: &[u8], config: Config, source: &str) -> Result<(), ErrorList> {
+    run_zip_impl(archive, config, Some(source), ZipReader::temp_file_path())
+}
+
+fn run_zip_impl(
+    archive: &[u8],
+    config: Config,
+    temp_source: Option<&str>,
+    path: &str,
+) -> Result<(), ErrorList> {
+    let engine = Engine::new();
+    engine.set_std_io(config.std_in, config.std_out, config.std_err);
+    match ZipReader::new(archive, config.working_dir, config.base_dir, temp_source) {
+        Ok(reader) => engine.run(config.trace_parser, config.trace_checker, &reader, path),
+        Err(e) => {
+            let err = ErrorList::new();
+            err.add(None, format!("{}", e), false, false);
+            Err(err)
+        }
+    }
 }
 
 pub struct ZipReader<'a> {
@@ -49,11 +82,11 @@ impl<'a> ZipReader<'a> {
         })
     }
 
-    pub fn temp_file_path() -> &'static str {
+    fn temp_file_path() -> &'static str {
         &"temp_file_in_memory_for_testing_and_you_can_only_have_one_ZipReader.gos"
     }
 
-    pub fn is_temp_file(p: &Path) -> bool {
+    fn is_temp_file(p: &Path) -> bool {
         p.to_string_lossy().ends_with(Self::temp_file_path())
     }
 
@@ -130,30 +163,5 @@ impl<'a> SourceRead for ZipReader<'a> {
 
     fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
         Ok(path.clone())
-    }
-}
-
-pub fn run(archive: &[u8], config: Config, path: &str) -> Result<(), ErrorList> {
-    run_zip_impl(archive, config, None, path)
-}
-
-pub fn run_string(archive: &[u8], config: Config, source: &str) -> Result<(), ErrorList> {
-    run_zip_impl(archive, config, Some(source), ZipReader::temp_file_path())
-}
-
-fn run_zip_impl(
-    archive: &[u8],
-    config: Config,
-    temp_source: Option<&str>,
-    path: &str,
-) -> Result<(), ErrorList> {
-    let engine = Engine::new();
-    match ZipReader::new(archive, config.working_dir, config.base_dir, temp_source) {
-        Ok(reader) => engine.run(config.trace_parser, config.trace_checker, &reader, path),
-        Err(e) => {
-            let err = ErrorList::new();
-            err.add(None, format!("{}", e), false, false);
-            Err(err)
-        }
     }
 }

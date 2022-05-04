@@ -74,16 +74,16 @@ impl Engine {
         e
     }
 
-    pub fn set_std_in(&self, read: Box<dyn io::Read>) {
-        self.statics.borrow_data_mut().std_in = Some(read);
-    }
-
-    pub fn set_std_out(&self, write: Box<dyn io::Write>) {
-        self.statics.borrow_data_mut().std_out = Some(write);
-    }
-
-    pub fn set_std_err(&self, write: Box<dyn io::Write>) {
-        self.statics.borrow_data_mut().std_err = Some(write);
+    pub fn set_std_io(
+        &self,
+        std_in: Option<Box<dyn std::io::Read>>,
+        std_out: Option<Box<dyn std::io::Write>>,
+        std_err: Option<Box<dyn std::io::Write>>,
+    ) {
+        let mut borrow = self.statics.borrow_data_mut();
+        borrow.std_in = std_in;
+        borrow.std_out = std_out;
+        borrow.std_err = std_err;
     }
 
     pub fn register_extension(&mut self, name: &'static str, proto: Rc<dyn Ffi>) {

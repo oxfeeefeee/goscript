@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-use std::cell::RefCell;
+#[cfg(feature = "run_zip")]
 use std::fs;
 use std::io;
 use std::io::Write;
+#[cfg(feature = "run_zip")]
 use std::path::Path;
-use std::rc::Rc;
 
 #[macro_use]
 extern crate time_test;
@@ -13,18 +13,24 @@ extern crate goscript_engine as engine;
 
 #[derive(Clone)]
 struct WriteBuf {
-    inner: Rc<RefCell<Vec<u8>>>,
+    buffer: io::Cursor<Vec<u8>>,
 }
 
 impl WriteBuf {
-    fn as_string(&self) -> String {
-        String::from_utf8_lossy(&self.inner.borrow()).into_owned()
+    fn new() -> WriteBuf {
+        WriteBuf {
+            buffer: io::Cursor::new(vec![]),
+        }
+    }
+
+    fn into_string(self) -> String {
+        String::from_utf8_lossy(&self.buffer.into_inner()).into_owned()
     }
 }
 
 impl Write for WriteBuf {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.inner.borrow_mut().write(buf)
+        self.buffer.write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -33,18 +39,12 @@ impl Write for WriteBuf {
 }
 
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let cfg = engine::run_fs::Config {
-        working_dir: Some("./"),
-        base_dir: Some("../std/"),
-        trace_parser: trace,
-        trace_checker: trace,
-    };
-    // let wb = WriteBuf {
-    //     inner: Rc::new(RefCell::new(vec![])),
-    // };
-    //engine.set_std_out(Box::new(wb.clone()));
+    let mut cfg = engine::run_fs::Config::default();
+    cfg.working_dir = Some("./");
+    cfg.base_dir = Some("../std/");
+    cfg.trace_parser = trace;
+    cfg.trace_checker = trace;
     let result = engine::run_fs::run(cfg, path);
-    //dbg!(wb.as_string());
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -53,12 +53,11 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
 }
 
 fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let cfg = engine::run_fs::Config {
-        working_dir: Some("./"),
-        base_dir: Some("../std/"),
-        trace_parser: trace,
-        trace_checker: trace,
-    };
+    let mut cfg = engine::run_fs::Config::default();
+    cfg.working_dir = Some("./");
+    cfg.base_dir = Some("../std/");
+    cfg.trace_parser = trace;
+    cfg.trace_checker = trace;
     let result = engine::run_fs::run_string(cfg, source);
     if let Err(el) = &result {
         el.sort();
@@ -69,12 +68,10 @@ fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
 
 #[cfg(feature = "run_zip")]
 fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let cfg = engine::run_zip::Config {
-        working_dir: None,
-        base_dir: Some("std/"),
-        trace_parser: trace,
-        trace_checker: trace,
-    };
+    let mut cfg = engine::run_zip::Config::default();
+    cfg.base_dir = Some("std/");
+    cfg.trace_parser = trace;
+    cfg.trace_checker = trace;
     let zip = fs::read(Path::new(file)).unwrap();
     let result = engine::run_zip::run_string(&zip, cfg, source);
     if let Err(el) = &result {
