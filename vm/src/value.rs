@@ -2438,6 +2438,10 @@ pub trait Element: Clone + Hash + Debug {
     fn need_gc() -> bool {
         false
     }
+
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        dst.clone_from_slice(src)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -2509,6 +2513,12 @@ where
     pub fn into_inner(self) -> T {
         self.cell.into_inner()
     }
+
+    fn clone_slice(dst: &mut [CellElem<T>], src: &[CellElem<T>]) {
+        let d: &mut [T] = unsafe { std::mem::transmute(dst) };
+        let s: &[T] = unsafe { std::mem::transmute(src) };
+        d.copy_from_slice(s)
+    }
 }
 
 pub type Elem8 = CellElem<u8>;
@@ -2548,6 +2558,11 @@ impl Element for CellElem<u8> {
     fn set_value(&self, val: &GosValue) {
         self.cell.set(*val.as_uint8());
     }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u8>::clone_slice(dst, src)
+    }
 }
 
 impl Element for Elem16 {
@@ -2567,6 +2582,11 @@ impl Element for Elem16 {
     #[inline]
     fn set_value(&self, val: &GosValue) {
         self.cell.set(*val.as_uint16());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u16>::clone_slice(dst, src)
     }
 }
 
@@ -2588,6 +2608,11 @@ impl Element for Elem32 {
     fn set_value(&self, val: &GosValue) {
         self.cell.set(*val.as_uint32());
     }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u32>::clone_slice(dst, src)
+    }
 }
 
 impl Element for Elem64 {
@@ -2607,6 +2632,11 @@ impl Element for Elem64 {
     #[inline]
     fn set_value(&self, val: &GosValue) {
         self.cell.set(*val.as_uint64());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u64>::clone_slice(dst, src)
     }
 }
 

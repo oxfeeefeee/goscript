@@ -489,12 +489,11 @@ where
                 data.extend_from_within(other.range());
             }
         } else {
-            // todo: optimization for copy types
             if !sharing {
-                data[self.end()..new_end].clone_from_slice(&other.as_rust_slice());
+                T::copy_or_clone_slice(&mut data[self.end()..new_end], &other.as_rust_slice());
             } else {
                 let cloned = data[other.range()].to_vec();
-                data[self.end()..new_end].clone_from_slice(&cloned);
+                T::copy_or_clone_slice(&mut data[self.end()..new_end], &cloned);
             }
         }
         drop(data);
@@ -517,12 +516,11 @@ where
         let len = left.len();
         let sharing = self.sharing_with(other);
         let data = &mut self.borrow_all_data_mut();
-        // todo: optimization for copy types
         if !sharing {
-            data[left].clone_from_slice(&other.borrow_all_data()[right]);
+            T::copy_or_clone_slice(&mut data[left], &other.borrow_all_data()[right]);
         } else {
             let cloned = data[right].to_vec();
-            data[left].clone_from_slice(&cloned);
+            T::copy_or_clone_slice(&mut data[left], &cloned);
         }
         len
     }
