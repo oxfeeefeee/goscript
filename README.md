@@ -1,16 +1,12 @@
-# Goscript [中文版](#Goscript_Readme_中文版)
+# Goscript   ## Playground
+
+<https://goscript.dev/>[中文版](#Goscript_Readme_中文版)
 
 An alternative implementation of Golang specs, written in Rust for embedding or wrapping.
 
-## TLDR, just want to see if it does run Go code
+## Playground
 
-+ Make sure your Rust installation is up to date.
-+ Clone this repository.
-+ Go to goscript/engine
-+ Put whatever you want in [temp.gos](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/std/temp.gos)
-+ Run `cargo test temp -- --nocapture`
-+ Or it should be trivial to make an executable that runs Go code following [test.rs](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/test.rs)
-+ Your code doesn't run? sorry, you can take a look at what do run in the test folder.
+<https://goscript.dev/>
 
 ## What
 
@@ -79,21 +75,25 @@ An alternative implementation of Golang specs, written in Rust for embedding or 
   + Send a PR if it's a minor fix.
   + If you plan to contribute complex changes, please contact me for a discussion first.
 
+## Just want to see if it does run Go code
+
++ Make sure your Rust installation is up to date.
++ Clone this repository.
++ Go to goscript/engine
++ Put whatever you want in [temp.gos](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/std/temp.gos)
++ Run `cargo test temp -- --nocapture`
++ Or it should be trivial to make an executable that runs Go code following [test.rs](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/test.rs)
++ Your code doesn't run? sorry, you can take a look at what do run in the test folder.
+
 -----------------
 
 # Goscript_Readme_中文版
 
 Go语言规范非的官方实现，用于Rust项目的内嵌或封装。
 
-## 不想看，就想跑点Go代码试试
+## Playground
 
-+ 安装最新版的Rust。
-+ Clone本项目。
-+ 到goscript/engine目录。
-+ 在[temp.gos](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/std/temp.gos) 写你想写的Go代码。
-+ 运行 `cargo test temp -- --nocapture`
-+ 或者参照[test.rs](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/test.rs) 弄个可以执行Go代码的exe。
-+ 你的代码跑不了？不好意思，不过你可以看看测试文件夹里那些可以跑的代码。
+<https://goscript.dev/>
 
 ## 啥？
 
@@ -161,3 +161,13 @@ Go语言规范非的官方实现，用于Rust项目的内嵌或封装。
   + 提issue。
   + 小的改动可以直接提PR。
   + 大的改动请先联系我讨论一下。
+
+## 就想跑点Go代码试试
+
++ 安装最新版的Rust。
++ Clone本项目。
++ 到goscript/engine目录。
++ 在[temp.gos](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/std/temp.gos) 写你想写的Go代码。
++ 运行 `cargo test temp -- --nocapture`
++ 或者参照[test.rs](https://github.com/oxfeeefeee/goscript/tree/master/engine/tests/test.rs) 弄个可以执行Go代码的exe。
++ 你的代码跑不了？不好意思，不过你可以看看测试文件夹里那些可以跑的代码。
