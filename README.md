@@ -1,6 +1,4 @@
-# Goscript   ## Playground
-
-<https://goscript.dev/>[中文版](#Goscript_Readme_中文版)
+# Goscript   [中文版](#Goscript_Readme_中文版)
 
 An alternative implementation of Golang specs, written in Rust for embedding or wrapping.
 
