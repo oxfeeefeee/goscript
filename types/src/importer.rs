@@ -279,7 +279,11 @@ impl<'a, S: SourceRead> Importer<'a, S> {
                     Ok(afiles)
                 }
             }
-            Err(_) => self.error(format!("failed to read from path: {}", path.display())),
+            Err(e) => self.error(format!(
+                "failed to read from path: {}, {}",
+                path.display(),
+                e
+            )),
         }
     }
 
