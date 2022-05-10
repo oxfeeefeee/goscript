@@ -9,6 +9,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use slotmap::Key;
 use slotmap::KeyData;
 
 use super::objects::*;
@@ -549,7 +550,7 @@ impl IdentEntity {
 
     pub fn into_key_data(self) -> Option<KeyData> {
         match self {
-            IdentEntity::Entity(key) => Some(key.into()),
+            IdentEntity::Entity(key) => Some(key.data()),
             _ => None,
         }
     }

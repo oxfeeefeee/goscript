@@ -47,7 +47,7 @@ pub fn key_to_u64<K>(key: K) -> u64
 where
     K: slotmap::Key,
 {
-    let data: slotmap::KeyData = key.into();
+    let data: slotmap::KeyData = key.data();
     data.as_ffi()
 }
 

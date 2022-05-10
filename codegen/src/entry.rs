@@ -21,6 +21,7 @@ use goscript_vm::instruction::*;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
+use slotmap::Key;
 use std::collections::HashMap;
 use std::pin::Pin;
 
@@ -72,7 +73,7 @@ impl<'a> EntryGen<'a> {
         let mut emitter = Emitter::new(func);
         emitter.emit_import(index, pkg, None);
         emitter.emit_load(
-            EntIndex::PackageMember(pkg, main_ident.into()),
+            EntIndex::PackageMember(pkg, main_ident.data()),
             Some((pairs, fkey)),
             ValueType::Function,
             None,

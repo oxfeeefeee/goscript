@@ -33,7 +33,7 @@ mod importer;
 pub use check::{DeclInfo, TypeInfo};
 pub use constant::Value as ConstValue;
 pub use display::Displayer;
-pub use importer::{FsReader, ImportKey, Importer, SourceRead, TraceConfig};
+pub use importer::{ImportKey, Importer, SourceRead, TraceConfig};
 pub use obj::EntityType;
 pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 pub use operand::OperandMode;

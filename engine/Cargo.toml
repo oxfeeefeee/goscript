@@ -5,11 +5,12 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [features] 
+default = ["run_fs"]
+run_fs = []
 run_zip = ["dep:zip"]   
   
 [dependencies]  
-slotmap = "0.4"  
-time-test = "0.2.2"
+slotmap = "1.0"  
 futures-lite = "1.12.0"
 zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
 
@@ -34,6 +35,7 @@ path = "../pmacro"
 version = "0.1.0"
 
 [dev-dependencies]
+time-test = "0.2.2"
 criterion = "0.3"
 
 [[bench]]

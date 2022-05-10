@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use slotmap::KeyData;
+use slotmap::{Key, KeyData};
 use std::convert::TryFrom;
 use std::iter::FromIterator;
 
@@ -50,7 +50,7 @@ macro_rules! current_func_emitter {
 
 macro_rules! use_ident_unique_key {
     ($owner:ident, $var:expr) => {
-        $owner.t.object_use($var).into()
+        $owner.t.object_use($var).data()
     };
 }
 
@@ -152,7 +152,7 @@ impl<'a> CodeGen<'a> {
 
     fn resolve_var_ident(&mut self, ident: &IdentKey) -> EntIndex {
         let okey = self.t.object_use(*ident);
-        let entity_key: KeyData = okey.into();
+        let entity_key: KeyData = okey.data();
         // 1. try local first
         if let Some(index) = current_func!(self).entity_index(&entity_key).map(|x| *x) {
             return index;
@@ -219,7 +219,7 @@ impl<'a> CodeGen<'a> {
             .tc_type_to_meta(tc_type, self.objects, self.dummy_gcv);
         let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
         let func = current_func_mut!(self);
-        let ident_key = Some(okey.into());
+        let ident_key = Some(okey.data());
         let index = func.add_local(ident_key);
         func.add_local_zero(zero_val, meta.value_type(&self.objects.metas));
         (index, tc_type, meta)
@@ -310,7 +310,7 @@ impl<'a> CodeGen<'a> {
                                     // the true index will be calculated later
                                     LeftHandSide::Primitive(EntIndex::PackageMember(
                                         pkg,
-                                        sexpr.sel.into(),
+                                        sexpr.sel.data(),
                                     )),
                                     Some(self.t.expr_tc_type(expr)),
                                     pos,
@@ -1340,7 +1340,7 @@ impl<'a> CodeGen<'a> {
         typ: ValueType,
     ) -> EntIndex {
         let func = current_func_mut!(self);
-        let index = func.add_const(Some(self.t.object_def(*ikey).into()), cst.clone());
+        let index = func.add_const(Some(self.t.object_def(*ikey).data()), cst.clone());
         if func.is_ctor() {
             let pkg_key = func.package;
             drop(func);
@@ -1487,7 +1487,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
             let t = self.t.obj_use_value_type(*ident);
             let fkey = self.func_stack.last().unwrap();
             current_func_emitter!(self).emit_load(
-                EntIndex::PackageMember(pkg, (*ident).into()),
+                EntIndex::PackageMember(pkg, (*ident).data()),
                 Some((self.pkg_helper.pairs_mut(), *fkey)),
                 t,
                 pos,
@@ -1804,7 +1804,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
         let stmt = &self.ast_objs.l_stmts[*lstmt];
         let offset = current_func!(self).code().len();
-        let entity = self.t.object_def(stmt.label).into();
+        let entity = self.t.object_def(stmt.label).data();
         let is_breakable = match &stmt.stmt {
             Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
             _ => false,

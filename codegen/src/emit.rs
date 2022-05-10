@@ -9,7 +9,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::objects::{key_to_u64, EntIndex, FunctionVal};
 use goscript_vm::value::*;
-use slotmap::KeyData;
+use slotmap::{Key, KeyData};
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug)]
@@ -117,7 +117,7 @@ impl<'a> Emitter<'a> {
                         .iter()
                         .map(|n| {
                             let key = t_lookup.object_def(*n);
-                            self.f.add_local(Some(key.into()));
+                            self.f.add_local(Some(key.data()));
                         })
                         .count()
                 }

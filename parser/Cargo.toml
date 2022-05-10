@@ -5,4 +5,4 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-slotmap = "0.4"
+slotmap = "1.0"

@@ -17,8 +17,6 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::position;
 use goscript_parser::{FileSet, Parser};
 use std::collections::HashMap;
-use std::env;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -43,89 +41,6 @@ pub trait SourceRead {
     fn is_dir(&self, path: &Path) -> bool;
 
     fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf>;
-}
-
-pub struct FsReader<'a> {
-    working_dir: Option<&'a str>,
-    base_dir: Option<&'a str>,
-    temp_file: Option<&'a str>,
-}
-
-impl<'a> FsReader<'a> {
-    pub fn new(
-        working_dir: Option<&'a str>,
-        base_dir: Option<&'a str>,
-        temp_file: Option<&'a str>,
-    ) -> FsReader<'a> {
-        FsReader {
-            working_dir,
-            base_dir,
-            temp_file,
-        }
-    }
-
-    pub fn temp_file_path() -> &'static str {
-        &"./temp_file_in_memory_for_testing_and_you_can_only_have_one.gos"
-    }
-}
-
-impl<'a> SourceRead for FsReader<'a> {
-    fn working_dir(&self) -> io::Result<PathBuf> {
-        if let Some(wd) = &self.working_dir {
-            let mut buf = PathBuf::new();
-            buf.push(wd);
-            Ok(buf)
-        } else {
-            env::current_dir()
-        }
-    }
-
-    fn base_dir(&self) -> Option<&str> {
-        self.base_dir
-    }
-
-    fn read_file(&self, path: &Path) -> io::Result<String> {
-        if path.ends_with(Self::temp_file_path()) {
-            self.temp_file
-                .map(|x| x.to_owned())
-                .ok_or(io::Error::from(io::ErrorKind::NotFound))
-        } else {
-            fs::read_to_string(path)
-        }
-    }
-
-    fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
-        Ok(fs::read_dir(path)?
-            .filter_map(|x| {
-                x.map_or(None, |e| {
-                    let path = e.path();
-                    (!path.is_dir()).then(|| path)
-                })
-            })
-            .collect())
-    }
-
-    fn is_file(&self, path: &Path) -> bool {
-        if path.ends_with(Self::temp_file_path()) {
-            true
-        } else {
-            path.is_file()
-        }
-    }
-
-    fn is_dir(&self, path: &Path) -> bool {
-        path.is_dir()
-    }
-
-    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
-        if path.ends_with(Self::temp_file_path()) {
-            Ok(path.clone())
-        } else if !path.exists() {
-            Err(io::Error::from(io::ErrorKind::NotFound))
-        } else {
-            path.canonicalize()
-        }
-    }
 }
 
 /// ImportKey identifies an imported package by import path and source directory

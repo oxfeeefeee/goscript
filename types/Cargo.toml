@@ -5,11 +5,11 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-slotmap = "0.4"
-num-bigint = "0.2.6"
-num-rational = "0.2.4"
+slotmap = "1.0"
+num-bigint = "0.4"
+num-rational = "0.4"
 num-traits = "0.2"
-ordered-float = "2.0"
+ordered-float = "3.0"
 
 [dev-dependencies]
 regex = "1"

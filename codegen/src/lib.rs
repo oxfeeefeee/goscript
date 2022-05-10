@@ -12,4 +12,4 @@ mod types;
 pub mod codegen;
 pub mod entry;
 pub use entry::parse_check_gen;
-pub use goscript_types::{FsReader, SourceRead, TraceConfig};
+pub use goscript_types::{SourceRead, TraceConfig};

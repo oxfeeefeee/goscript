@@ -10,6 +10,7 @@ use goscript_parser::token::Token;
 use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
 use goscript_vm::instruction::*;
 use goscript_vm::value::*;
+use slotmap::Key;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -104,7 +105,7 @@ impl<'a> PkgHelper<'a> {
 
     pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> EntIndex {
         let pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
-        EntIndex::PackageMember(self.get_runtime_key(pkg), ident.into())
+        EntIndex::PackageMember(self.get_runtime_key(pkg), ident.data())
     }
 
     /// recode information so that we can patch_index, when codegen is done
