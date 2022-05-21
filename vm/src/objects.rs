@@ -8,11 +8,12 @@ use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
-use super::stack::Stack;
+use super::stack2::Stack;
 use super::value::*;
 use crate::value::GosElem;
 use slotmap::{new_key_type, DenseSlotMap, KeyData};
 use std::any::Any;
+use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -89,14 +90,12 @@ pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, Gos
 
 #[derive(Debug)]
 pub struct MapObj {
-    zero_val: GosValue,
     map: RefCell<GosHashMap>,
 }
 
 impl MapObj {
-    pub fn new(zero_val: GosValue) -> MapObj {
+    pub fn new() -> MapObj {
         MapObj {
-            zero_val: zero_val,
             map: RefCell::new(HashMap::new()),
         }
     }
@@ -107,16 +106,12 @@ impl MapObj {
     }
 
     #[inline]
-    pub fn new_default_val(&self, gcv: &GcoVec) -> GosValue {
-        self.zero_val.copy_semantic(gcv)
-    }
-
-    #[inline]
-    pub fn get(&self, key: &GosValue, gcv: &GcoVec) -> (GosValue, bool) {
-        let mref = self.borrow_data();
-        match mref.get(key) {
-            Some(v) => (v.clone(), true),
-            None => (self.new_default_val(gcv), false),
+    pub fn get(&self, key: &GosValue) -> Option<GosValue> {
+        let borrow = self.borrow_data();
+        let val = borrow.get(key);
+        match val {
+            Some(v) => Some(v.clone()),
+            None => None,
         }
     }
 
@@ -124,16 +119,6 @@ impl MapObj {
     pub fn delete(&self, key: &GosValue) {
         let mut mref = self.borrow_data_mut();
         mref.remove(key);
-    }
-
-    /// touch_key makes sure there is a value for the 'key', a default value is set if
-    /// the value is empty
-    #[inline]
-    pub fn touch_key(&self, key: &GosValue, gcv: &GcoVec) {
-        if self.borrow_data().get(&key).is_none() {
-            self.borrow_data_mut()
-                .insert(key.clone(), self.new_default_val(gcv));
-        }
     }
 
     #[inline]
@@ -160,7 +145,6 @@ impl MapObj {
 impl Clone for MapObj {
     fn clone(&self) -> Self {
         MapObj {
-            zero_val: self.zero_val.clone(),
             map: self.map.clone(),
         }
     }
@@ -977,7 +961,7 @@ impl PointerObj {
     #[inline]
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> RuntimeResult<GosValue> {
         match self {
-            PointerObj::UpVal(uv) => Ok(uv.value(stack)),
+            PointerObj::UpVal(uv) => Ok(uv.value(stack).into_owned()),
             PointerObj::SliceMember(s, index) => s.dispatcher_a_s().slice_get(s, *index as usize),
             PointerObj::StructField(s, index) => {
                 Ok(s.as_struct().0.borrow_fields()[*index as usize].clone())
@@ -996,7 +980,7 @@ impl PointerObj {
         pkgs: &PackageObjs,
     ) -> RuntimeResult<PointerObj> {
         let val = self.deref(stack, pkgs)?;
-        let val = unsafe { val.cast(new_type) };
+        let val = val.cast(new_type);
         Ok(PointerObj::new_closed_up_value(&val))
     }
 
@@ -1275,18 +1259,18 @@ impl ValueDesc {
     }
 
     #[inline]
-    pub fn abs_index(&self) -> usize {
-        (self.stack_base + self.index) as usize
+    pub fn abs_index(&self) -> OpIndex {
+        self.stack_base + self.index
     }
 
     #[inline]
-    pub fn load(&self, stack: &Stack) -> GosValue {
+    pub fn load<'a>(&self, stack: &'a Stack) -> Cow<'a, GosValue> {
         let index = self.abs_index();
         let uv_stack = self.stack.upgrade().unwrap();
         if ptr::eq(uv_stack.as_ptr(), stack) {
-            stack.get(index).clone()
+            Cow::Borrowed(stack.get(index))
         } else {
-            uv_stack.borrow().get(index).clone()
+            Cow::Owned(uv_stack.borrow().get(index).clone())
         }
     }
 
@@ -1373,10 +1357,10 @@ impl UpValue {
         *self.inner.borrow_mut() = UpValueState::Closed(val);
     }
 
-    pub fn value(&self, stack: &Stack) -> GosValue {
+    pub fn value<'a>(&self, stack: &'a Stack) -> Cow<'a, GosValue> {
         match &self.inner.borrow() as &UpValueState {
             UpValueState::Open(desc) => desc.load(stack),
-            UpValueState::Closed(val) => val.clone(),
+            UpValueState::Closed(val) => Cow::Owned(val.clone()),
         }
     }
 
@@ -1629,12 +1613,11 @@ impl PackageVal {
     }
 
     #[inline]
-    pub fn init_vars(&self, stack: &mut Stack) {
+    pub fn init_vars(&self, vals: Vec<GosValue>) {
         let mapping = self.var_mapping.as_ref().unwrap();
-        let count = mapping.len();
-        for i in 0..count {
-            let vi = mapping[&((count - 1 - i) as OpIndex)];
-            *self.member_mut(vi) = stack.pop_value();
+        for (i, v) in vals.into_iter().enumerate() {
+            let vi = mapping[&(i as OpIndex)];
+            *self.member_mut(vi) = v;
         }
     }
 }
@@ -1792,12 +1775,13 @@ impl FunctionVal {
         self.pos.push(pos);
     }
 
+    /*
     #[inline]
     pub fn emit_inst(
         &mut self,
         op: Opcode,
         types: [Option<ValueType>; 3],
-        imm: Option<i32>,
+        imm: Option<OpIndex>,
         pos: Option<usize>,
     ) {
         let i = Instruction::new(op, types[0], types[1], types[2], imm);
@@ -1856,6 +1840,7 @@ impl FunctionVal {
     pub fn emit_code(&mut self, code: Opcode, pos: Option<usize>) {
         self.emit_inst(code, [None, None, None], None, pos);
     }
+    */
 
     /// returns the index of the const if it's found
     pub fn get_const_index(&self, val: &GosValue) -> Option<EntIndex> {
