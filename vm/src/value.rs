@@ -3,10 +3,10 @@
 // license that can be found in the LICENSE file.
 
 use super::gc::GcoVec;
-pub use super::instruction::{OpIndex, ValueType};
 use super::metadata::*;
 pub use super::objects::*;
 use crate::channel::Channel;
+pub use crate::instruction::*;
 use ordered_float;
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
@@ -164,7 +164,7 @@ macro_rules! cmp_int_float {
 
 macro_rules! shift_int {
     ($t:ident, $a:ident, $b:ident, $op:tt) => {
-        *$a = match $t {
+        match $t {
             ValueType::Int => union_shift!($a, $b, int, $op),
             ValueType::Int8 => union_shift!($a, $b, int8, $op),
             ValueType::Int16 => union_shift!($a, $b, int16, $op),
@@ -761,12 +761,12 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn binary_op_shl(&mut self, b: &u32, t: ValueType) {
+    pub fn binary_op_shl(&self, b: &u32, t: ValueType) -> ValueData {
         unsafe { shift_int!(t, self, b, checked_shl) }
     }
 
     #[inline]
-    pub fn binary_op_shr(&mut self, b: &u32, t: ValueType) {
+    pub fn binary_op_shr(&self, b: &u32, t: ValueType) -> ValueData {
         unsafe { shift_int!(t, self, b, checked_shr) }
     }
 
@@ -810,33 +810,33 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn compare_eql(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_bool_int_float!(t, a, b, ==) }
+    pub fn compare_eql(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_bool_int_float!(t, self, b, ==) }
     }
 
     #[inline]
-    pub fn compare_neq(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_bool_int_float!(t, a, b, !=) }
+    pub fn compare_neq(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_bool_int_float!(t, self, b, !=) }
     }
 
     #[inline]
-    pub fn compare_lss(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_int_float!(t, a, b, <) }
+    pub fn compare_lss(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, self, b, <) }
     }
 
     #[inline]
-    pub fn compare_gtr(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_int_float!(t, a, b, >) }
+    pub fn compare_gtr(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, self, b, >) }
     }
 
     #[inline]
-    pub fn compare_leq(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_int_float!(t, a, b, <=) }
+    pub fn compare_leq(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, self, b, <=) }
     }
 
     #[inline]
-    pub fn compare_geq(a: &ValueData, b: &ValueData, t: ValueType) -> bool {
-        unsafe { cmp_int_float!(t, a, b, >=) }
+    pub fn compare_geq(&self, b: &ValueData, t: ValueType) -> bool {
+        unsafe { cmp_int_float!(t, self, b, >=) }
     }
 
     #[inline]
@@ -1557,11 +1557,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn map_with_default_val(default_val: GosValue, gcv: &GcoVec) -> GosValue {
-        GosValue::new_map(MapObj::new(default_val), gcv)
-    }
-
-    #[inline]
     pub fn function_with_meta(
         package: PackageKey,
         meta: Meta,
@@ -1974,6 +1969,14 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn slice_array_equivalent(&self, index: usize) -> RuntimeResult<(&GosValue, usize)> {
+        Ok(self
+            .as_some_slice::<AnyElem>()?
+            .0
+            .get_array_equivalent(index))
+    }
+
+    #[inline]
     pub fn int32_as(i: i32, t: ValueType) -> GosValue {
         GosValue::new(t, ValueData::int32_as(i, t))
     }
@@ -2050,54 +2053,6 @@ impl GosValue {
     #[inline]
     pub fn identical(&self, other: &GosValue) -> bool {
         self.typ() == other.typ() && self == other
-    }
-
-    #[inline]
-    pub fn load_index(&self, ind: &GosValue, gcv: &GcoVec) -> RuntimeResult<GosValue> {
-        match self.typ {
-            ValueType::Map => Ok(self.as_some_map()?.0.get(&ind, gcv).0.clone()),
-            ValueType::Slice => {
-                let index = ind.as_index();
-                self.dispatcher_a_s().slice_get(self, index)
-            }
-            ValueType::String => {
-                let index = ind.as_index();
-                StrUtil::index(self.as_string(), index)
-            }
-            ValueType::Array => {
-                let index = ind.as_index();
-                self.dispatcher_a_s().array_get(self, index)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-    #[inline]
-    pub fn load_index_int(&self, i: usize, gcv: &GcoVec) -> RuntimeResult<GosValue> {
-        match self.typ {
-            ValueType::Slice => self.dispatcher_a_s().slice_get(self, i),
-            ValueType::Map => {
-                let ind = GosValue::new_int(i as isize);
-                Ok(self.as_some_map()?.0.get(&ind, gcv).0.clone())
-            }
-            ValueType::String => StrUtil::index(self.as_string(), i),
-            ValueType::Array => self.dispatcher_a_s().array_get(self, i),
-            _ => {
-                unreachable!();
-            }
-        }
-    }
-
-    #[inline]
-    pub fn load_field(&self, ind: &GosValue, objs: &VMObjects) -> GosValue {
-        match self.typ {
-            ValueType::Struct => self.as_struct().0.borrow_fields()[*ind.as_int() as usize].clone(),
-            ValueType::Package => {
-                let pkg = &objs.packages[*self.as_package()];
-                pkg.member(*ind.as_int() as OpIndex).clone()
-            }
-            _ => unreachable!(),
-        }
     }
 
     #[inline]
@@ -2199,12 +2154,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub unsafe fn cast(&self, new_type: ValueType) -> GosValue {
+    pub(crate) fn cast(&self, new_type: ValueType) -> GosValue {
         GosValue::new(new_type, self.data.clone(self.typ))
     }
 
     #[inline]
-    fn new(typ: ValueType, data: ValueData) -> GosValue {
+    pub(crate) fn new(typ: ValueType, data: ValueData) -> GosValue {
         debug_assert!(typ != ValueType::Slice && typ != ValueType::Array);
         GosValue {
             typ: typ,

@@ -361,14 +361,14 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_UPVALUE => {
                         let index = inst.imm();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.push(upvalue.value(stack));
-                        frame = self.frames.last_mut().unwrap();
+                        stack.push(upvalue.value(stack).into_owned());
+                        //frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::STORE_UPVALUE => {
                         let (rhs_index, index) = inst.imm824();
                         let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
                         stack.store_up_value(&upvalue, rhs_index, inst.t0(), gcv);
-                        frame = self.frames.last_mut().unwrap();
+                        //frame = self.frames.last_mut().unwrap();
                     }
                     Opcode::LOAD_INDEX => {
                         let ind = stack.pop_value();
