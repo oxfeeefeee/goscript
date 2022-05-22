@@ -70,6 +70,7 @@ pub enum Opcode {
 
     // call
     PRE_CALL,
+    PACK_VARIADIC,
     CALL,
     RETURN,
 
@@ -77,12 +78,10 @@ pub enum Opcode {
     JUMP,
     JUMP_IF,
     JUMP_IF_NOT,
-    SHORT_CIRCUIT_OR,
-    SHORT_CIRCUIT_AND,
-    SWITCH, // EQL + JUMP_IF + do not pop the first argument
+    SWITCH,
     SELECT,
     RANGE_INIT,
-    RANGE, // for ... range statement
+    RANGE,
 
     // misc
     PKG_INIT,
@@ -172,12 +171,12 @@ impl ValueType {
 
 #[derive(Clone, Debug)]
 pub struct Instruction {
-    pub opcode: Opcode,
-    pub type0: ValueType,
-    pub type1: ValueType,
-    pub dest: OpIndex,
-    pub source0: OpIndex,
-    pub source1: OpIndex,
-    pub source2: OpIndex,
+    pub op: Opcode,
+    pub t0: ValueType,
+    pub t1: ValueType,
+    pub d: OpIndex,
+    pub s0: OpIndex,
+    pub s1: OpIndex,
+    pub s2: OpIndex,
     pub extra_op: Option<Opcode>,
 }
