@@ -19,6 +19,13 @@ impl Stack {
     }
 
     #[inline]
+    pub fn with_vec(v: Vec<GosValue>) -> Stack {
+        let mut s = Stack { vec: v };
+        s.set_min_size(DEFAULT_CAPACITY);
+        s
+    }
+
+    #[inline]
     pub fn get(&self, index: OpIndex) -> &GosValue {
         unsafe { self.vec.get_unchecked(index as usize) }
     }
@@ -80,14 +87,27 @@ impl Stack {
     }
 
     #[inline]
+    pub fn set_min_size(&mut self, size: usize) {
+        if size > self.vec.len() {
+            self.vec.resize(size, GosValue::new_nil(ValueType::Void))
+        }
+    }
+
+    #[inline]
     pub fn set_vec(&mut self, index: OpIndex, mut vec: Vec<GosValue>) {
         let begin = index as usize;
         let new_len = begin + vec.len();
-        if new_len > self.vec.len() {
-            self.vec
-                .resize_with(new_len, || GosValue::new_nil(ValueType::Void))
-        }
+        self.set_min_size(new_len);
         self.vec[begin..new_len].swap_with_slice(&mut vec);
+    }
+
+    #[inline]
+    pub fn move_vec(&mut self, begin: OpIndex, end: OpIndex) -> Vec<GosValue> {
+        let b = begin as usize;
+        let e = end as usize;
+        let mut defaults = vec![GosValue::new_nil(ValueType::Void); e - b];
+        self.vec[b..e].swap_with_slice(&mut defaults[..]);
+        defaults
     }
 
     #[inline]
@@ -182,7 +202,7 @@ impl RangeStack {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
                     stack.set(index, k.clone());
-                    stack.set(index + 1, k.clone());
+                    stack.set(index + 1, v.clone());
                     false
                 }
                 None => {
