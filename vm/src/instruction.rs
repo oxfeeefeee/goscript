@@ -8,8 +8,10 @@ use std::fmt;
 pub type OpIndex = i32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u8)]
 pub enum Opcode {
-    LOAD_SLICE = 1,
+    VOID,
+    LOAD_SLICE,
     STORE_SLICE,
     LOAD_ARRAY,
     STORE_ARRAY,
@@ -84,7 +86,7 @@ pub enum Opcode {
     RANGE,
 
     // misc
-    PKG_INIT,
+    LOAD_PKG_INIT_FUNC,
     BIND_METHOD,
     BIND_INTERFACE_METHOD,
     CAST,
@@ -171,12 +173,22 @@ impl ValueType {
 
 #[derive(Clone, Debug)]
 pub struct Instruction {
-    pub op: Opcode,
+    pub op0: Opcode,
+    pub op1: Opcode,
     pub t0: ValueType,
     pub t1: ValueType,
     pub d: OpIndex,
     pub s0: OpIndex,
     pub s1: OpIndex,
-    pub s2: OpIndex,
-    pub extra_op: Option<Opcode>,
+    pub t_ex: ValueType,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_inst_size() {
+        println!("size {} \n", std::mem::size_of::<Instruction>());
+    }
 }

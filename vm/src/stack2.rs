@@ -60,16 +60,8 @@ impl Stack {
         consts: &[GosValue],
     ) -> GosValue {
         let d = match op {
-            Opcode::UNARY_ADD => {
-                let mut v = unsafe { lhs.copy_non_ptr() };
-                v.inc(t);
-                v
-            } // INC
-            Opcode::UNARY_SUB => {
-                let mut v = unsafe { lhs.copy_non_ptr() };
-                v.dec(t);
-                v
-            } // DEC
+            Opcode::UNARY_ADD => lhs.inc(t),
+            Opcode::UNARY_SUB => lhs.dec(t),
             Opcode::ADD => lhs.binary_op_add(self.read(rhs, sb, consts).data(), t),
             Opcode::SUB => lhs.binary_op_sub(self.read(rhs, sb, consts).data(), t),
             Opcode::MUL => lhs.binary_op_mul(self.read(rhs, sb, consts).data(), t),

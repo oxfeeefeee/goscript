@@ -621,103 +621,115 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn cast_copyable(&mut self, from: ValueType, to: ValueType) {
+    pub fn cast_copyable(&self, from: ValueType, to: ValueType) -> ValueData {
+        let mut v = unsafe { self.copy_non_ptr() };
         match to {
-            ValueType::Int => convert_to_int!(self, from, int, isize),
-            ValueType::Int8 => convert_to_int!(self, from, int8, i8),
-            ValueType::Int16 => convert_to_int!(self, from, int16, i16),
-            ValueType::Int32 => convert_to_int!(self, from, int32, i32),
-            ValueType::Int64 => convert_to_int!(self, from, int64, i64),
-            ValueType::Uint => convert_to_int!(self, from, uint, usize),
-            ValueType::UintPtr => convert_to_int!(self, from, uint_ptr, usize),
-            ValueType::Uint8 => convert_to_int!(self, from, uint8, u8),
-            ValueType::Uint16 => convert_to_int!(self, from, uint16, u16),
-            ValueType::Uint32 => convert_to_int!(self, from, uint32, u32),
-            ValueType::Uint64 => convert_to_int!(self, from, uint64, u64),
-            ValueType::Float32 => convert_to_float!(self, from, float32, F32, f32),
-            ValueType::Float64 => convert_to_float!(self, from, float64, F64, f64),
+            ValueType::Int => convert_to_int!(&mut v, from, int, isize),
+            ValueType::Int8 => convert_to_int!(&mut v, from, int8, i8),
+            ValueType::Int16 => convert_to_int!(&mut v, from, int16, i16),
+            ValueType::Int32 => convert_to_int!(&mut v, from, int32, i32),
+            ValueType::Int64 => convert_to_int!(&mut v, from, int64, i64),
+            ValueType::Uint => convert_to_int!(&mut v, from, uint, usize),
+            ValueType::UintPtr => convert_to_int!(&mut v, from, uint_ptr, usize),
+            ValueType::Uint8 => convert_to_int!(&mut v, from, uint8, u8),
+            ValueType::Uint16 => convert_to_int!(&mut v, from, uint16, u16),
+            ValueType::Uint32 => convert_to_int!(&mut v, from, uint32, u32),
+            ValueType::Uint64 => convert_to_int!(&mut v, from, uint64, u64),
+            ValueType::Float32 => convert_to_float!(&mut v, from, float32, F32, f32),
+            ValueType::Float64 => convert_to_float!(&mut v, from, float64, F64, f64),
             _ => unreachable!(),
         }
+        v
     }
 
     #[inline]
-    pub fn unary_negate(&mut self, t: ValueType) {
+    pub fn unary_negate(&self, t: ValueType) -> ValueData {
+        let mut v = unsafe { self.copy_non_ptr() };
         match t {
-            ValueType::Int => self.int = -unsafe { self.int },
-            ValueType::Int8 => self.int8 = -unsafe { self.int8 },
-            ValueType::Int16 => self.int16 = -unsafe { self.int16 },
-            ValueType::Int32 => self.int32 = -unsafe { self.int32 },
-            ValueType::Int64 => self.int64 = -unsafe { self.int64 },
-            ValueType::Float32 => self.float32 = -unsafe { self.float32 },
-            ValueType::Float64 => self.float64 = -unsafe { self.float64 },
-            ValueType::Uint => self.uint = unsafe { (!0) ^ self.uint } + 1,
-            ValueType::Uint8 => self.uint8 = unsafe { (!0) ^ self.uint8 } + 1,
-            ValueType::Uint16 => self.uint16 = unsafe { (!0) ^ self.uint16 } + 1,
-            ValueType::Uint32 => self.uint32 = unsafe { (!0) ^ self.uint32 } + 1,
-            ValueType::Uint64 => self.uint64 = unsafe { (!0) ^ self.uint64 } + 1,
+            ValueType::Int => v.int = -unsafe { self.int },
+            ValueType::Int8 => v.int8 = -unsafe { self.int8 },
+            ValueType::Int16 => v.int16 = -unsafe { self.int16 },
+            ValueType::Int32 => v.int32 = -unsafe { self.int32 },
+            ValueType::Int64 => v.int64 = -unsafe { self.int64 },
+            ValueType::Float32 => v.float32 = -unsafe { self.float32 },
+            ValueType::Float64 => v.float64 = -unsafe { self.float64 },
+            ValueType::Uint => v.uint = unsafe { (!0) ^ self.uint } + 1,
+            ValueType::Uint8 => v.uint8 = unsafe { (!0) ^ self.uint8 } + 1,
+            ValueType::Uint16 => v.uint16 = unsafe { (!0) ^ self.uint16 } + 1,
+            ValueType::Uint32 => v.uint32 = unsafe { (!0) ^ self.uint32 } + 1,
+            ValueType::Uint64 => v.uint64 = unsafe { (!0) ^ self.uint64 } + 1,
             _ => unreachable!(),
-        }
+        };
+        v
     }
 
     #[inline]
-    pub fn unary_xor(&mut self, t: ValueType) {
+    pub fn unary_xor(&self, t: ValueType) -> ValueData {
+        let mut v = unsafe { self.copy_non_ptr() };
         match t {
-            ValueType::Uint => self.uint = unsafe { (!0) ^ self.uint },
-            ValueType::Uint8 => self.uint8 = unsafe { (!0) ^ self.uint8 },
-            ValueType::Uint16 => self.uint16 = unsafe { (!0) ^ self.uint16 },
-            ValueType::Uint32 => self.uint32 = unsafe { (!0) ^ self.uint32 },
-            ValueType::Uint64 => self.uint64 = unsafe { (!0) ^ self.uint64 },
-            ValueType::Int => self.int = unsafe { -1 ^ self.int },
-            ValueType::Int8 => self.int8 = unsafe { -1 ^ self.int8 },
-            ValueType::Int16 => self.int16 = unsafe { -1 ^ self.int16 },
-            ValueType::Int32 => self.int32 = unsafe { -1 ^ self.int32 },
-            ValueType::Int64 => self.int64 = unsafe { -1 ^ self.int64 },
+            ValueType::Uint => v.uint = unsafe { (!0) ^ self.uint },
+            ValueType::Uint8 => v.uint8 = unsafe { (!0) ^ self.uint8 },
+            ValueType::Uint16 => v.uint16 = unsafe { (!0) ^ self.uint16 },
+            ValueType::Uint32 => v.uint32 = unsafe { (!0) ^ self.uint32 },
+            ValueType::Uint64 => v.uint64 = unsafe { (!0) ^ self.uint64 },
+            ValueType::Int => v.int = unsafe { -1 ^ self.int },
+            ValueType::Int8 => v.int8 = unsafe { -1 ^ self.int8 },
+            ValueType::Int16 => v.int16 = unsafe { -1 ^ self.int16 },
+            ValueType::Int32 => v.int32 = unsafe { -1 ^ self.int32 },
+            ValueType::Int64 => v.int64 = unsafe { -1 ^ self.int64 },
             _ => unreachable!(),
         }
+        v
     }
 
     #[inline]
-    pub fn unary_not(&mut self, t: ValueType) {
+    pub fn unary_not(&self, t: ValueType) -> ValueData {
         debug_assert!(t == ValueType::Bool);
-        self.boolean = unsafe { !self.boolean };
+        let mut v = unsafe { self.copy_non_ptr() };
+        v.boolean = unsafe { !self.boolean };
+        v
     }
 
     #[inline]
-    pub fn inc(&mut self, t: ValueType) {
+    pub fn inc(&self, t: ValueType) -> ValueData {
+        let mut v = unsafe { self.copy_non_ptr() };
         match t {
-            ValueType::Int => self.int = unsafe { self.int } + 1,
-            ValueType::Int8 => self.int8 = unsafe { self.int8 } + 1,
-            ValueType::Int16 => self.int16 = unsafe { self.int16 } + 1,
-            ValueType::Int32 => self.int32 = unsafe { self.int32 } + 1,
-            ValueType::Int64 => self.int64 = unsafe { self.int64 } + 1,
-            ValueType::Float32 => self.float32 = unsafe { self.float32 } + 1.0,
-            ValueType::Float64 => self.float64 = unsafe { self.float64 } + 1.0,
-            ValueType::Uint => self.uint = unsafe { self.uint } + 1,
-            ValueType::Uint8 => self.uint8 = unsafe { self.uint8 } + 1,
-            ValueType::Uint16 => self.uint16 = unsafe { self.uint16 } + 1,
-            ValueType::Uint32 => self.uint32 = unsafe { self.uint32 } + 1,
-            ValueType::Uint64 => self.uint64 = unsafe { self.uint64 } + 1,
+            ValueType::Int => v.int = unsafe { self.int } + 1,
+            ValueType::Int8 => v.int8 = unsafe { self.int8 } + 1,
+            ValueType::Int16 => v.int16 = unsafe { self.int16 } + 1,
+            ValueType::Int32 => v.int32 = unsafe { self.int32 } + 1,
+            ValueType::Int64 => v.int64 = unsafe { self.int64 } + 1,
+            ValueType::Float32 => v.float32 = unsafe { self.float32 } + 1.0,
+            ValueType::Float64 => v.float64 = unsafe { self.float64 } + 1.0,
+            ValueType::Uint => v.uint = unsafe { self.uint } + 1,
+            ValueType::Uint8 => v.uint8 = unsafe { self.uint8 } + 1,
+            ValueType::Uint16 => v.uint16 = unsafe { self.uint16 } + 1,
+            ValueType::Uint32 => v.uint32 = unsafe { self.uint32 } + 1,
+            ValueType::Uint64 => v.uint64 = unsafe { self.uint64 } + 1,
             _ => unreachable!(),
-        }
+        };
+        v
     }
 
     #[inline]
-    pub fn dec(&mut self, t: ValueType) {
+    pub fn dec(&self, t: ValueType) -> ValueData {
+        let mut v = unsafe { self.copy_non_ptr() };
         match t {
-            ValueType::Int => self.int = unsafe { self.int } - 1,
-            ValueType::Int8 => self.int8 = unsafe { self.int8 } - 1,
-            ValueType::Int16 => self.int16 = unsafe { self.int16 } - 1,
-            ValueType::Int32 => self.int32 = unsafe { self.int32 } - 1,
-            ValueType::Int64 => self.int64 = unsafe { self.int64 } - 1,
-            ValueType::Float32 => self.float32 = unsafe { self.float32 } - 1.0,
-            ValueType::Float64 => self.float64 = unsafe { self.float64 } - 1.0,
-            ValueType::Uint => self.uint = unsafe { self.uint } - 1,
-            ValueType::Uint8 => self.uint8 = unsafe { self.uint8 } - 1,
-            ValueType::Uint16 => self.uint16 = unsafe { self.uint16 } - 1,
-            ValueType::Uint32 => self.uint32 = unsafe { self.uint32 } - 1,
-            ValueType::Uint64 => self.uint64 = unsafe { self.uint64 } - 1,
+            ValueType::Int => v.int = unsafe { self.int } - 1,
+            ValueType::Int8 => v.int8 = unsafe { self.int8 } - 1,
+            ValueType::Int16 => v.int16 = unsafe { self.int16 } - 1,
+            ValueType::Int32 => v.int32 = unsafe { self.int32 } - 1,
+            ValueType::Int64 => v.int64 = unsafe { self.int64 } - 1,
+            ValueType::Float32 => v.float32 = unsafe { self.float32 } - 1.0,
+            ValueType::Float64 => v.float64 = unsafe { self.float64 } - 1.0,
+            ValueType::Uint => v.uint = unsafe { self.uint } - 1,
+            ValueType::Uint8 => v.uint8 = unsafe { self.uint8 } - 1,
+            ValueType::Uint16 => v.uint16 = unsafe { self.uint16 } - 1,
+            ValueType::Uint32 => v.uint32 = unsafe { self.uint32 } - 1,
+            ValueType::Uint64 => v.uint64 = unsafe { self.uint64 } - 1,
             _ => unreachable!(),
-        }
+        };
+        v
     }
 
     #[inline]
@@ -1488,8 +1500,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_map(obj: MapObj, gcv: &GcoVec) -> GosValue {
-        let data = ValueData::new_map(obj, gcv);
+    pub fn new_map(gcv: &GcoVec) -> GosValue {
+        let data = ValueData::new_map(MapObj::new(), gcv);
         GosValue::new(ValueType::Map, data)
     }
 
@@ -2018,9 +2030,9 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn cast_copyable(&mut self, from: ValueType, to: ValueType) {
+    pub fn cast_copyable(&self, from: ValueType, to: ValueType) -> GosValue {
         assert!(from.copyable());
-        self.data.cast_copyable(from, to)
+        GosValue::new(to, self.data.cast_copyable(from, to))
     }
 
     #[inline]
