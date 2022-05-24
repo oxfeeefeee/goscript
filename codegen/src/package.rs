@@ -30,9 +30,9 @@ impl PkgVarPairs {
         var: IdentKey,
         func: FunctionKey,
         i: usize,
-        is824: bool,
+        is_s0: bool,
     ) {
-        self.data.push((pkg, var, func, i, is824));
+        self.data.push((pkg, var, func, i, is_s0));
     }
 
     pub fn append(&mut self, other: &mut PkgVarPairs) {
@@ -42,17 +42,15 @@ impl PkgVarPairs {
     /// patch_index sets correct var index of packages to the placeholder of
     /// previously generated code
     pub fn patch_index(&self, ast_objs: &AstObjects, vmo: &mut VMObjects) {
-        for (pkg, var, func, i, is_8_24) in self.data.iter() {
+        for (pkg, var, func, i, is_s0) in self.data.iter() {
             let pkg_val = &vmo.packages[*pkg];
             let id = &ast_objs.idents[*var];
             let index = pkg_val.get_member_index(&id.name).unwrap();
-            if *is_8_24 {
-                let (imm0, _) = vmo.functions[*func].code()[*i].imm824();
-                vmo.functions[*func]
-                    .instruction_mut(*i)
-                    .set_imm824(imm0, *index);
+            let inst = vmo.functions[*func].instruction_mut(*i);
+            if *is_s0 {
+                inst.s0 = *index;
             } else {
-                vmo.functions[*func].instruction_mut(*i).set_imm(*index);
+                inst.s1 = *index;
             }
         }
     }

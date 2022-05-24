@@ -3,18 +3,18 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
-use super::channel;
-use super::ffi::{FfiCallCtx, FfiFactory};
-use super::gc::{gc, GcoVec};
-use super::instruction::*;
-use super::metadata::*;
-use super::objects::{u64_to_key, ClosureObj};
-use super::stack::{RangeStack, Stack};
-use super::value::*;
+use crate::channel;
+use crate::ffi::{FfiCallCtx, FfiFactory};
+use crate::gc::{gc, GcoVec};
+use crate::metadata::*;
+use crate::objects::ClosureObj;
+use crate::stack::{RangeStack, Stack};
+use crate::value::*;
 use async_executor::LocalExecutor;
 use futures_lite::future;
 use goscript_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -32,7 +32,7 @@ macro_rules! go_panic {
         let mut data = PanicData::new($msg);
         data.call_stack.push(($frame.func(), $frame.pc - 1));
         $panic = Some(data);
-        $frame.pc = $code.len() - 1;
+        $frame.pc = $code.len() as OpIndex - 1;
     }};
 }
 
@@ -43,7 +43,7 @@ macro_rules! go_panic_str {
         let mut data = PanicData::new(iface);
         data.call_stack.push(($frame.func(), $frame.pc - 1));
         $panic = Some(data);
-        $frame.pc = $code.len() - 1;
+        $frame.pc = $code.len() as OpIndex - 1;
     }};
 }
 
@@ -52,14 +52,6 @@ macro_rules! panic_if_err {
         if let Err(e) = $result {
             go_panic_str!($panic, &e, $frame, $code);
         }
-    }};
-}
-
-macro_rules! read_imm_key {
-    ($code:ident, $frame:ident, $objs:ident) => {{
-        let inst = $code[$frame.pc];
-        $frame.pc += 1;
-        u64_to_key(inst.get_u64())
     }};
 }
 
@@ -72,11 +64,70 @@ macro_rules! unwrap_recv_val {
     };
 }
 
+macro_rules! binary_op {
+    ($stack:expr, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
+        let vdata = $stack
+            .read($inst.s0, $sb, $consts)
+            .data()
+            .$op($stack.read($inst.s1, $sb, $consts).data(), $inst.t0);
+        let val = GosValue::new($inst.t0, vdata);
+        $stack.set($inst.d + $sb, val);
+    }};
+}
+
+macro_rules! binary_op_assign {
+    ($stack:ident, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
+        let right = unsafe { $stack.read($inst.s0, $sb, $consts).data().copy_non_ptr() };
+        let d = $stack.get_data_mut($inst.d + $sb);
+        *d = d.$op(&right, $inst.t0);
+    }};
+}
+
+macro_rules! shift_op {
+    ($stack:expr, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
+        let right = $stack
+            .read($inst.s1, $sb, $consts)
+            .data()
+            .cast_copyable($inst.t1, ValueType::Uint32);
+        let vdata = $stack
+            .read($inst.s0, $sb, $consts)
+            .data()
+            .$op(right.as_uint32(), $inst.t0);
+        let val = GosValue::new($inst.t0, vdata);
+        $stack.set($inst.d + $sb, val);
+    }};
+}
+
+macro_rules! shift_op_assign {
+    ($stack:ident, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
+        let right = $stack
+            .read($inst.s1, $sb, $consts)
+            .data()
+            .cast_copyable($inst.t1, ValueType::Uint32);
+        let d = $stack.get_data_mut($inst.s0 + $sb);
+        *d = d.$op(right.as_uint32(), $inst.t0);
+    }};
+}
+
+macro_rules! unary_op {
+    ($stack:expr, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
+        let vdata = $stack
+            .read($inst.s0, $sb, $consts)
+            .data()
+            .unary_negate($inst.t0);
+        let val = GosValue::new($inst.t0, vdata);
+        $stack.set($inst.d + $sb, val);
+    }};
+}
+
 #[derive(Debug)]
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub packages: Vec<PackageKey>,
+    /// For calling method via interfaces
     pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
+    /// For embedded fields of structs
+    pub indices: Vec<Vec<usize>>,
     pub entry: FunctionKey,
 }
 
@@ -85,6 +136,7 @@ impl ByteCode {
         objects: Pin<Box<VMObjects>>,
         packages: Vec<PackageKey>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
+        indices: Vec<Vec<usize>>,
         entry: FunctionKey,
     ) -> ByteCode {
         let ifaces = ifaces
@@ -98,6 +150,7 @@ impl ByteCode {
             objects: objects,
             packages: packages,
             ifaces: ifaces,
+            indices: indices,
             entry: entry,
         }
     }
@@ -112,8 +165,8 @@ struct Referers {
 #[derive(Clone, Debug)]
 struct CallFrame {
     closure: ClosureObj,
-    pc: usize,
-    stack_base: usize,
+    pc: OpIndex,
+    stack_base: OpIndex,
     var_ptrs: Option<Vec<UpValue>>,
     // closures that have upvalues pointing to this frame
     referred_by: Option<HashMap<OpIndex, Referers>>,
@@ -122,7 +175,7 @@ struct CallFrame {
 }
 
 impl CallFrame {
-    fn with_closure(c: ClosureObj, sbase: usize) -> CallFrame {
+    fn with_closure(c: ClosureObj, sbase: OpIndex) -> CallFrame {
         CallFrame {
             closure: c,
             pc: 0,
@@ -179,7 +232,7 @@ impl CallFrame {
                 if referrers.weaks.len() == 0 {
                     continue;
                 }
-                let val = stack.get(Stack::offset(self.stack_base, *ind));
+                let val = stack.get(self.stack_base + *ind);
                 for weak in referrers.weaks.iter() {
                     if let Some(uv) = weak.upgrade() {
                         uv.close(val.clone());
@@ -205,7 +258,7 @@ enum Result {
 #[derive(Debug)]
 struct PanicData {
     msg: GosValue,
-    call_stack: Vec<(FunctionKey, usize)>,
+    call_stack: Vec<(FunctionKey, OpIndex)>,
 }
 
 impl PanicData {
@@ -290,20 +343,20 @@ impl<'a> Fiber<'a> {
         let gcv = ctx.gcv;
         let objs: &VMObjects = &ctx.code.objects;
         let s_meta: &StaticMeta = &objs.s_meta;
-        let pkgs = &ctx.code.packages;
         let ifaces = &ctx.code.ifaces;
-        let frame = self.frames.last_mut().unwrap();
-        let mut func = &objs.functions[frame.func()];
+        let indices = &ctx.code.indices;
+        let mut frame_height = self.frames.len();
+        let fr = self.frames.last().unwrap();
+        let mut func = &objs.functions[fr.func()];
+        let mut sb = fr.stack_base;
 
         let mut stack_mut_ref = self.stack.borrow_mut();
         let mut stack: &mut Stack = &mut stack_mut_ref;
         // allocate local variables
-        stack.append_vec(func.local_zeros.clone());
+        stack.set_vec(0, func.local_zeros.clone());
 
         let mut consts = &func.consts;
         let mut code = func.code();
-        let mut stack_base = frame.stack_base;
-        let mut frame_height = self.frames.len();
 
         let mut total_inst = 0;
         //let mut stats: HashMap<Opcode, usize> = HashMap::new();
@@ -313,335 +366,520 @@ impl<'a> Fiber<'a> {
             let mut panic: Option<PanicData> = None;
             let yield_unit = 1024;
             for _ in 0..yield_unit {
-                let inst = code[frame.pc];
-                let inst_op = inst.op();
+                let inst = &code[frame.pc as usize];
+                let inst_op = inst.op0;
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
                 //dbg!(inst_op);
                 match inst_op {
-                    Opcode::PUSH_CONST => {
-                        let index = inst.imm();
-                        stack.push(consts[index as usize].clone());
-                    }
-                    Opcode::PUSH_NIL => stack.push_nil(inst.t0()),
-                    Opcode::PUSH_FALSE => stack.push_bool(false),
-                    Opcode::PUSH_TRUE => stack.push_bool(true),
-                    Opcode::PUSH_IMM => stack.push_int32_as(inst.imm(), inst.t0()),
-                    Opcode::PUSH_ZERO_VALUE => {
-                        let meta = consts[inst.imm() as usize].as_metadata();
-                        stack.push(meta.zero(&objs.metas, gcv));
-                    }
-                    Opcode::POP => match inst.imm() {
-                        // this looks weired because it used to require ValueType for every pop
-                        // and we may change it back in the future.
-                        1 => {
-                            stack.pop_value();
+                    // desc: local
+                    // s0: slice
+                    // s1: index
+                    Opcode::LOAD_SLICE => {
+                        let slice = stack.read(inst.s0, sb, consts);
+                        let index = *stack.read(inst.s1, sb, consts).as_uint();
+                        match slice.slice_array_equivalent(index) {
+                            Ok((array, i)) => match array.dispatcher_a_s().array_get(&array, i) {
+                                Ok(val) => stack.set(sb + inst.d, val),
+                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                            },
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
-                        2 => {
-                            stack.pop_value();
-                            stack.pop_value();
+                    }
+                    // desc: slice
+                    // s0: index
+                    // s1: value
+                    Opcode::STORE_SLICE => {
+                        let dest = stack.read(inst.d, sb, consts);
+                        let index = *stack.read(inst.s0, sb, consts).as_uint();
+                        match dest.slice_array_equivalent(index) {
+                            Ok((array, i)) => match inst.op1 {
+                                Opcode::VOID => {
+                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                    let result = array.dispatcher_a_s().array_set(&array, &val, i);
+                                    panic_if_err!(result, panic, frame, code);
+                                }
+                                _ => match array.dispatcher_a_s().array_get(&array, i) {
+                                    Ok(old) => {
+                                        let val = stack.read_and_op(
+                                            old.data(),
+                                            inst.t0,
+                                            inst.op1,
+                                            inst.s1,
+                                            sb,
+                                            &consts,
+                                        );
+                                        let result =
+                                            array.dispatcher_a_s().array_set(&array, &val, i);
+                                        panic_if_err!(result, panic, frame, code);
+                                    }
+                                    Err(e) => go_panic_str!(panic, &e, frame, code),
+                                },
+                            },
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
-                        3 => {
-                            stack.pop_value();
-                            stack.pop_value();
-                            stack.pop_value();
+                    }
+                    // desc: local
+                    // s0: array
+                    // s1: index
+                    Opcode::LOAD_ARRAY => {
+                        let array = stack.read(inst.s0, sb, consts);
+                        let index = *stack.read(inst.s1, sb, consts).as_uint();
+                        match array.dispatcher_a_s().array_get(&array, index) {
+                            Ok(val) => stack.set(inst.d + sb, val),
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
-                        _ => unreachable!(),
-                    },
-                    Opcode::LOAD_LOCAL => {
-                        let index = Stack::offset(stack_base, inst.imm());
-                        stack.push_from_index(index); // (index![stack, index]);
                     }
-                    Opcode::STORE_LOCAL => {
-                        let (rhs_index, index) = inst.imm824();
-                        let s_index = Stack::offset(stack_base, index);
-                        stack.store_local(s_index, rhs_index, inst.t0(), gcv);
+                    // desc: array
+                    // s0: index
+                    // s1: value
+                    Opcode::STORE_ARRAY => {
+                        let array = stack.read(inst.d, sb, consts);
+                        let index = *stack.read(inst.s0, sb, consts).as_uint();
+                        match inst.op1 {
+                            Opcode::VOID => {
+                                let val = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                let result = array.dispatcher_a_s().array_set(&array, &val, index);
+                                panic_if_err!(result, panic, frame, code);
+                            }
+                            _ => match array.dispatcher_a_s().array_get(&array, index) {
+                                Ok(old) => {
+                                    let val = stack.read_and_op(
+                                        old.data(),
+                                        inst.t0,
+                                        inst.op1,
+                                        inst.s1,
+                                        sb,
+                                        &consts,
+                                    );
+                                    let result =
+                                        array.dispatcher_a_s().array_set(&array, &val, index);
+                                    panic_if_err!(result, panic, frame, code);
+                                }
+                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                            },
+                        }
                     }
-                    Opcode::LOAD_UPVALUE => {
-                        let index = inst.imm();
-                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.push(upvalue.value(stack).into_owned());
-                        //frame = self.frames.last_mut().unwrap();
-                    }
-                    Opcode::STORE_UPVALUE => {
-                        let (rhs_index, index) = inst.imm824();
-                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.store_up_value(&upvalue, rhs_index, inst.t0(), gcv);
-                        //frame = self.frames.last_mut().unwrap();
-                    }
-                    Opcode::LOAD_INDEX => {
-                        let ind = stack.pop_value();
-                        let val = &stack.pop_value();
-                        let result = if inst.t2_as_index() == 0 {
-                            val.load_index(&ind, gcv).and_then(|v| Ok(stack.push(v)))
-                        } else {
-                            stack.push_index_comma_ok(val, &ind, gcv)
+                    // desc: local
+                    // s0: map
+                    // s1: key
+                    // type0: FlagA indicating it's a comma-ok
+                    Opcode::LOAD_MAP => {
+                        frame.pc += 1;
+                        let map = stack.read(inst.s0, sb, consts);
+                        let key = stack.read(inst.s1, sb, consts);
+                        let val = match map.as_map() {
+                            Some(map) => map.0.get(&key),
+                            None => None,
                         };
-                        panic_if_err!(result, panic, frame, code);
-                    }
-                    Opcode::LOAD_INDEX_IMM => {
-                        let val = &stack.pop_value();
-                        let index = inst.imm() as usize;
-                        let result = if inst.t2_as_index() == 0 {
-                            val.load_index_int(index, gcv)
-                                .and_then(|v| Ok(stack.push(v)))
+                        if inst.t1 != ValueType::FlagA {
+                            match val {
+                                Some(v) => stack.set(inst.d + sb, v),
+                                None => go_panic_str!(panic, "read from nil map", frame, code),
+                            }
                         } else {
-                            stack.push_index_comma_ok(val, &GosValue::new_int(index as isize), gcv)
-                        };
-                        panic_if_err!(result, panic, frame, code);
+                            let (v, ok) = match val {
+                                Some(v) => (v, true),
+                                None => {
+                                    let inst_ex = &code[frame.pc as usize];
+                                    (stack.read(inst_ex.s0, sb, consts).clone(), false)
+                                }
+                            };
+                            stack.set(inst.d + sb, v);
+                            stack.set(inst.d + 1 + sb, GosValue::new_bool(ok));
+                        }
                     }
-                    Opcode::STORE_INDEX => {
-                        let (rhs_index, index) = inst.imm824();
-                        let s_index = Stack::offset(stack.len(), index);
-                        let key = stack.get(s_index + 1);
-                        let target = &stack.get(s_index);
-                        let result = stack.store_index(target, &key, rhs_index, inst.t0(), gcv);
-                        panic_if_err!(result, panic, frame, code);
-                    }
-                    Opcode::STORE_INDEX_IMM => {
-                        // the only place we can store the immediate index is t2
-                        let (rhs_index, imm) = inst.imm824();
-                        let index = inst.t2_as_index();
-                        let s_index = Stack::offset(stack.len(), index);
-                        let target = &stack.get(s_index);
-                        let result = stack.store_index_int(target, imm, rhs_index, inst.t0(), gcv);
-                        panic_if_err!(result, panic, frame, code);
-                    }
-                    Opcode::LOAD_STRUCT_FIELD => {
-                        let (struct_, index) = get_struct_and_index(
-                            inst.imm(),
-                            stack.pop_value(),
-                            stack,
-                            code,
-                            frame,
-                            objs,
-                        );
-                        match struct_ {
-                            Ok(t) => {
-                                stack.push(t.as_struct().0.borrow_fields()[index].clone());
+                    // desc: map
+                    // s0: index
+                    // s1: value
+                    Opcode::STORE_MAP => {
+                        frame.pc += 1;
+                        let dest = stack.read(inst.d, sb, consts);
+                        match dest.as_some_map() {
+                            Ok(map) => {
+                                let key = stack.read(inst.s0, sb, consts);
+                                match inst.op1 {
+                                    Opcode::VOID => {
+                                        let val =
+                                            stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                        map.0.insert(key.clone(), val);
+                                    }
+                                    _ => {
+                                        let old = match map.0.get(&key) {
+                                            Some(v) => v,
+                                            None => {
+                                                let inst_ex = &code[frame.pc as usize];
+                                                stack.read(inst_ex.s0, sb, consts).clone()
+                                            }
+                                        };
+                                        let val = stack.read_and_op(
+                                            old.data(),
+                                            inst.t0,
+                                            inst.op1,
+                                            inst.s1,
+                                            sb,
+                                            &consts,
+                                        );
+                                        map.0.insert(key.clone(), val);
+                                    }
+                                }
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
-                    Opcode::BIND_METHOD => {
-                        let val = stack.pop_value();
-                        let func = read_imm_key!(code, frame, objs);
-                        stack.push(GosValue::new_closure(
-                            ClosureObj::new_gos(
-                                func,
-                                &objs.functions,
-                                Some(val.copy_semantic(gcv)),
-                            ),
-                            gcv,
-                        ));
+                    // desc: local
+                    // s0: struct
+                    // s1: index
+                    Opcode::LOAD_STRUCT => {
+                        let struct_ = stack.read(inst.s0, sb, consts);
+                        let val = struct_.as_struct().0.borrow_fields()[inst.s1 as usize].clone();
+                        stack.set(inst.d + sb, val);
                     }
-                    Opcode::BIND_INTERFACE_METHOD => {
-                        let val = stack.pop_interface().unwrap();
-                        let index = inst.imm() as usize;
-                        match bind_method(&val, index, stack, objs, gcv) {
-                            Ok(cls) => stack.push(cls),
-                            Err(e) => {
-                                go_panic_str!(panic, &e, frame, code);
+                    // desc: struct
+                    // s0: index
+                    // s1: value
+                    Opcode::STORE_STRUCT => {
+                        let dest = stack.read(inst.d, sb, consts);
+                        match inst.op1 {
+                            Opcode::VOID => {
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize] = val;
+                            }
+                            _ => {
+                                let old = &dest.as_struct().0.borrow_fields()[inst.s0 as usize];
+                                let val = stack.read_and_op(
+                                    old.data(),
+                                    inst.t0,
+                                    inst.op1,
+                                    inst.s1,
+                                    sb,
+                                    &consts,
+                                );
+                                dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize] = val;
                             }
                         }
                     }
-                    Opcode::STORE_STRUCT_FIELD => {
-                        let (rhs_index, imm) = inst.imm824();
-                        let index = inst.t2_as_index();
-                        let s_index = Stack::offset(stack.len(), index);
+                    // desc: local
+                    // s0: struct
+                    // s1: index of indices
+                    Opcode::LOAD_STRUCT_EMBEDDED => {
+                        let src = stack.read(inst.s0, sb, consts);
                         let (struct_, index) = get_struct_and_index(
-                            imm,
-                            stack.get(s_index).clone(),
+                            src.clone(),
+                            &indices[inst.s1 as usize],
                             stack,
-                            code,
-                            frame,
+                            objs,
+                        );
+                        match struct_ {
+                            Ok(s) => {
+                                let val = s.as_struct().0.borrow_fields()[index].clone();
+                                stack.set(inst.d + sb, val);
+                            }
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        }
+                    }
+                    // desc: struct
+                    // s0: index of indices
+                    // s1: value
+                    Opcode::STORE_STRUCT_EMBEDDED => {
+                        let dest = stack.read(inst.d, sb, consts);
+                        let (struct_, index) = get_struct_and_index(
+                            dest.clone(),
+                            &indices[inst.s0 as usize],
+                            stack,
+                            objs,
+                        );
+                        match struct_ {
+                            Ok(s) => match inst.op1 {
+                                Opcode::VOID => {
+                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                    s.as_struct().0.borrow_fields_mut()[index] = val;
+                                }
+                                _ => {
+                                    let old = &s.as_struct().0.borrow_fields()[index as usize];
+                                    let val = stack.read_and_op(
+                                        old.data(),
+                                        inst.t0,
+                                        inst.op1,
+                                        inst.s1,
+                                        sb,
+                                        &consts,
+                                    );
+                                    s.as_struct().0.borrow_fields_mut()[index as usize] = val;
+                                }
+                            },
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        }
+                    }
+                    // desc: local
+                    // s0: package
+                    // s1: index
+                    Opcode::LOAD_PKG => {
+                        let src = stack.read(inst.s0, sb, consts);
+                        let index = inst.s1;
+                        let pkg = &objs.packages[*src.as_package()];
+                        let val = pkg.member(index).clone();
+                        stack.set(inst.d + sb, val);
+                    }
+                    // desc: package
+                    // s0: index
+                    // s1: value
+                    Opcode::STORE_PKG => {
+                        let dest = stack.read(inst.d, sb, consts);
+                        let index = inst.s0;
+
+                        let pkg = &objs.packages[*dest.as_package()];
+                        match inst.op1 {
+                            Opcode::VOID => {
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                *pkg.member_mut(index) = val;
+                            }
+                            _ => {
+                                let old = pkg.member(index);
+                                let val = stack.read_and_op(
+                                    old.data(),
+                                    inst.t0,
+                                    inst.op1,
+                                    inst.s1,
+                                    sb,
+                                    &consts,
+                                );
+                                *pkg.member_mut(index) = val;
+                            }
+                        }
+                    }
+                    // desc: local
+                    // s0: pointer
+                    Opcode::LOAD_POINTER => {
+                        let src = stack.read(inst.s0, sb, consts);
+                        match src.as_some_pointer() {
+                            Ok(p) => match p.deref(stack, &objs.packages) {
+                                Ok(val) => stack.set(inst.d + sb, val),
+                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                            },
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        }
+                    }
+                    // desc: pointer
+                    // s0: value
+                    Opcode::STORE_POINTER => {
+                        let dest = stack.read(inst.d, sb, consts).clone();
+                        let result = dest.as_some_pointer().and_then(|p| {
+                            let val = match inst.op1 {
+                                Opcode::VOID => stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                                _ => {
+                                    let old = p.deref(stack, &objs.packages)?;
+                                    stack.read_and_op(
+                                        old.data(),
+                                        inst.t0,
+                                        inst.op1,
+                                        inst.s1,
+                                        sb,
+                                        &consts,
+                                    )
+                                }
+                            };
+                            match p {
+                                PointerObj::UpVal(uv) => {
+                                    uv.set_value(val, stack);
+                                    Ok(())
+                                }
+                                PointerObj::SliceMember(s, index) => {
+                                    let index = *index as usize;
+                                    let (array, index) = s.slice_array_equivalent(index)?;
+                                    array.dispatcher_a_s().array_set(&array, &val, index)
+                                }
+                                PointerObj::StructField(s, index) => {
+                                    s.as_struct().0.borrow_fields_mut()[*index as usize] = val;
+                                    Ok(())
+                                }
+                                PointerObj::PkgMember(p, index) => {
+                                    let pkg = &objs.packages[*p];
+                                    *pkg.member_mut(*index) = val;
+                                    Ok(())
+                                }
+                            }
+                        });
+                        panic_if_err!(result, panic, frame, code);
+                    }
+                    // desc: local
+                    // s0: upvalue
+                    Opcode::LOAD_UPVALUE => {
+                        let uvs = frame.var_ptrs.as_ref().unwrap();
+                        let val = uvs[inst.s0 as usize].value(stack).into_owned();
+                        stack.set(inst.d + sb, val);
+                    }
+                    Opcode::STORE_UPVALUE => {
+                        let uvs = frame.var_ptrs.as_ref().unwrap();
+                        let uv = &uvs[inst.d as usize];
+                        match inst.op1 {
+                            Opcode::VOID => {
+                                let val = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                uv.set_value(val, stack);
+                            }
+                            _ => {
+                                let old = uv.value(stack);
+                                let val = stack.read_and_op(
+                                    old.data(),
+                                    inst.t0,
+                                    inst.op1,
+                                    inst.s1,
+                                    sb,
+                                    &consts,
+                                );
+                                uv.set_value(val, stack);
+                            }
+                        }
+                    }
+                    Opcode::ADD => binary_op!(stack, binary_op_add, inst, sb, consts),
+                    Opcode::SUB => binary_op!(stack, binary_op_sub, inst, sb, consts),
+                    Opcode::MUL => binary_op!(stack, binary_op_mul, inst, sb, consts),
+                    Opcode::QUO => binary_op!(stack, binary_op_quo, inst, sb, consts),
+                    Opcode::REM => binary_op!(stack, binary_op_rem, inst, sb, consts),
+                    Opcode::AND => binary_op!(stack, binary_op_and, inst, sb, consts),
+                    Opcode::OR => binary_op!(stack, binary_op_or, inst, sb, consts),
+                    Opcode::XOR => binary_op!(stack, binary_op_xor, inst, sb, consts),
+                    Opcode::AND_NOT => binary_op!(stack, binary_op_and_not, inst, sb, consts),
+                    Opcode::SHL => shift_op!(stack, binary_op_shl, inst, sb, consts),
+                    Opcode::SHR => shift_op!(stack, binary_op_shr, inst, sb, consts),
+                    Opcode::ADD_ASSIGN => binary_op_assign!(stack, binary_op_add, inst, sb, consts),
+                    Opcode::SUB_ASSIGN => binary_op_assign!(stack, binary_op_sub, inst, sb, consts),
+                    Opcode::MUL_ASSIGN => binary_op_assign!(stack, binary_op_mul, inst, sb, consts),
+                    Opcode::QUO_ASSIGN => binary_op_assign!(stack, binary_op_quo, inst, sb, consts),
+                    Opcode::REM_ASSIGN => binary_op_assign!(stack, binary_op_rem, inst, sb, consts),
+                    Opcode::AND_ASSIGN => binary_op_assign!(stack, binary_op_and, inst, sb, consts),
+                    Opcode::OR_ASSIGN => binary_op_assign!(stack, binary_op_or, inst, sb, consts),
+                    Opcode::XOR_ASSIGN => binary_op_assign!(stack, binary_op_xor, inst, sb, consts),
+                    Opcode::AND_NOT_ASSIGN => {
+                        binary_op_assign!(stack, binary_op_and_not, inst, sb, consts)
+                    }
+                    Opcode::SHL_ASSIGN => shift_op_assign!(stack, binary_op_shl, inst, sb, consts),
+                    Opcode::SHR_ASSIGN => shift_op_assign!(stack, binary_op_shr, inst, sb, consts),
+                    Opcode::UNARY_SUB => unary_op!(stack, unary_negate, inst, sb, consts),
+                    Opcode::UNARY_XOR => unary_op!(stack, unary_xor, inst, sb, consts),
+                    Opcode::NOT => unary_op!(stack, logical_not, inst, sb, consts),
+                    Opcode::EQL => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let eq = if inst.t0.copyable() && inst.t0 == inst.t1 {
+                            a.data().compare_eql(b.data(), inst.t0)
+                        } else {
+                            a.eq(b)
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(eq));
+                    }
+                    Opcode::NEQ => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let neq = if inst.t0.copyable() {
+                            a.data().compare_neq(b.data(), inst.t0)
+                        } else {
+                            !a.eq(b)
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(neq));
+                    }
+                    Opcode::LSS => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let lss = if inst.t0.copyable() {
+                            a.data().compare_lss(b.data(), inst.t0)
+                        } else {
+                            a.cmp(b) == Ordering::Less
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(lss));
+                    }
+                    Opcode::GTR => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let gtr = if inst.t0.copyable() {
+                            a.data().compare_gtr(b.data(), inst.t0)
+                        } else {
+                            a.cmp(b) == Ordering::Greater
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(gtr));
+                    }
+                    Opcode::LEQ => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let leq = if inst.t0.copyable() {
+                            a.data().compare_leq(b.data(), inst.t0)
+                        } else {
+                            a.cmp(b) != Ordering::Greater
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(leq));
+                    }
+                    Opcode::GEQ => {
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
+                        let geq = if inst.t0.copyable() {
+                            a.data().compare_geq(b.data(), inst.t0)
+                        } else {
+                            a.cmp(b) != Ordering::Less
+                        };
+                        stack.set(inst.d + sb, GosValue::new_bool(geq));
+                    }
+                    Opcode::REF => {
+                        let val = stack.read(inst.s0, sb, consts);
+                        let boxed = PointerObj::new_closed_up_value(&val);
+                        stack.set(inst.d + sb, GosValue::new_pointer(boxed));
+                    }
+                    Opcode::REF_UPVALUE => {
+                        let uvs = frame.var_ptrs.as_ref().unwrap();
+                        let upvalue = uvs[inst.s0 as usize].clone();
+                        stack.set(
+                            inst.d + sb,
+                            GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())),
+                        );
+                    }
+                    Opcode::REF_SLICE_MEMBER => {
+                        let arr_or_slice = stack.read(inst.s0, sb, consts).clone();
+                        match PointerObj::new_slice_member(arr_or_slice, inst.s1, inst.t0, inst.t1)
+                        {
+                            Ok(p) => stack.set(inst.d + sb, GosValue::new_pointer(p)),
+                            Err(e) => {
+                                go_panic_str!(panic, &e, frame, code)
+                            }
+                        }
+                    }
+                    Opcode::REF_STRUCT_FIELD => {
+                        let struct_ = stack.read(inst.s0, sb, consts).clone();
+                        stack.set(
+                            inst.d + sb,
+                            GosValue::new_pointer(PointerObj::StructField(struct_, inst.s1)),
+                        );
+                    }
+                    Opcode::REF_STRUCT_EMBEDDED_FIELD => {
+                        let src = stack.read(inst.s0, sb, consts);
+                        let (struct_, index) = get_struct_and_index(
+                            src.clone(),
+                            &indices[inst.s1 as usize],
+                            stack,
                             objs,
                         );
                         match struct_ {
                             Ok(target) => {
-                                let field = &mut target.as_struct().0.borrow_fields_mut()[index];
-                                stack.store_val(field, rhs_index, inst.t0(), gcv);
+                                stack.set(
+                                    inst.d + sb,
+                                    GosValue::new_pointer(PointerObj::StructField(
+                                        target,
+                                        index as OpIndex,
+                                    )),
+                                );
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
-                    Opcode::LOAD_PKG_FIELD => {
-                        let index = inst.imm();
-                        let pkg_key = read_imm_key!(code, frame, objs);
-                        let pkg = &objs.packages[pkg_key];
-                        stack.push(pkg.member(index).clone());
+                    Opcode::REF_PKG_MEMBER => {
+                        let pkg = *stack.read(inst.s0, sb, consts).as_package();
+                        stack.set(
+                            inst.d + sb,
+                            GosValue::new_pointer(PointerObj::PkgMember(pkg, inst.s1)),
+                        );
                     }
-                    Opcode::LOAD_PKG_INIT => {
-                        let index = stack.pop_int32();
-                        let pkg_key = read_imm_key!(code, frame, objs);
-                        let pkg = &objs.packages[pkg_key];
-                        match pkg.init_func(index) {
-                            Some(f) => {
-                                stack.push(GosValue::new_int32(index + 1));
-                                stack.push(f.clone());
-                                stack.push(GosValue::new_bool(true));
-                            }
-                            None => stack.push(GosValue::new_bool(false)),
-                        }
-                    }
-                    Opcode::STORE_PKG_FIELD => {
-                        let (rhs_index, imm) = inst.imm824();
-                        let pkg = &objs.packages[read_imm_key!(code, frame, objs)];
-                        stack.store_val(&mut pkg.member_mut(imm), rhs_index, inst.t0(), gcv);
-                    }
-                    Opcode::STORE_DEREF => {
-                        let (rhs_index, index) = inst.imm824();
-                        let s_index = Stack::offset(stack.len(), index);
-                        let p = stack.get(s_index).clone();
-                        let result = p.as_some_pointer().and_then(|p| {
-                            stack.store_to_pointer(p, rhs_index, inst.t0(), &objs.packages, gcv)
-                        });
-                        panic_if_err!(result, panic, frame, code);
-                    }
-                    Opcode::CAST => {
-                        let (target, mapping) = inst.imm824();
-                        let index = Stack::offset(stack.len(), target);
-                        let from_type = inst.t1();
-                        let to_type = inst.t0();
-                        match to_type {
-                            ValueType::UintPtr => match from_type {
-                                ValueType::UnsafePtr => {
-                                    let up = stack.pop_unsafe_ptr();
-                                    stack.push(GosValue::new_uint_ptr(
-                                        up.map_or(0, |x| x.as_rust_ptr() as *const () as usize),
-                                    ));
-                                }
-                                _ => stack.get_mut(index).cast_copyable(from_type, to_type),
-                            },
-                            _ if to_type.copyable() => {
-                                stack.get_mut(index).cast_copyable(from_type, to_type);
-                            }
-                            ValueType::Interface => {
-                                let binding = ifaces[mapping as usize].clone();
-                                let under = stack.copy_semantic(index, gcv);
-                                let val = GosValue::new_interface(InterfaceObj::with_value(
-                                    under,
-                                    Some(binding),
-                                ));
-                                stack.set(index, val);
-                            }
-                            ValueType::String => {
-                                let result = match from_type {
-                                    ValueType::Slice => match inst.t2() {
-                                        ValueType::Int32 => {
-                                            let s = match stack.get_slice::<Elem32>(index) {
-                                                Some(slice) => slice
-                                                    .0
-                                                    .as_rust_slice()
-                                                    .iter()
-                                                    .map(|x| char_from_i32(x.cell.get() as i32))
-                                                    .collect(),
-                                                None => "".to_owned(),
-                                            };
-                                            GosValue::with_str(&s)
-                                        }
-                                        ValueType::Uint8 => match stack.get_slice::<Elem8>(index) {
-                                            Some(slice) => GosValue::new_string(slice.0.clone()),
-                                            None => GosValue::with_str(""),
-                                        },
-                                        _ => unreachable!(),
-                                    },
-                                    _ => {
-                                        let val = stack.get_mut(index);
-                                        val.cast_copyable(from_type, ValueType::Uint32);
-                                        GosValue::with_str(
-                                            &char_from_u32(*val.as_uint32()).to_string(),
-                                        )
-                                    }
-                                };
-                                stack.set(index, result);
-                            }
-                            ValueType::Slice => {
-                                let from = stack.get_string(index);
-                                let result = match inst.t2() {
-                                    ValueType::Int32 => {
-                                        let data = StrUtil::as_str(from)
-                                            .chars()
-                                            .map(|x| GosValue::new_int32(x as i32))
-                                            .collect();
-                                        GosValue::slice_with_data(data, inst.t2(), gcv)
-                                    }
-                                    ValueType::Uint8 => {
-                                        GosValue::new_slice(from.clone(), ValueType::Uint8)
-                                    }
-                                    _ => unreachable!(),
-                                };
-                                stack.set(index, result);
-                            }
-                            ValueType::Pointer => match from_type {
-                                ValueType::Pointer => {}
-                                ValueType::UnsafePtr => {
-                                    match stack.get(index).as_unsafe_ptr() {
-                                        Some(p) => {
-                                            match p.ptr().as_any().downcast_ref::<PointerHandle>() {
-                                                Some(h) => {
-                                                    match h.ptr().cast(
-                                                        inst.t2(),
-                                                        &stack,
-                                                        &objs.packages,
-                                                    ) {
-                                                        Ok(p) => stack
-                                                            .set(index, GosValue::new_pointer(p)),
-                                                        Err(e) => {
-                                                            go_panic_str!(panic, &e, frame, code)
-                                                        }
-                                                    };
-                                                }
-                                                None => {
-                                                    go_panic_str!(panic, "only a unsafe-pointer cast from a pointer can be cast back to a pointer", frame, code);
-                                                }
-                                            }
-                                        }
-                                        None => {
-                                            stack.set(index, GosValue::new_nil(ValueType::Pointer));
-                                        }
-                                    };
-                                }
-                                _ => unimplemented!(),
-                            },
-                            ValueType::UnsafePtr => match from_type {
-                                ValueType::Pointer => {
-                                    let h = PointerHandle::new(stack.get(index));
-                                    stack.set(index, h);
-                                }
-                                _ => unimplemented!(),
-                            },
-                            _ => {
-                                dbg!(to_type);
-                                unimplemented!()
-                            }
-                        }
-                    }
-                    Opcode::ADD => stack.add(inst.t0()),
-                    Opcode::SUB => stack.sub(inst.t0()),
-                    Opcode::MUL => stack.mul(inst.t0()),
-                    Opcode::QUO => stack.quo(inst.t0()),
-                    Opcode::REM => stack.rem(inst.t0()),
-                    Opcode::AND => stack.and(inst.t0()),
-                    Opcode::OR => stack.or(inst.t0()),
-                    Opcode::XOR => stack.xor(inst.t0()),
-                    Opcode::AND_NOT => stack.and_not(inst.t0()),
-                    Opcode::SHL => stack.shl(inst.t0(), inst.t1()),
-                    Opcode::SHR => stack.shr(inst.t0(), inst.t1()),
-                    Opcode::UNARY_ADD => {}
-                    Opcode::UNARY_SUB => stack.unary_negate(inst.t0()),
-                    Opcode::UNARY_XOR => stack.unary_xor(inst.t0()),
-                    Opcode::NOT => stack.logical_not(inst.t0()),
-                    Opcode::EQL => stack.compare_eql(inst.t0(), inst.t1()),
-                    Opcode::LSS => stack.compare_lss(inst.t0()),
-                    Opcode::GTR => stack.compare_gtr(inst.t0()),
-                    Opcode::NEQ => stack.compare_neq(inst.t0()),
-                    Opcode::LEQ => stack.compare_leq(inst.t0()),
-                    Opcode::GEQ => stack.compare_geq(inst.t0()),
                     Opcode::SEND => {
-                        let val = stack.pop_value();
-                        let chan = stack.pop_channel();
+                        let chan = stack.read(inst.s0, sb, consts).as_channel().cloned();
+                        let val = stack.read(inst.s1, sb, consts).clone();
                         drop(stack_mut_ref);
                         let re = match chan {
                             Some(c) => c.send(&val).await,
@@ -653,15 +891,15 @@ impl<'a> Fiber<'a> {
                         panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RECV => {
-                        match stack.pop_channel() {
+                        match stack.read(inst.s0, sb, consts).as_channel().cloned() {
                             Some(chan) => {
                                 drop(stack_mut_ref);
                                 let val = chan.recv().await;
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcv);
-                                stack.push(unwrapped);
-                                if inst.t1() == ValueType::FlagA {
-                                    stack.push(GosValue::new_bool(ok));
+                                stack.set(inst.d + sb, unwrapped);
+                                if inst.t0 == ValueType::FlagA {
+                                    stack.set(inst.d + sb + 1, GosValue::new_bool(ok));
                                 }
                             }
                             None => loop {
@@ -669,85 +907,43 @@ impl<'a> Fiber<'a> {
                             },
                         };
                     }
-                    Opcode::REF => {
-                        let val = stack.pop_value();
-                        let boxed = PointerObj::new_closed_up_value(&val);
-                        stack.push(GosValue::new_pointer(boxed));
-                    }
-                    Opcode::REF_UPVALUE => {
-                        let index = inst.imm();
-                        let upvalue = frame.var_ptrs.as_ref().unwrap()[index as usize].clone();
-                        stack.push(GosValue::new_pointer(PointerObj::UpVal(upvalue.clone())));
-                    }
-                    Opcode::REF_SLICE_MEMBER => {
-                        let i = stack.pop_int() as OpIndex;
-                        let typ = inst.t0();
-                        let arr_or_slice = stack.pop_value();
-                        match PointerObj::new_slice_member(arr_or_slice, i, typ, inst.t2()) {
-                            Ok(p) => stack.push(GosValue::new_pointer(p)),
-                            Err(e) => {
-                                go_panic_str!(panic, &e, frame, code)
-                            }
-                        }
-                    }
-                    Opcode::REF_STRUCT_FIELD => {
-                        let (struct_, index) = get_struct_and_index(
-                            inst.imm(),
-                            stack.pop_value(),
-                            stack,
-                            code,
-                            frame,
-                            objs,
-                        );
-                        match struct_ {
-                            Ok(target) => {
-                                stack.push(GosValue::new_pointer(PointerObj::StructField(
-                                    target,
-                                    index as OpIndex,
-                                )));
-                            }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
-                        }
-                    }
-                    Opcode::REF_PKG_MEMBER => {
-                        let pkg = read_imm_key!(code, frame, objs);
-                        stack.push(GosValue::new_pointer(PointerObj::PkgMember(
-                            pkg,
-                            inst.imm(),
-                        )));
-                    }
-                    Opcode::DEREF => {
-                        let boxed = stack.pop_value();
-                        let re = deref_value(&boxed, stack, objs).and_then(|v| Ok(stack.push(v)));
-                        panic_if_err!(re, panic, frame, code);
-                    }
                     Opcode::PRE_CALL => {
-                        let cls = &stack.pop_closure().unwrap().0;
-                        let next_stack_base = stack.len();
-                        match cls {
+                        let cls = stack
+                            .read(inst.s0, sb, consts)
+                            .as_closure()
+                            .unwrap()
+                            .0
+                            .clone();
+                        let next_sb = inst.s0;
+                        match &cls {
                             ClosureObj::Gos(gosc) => {
                                 let next_func = &objs.functions[gosc.func];
-                                stack.append_vec(next_func.ret_zeros.clone());
+                                let mut returns_recv = next_func.ret_zeros.clone();
                                 if let Some(r) = &gosc.recv {
                                     // push receiver on stack as the first parameter
                                     // don't call copy_semantic because BIND_METHOD did it already
-                                    stack.push(r.clone());
+                                    returns_recv.push(r.clone());
                                 }
+                                let param_count = inst.s1;
+                                stack.set_min_size(
+                                    next_sb as usize + returns_recv.len() + param_count as usize,
+                                );
+                                stack.set_vec(next_sb, returns_recv);
                             }
                             _ => {}
                         }
-                        let next_frame = CallFrame::with_closure(cls.clone(), next_stack_base);
+                        let next_frame = CallFrame::with_closure(cls, next_sb);
                         self.next_frames.push(next_frame);
+                    }
+                    Opcode::PACK_VARIADIC => {
+                        let v = stack.move_vec(inst.s0 + sb, inst.s1 + sb);
+                        let val = GosValue::slice_with_data(v, inst.t0, gcv);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::CALL => {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let cls = nframe.closure().clone();
-                        let call_style = inst.t0();
-                        let variadic_typ = inst.t1();
-                        if variadic_typ != ValueType::Void {
-                            let index = nframe.stack_base + cls.total_param_count(&objs.metas) - 1;
-                            stack.pack_variadic(index, variadic_typ, gcv);
-                        }
+                        let call_style = inst.t0;
                         match cls {
                             ClosureObj::Gos(gosc) => {
                                 let nfunc = &objs.functions[gosc.func];
@@ -776,28 +972,30 @@ impl<'a> Fiber<'a> {
                                         frame_height += 1;
                                         frame = self.frames.last_mut().unwrap();
                                         func = nfunc;
-                                        stack_base = frame.stack_base;
+                                        sb = frame.stack_base;
                                         consts = &func.consts;
                                         code = func.code();
                                         //dbg!(&consts);
                                         //dbg!(&code);
                                         //dbg!(&stack);
                                         debug_assert!(func.local_count() == func.local_zeros.len());
-                                        // allocate local variables
-                                        stack.append_vec(func.local_zeros.clone());
                                     }
                                     ValueType::FlagA => {
                                         // goroutine
                                         nframe.stack_base = 0;
-                                        let nstack =
-                                            Stack::move_from(stack, nfunc.param_types().len());
+                                        let begin = inst.s0 + sb;
+                                        let end = begin + nfunc.param_types().len() as OpIndex;
+                                        let vec = stack.move_vec(begin, end);
+                                        let nstack = Stack::with_vec(vec);
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagB => {
-                                        let v = stack.pop_value_n(nfunc.param_types().len());
+                                        let begin = inst.s0 + sb;
+                                        let end = begin + nfunc.param_types().len() as OpIndex;
+                                        let vec = stack.move_vec(begin, end);
                                         let deferred = DeferredCall {
                                             frame: nframe,
-                                            vec: v,
+                                            vec: vec,
                                         };
                                         frame.defer_stack.get_or_insert(vec![]).push(deferred);
                                     }
@@ -806,7 +1004,9 @@ impl<'a> Fiber<'a> {
                             }
                             ClosureObj::Ffi(ffic) => {
                                 let ptypes = &objs.metas[ffic.meta.key].as_signature().params_type;
-                                let params = stack.pop_value_n(ptypes.len());
+                                let begin = inst.s0 + sb;
+                                let end = begin + ptypes.len() as OpIndex;
+                                let params = stack.move_vec(begin, end);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
                                 let returns = {
@@ -822,7 +1022,7 @@ impl<'a> Fiber<'a> {
                                 };
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 match returns {
-                                    Ok(result) => stack.append_vec(result),
+                                    Ok(result) => stack.set_vec(begin, result),
                                     Err(e) => {
                                         go_panic_str!(panic, &e, frame, code);
                                     }
@@ -836,16 +1036,15 @@ impl<'a> Fiber<'a> {
                         //    dbg!(GosValueDebug::new(&s, &objs));
                         //}
 
-                        let clear_stack = match inst.t0() {
+                        let clear_stack = match inst.t0 {
                             // default case
                             ValueType::Void => true,
                             // init_package func
                             ValueType::FlagA => {
-                                let index = inst.imm() as usize;
-                                let pkey = pkgs[index];
-                                let pkg = &objs.packages[pkey];
+                                let pkey = stack.read(inst.d, sb, consts).as_package();
+                                let pkg = &objs.packages[*pkey];
                                 // the var values left on the stack are for pkg members
-                                pkg.init_vars(stack);
+                                pkg.init_vars(stack.move_vec(inst.s0 + sb, inst.s1 + sb));
                                 false
                             }
                             // func with deferred calls
@@ -856,7 +1055,8 @@ impl<'a> Fiber<'a> {
                                     // run Opcode::RETURN to check if deferred_stack is empty
                                     frame.pc -= 1;
 
-                                    stack.append_vec(call.vec);
+                                    let call_vec_len = call.vec.len() as OpIndex;
+                                    stack.set_vec(inst.s0 + sb, call.vec);
                                     let nframe = call.frame;
 
                                     self.frames.push(nframe);
@@ -864,11 +1064,12 @@ impl<'a> Fiber<'a> {
                                     frame = self.frames.last_mut().unwrap();
                                     let fkey = frame.func();
                                     func = &objs.functions[fkey];
-                                    stack_base = frame.stack_base;
+                                    sb = frame.stack_base;
                                     consts = &func.consts;
                                     code = func.code();
                                     debug_assert!(func.local_count() == func.local_zeros.len());
-                                    stack.append_vec(func.local_zeros.clone());
+                                    let index = inst.s0 + sb + call_vec_len;
+                                    stack.set_vec(index, func.local_zeros.clone());
                                     continue;
                                 }
                                 true
@@ -876,7 +1077,6 @@ impl<'a> Fiber<'a> {
                             _ => unreachable!(),
                         };
 
-                        let panicking = panic.is_some();
                         if clear_stack {
                             // println!(
                             //     "current line: {}",
@@ -886,11 +1086,10 @@ impl<'a> Fiber<'a> {
                             // );
 
                             frame.on_drop(&stack);
-                            if !panicking {
-                                stack.pop_value_n(frame.func_val(objs).stack_temp_types.len());
-                            } else {
-                                stack.discard_n(frame.func_val(objs).stack_temp_types.len());
-                            }
+                            let begin = inst.s0 + sb;
+                            let end =
+                                begin + frame.func_val(objs).stack_temp_types.len() as OpIndex;
+                            stack.move_vec(begin, end);
                         }
 
                         drop(frame);
@@ -903,7 +1102,7 @@ impl<'a> Fiber<'a> {
                             break;
                         }
                         frame = self.frames.last_mut().unwrap();
-                        stack_base = frame.stack_base;
+                        sb = frame.stack_base;
                         // restore func, consts, code
                         func = &objs.functions[frame.func()];
                         consts = &func.consts;
@@ -911,52 +1110,44 @@ impl<'a> Fiber<'a> {
 
                         if let Some(p) = &mut panic {
                             p.call_stack.push((frame.func(), frame.pc - 1));
-                            frame.pc = code.len() - 1;
+                            frame.pc = code.len() as OpIndex - 1;
                         }
                     }
-
-                    Opcode::JUMP => {
-                        frame.pc = Stack::offset(frame.pc, inst.imm());
-                    }
+                    Opcode::JUMP => frame.pc += inst.s1,
                     Opcode::JUMP_IF => {
-                        if stack.pop_bool() {
-                            frame.pc = Stack::offset(frame.pc, inst.imm());
+                        if *stack.read(inst.s0, sb, consts).as_bool() {
+                            frame.pc += inst.s1;
                         }
                     }
                     Opcode::JUMP_IF_NOT => {
-                        if !stack.pop_bool() {
-                            frame.pc = Stack::offset(frame.pc, inst.imm());
-                        }
-                    }
-                    Opcode::SHORT_CIRCUIT_OR => {
-                        if *stack.get_data(stack.len() - 1).as_bool() {
-                            frame.pc = Stack::offset(frame.pc, inst.imm());
-                        } else {
-                            stack.pop_discard_copyable();
-                        }
-                    }
-                    Opcode::SHORT_CIRCUIT_AND => {
-                        if !*stack.get_data(stack.len() - 1).as_bool() {
-                            frame.pc = Stack::offset(frame.pc, inst.imm());
-                        } else {
-                            stack.pop_discard_copyable();
+                        if !*stack.read(inst.s0, sb, consts).as_bool() {
+                            frame.pc += inst.s1;
                         }
                     }
                     Opcode::SWITCH => {
-                        if stack.switch_cmp(inst.t0(), objs) {
-                            stack.pop_value();
-                            frame.pc = Stack::offset(frame.pc, inst.imm());
+                        let t = inst.t0;
+                        let a = stack.read(inst.s0, sb, consts);
+                        let b = stack.read(inst.s0 + 1, sb, consts);
+                        let ok = if t.copyable() {
+                            a.data().compare_eql(b.data(), t)
+                        } else if t != ValueType::Metadata {
+                            a.eq(&b)
+                        } else {
+                            a.as_metadata().identical(b.as_metadata(), &objs.metas)
+                        };
+                        if ok {
+                            frame.pc += inst.s1;
                         }
                     }
                     Opcode::SELECT => {
-                        let blocks = inst.imm();
-                        let begin = frame.pc - 1;
+                        let blocks = inst.s1;
+                        let begin = frame.pc as usize - 1;
                         let mut end = begin + blocks as usize;
                         let end_code = &code[end - 1];
-                        let default_offset = match end_code.t0() {
+                        let default_offset = match end_code.t0 {
                             ValueType::FlagE => {
                                 end -= 1;
-                                Some(end_code.imm())
+                                Some(end_code.s1)
                             }
                             _ => None,
                         };
@@ -965,16 +1156,17 @@ impl<'a> Fiber<'a> {
                             .enumerate()
                             .rev()
                             .map(|(i, sel_code)| {
-                                let offset = if i == 0 { 0 } else { sel_code.imm() };
-                                let flag = sel_code.t0();
+                                let offset = if i == 0 { 0 } else { sel_code.s1 };
+                                let flag = sel_code.t0;
                                 match &flag {
                                     ValueType::FlagA => {
-                                        let val = stack.pop_value();
-                                        let chan = stack.pop_value();
+                                        let chan = stack.read(inst.s0, sb, consts).clone();
+                                        let val =
+                                            stack.read(inst.s1, sb, consts).copy_semantic(gcv);
                                         channel::SelectComm::Send(chan, val, offset)
                                     }
                                     ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
-                                        let chan = stack.pop_value();
+                                        let chan = stack.read(inst.s0, sb, consts).clone();
                                         channel::SelectComm::Recv(chan, flag, offset)
                                     }
                                     _ => unreachable!(),
@@ -1002,11 +1194,14 @@ impl<'a> Fiber<'a> {
                                             );
                                             match flag {
                                                 ValueType::FlagC => {
-                                                    stack.push(unwrapped);
+                                                    stack.set(inst.d + sb, unwrapped);
                                                 }
                                                 ValueType::FlagD => {
-                                                    stack.push(unwrapped);
-                                                    stack.push_bool(ok);
+                                                    stack.set(inst.d + sb, unwrapped);
+                                                    stack.set(
+                                                        inst.d + sb + 1,
+                                                        GosValue::new_bool(ok),
+                                                    );
                                                 }
                                                 _ => {}
                                             }
@@ -1015,7 +1210,7 @@ impl<'a> Fiber<'a> {
                                     }
                                 };
                                 // jump to the block
-                                frame.pc = Stack::offset(frame.pc, (blocks - 1) + block_offset);
+                                frame.pc += (blocks - 1) + block_offset;
                             }
                             Err(e) => {
                                 go_panic_str!(panic, &e, frame, code);
@@ -1023,29 +1218,176 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::RANGE_INIT => {
-                        let len = stack.len();
-                        let target = stack.get(len - 1);
-                        let re = self
-                            .rstack
-                            .range_init(target, inst.t0(), inst.t2())
-                            .and_then(|_| Ok(stack.pop_value()));
+                        let target = stack.read(inst.s0, sb, consts);
+                        let re = self.rstack.range_init(target, inst.t0, inst.t1);
                         panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RANGE => {
-                        let offset = inst.imm();
-                        if self.rstack.range_body(inst.t0(), inst.t2(), stack) {
-                            frame.pc = Stack::offset(frame.pc, offset);
+                        if self.rstack.range_body(inst.t0, inst.t1, stack, inst.s0) {
+                            frame.pc += inst.s1;
                         }
                     }
-
+                    Opcode::LOAD_PKG_INIT_FUNC => {
+                        let src = stack.read(inst.s0, sb, consts);
+                        let index = inst.s1;
+                        let pkg = &objs.packages[*src.as_package()];
+                        match pkg.init_func(index) {
+                            Some(f) => {
+                                stack.set(inst.d + sb, GosValue::new_bool(true));
+                                stack.set(inst.d + 1 + sb, GosValue::new_int32(index + 1));
+                                stack.set(inst.d + 2 + sb, f.clone());
+                            }
+                            None => stack.set(inst.d + sb, GosValue::new_bool(false)),
+                        }
+                    }
+                    Opcode::BIND_METHOD => {
+                        let recv = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                        let func = *stack.read(inst.s1, sb, consts).as_function();
+                        stack.set(
+                            inst.d + sb,
+                            GosValue::new_closure(
+                                ClosureObj::new_gos(func, &objs.functions, Some(recv)),
+                                gcv,
+                            ),
+                        );
+                    }
+                    Opcode::BIND_INTERFACE_METHOD => {
+                        match stack.read(inst.s0, sb, consts).as_some_interface() {
+                            Ok(iface) => {
+                                match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcv) {
+                                    Ok(cls) => stack.set(inst.d + sb, cls),
+                                    Err(e) => go_panic_str!(panic, &e, frame, code),
+                                }
+                            }
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        }
+                    }
+                    Opcode::CAST => {
+                        let from_type = inst.t1;
+                        let to_type = inst.t0;
+                        let val = match to_type {
+                            ValueType::UintPtr => match from_type {
+                                ValueType::UnsafePtr => {
+                                    let up =
+                                        stack.read(inst.s0, sb, consts).as_unsafe_ptr().cloned();
+                                    GosValue::new_uint_ptr(
+                                        up.map_or(0, |x| x.as_rust_ptr() as *const () as usize),
+                                    )
+                                }
+                                _ => stack
+                                    .read(inst.s0, sb, consts)
+                                    .cast_copyable(from_type, to_type),
+                            },
+                            _ if to_type.copyable() => stack
+                                .read(inst.s0, sb, consts)
+                                .cast_copyable(from_type, to_type),
+                            ValueType::Interface => {
+                                let binding = ifaces[inst.s1 as usize].clone();
+                                let under = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                GosValue::new_interface(InterfaceObj::with_value(
+                                    under,
+                                    Some(binding),
+                                ))
+                            }
+                            ValueType::String => match from_type {
+                                ValueType::Slice => match inst.t_ex {
+                                    ValueType::Int32 => {
+                                        let s = match stack
+                                            .read(inst.s0, sb, consts)
+                                            .as_slice::<Elem32>()
+                                        {
+                                            Some(slice) => slice
+                                                .0
+                                                .as_rust_slice()
+                                                .iter()
+                                                .map(|x| char_from_i32(x.cell.get() as i32))
+                                                .collect(),
+                                            None => "".to_owned(),
+                                        };
+                                        GosValue::with_str(&s)
+                                    }
+                                    ValueType::Uint8 => {
+                                        match stack.read(inst.s0, sb, consts).as_slice::<Elem8>() {
+                                            Some(slice) => GosValue::new_string(slice.0.clone()),
+                                            None => GosValue::with_str(""),
+                                        }
+                                    }
+                                    _ => unreachable!(),
+                                },
+                                _ => {
+                                    let val = stack
+                                        .read(inst.s0, sb, consts)
+                                        .cast_copyable(from_type, ValueType::Uint32);
+                                    GosValue::with_str(&char_from_u32(*val.as_uint32()).to_string())
+                                }
+                            },
+                            ValueType::Slice => {
+                                let from = stack.read(inst.s0, sb, consts).as_string();
+                                match inst.t_ex {
+                                    ValueType::Int32 => {
+                                        let data = StrUtil::as_str(from)
+                                            .chars()
+                                            .map(|x| GosValue::new_int32(x as i32))
+                                            .collect();
+                                        GosValue::slice_with_data(data, inst.t_ex, gcv)
+                                    }
+                                    ValueType::Uint8 => {
+                                        GosValue::new_slice(from.clone(), ValueType::Uint8)
+                                    }
+                                    _ => unreachable!(),
+                                }
+                            }
+                            ValueType::Pointer => match from_type {
+                                ValueType::Pointer => stack.read(inst.s0, sb, consts).clone(),
+                                ValueType::UnsafePtr => {
+                                    match stack.read(inst.s0, sb, consts).as_unsafe_ptr() {
+                                        Some(p) => {
+                                            match p.ptr().as_any().downcast_ref::<PointerHandle>() {
+                                                Some(h) => {
+                                                    match h.ptr().cast(
+                                                        inst.t_ex,
+                                                        &stack,
+                                                        &objs.packages,
+                                                    ) {
+                                                        Ok(p) => GosValue::new_pointer(p),
+                                                        Err(e) => {
+                                                            go_panic_str!(panic, &e, frame, code);
+                                                            continue;
+                                                        }
+                                                    }
+                                                }
+                                                None => {
+                                                    go_panic_str!(panic, "only a unsafe-pointer cast from a pointer can be cast back to a pointer", frame, code);
+                                                    continue;
+                                                }
+                                            }
+                                        }
+                                        None => GosValue::new_nil(ValueType::Pointer),
+                                    }
+                                }
+                                _ => unimplemented!(),
+                            },
+                            ValueType::UnsafePtr => match from_type {
+                                ValueType::Pointer => {
+                                    PointerHandle::new(stack.read(inst.s0, sb, consts))
+                                }
+                                _ => unimplemented!(),
+                            },
+                            _ => {
+                                dbg!(to_type);
+                                unimplemented!()
+                            }
+                        };
+                        stack.set(inst.d + sb, val);
+                    }
                     Opcode::TYPE_ASSERT => {
-                        let val = stack.pop_value();
-                        let do_try = inst.t2_as_index() > 0;
+                        let val = stack.read(inst.s0, sb, consts);
+                        let do_try = inst.t0 == ValueType::FlagA;
                         let result = match val.as_some_interface() {
                             Ok(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
                                     let meta = b.as_ref().unwrap().0;
-                                    let want_meta = consts[inst.imm() as usize].as_metadata();
+                                    let want_meta = consts[inst.s1 as usize].as_metadata();
                                     if *want_meta == meta {
                                         Ok((v.copy_semantic(gcv), true))
                                     } else {
@@ -1064,16 +1406,16 @@ impl<'a> Fiber<'a> {
                         };
                         match result {
                             Ok((val, ok)) => {
-                                stack.push(val);
+                                stack.set(inst.d + sb, val);
                                 if do_try {
-                                    stack.push_bool(ok);
+                                    stack.set(inst.d + sb, GosValue::new_bool(ok));
                                 }
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::TYPE => {
-                        let iface_value = stack.pop_value();
+                        let iface_value = stack.read(inst.s0, sb, consts).clone();
                         let (val, meta) = match iface_value.as_interface() {
                             Some(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
@@ -1084,56 +1426,56 @@ impl<'a> Fiber<'a> {
                             _ => (iface_value, s_meta.none),
                         };
                         let typ = meta.value_type(&objs.metas);
-                        stack.push(GosValue::new_metadata(meta));
-                        let option_count = inst.imm() as usize;
+                        stack.set(inst.d + sb, GosValue::new_metadata(meta));
+                        let option_count = inst.s1;
                         if option_count > 0 {
                             let mut index = None;
                             for i in 0..option_count {
-                                let inst_data = code[frame.pc + i];
-                                if inst_data.t0() == typ {
-                                    index = Some(inst_data.imm());
+                                let inst_data = &code[(frame.pc + i) as usize];
+                                if inst_data.t0 == typ {
+                                    index = Some(inst_data.d);
                                 }
                             }
-                            let s_index = Stack::offset(stack_base, index.unwrap());
-                            stack.set(s_index, val);
-
+                            stack.set(index.unwrap() + sb, val);
                             frame.pc += option_count;
                         }
                     }
                     Opcode::IMPORT => {
-                        let pkey = pkgs[inst.imm() as usize];
-                        stack.push(GosValue::new_bool(!objs.packages[pkey].inited()));
+                        let pkey = *stack.read(inst.s0, sb, consts).as_package();
+                        stack.set(
+                            inst.d + sb,
+                            GosValue::new_bool(!objs.packages[pkey].inited()),
+                        );
                     }
                     Opcode::SLICE | Opcode::SLICE_FULL => {
+                        let s = stack.read(inst.s0, sb, consts);
+                        let begin = *stack.read(inst.s1, sb, consts).as_int();
+                        frame.pc += 1;
+                        let inst_ex = &code[frame.pc as usize];
+                        let end = *stack.read(inst_ex.s0, sb, consts).as_int();
                         let max = if inst_op == Opcode::SLICE_FULL {
-                            stack.pop_int()
+                            *stack.read(inst_ex.s1, sb, consts).as_int()
                         } else {
                             -1
                         };
-                        let end = stack.pop_int();
-                        let begin = stack.pop_int();
-                        let result = match inst.t0() {
-                            ValueType::Slice => {
-                                let s = stack.pop_value();
-                                s.dispatcher_a_s().slice_slice(&s, begin, end, max)
-                            }
-                            ValueType::String => {
-                                GosValue::slice_string(&stack.pop_value(), begin, end, max)
-                            }
+                        let result = match inst.t0 {
+                            ValueType::Slice => s.dispatcher_a_s().slice_slice(s, begin, end, max),
+                            ValueType::String => GosValue::slice_string(s, begin, end, max),
                             ValueType::Array => {
-                                GosValue::slice_array(stack.pop_value(), begin, end, inst.t1())
+                                GosValue::slice_array(s.clone(), begin, end, inst.t1)
                             }
                             _ => unreachable!(),
                         };
 
                         match result {
-                            Ok(v) => stack.push(v),
+                            Ok(v) => stack.set(inst.d + sb, v),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
                     Opcode::LITERAL => {
-                        let index = inst.imm();
-                        let arg = &consts[index as usize];
+                        frame.pc += 1;
+                        let inst_ex = &code[frame.pc as usize];
+                        let arg = &consts[inst_ex.s0 as usize];
                         let new_val = match arg.typ() {
                             ValueType::Function => {
                                 // NEW a closure
@@ -1172,18 +1514,19 @@ impl<'a> Fiber<'a> {
                                 GosValue::new_closure(val, gcv)
                             }
                             ValueType::Metadata => {
-                                let count = stack.pop_int32();
-                                let mut build_val = |m: &Meta| {
+                                let begin = inst.s0;
+                                let count = inst.s1;
+                                let build_val = |m: &Meta| {
                                     let zero_val = m.zero(&objs.metas, gcv);
                                     let mut val = vec![];
                                     let mut cur_index = -1;
-                                    for _ in 0..count {
-                                        let i = stack.pop_int();
-                                        let elem = stack.pop_value();
-                                        if i < 0 {
+                                    for i in 0..count {
+                                        let index = *stack.get(begin + i * 2).as_int();
+                                        let elem = stack.get(begin + 1 + i * 2).clone();
+                                        if index < 0 {
                                             cur_index += 1;
                                         } else {
-                                            cur_index = i;
+                                            cur_index = index;
                                         }
                                         let gap = cur_index - (val.len() as isize);
                                         if gap == 0 {
@@ -1209,15 +1552,12 @@ impl<'a> Fiber<'a> {
                                         let (val, typ) = build_val(m);
                                         GosValue::array_with_data(val, typ, gcv)
                                     }
-                                    MetadataType::Map(_, vm) => {
-                                        let map_val = GosValue::map_with_default_val(
-                                            vm.zero(&objs.metas, gcv),
-                                            gcv,
-                                        );
+                                    MetadataType::Map(_, _) => {
+                                        let map_val = GosValue::new_map(gcv);
                                         let map = map_val.as_map().unwrap();
-                                        for _ in 0..count {
-                                            let k = stack.pop_value();
-                                            let v = stack.pop_value();
+                                        for i in 0..count {
+                                            let k = stack.get(begin + i * 2).clone();
+                                            let v = stack.get(begin + 1 + i * 2).clone();
                                             map.0.insert(k, v);
                                         }
                                         map_val
@@ -1227,9 +1567,10 @@ impl<'a> Fiber<'a> {
                                         {
                                             let fields =
                                                 &mut struct_val.as_struct().0.borrow_fields_mut();
-                                            for _ in 0..count {
-                                                let index = stack.pop_uint();
-                                                fields[index] = stack.pop_value();
+                                            for i in 0..count {
+                                                let index = *stack.get(begin + i * 2).as_uint();
+                                                fields[index] =
+                                                    stack.get(begin + 1 + i * 2).clone();
                                             }
                                         }
                                         struct_val
@@ -1239,26 +1580,32 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unimplemented!(),
                         };
-                        stack.push(new_val);
+                        stack.set(inst.d + sb, new_val);
                     }
-
                     Opcode::NEW => {
-                        let md = stack.pop_metadata();
+                        let md = stack.read(inst.s0, sb, consts).as_metadata();
                         let v = md.into_value_category().zero(&objs.metas, gcv);
                         let p = GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)));
-                        stack.push(p);
+                        stack.set(inst.d + sb, p);
                     }
                     Opcode::MAKE => {
-                        let index = inst.imm() - 1;
-                        let i = Stack::offset(stack.len(), index - 1);
-                        let meta_val = stack.get(i);
-                        let md = meta_val.as_metadata();
+                        let md = stack.read(inst.s0, sb, consts).as_metadata();
                         let val = match md.mtype_unwraped(&objs.metas) {
                             MetadataType::Slice(vmeta) => {
-                                let (cap, len) = match index {
-                                    -2 => (stack.pop_int() as usize, stack.pop_int() as usize),
-                                    -1 => {
-                                        let len = stack.pop_int() as usize;
+                                let (cap, len) = match inst.t0 {
+                                    // 3 args
+                                    ValueType::FlagD => {
+                                        frame.pc += 1;
+                                        let inst_ex = &code[frame.pc as usize];
+                                        (
+                                            *stack.read(inst.s1, sb, consts).as_int() as usize,
+                                            *stack.read(inst_ex.s0, sb, consts).as_int() as usize,
+                                        )
+                                    }
+                                    // 2 args
+                                    ValueType::FlagC => {
+                                        let len =
+                                            *stack.read(inst.s1, sb, consts).as_int() as usize;
                                         (len, len)
                                     }
                                     _ => unreachable!(),
@@ -1266,14 +1613,15 @@ impl<'a> Fiber<'a> {
                                 let zero = vmeta.zero(&objs.metas, gcv);
                                 GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcv)
                             }
-                            MetadataType::Map(_, v) => {
-                                let default = v.zero(&objs.metas, gcv);
-                                GosValue::map_with_default_val(default, gcv)
-                            }
+                            MetadataType::Map(_, _) => GosValue::new_map(gcv),
                             MetadataType::Channel(_, val_meta) => {
-                                let cap = match index {
-                                    -1 => stack.pop_int() as usize,
-                                    0 => 0,
+                                let cap = match inst.t0 {
+                                    // 2 args
+                                    ValueType::FlagC => {
+                                        *stack.read(inst.s1, sb, consts).as_int() as usize
+                                    }
+                                    // 1 arg
+                                    ValueType::FlagB => 0,
                                     _ => unreachable!(),
                                 };
                                 let zero = val_meta.zero(&objs.metas, gcv);
@@ -1281,92 +1629,90 @@ impl<'a> Fiber<'a> {
                             }
                             _ => unreachable!(),
                         };
-                        stack.pop_value();
-                        stack.push(val);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::COMPLEX => {
                         // for the specs: For complex, the two arguments must be of the same
                         // floating-point type and the return type is the complex type with
                         // the corresponding floating-point constituents
-                        let t = inst.t0();
-                        let val = match t {
+                        let val = match inst.t0 {
                             ValueType::Float32 => {
-                                let i = stack.pop_float32();
-                                let r = stack.pop_float32();
+                                let i = *stack.read(inst.s0, sb, consts).as_float32();
+                                let r = *stack.read(inst.s1, sb, consts).as_float32();
                                 GosValue::new_complex64(r, i)
                             }
                             ValueType::Float64 => {
-                                let i = stack.pop_float64();
-                                let r = stack.pop_float64();
+                                let i = *stack.read(inst.s0, sb, consts).as_float64();
+                                let r = *stack.read(inst.s1, sb, consts).as_float64();
                                 GosValue::new_complex128(r, i)
                             }
                             _ => unreachable!(),
                         };
-                        stack.push(val);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::REAL => {
-                        let val = match inst.t0() {
-                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().r),
-                            ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_value().as_complex128().r)
-                            }
+                        let val = match inst.t0 {
+                            ValueType::Complex64 => GosValue::new_float32(
+                                stack.read(inst.s0, sb, consts).as_complex64().r,
+                            ),
+                            ValueType::Complex128 => GosValue::new_float64(
+                                stack.read(inst.s0, sb, consts).as_complex128().r,
+                            ),
                             _ => unreachable!(),
                         };
-                        stack.push(val);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::IMAG => {
-                        let val = match inst.t0() {
-                            ValueType::Complex64 => GosValue::new_float32(stack.pop_complex64().i),
-                            ValueType::Complex128 => {
-                                GosValue::new_float64(stack.pop_value().as_complex128().i)
-                            }
+                        let val = match inst.t0 {
+                            ValueType::Complex64 => GosValue::new_float32(
+                                stack.read(inst.s0, sb, consts).as_complex64().i,
+                            ),
+                            ValueType::Complex128 => GosValue::new_float64(
+                                stack.read(inst.s0, sb, consts).as_complex128().i,
+                            ),
                             _ => unreachable!(),
                         };
-                        stack.push(val);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::LEN => {
-                        let l = stack.pop_value().len();
-                        stack.push(GosValue::new_int(l as isize));
+                        let l = stack.read(inst.s0, sb, consts).len();
+                        stack.set(inst.d + sb, GosValue::new_int(l as isize));
                     }
                     Opcode::CAP => {
-                        let l = stack.pop_value().cap();
-                        stack.push(GosValue::new_int(l as isize));
+                        let l = stack.read(inst.s0, sb, consts).cap();
+                        stack.set(inst.d + sb, GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
-                        let index = Stack::offset(stack.len(), inst.imm() - 2);
-                        match inst.t2() {
+                        match inst.t_ex {
                             ValueType::FlagA => unreachable!(),
                             ValueType::FlagB => {} // default case, nothing to do
                             ValueType::FlagC => {
                                 // special case, appending string as bytes
-                                let s = stack.pop_string();
+                                let s = stack.read(inst.s0, sb, consts).as_string();
                                 let arr = GosValue::new_non_gc_array(
                                     ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
                                     ValueType::Uint8,
                                 );
                                 let b_slice =
                                     GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap();
-                                stack.push(b_slice);
+                                stack.set(inst.d + sb, b_slice);
                             }
-                            _ => {
-                                // pack args into a slice
-                                stack.pack_variadic(index + 1, inst.t2(), gcv);
-                            }
+                            _ => {}
                         };
-                        let b = stack.pop_value();
-                        let a = stack.pop_value();
-                        match dispatcher_a_s_for(inst.t0()).slice_append(a, b, gcv) {
-                            Ok(slice) => stack.push(slice),
+                        let a = stack.read(inst.s0, sb, consts).clone();
+                        let b = stack.read(inst.s1, sb, consts).clone();
+                        match dispatcher_a_s_for(inst.t0).slice_append(a, b, gcv) {
+                            Ok(slice) => stack.set(inst.d + sb, slice),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         };
                     }
                     Opcode::COPY => {
-                        let t2 = match inst.t2() {
+                        let t2 = match inst.t_ex {
                             ValueType::FlagC => ValueType::String,
                             _ => ValueType::Slice,
                         };
-                        let b = stack.pop_value();
-                        let a = stack.pop_value();
+                        let a = stack.read(inst.s0, sb, consts).clone();
+                        let b = stack.read(inst.s1, sb, consts).clone();
                         let count = match t2 {
                             ValueType::String => {
                                 let string = b.as_string();
@@ -1375,70 +1721,61 @@ impl<'a> Fiber<'a> {
                                     None => 0,
                                 }
                             }
-                            ValueType::Slice => dispatcher_a_s_for(inst.t0()).slice_copy_from(a, b),
+                            ValueType::Slice => dispatcher_a_s_for(inst.t0).slice_copy_from(a, b),
                             _ => unreachable!(),
                         };
-                        stack.push_int(count as isize);
+                        stack.set(inst.d + sb, GosValue::new_int(count as isize));
                     }
                     Opcode::DELETE => {
-                        let key = &stack.pop_value();
-                        match stack.pop_map() {
+                        let map = stack.read(inst.s0, sb, consts);
+                        let key = stack.read(inst.s1, sb, consts);
+                        match map.as_map() {
                             Some(m) => m.0.delete(key),
                             None => {}
                         }
                     }
-                    Opcode::CLOSE => match stack.pop_channel() {
+                    Opcode::CLOSE => match stack.read(inst.s0, sb, consts).as_channel() {
                         Some(c) => c.close(),
                         None => {}
                     },
                     Opcode::PANIC => {
-                        let val = stack.pop_value();
+                        let val = stack.read(inst.s0, sb, consts).clone();
                         go_panic!(panic, val, frame, code);
                     }
                     Opcode::RECOVER => {
                         let p = panic.take();
                         let val = p.map_or(GosValue::new_nil(ValueType::Void), |x| x.msg);
-                        stack.push(val);
+                        stack.set(inst.d + sb, val);
                     }
                     Opcode::ASSERT => {
-                        let ok = stack.pop_bool();
+                        let ok = *stack.read(inst.s0, sb, consts).as_bool();
                         if !ok {
                             go_panic_str!(panic, "Opcode::ASSERT: not true!", frame, code);
                         }
                     }
                     Opcode::FFI => {
-                        let meta = stack.pop_value();
-                        let total_params = inst.imm();
-                        let index = Stack::offset(stack.len(), -total_params);
-                        let itype = stack.get(index).clone();
-                        let name = stack.get(index + 1).clone();
-                        debug_assert!(
-                            objs.metas[meta.as_metadata().key]
-                                .as_signature()
-                                .params_type
-                                .len()
-                                == 2
-                        );
-                        let name_str = StrUtil::as_str(name.as_string());
-                        let v = match self.context.ffi_factory.create_by_name(&name_str) {
-                            Ok(v) => {
-                                let meta = itype.as_metadata().underlying(&objs.metas).clone();
-                                GosValue::new_interface(InterfaceObj::Ffi(UnderlyingFfi::new(
-                                    v, meta,
-                                )))
-                            }
-                            Err(e) => {
-                                go_panic_str!(panic, &e, frame, code);
-                                continue;
+                        let val = {
+                            let itype = stack.read(inst.s0, sb, consts);
+                            let name = stack.read(inst.s1, sb, consts);
+                            let name_str = StrUtil::as_str(name.as_string());
+                            match self.context.ffi_factory.create_by_name(&name_str) {
+                                Ok(v) => {
+                                    let meta = itype.as_metadata().underlying(&objs.metas).clone();
+                                    GosValue::new_interface(InterfaceObj::Ffi(UnderlyingFfi::new(
+                                        v, meta,
+                                    )))
+                                }
+                                Err(e) => {
+                                    go_panic_str!(panic, &e, frame, code);
+                                    continue;
+                                }
                             }
                         };
-                        stack.pop_string();
-                        stack.pop_metadata();
-                        stack.push(v);
+                        stack.set(inst.d + sb, val);
                     }
+                    Opcode::UNARY_ADD => unreachable!(),
                     Opcode::VOID => unreachable!(),
-                };
-                //dbg!(inst_op, stack.len());
+                }
             } //yield unit
             match result {
                 Result::End => {
@@ -1447,7 +1784,7 @@ impl<'a> Fiber<'a> {
                         if let Some(files) = self.context.fs {
                             for (fkey, pc) in p.call_stack.iter() {
                                 let func = &objs.functions[*fkey];
-                                if let Some(p) = func.pos()[*pc] {
+                                if let Some(p) = func.pos()[*pc as usize] {
                                     println!("{}", files.position(p).unwrap_or(FilePos::null()));
                                 } else {
                                     println!("<no debug info available>");
@@ -1531,25 +1868,14 @@ fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<G
 
 #[inline(always)]
 fn get_struct_and_index(
-    op_index: OpIndex,
     val: GosValue,
+    indices: &Vec<usize>,
     stack: &mut Stack,
-    code: &Vec<Instruction>,
-    frame: &mut CallFrame,
     objs: &VMObjects,
 ) -> (RuntimeResult<GosValue>, usize) {
-    let (target, index) = if op_index >= 0 {
-        (Ok(val), op_index as usize)
-    } else {
-        let count = -op_index as usize;
-        let mut indices = Vec::with_capacity(count);
-        for c in &code[frame.pc..frame.pc + count - 1] {
-            indices.push(c.get_u64() as usize);
-        }
-        let index = code[frame.pc + count - 1].get_u64() as usize;
-        frame.pc += count;
-        let val = get_embeded(val, &indices, stack, &objs.packages);
-        (val, index)
+    let (target, index) = {
+        let val = get_embeded(val, &indices[..indices.len() - 1], stack, &objs.packages);
+        (val, *indices.last().unwrap())
     };
     (
         match target {
@@ -1566,7 +1892,7 @@ fn get_struct_and_index(
 #[inline]
 pub fn get_embeded(
     val: GosValue,
-    indices: &Vec<usize>,
+    indices: &[usize],
     stack: &Stack,
     pkgs: &PackageObjs,
 ) -> RuntimeResult<GosValue> {
@@ -1602,7 +1928,7 @@ fn cast_receiver(
     }
 }
 
-pub fn bind_method(
+pub fn bind_iface_method(
     iface: &InterfaceObj,
     index: usize,
     stack: &Stack,
@@ -1625,7 +1951,7 @@ pub fn bind_method(
                 }
                 Binding4Runtime::Iface(i, indices) => {
                     let bind = |obj: &GosValue| {
-                        bind_method(&obj.as_interface().unwrap(), *i, stack, objs, gcv)
+                        bind_iface_method(&obj.as_interface().unwrap(), *i, stack, objs, gcv)
                     };
                     match indices {
                         None => bind(&obj),
@@ -1646,6 +1972,3 @@ pub fn bind_method(
         }
     }
 }
-
-#[cfg(test)]
-mod test {}

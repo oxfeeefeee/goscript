@@ -4,7 +4,7 @@
 
 use super::gc::GcoVec;
 use super::objects::VMObjects;
-use super::stack2::Stack;
+use super::stack::Stack;
 use super::value::{GosValue, RuntimeResult};
 use std::any::Any;
 use std::collections::HashMap;

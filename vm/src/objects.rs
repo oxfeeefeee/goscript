@@ -8,7 +8,7 @@ use super::ffi::Ffi;
 use super::gc::GcoVec;
 use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
 use super::metadata::*;
-use super::stack2::Stack;
+use super::stack::Stack;
 use super::value::*;
 use crate::value::GosElem;
 use slotmap::{new_key_type, DenseSlotMap, KeyData};

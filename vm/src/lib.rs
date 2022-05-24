@@ -16,13 +16,8 @@ pub mod ffi;
 
 pub mod value;
 
-//mod stack;
-mod stack2;
+pub mod stack;
 
-//#[macro_use]
-//pub mod vm;
-
-#[macro_use]
-mod vm2;
+pub mod vm;
 
 pub mod gc;

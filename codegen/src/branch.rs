@@ -160,14 +160,14 @@ impl SwitchJumpPoints {
     pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
             let imm = (loc - i) as OpIndex - 1;
-            func.instruction_mut(*i).set_imm(imm);
+            func.instruction_mut(*i).s1 = imm;
         }
     }
 
     pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
         if let Some(de) = self.default {
             let imm = (loc - de) as OpIndex - 1;
-            func.instruction_mut(de).set_imm(imm);
+            func.instruction_mut(de).s1 = imm;
         }
     }
 }
