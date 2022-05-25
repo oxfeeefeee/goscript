@@ -73,7 +73,7 @@ impl StaticMeta {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Meta {
     pub key: MetadataKey,
     pub ptr_depth: u8,
@@ -339,9 +339,9 @@ impl Meta {
                             }
                         };
                         if let Some(x) = indices {
-                            x.push(i)
+                            x.push(i as OpIndex)
                         } else {
-                            *indices = Some(vec![i]);
+                            *indices = Some(vec![i as OpIndex]);
                         }
                         return Some(re);
                     }

@@ -9,8 +9,8 @@ use std::iter::FromIterator;
 use super::branch::*;
 use super::call::CallHelper;
 use super::emit::*;
-use super::interface::IfaceMapping;
 use super::package::PkgHelper;
+use super::selector::*;
 use super::types::{SelectionType, TypeCache, TypeLookup};
 
 use goscript_vm::gc::GcoVec;
@@ -69,7 +69,8 @@ pub struct CodeGen<'a> {
     tc_objs: &'a TCObjects,
     dummy_gcv: &'a mut GcoVec,
     t: TypeLookup<'a>,
-    iface_mapping: &'a mut IfaceMapping,
+    iface_selector: &'a mut IfaceSelector,
+    struct_selector: &'a mut StructSelector,
     call_helper: &'a mut CallHelper,
     branch_helper: &'a mut BranchHelper,
     pkg_helper: &'a mut PkgHelper<'a>,
@@ -88,7 +89,8 @@ impl<'a> CodeGen<'a> {
         dummy_gcv: &'a mut GcoVec,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
-        mapping: &'a mut IfaceMapping,
+        iface_selector: &'a mut IfaceSelector,
+        struct_selector: &'a mut StructSelector,
         call_helper: &'a mut CallHelper,
         branch_helper: &'a mut BranchHelper,
         pkg_helper: &'a mut PkgHelper<'a>,
@@ -101,7 +103,8 @@ impl<'a> CodeGen<'a> {
             tc_objs: tco,
             dummy_gcv: dummy_gcv,
             t: TypeLookup::new(tco, ti, type_cache),
-            iface_mapping: mapping,
+            iface_selector: iface_selector,
+            struct_selector: struct_selector,
             call_helper: call_helper,
             branch_helper: branch_helper,
             pkg_helper: pkg_helper,
@@ -907,8 +910,8 @@ impl<'a> CodeGen<'a> {
                     match typ_to {
                         ValueType::Interface => {
                             if typ_from != ValueType::Void {
-                                let iface_index = self.iface_mapping.get_index(
-                                    &(tc_to, tc_from),
+                                let iface_index = self.iface_selector.get_index(
+                                    (tc_to, tc_from),
                                     &mut self.t,
                                     self.objects,
                                     self.dummy_gcv,
@@ -1029,8 +1032,8 @@ impl<'a> CodeGen<'a> {
                     let vt1 = self.t.obj_underlying_value_type(rhs);
                     match vt1 != ValueType::Interface && vt1 != ValueType::Void {
                         true => {
-                            let index = self.iface_mapping.get_index(
-                                &(t0, rhs),
+                            let index = self.iface_selector.get_index(
+                                (t0, rhs),
                                 &mut self.t,
                                 self.objects,
                                 self.dummy_gcv,

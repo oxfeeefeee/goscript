@@ -755,14 +755,14 @@ impl UnderlyingFfi {
 /// of an interface
 #[derive(Clone, Debug)]
 pub enum IfaceBinding {
-    Struct(Rc<RefCell<MethodDesc>>, Option<Vec<usize>>),
-    Iface(usize, Option<Vec<usize>>),
+    Struct(Rc<RefCell<MethodDesc>>, Option<Vec<OpIndex>>),
+    Iface(usize, Option<Vec<OpIndex>>),
 }
 
 #[derive(Clone, Debug)]
 pub enum Binding4Runtime {
-    Struct(FunctionKey, bool, Option<Vec<usize>>),
-    Iface(usize, Option<Vec<usize>>),
+    Struct(FunctionKey, bool, Option<Vec<OpIndex>>),
+    Iface(usize, Option<Vec<OpIndex>>),
 }
 
 impl From<IfaceBinding> for Binding4Runtime {

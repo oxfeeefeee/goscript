@@ -7,8 +7,8 @@ use super::branch::BranchHelper;
 use super::call::CallHelper;
 use super::codegen::CodeGen;
 use super::emit::{CallStyle, Emitter};
-use super::interface::IfaceMapping;
 use super::package::{PkgHelper, PkgVarPairs};
+use super::selector::*;
 use super::types::TypeCache;
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
@@ -31,7 +31,8 @@ pub struct EntryGen<'a> {
     tc_objs: &'a TCObjects,
     dummy_gcv: GcoVec,
     packages: Vec<PackageKey>,
-    iface_mapping: IfaceMapping,
+    iface_selector: IfaceSelector,
+    struct_selector: StructSelector,
     // pkg_indices maps TCPackageKey to the index (in the generated code) of the package
     pkg_indices: HashMap<TCPackageKey, OpIndex>,
     blank_ident: IdentKey,
@@ -45,7 +46,8 @@ impl<'a> EntryGen<'a> {
             tc_objs: tco,
             dummy_gcv: GcoVec::new(),
             packages: Vec::new(),
-            iface_mapping: IfaceMapping::new(),
+            iface_selector: IfaceSelector::new(),
+            struct_selector: StructSelector::new(),
             pkg_indices: HashMap::new(),
             blank_ident: bk,
         }
@@ -121,7 +123,8 @@ impl<'a> EntryGen<'a> {
                 &mut self.dummy_gcv,
                 &ti,
                 &mut type_cache,
-                &mut self.iface_mapping,
+                &mut self.iface_selector,
+                &mut self.struct_selector,
                 &mut call_helper,
                 &mut branch_helper,
                 &mut pkg_helper,
@@ -143,7 +146,8 @@ impl<'a> EntryGen<'a> {
         ByteCode::new(
             self.objects,
             self.packages,
-            self.iface_mapping.result(),
+            self.iface_selector.result(),
+            self.struct_selector.result(),
             entry,
         )
     }
