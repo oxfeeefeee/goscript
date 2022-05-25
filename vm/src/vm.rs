@@ -127,7 +127,7 @@ pub struct ByteCode {
     /// For calling method via interfaces
     pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
     /// For embedded fields of structs
-    pub indices: Vec<Vec<usize>>,
+    pub indices: Vec<Vec<OpIndex>>,
     pub entry: FunctionKey,
 }
 
@@ -136,7 +136,7 @@ impl ByteCode {
         objects: Pin<Box<VMObjects>>,
         packages: Vec<PackageKey>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
-        indices: Vec<Vec<usize>>,
+        indices: Vec<Vec<OpIndex>>,
         entry: FunctionKey,
     ) -> ByteCode {
         let ifaces = ifaces
@@ -1869,7 +1869,7 @@ fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<G
 #[inline(always)]
 fn get_struct_and_index(
     val: GosValue,
-    indices: &Vec<usize>,
+    indices: &Vec<OpIndex>,
     stack: &mut Stack,
     objs: &VMObjects,
 ) -> (RuntimeResult<GosValue>, usize) {
@@ -1885,14 +1885,14 @@ fn get_struct_and_index(
             },
             Err(e) => Err(e),
         },
-        index,
+        index as usize,
     )
 }
 
 #[inline]
 pub fn get_embeded(
     val: GosValue,
-    indices: &[usize],
+    indices: &[OpIndex],
     stack: &Stack,
     pkgs: &PackageObjs,
 ) -> RuntimeResult<GosValue> {
@@ -1903,7 +1903,7 @@ pub fn get_embeded(
     }
     for &i in indices.iter() {
         let s = &cur_val.as_struct().0;
-        let v = s.borrow_fields()[i].clone();
+        let v = s.borrow_fields()[i as usize].clone();
         cur_val = v;
     }
     Ok(cur_val)
