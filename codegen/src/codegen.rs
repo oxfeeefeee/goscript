@@ -7,7 +7,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 
 use super::branch::*;
-use super::call::CallHelper;
+use super::consts::*;
 use super::emit::*;
 use super::package::PkgHelper;
 use super::selector::*;
@@ -65,13 +65,13 @@ macro_rules! dbg_tc {
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
+    consts: &'a mut Consts,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     dummy_gcv: &'a mut GcoVec,
     t: TypeLookup<'a>,
     iface_selector: &'a mut IfaceSelector,
     struct_selector: &'a mut StructSelector,
-    call_helper: &'a mut CallHelper,
     branch_helper: &'a mut BranchHelper,
     pkg_helper: &'a mut PkgHelper<'a>,
 
@@ -84,6 +84,7 @@ pub struct CodeGen<'a> {
 impl<'a> CodeGen<'a> {
     pub fn new(
         vmo: &'a mut VMObjects,
+        consts: &'a mut Consts,
         asto: &'a AstObjects,
         tco: &'a TCObjects,
         dummy_gcv: &'a mut GcoVec,
@@ -91,7 +92,6 @@ impl<'a> CodeGen<'a> {
         type_cache: &'a mut TypeCache,
         iface_selector: &'a mut IfaceSelector,
         struct_selector: &'a mut StructSelector,
-        call_helper: &'a mut CallHelper,
         branch_helper: &'a mut BranchHelper,
         pkg_helper: &'a mut PkgHelper<'a>,
         pkg: PackageKey,
@@ -99,13 +99,13 @@ impl<'a> CodeGen<'a> {
     ) -> CodeGen<'a> {
         CodeGen {
             objects: vmo,
+            consts: consts,
             ast_objs: asto,
             tc_objs: tco,
             dummy_gcv: dummy_gcv,
             t: TypeLookup::new(tco, ti, type_cache),
             iface_selector: iface_selector,
             struct_selector: struct_selector,
-            call_helper: call_helper,
             branch_helper: branch_helper,
             pkg_helper: pkg_helper,
             pkg_key: pkg,
@@ -1552,8 +1552,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     let point = func.next_code_index();
                     func.emit_raw_inst(0, pos); // placeholder for FunctionKey
                     let fkey = *self.func_stack.last().unwrap();
-                    self.call_helper
-                        .add_call(fkey, point, final_lhs_meta, index);
                 }
             }
             SelectionType::NonMethod => {

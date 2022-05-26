@@ -55,7 +55,8 @@ impl BranchHelper {
         pos: usize,
     ) {
         let index = func.code().len();
-        func.emit_code_with_imm(Opcode::JUMP, 0, Some(pos));
+        let inst = Instruction::with_op_index(Opcode::JUMP, 0, 0, 0);
+        func.add_inst_pos(inst, Some(pos));
         self.block_stack
             .last_mut()
             .unwrap()
@@ -86,7 +87,8 @@ impl BranchHelper {
                 0
             }
         };
-        func.emit_code_with_imm(Opcode::JUMP, jump_to, Some(pos));
+        let inst = Instruction::with_op_index(Opcode::JUMP, jump_to, 0, 0);
+        func.add_inst_pos(inst, Some(pos));
     }
 
     pub fn patch_go_tos(&self, funcs: &mut FunctionObjs) {
@@ -94,7 +96,7 @@ impl BranchHelper {
             let func = &mut funcs[*fkey];
             let l_offset = self.labels[label];
             let offset = (l_offset as OpIndex) - (*patch_offset as OpIndex) - 1;
-            func.instruction_mut(*patch_offset).set_imm(offset);
+            func.instruction_mut(*patch_offset).d = offset;
         }
     }
 
@@ -117,8 +119,7 @@ impl BranchHelper {
             };
             if label_match && break_this {
                 let current_pc = index as OpIndex + 1;
-                func.instruction_mut(index)
-                    .set_imm(target.unwrap() as OpIndex - current_pc);
+                func.instruction_mut(index).d = target.unwrap() as OpIndex - current_pc;
             } else {
                 // this break/continue tries to jump out of an outer block
                 // so we add it to outer block's jump out points
@@ -160,14 +161,14 @@ impl SwitchJumpPoints {
     pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
             let imm = (loc - i) as OpIndex - 1;
-            func.instruction_mut(*i).s1 = imm;
+            func.instruction_mut(*i).d = imm;
         }
     }
 
     pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
         if let Some(de) = self.default {
             let imm = (loc - de) as OpIndex - 1;
-            func.instruction_mut(de).s1 = imm;
+            func.instruction_mut(de).d = imm;
         }
     }
 }
@@ -278,7 +279,10 @@ impl<'a> SelectHelper<'a> {
                 CommType::RecvCommaOk(_) => (ValueType::FlagD, None),
                 CommType::Default => (ValueType::FlagE, None),
             };
-            func.emit_code_with_type2(Opcode::SELECT, flag, t, Some(comm.pos));
+            func.add_inst_pos(
+                Instruction::with_op_t_index(Opcode::SELECT, Some(flag), t, 0, 0, 0),
+                Some(comm.pos),
+            );
         }
     }
 
@@ -290,17 +294,17 @@ impl<'a> SelectHelper<'a> {
         // set the block offset for each block.
         // the first block's offset is known(0) so the space is used for
         // the count of blocks.
-        func.instruction_mut(offset).set_imm(count as OpIndex);
+        func.instruction_mut(offset).d = count as OpIndex;
         for i in 1..count {
             let diff = self.comms[i].begin as OpIndex - blocks_begin;
-            func.instruction_mut(offset + i).set_imm(diff);
+            func.instruction_mut(offset + i).d = diff;
         }
 
         // set where to jump when the block ends
         for i in 0..count - 1 {
             let block_end = self.comms[i].end;
             let diff = blocks_end - block_end as OpIndex;
-            func.instruction_mut(block_end).set_imm(diff);
+            func.instruction_mut(block_end).d = diff;
         }
     }
 

@@ -123,6 +123,7 @@ macro_rules! unary_op {
 #[derive(Debug)]
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
+    pub consts: Vec<GosValue>,
     pub packages: Vec<PackageKey>,
     /// For calling method via interfaces
     pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
@@ -134,6 +135,7 @@ pub struct ByteCode {
 impl ByteCode {
     pub fn new(
         objects: Pin<Box<VMObjects>>,
+        consts: Vec<GosValue>,
         packages: Vec<PackageKey>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
         indices: Vec<Vec<OpIndex>>,
@@ -148,6 +150,7 @@ impl ByteCode {
             .collect();
         ByteCode {
             objects: objects,
+            consts: consts,
             packages: packages,
             ifaces: ifaces,
             indices: indices,
@@ -342,6 +345,7 @@ impl<'a> Fiber<'a> {
         let ctx = &self.context;
         let gcv = ctx.gcv;
         let objs: &VMObjects = &ctx.code.objects;
+        let consts = &ctx.code.consts;
         let s_meta: &StaticMeta = &objs.s_meta;
         let ifaces = &ctx.code.ifaces;
         let indices = &ctx.code.indices;
@@ -355,7 +359,6 @@ impl<'a> Fiber<'a> {
         // allocate local variables
         stack.set_vec(0, func.local_zeros.clone());
 
-        let mut consts = &func.consts;
         let mut code = func.code();
 
         let mut total_inst = 0;
@@ -973,7 +976,6 @@ impl<'a> Fiber<'a> {
                                         frame = self.frames.last_mut().unwrap();
                                         func = nfunc;
                                         sb = frame.stack_base;
-                                        consts = &func.consts;
                                         code = func.code();
                                         //dbg!(&consts);
                                         //dbg!(&code);
@@ -1065,7 +1067,6 @@ impl<'a> Fiber<'a> {
                                     let fkey = frame.func();
                                     func = &objs.functions[fkey];
                                     sb = frame.stack_base;
-                                    consts = &func.consts;
                                     code = func.code();
                                     debug_assert!(func.local_count() == func.local_zeros.len());
                                     let index = inst.s0 + sb + call_vec_len;
@@ -1105,7 +1106,6 @@ impl<'a> Fiber<'a> {
                         sb = frame.stack_base;
                         // restore func, consts, code
                         func = &objs.functions[frame.func()];
-                        consts = &func.consts;
                         code = func.code();
 
                         if let Some(p) = &mut panic {
@@ -1113,15 +1113,15 @@ impl<'a> Fiber<'a> {
                             frame.pc = code.len() as OpIndex - 1;
                         }
                     }
-                    Opcode::JUMP => frame.pc += inst.s1,
+                    Opcode::JUMP => frame.pc += inst.d,
                     Opcode::JUMP_IF => {
                         if *stack.read(inst.s0, sb, consts).as_bool() {
-                            frame.pc += inst.s1;
+                            frame.pc += inst.d;
                         }
                     }
                     Opcode::JUMP_IF_NOT => {
                         if !*stack.read(inst.s0, sb, consts).as_bool() {
-                            frame.pc += inst.s1;
+                            frame.pc += inst.d;
                         }
                     }
                     Opcode::SWITCH => {
@@ -1136,7 +1136,7 @@ impl<'a> Fiber<'a> {
                             a.as_metadata().identical(b.as_metadata(), &objs.metas)
                         };
                         if ok {
-                            frame.pc += inst.s1;
+                            frame.pc += inst.d;
                         }
                     }
                     Opcode::SELECT => {
@@ -1147,7 +1147,7 @@ impl<'a> Fiber<'a> {
                         let default_offset = match end_code.t0 {
                             ValueType::FlagE => {
                                 end -= 1;
-                                Some(end_code.s1)
+                                Some(end_code.d)
                             }
                             _ => None,
                         };
@@ -1156,7 +1156,7 @@ impl<'a> Fiber<'a> {
                             .enumerate()
                             .rev()
                             .map(|(i, sel_code)| {
-                                let offset = if i == 0 { 0 } else { sel_code.s1 };
+                                let offset = if i == 0 { 0 } else { sel_code.d };
                                 let flag = sel_code.t0;
                                 match &flag {
                                     ValueType::FlagA => {
@@ -1290,7 +1290,7 @@ impl<'a> Fiber<'a> {
                                 ))
                             }
                             ValueType::String => match from_type {
-                                ValueType::Slice => match inst.t_ex {
+                                ValueType::Slice => match inst.op1_as_t() {
                                     ValueType::Int32 => {
                                         let s = match stack
                                             .read(inst.s0, sb, consts)
@@ -1323,13 +1323,13 @@ impl<'a> Fiber<'a> {
                             },
                             ValueType::Slice => {
                                 let from = stack.read(inst.s0, sb, consts).as_string();
-                                match inst.t_ex {
+                                match inst.op1_as_t() {
                                     ValueType::Int32 => {
                                         let data = StrUtil::as_str(from)
                                             .chars()
                                             .map(|x| GosValue::new_int32(x as i32))
                                             .collect();
-                                        GosValue::slice_with_data(data, inst.t_ex, gcv)
+                                        GosValue::slice_with_data(data, inst.op1_as_t(), gcv)
                                     }
                                     ValueType::Uint8 => {
                                         GosValue::new_slice(from.clone(), ValueType::Uint8)
@@ -1345,7 +1345,7 @@ impl<'a> Fiber<'a> {
                                             match p.ptr().as_any().downcast_ref::<PointerHandle>() {
                                                 Some(h) => {
                                                     match h.ptr().cast(
-                                                        inst.t_ex,
+                                                        inst.op1_as_t(),
                                                         &stack,
                                                         &objs.packages,
                                                     ) {
@@ -1683,7 +1683,7 @@ impl<'a> Fiber<'a> {
                         stack.set(inst.d + sb, GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
-                        match inst.t_ex {
+                        match inst.op1_as_t() {
                             ValueType::FlagA => unreachable!(),
                             ValueType::FlagB => {} // default case, nothing to do
                             ValueType::FlagC => {
@@ -1707,7 +1707,7 @@ impl<'a> Fiber<'a> {
                         };
                     }
                     Opcode::COPY => {
-                        let t2 = match inst.t_ex {
+                        let t2 = match inst.op1_as_t() {
                             ValueType::FlagC => ValueType::String,
                             _ => ValueType::Slice,
                         };

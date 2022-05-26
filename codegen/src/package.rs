@@ -61,7 +61,7 @@ pub struct PkgHelper<'a> {
     ast_objs: &'a AstObjects,
     pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
     pkgs: &'a Vec<PackageKey>,
-    pairs: &'a mut PkgVarPairs,
+    vars: &'a mut PkgVarPairs,
 }
 
 impl<'a> PkgHelper<'a> {
@@ -70,19 +70,19 @@ impl<'a> PkgHelper<'a> {
         tc_objs: &'a TCObjects,
         pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
         pkgs: &'a Vec<PackageKey>,
-        pkg_pairs: &'a mut PkgVarPairs,
+        pkg_vars: &'a mut PkgVarPairs,
     ) -> PkgHelper<'a> {
         PkgHelper {
             tc_objs: tc_objs,
             ast_objs: ast_objs,
             pkg_indices: pkg_indices,
             pkgs: pkgs,
-            pairs: pkg_pairs,
+            vars: pkg_vars,
         }
     }
 
     pub fn pairs_mut(&mut self) -> &mut PkgVarPairs {
-        &mut self.pairs
+        &mut self.vars
     }
 
     pub fn gen_imports(&mut self, tcpkg: TCPackageKey, func: &mut FunctionVal) {
@@ -115,7 +115,7 @@ impl<'a> PkgHelper<'a> {
         i: usize,
         is824: bool,
     ) {
-        self.pairs.add_pair(pkg, var, func, i, is824);
+        self.vars.add_pair(pkg, var, func, i, is824);
     }
 
     // sort_var_decls returns all var names and sorted var decl statments
