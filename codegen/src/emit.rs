@@ -285,7 +285,7 @@ impl<'a> Emitter<'a> {
             Instruction::code2index(code)
         });
         inst.set_imm824(imm0, int32);
-        self.f.push_inst_pos(inst, pos);
+        self.f.add_inst_pos(inst, pos);
 
         if let Some((pkg, ident)) = pkg_info {
             self.f.emit_raw_inst(key_to_u64(pkg), pos);
@@ -311,7 +311,7 @@ impl<'a> Emitter<'a> {
     ) {
         let mut inst = Instruction::new(Opcode::CAST, Some(t0), Some(t1), t2, None);
         inst.set_imm824(rhs, m_index);
-        self.f.push_inst_pos(inst, pos);
+        self.f.add_inst_pos(inst, pos);
     }
 
     pub fn emit_import(&mut self, index: OpIndex, pkg: PackageKey, pos: Option<usize>) {
@@ -348,7 +348,7 @@ impl<'a> Emitter<'a> {
         self.f
             .emit_inst(Opcode::JUMP_IF_NOT, [None, None, None], Some(offset), pos);
         for i in cd.into_iter() {
-            self.f.push_inst_pos(i, pos);
+            self.f.add_inst_pos(i, pos);
         }
     }
 
@@ -401,7 +401,7 @@ impl<'a> Emitter<'a> {
         let mut inst =
             Instruction::new(Opcode::LOAD_INDEX, Some(typ), Some(index_type), None, None);
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.f.push_inst_pos(inst, pos);
+        self.f.add_inst_pos(inst, pos);
     }
 
     pub fn emit_load_index_imm(
@@ -413,7 +413,7 @@ impl<'a> Emitter<'a> {
     ) {
         let mut inst = Instruction::new(Opcode::LOAD_INDEX_IMM, Some(typ), None, None, Some(imm));
         inst.set_t2_with_index(if comma_ok { 1 } else { 0 });
-        self.f.push_inst_pos(inst, pos);
+        self.f.add_inst_pos(inst, pos);
     }
 
     pub fn emit_return(&mut self, pkg_index: Option<OpIndex>, pos: Option<usize>) {

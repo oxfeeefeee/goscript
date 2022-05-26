@@ -6,7 +6,7 @@
 use super::channel::Channel;
 use super::ffi::Ffi;
 use super::gc::GcoVec;
-use super::instruction::{Instruction, OpIndex, Opcode, ValueType};
+use super::instruction::{Instruction, OpIndex, ValueType};
 use super::metadata::*;
 use super::stack::Stack;
 use super::value::*;
@@ -1632,8 +1632,6 @@ pub enum EntIndex {
     LocalVar(OpIndex),
     UpValue(OpIndex),
     PackageMember(PackageKey, KeyData),
-    BuiltInVal(Opcode), // built-in identifiers
-    TypeMeta(Meta),
     Blank,
 }
 
@@ -1644,8 +1642,6 @@ impl From<EntIndex> for OpIndex {
             EntIndex::LocalVar(i) => i,
             EntIndex::UpValue(i) => i,
             EntIndex::PackageMember(_, _) => unreachable!(),
-            EntIndex::BuiltInVal(_) => unreachable!(),
-            EntIndex::TypeMeta(_) => unreachable!(),
             EntIndex::Blank => unreachable!(),
         }
     }
@@ -1665,7 +1661,6 @@ pub struct FunctionVal {
     pub meta: Meta,
     code: Vec<Instruction>,
     pos: Vec<Option<usize>>,
-    pub consts: Vec<GosValue>,
     pub up_ptrs: Vec<ValueDesc>,
 
     pub stack_temp_types: Vec<ValueType>,
@@ -1696,7 +1691,6 @@ impl FunctionVal {
             meta: meta,
             code: Vec::new(),
             pos: Vec::new(),
-            consts: Vec::new(),
             up_ptrs: Vec::new(),
             stack_temp_types: p_types,
             ret_zeros: returns,
@@ -1754,11 +1748,6 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn const_val(&self, index: OpIndex) -> &GosValue {
-        &self.consts[index as usize]
-    }
-
-    #[inline]
     pub fn offset(&self, loc: usize) -> OpIndex {
         // todo: don't crash if OpIndex overflows
         OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
@@ -1770,7 +1759,7 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn push_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
+    pub fn add_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
         self.code.push(i);
         self.pos.push(pos);
     }
@@ -1842,17 +1831,6 @@ impl FunctionVal {
     }
     */
 
-    /// returns the index of the const if it's found
-    pub fn get_const_index(&self, val: &GosValue) -> Option<EntIndex> {
-        self.consts.iter().enumerate().find_map(|(i, x)| {
-            if val.identical(x) {
-                Some(EntIndex::Const(i as OpIndex))
-            } else {
-                None
-            }
-        })
-    }
-
     pub fn add_local(&mut self, entity: Option<KeyData>) -> EntIndex {
         let result = self.local_alloc;
         if let Some(key) = entity {
@@ -1866,23 +1844,6 @@ impl FunctionVal {
     pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
         self.stack_temp_types.push(typ);
         self.local_zeros.push(zero)
-    }
-
-    /// add a const or get the index of a const.
-    /// when 'entity' is no none, it's a const define, so it should not be called with the
-    /// same 'entity' more than once
-    pub fn add_const(&mut self, entity: Option<KeyData>, cst: GosValue) -> EntIndex {
-        if let Some(index) = self.get_const_index(&cst) {
-            index
-        } else {
-            self.consts.push(cst);
-            let result = (self.consts.len() - 1).try_into().unwrap();
-            if let Some(key) = entity {
-                let old = self.entities.insert(key, EntIndex::Const(result));
-                assert_eq!(old, None);
-            }
-            EntIndex::Const(result)
-        }
     }
 
     pub fn try_add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {

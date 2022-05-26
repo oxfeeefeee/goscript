@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_parser::objects::*;
+use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
@@ -12,7 +12,6 @@ use std::collections::HashMap;
 pub enum Const {
     Var(GosValue),
     Function(Meta, OpIndex),
-    PkgVar(PackageKey, IdentKey),
 }
 
 pub struct Consts {
@@ -56,8 +55,18 @@ impl Consts {
         self.add(Const::Function(obj_meta, index))
     }
 
-    pub fn add_pkg_var(&mut self, pkg: PackageKey, ident: IdentKey) -> OpIndex {
-        self.add(Const::PkgVar(pkg, ident))
+    pub fn into_runtime_consts(self, ast_objs: &AstObjects, vmo: &mut VMObjects) -> Vec<GosValue> {
+        self.consts
+            .into_iter()
+            .map(|x| match x {
+                Const::Var(v) => v,
+                Const::Function(meta, i) => {
+                    let method = meta.get_method(i, &vmo.metas);
+                    let key = method.borrow().func.unwrap();
+                    GosValue::new_function(key)
+                }
+            })
+            .collect()
     }
 
     fn add(&mut self, c: Const) -> OpIndex {

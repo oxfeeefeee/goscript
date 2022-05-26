@@ -4,8 +4,8 @@
 
 #![allow(dead_code)]
 use super::branch::BranchHelper;
-use super::call::CallHelper;
 use super::codegen::CodeGen;
+use super::consts::*;
 use super::emit::{CallStyle, Emitter};
 use super::package::{PkgHelper, PkgVarPairs};
 use super::selector::*;
@@ -27,6 +27,7 @@ use std::pin::Pin;
 
 pub struct EntryGen<'a> {
     objects: Pin<Box<VMObjects>>,
+    consts: Consts,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     dummy_gcv: GcoVec,
@@ -42,6 +43,7 @@ impl<'a> EntryGen<'a> {
     pub fn new(asto: &'a AstObjects, tco: &'a TCObjects, bk: IdentKey) -> EntryGen<'a> {
         EntryGen {
             objects: Box::pin(VMObjects::new()),
+            consts: Consts::new(),
             ast_objs: asto,
             tc_objs: tco,
             dummy_gcv: GcoVec::new(),
@@ -95,7 +97,6 @@ impl<'a> EntryGen<'a> {
         let mut main_pkg_idx = None;
         for (&tcpkg, _) in checker_result.iter() {
             // create vm packages and store the indices
-            //let name = self.tc_objs.pkgs[tcpkg].name().clone().unwrap();
             let pkey = self.objects.packages.insert(PackageVal::new());
             self.packages.push(pkey);
             let index = (self.packages.len() - 1) as OpIndex;
@@ -105,8 +106,7 @@ impl<'a> EntryGen<'a> {
             }
         }
         let mut type_cache: TypeCache = HashMap::new();
-        let mut pkg_pairs = PkgVarPairs::new();
-        let mut call_helper = CallHelper::new();
+        let mut pkg_vars = PkgVarPairs::new();
         let mut branch_helper = BranchHelper::new();
         for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
             let mut pkg_helper = PkgHelper::new(
@@ -114,10 +114,11 @@ impl<'a> EntryGen<'a> {
                 self.tc_objs,
                 &self.pkg_indices,
                 &self.packages,
-                &mut pkg_pairs,
+                &mut pkg_vars,
             );
             let mut cgen = CodeGen::new(
                 &mut self.objects,
+                &mut self.consts,
                 self.ast_objs,
                 self.tc_objs,
                 &mut self.dummy_gcv,
@@ -125,7 +126,6 @@ impl<'a> EntryGen<'a> {
                 &mut type_cache,
                 &mut self.iface_selector,
                 &mut self.struct_selector,
-                &mut call_helper,
                 &mut branch_helper,
                 &mut pkg_helper,
                 self.packages[i],
@@ -138,13 +138,16 @@ impl<'a> EntryGen<'a> {
             self.packages[index as usize],
             index,
             main_ident,
-            &mut pkg_pairs,
+            &mut pkg_vars,
         );
-        pkg_pairs.patch_index(self.ast_objs, &mut self.objects);
-        call_helper.patch_call(&mut self.objects);
+        let consts = self
+            .consts
+            .into_runtime_consts(self.ast_objs, &mut self.objects);
+        pkg_vars.patch_index(self.ast_objs, &mut self.objects);
         branch_helper.patch_go_tos(&mut self.objects.functions);
         ByteCode::new(
             self.objects,
+            consts,
             self.packages,
             self.iface_selector.result(),
             self.struct_selector.result(),
