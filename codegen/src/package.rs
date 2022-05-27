@@ -85,13 +85,13 @@ impl<'a> PkgHelper<'a> {
         &mut self.vars
     }
 
-    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, func: &mut FunctionVal) {
+    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, emitter: &mut Emitter) {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         let unsafe_ = self.tc_objs.universe().unsafe_pkg();
         for key in pkg.imports().iter() {
             if key != unsafe_ {
                 let index = self.pkg_indices[key];
-                Emitter::new(func).emit_import(index, self.pkgs[index as usize], None);
+                emitter.emit_import(index, self.pkgs[index as usize], None);
             }
         }
     }

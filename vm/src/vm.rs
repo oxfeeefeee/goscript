@@ -377,6 +377,15 @@ impl<'a> Fiber<'a> {
                 //dbg!(inst_op);
                 match inst_op {
                     // desc: local
+                    // s0: local/const
+                    Opcode::LOAD => stack.set(sb + inst.d, stack.read(inst.s0, sb, consts).clone()),
+                    // desc: local
+                    // s0: local/const
+                    Opcode::STORE => stack.set(
+                        sb + inst.d,
+                        stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                    ),
+                    // desc: local
                     // s0: slice
                     // s1: index
                     Opcode::LOAD_SLICE => {
@@ -1440,6 +1449,11 @@ impl<'a> Fiber<'a> {
                             frame.pc += option_count;
                         }
                     }
+                    Opcode::ZERO_VALUE => {
+                        let m = stack.read(inst.s0, sb, consts).as_metadata();
+                        let zero_val = m.zero(&objs.metas, gcv);
+                        stack.set(inst.d + sb, zero_val);
+                    }
                     Opcode::IMPORT => {
                         let pkey = *stack.read(inst.s0, sb, consts).as_package();
                         stack.set(
@@ -1447,17 +1461,13 @@ impl<'a> Fiber<'a> {
                             GosValue::new_bool(!objs.packages[pkey].inited()),
                         );
                     }
-                    Opcode::SLICE | Opcode::SLICE_FULL => {
+                    Opcode::SLICE => {
                         let s = stack.read(inst.s0, sb, consts);
                         let begin = *stack.read(inst.s1, sb, consts).as_int();
                         frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
                         let end = *stack.read(inst_ex.s0, sb, consts).as_int();
-                        let max = if inst_op == Opcode::SLICE_FULL {
-                            *stack.read(inst_ex.s1, sb, consts).as_int()
-                        } else {
-                            -1
-                        };
+                        let max = *stack.read(inst_ex.s1, sb, consts).as_int();
                         let result = match inst.t0 {
                             ValueType::Slice => s.dispatcher_a_s().slice_slice(s, begin, end, max),
                             ValueType::String => GosValue::slice_string(s, begin, end, max),

@@ -9,8 +9,6 @@ use super::token::Token;
 pub trait ExprVisitor {
     type Result;
 
-    fn visit_expr(&mut self, expr: &Expr) -> Self::Result;
-
     fn visit_expr_ident(&mut self, this: &Expr, ident: &IdentKey) -> Self::Result;
 
     fn visit_expr_ellipsis(&mut self, this: &Expr, els: &Option<Expr>) -> Self::Result;
@@ -89,8 +87,6 @@ pub trait ExprVisitor {
 
 pub trait StmtVisitor {
     type Result;
-
-    fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Result;
 
     fn visit_decl(&mut self, decl: &Decl) -> Self::Result;
 
