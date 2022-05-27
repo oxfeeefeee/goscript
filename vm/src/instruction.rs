@@ -11,6 +11,8 @@ pub type OpIndex = i32;
 #[repr(u8)]
 pub enum Opcode {
     VOID,
+    LOAD,
+    STORE,
     LOAD_SLICE,
     STORE_SLICE,
     LOAD_ARRAY,
@@ -92,27 +94,27 @@ pub enum Opcode {
     CAST,
     TYPE_ASSERT,
     TYPE,
+    ZERO_VALUE,
 
     // built-in functinalities
-    IMPORT,     // imports a package
-    SLICE,      // for slice expressions
-    SLICE_FULL, // for full slice expressions
-    LITERAL,    // for function literal or composite literal
-    NEW,        // for built-in function new
-    MAKE,       // for built-in function make
-    COMPLEX,    // for built-in function complex
-    REAL,       // for built-in function real
-    IMAG,       // for built-in function imag
-    LEN,        // for built-in function len
-    CAP,        // for built-in function cap
-    APPEND,     // for built-in function append
-    DELETE,     // for built-in function delete
-    COPY,       // for built-in function copy
-    CLOSE,      // for built-in function close
-    PANIC,      // for built-in function panic
-    RECOVER,    // for built-in function recover
-    ASSERT,     // for built-in function assert
-    FFI,        // for built-in function native
+    IMPORT,  // imports a package
+    SLICE,   // for slice expressions
+    LITERAL, // for function literal or composite literal
+    NEW,     // for built-in function new
+    MAKE,    // for built-in function make
+    COMPLEX, // for built-in function complex
+    REAL,    // for built-in function real
+    IMAG,    // for built-in function imag
+    LEN,     // for built-in function len
+    CAP,     // for built-in function cap
+    APPEND,  // for built-in function append
+    DELETE,  // for built-in function delete
+    COPY,    // for built-in function copy
+    CLOSE,   // for built-in function close
+    PANIC,   // for built-in function panic
+    RECOVER, // for built-in function recover
+    ASSERT,  // for built-in function assert
+    FFI,     // for built-in function native
 }
 
 impl fmt::Display for Opcode {
@@ -210,9 +212,9 @@ impl Instruction {
             op1: Opcode::VOID,
             t0: t0.unwrap_or(ValueType::Void),
             t1: t1.unwrap_or(ValueType::Void),
-            d: d,
-            s0: s0,
-            s1: s1,
+            d,
+            s0,
+            s1,
         }
     }
 

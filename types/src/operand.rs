@@ -352,10 +352,6 @@ struct ExprFormater<'a, 'b> {
 impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
     type Result = fmt::Result;
 
-    fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
-        walk_expr(self, expr)
-    }
-
     fn visit_expr_ident(&mut self, _: &Expr, ident: &IdentKey) -> Self::Result {
         self.fmt_ident(ident)
     }
@@ -549,6 +545,10 @@ impl<'a, 'b> ExprVisitor for ExprFormater<'a, 'b> {
 }
 
 impl<'a, 'b> ExprFormater<'a, 'b> {
+    fn visit_expr(&mut self, expr: &Expr) -> fmt::Result {
+        walk_expr(self, expr)
+    }
+
     fn fmt_sig(&mut self, sig: &FuncType) -> fmt::Result {
         self.f.write_char('(')?;
         self.fmt_fields(&sig.params, ", ", false)?;

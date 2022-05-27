@@ -1764,72 +1764,10 @@ impl FunctionVal {
         self.pos.push(pos);
     }
 
-    /*
-    #[inline]
-    pub fn emit_inst(
-        &mut self,
-        op: Opcode,
-        types: [Option<ValueType>; 3],
-        imm: Option<OpIndex>,
-        pos: Option<usize>,
-    ) {
-        let i = Instruction::new(op, types[0], types[1], types[2], imm);
-        self.code.push(i);
-        self.pos.push(pos);
+    pub fn add_const(&mut self, entity: KeyData, index: EntIndex) {
+        let old = self.entities.insert(entity, index);
+        assert_eq!(old, None);
     }
-
-    pub fn emit_raw_inst(&mut self, u: u64, pos: Option<usize>) {
-        let i = Instruction::from_u64(u);
-        self.code.push(i);
-        self.pos.push(pos);
-    }
-
-    pub fn emit_code_with_type(&mut self, code: Opcode, t: ValueType, pos: Option<usize>) {
-        self.emit_inst(code, [Some(t), None, None], None, pos);
-    }
-
-    pub fn emit_code_with_type2(
-        &mut self,
-        code: Opcode,
-        t0: ValueType,
-        t1: Option<ValueType>,
-        pos: Option<usize>,
-    ) {
-        self.emit_inst(code, [Some(t0), t1, None], None, pos);
-    }
-
-    pub fn emit_code_with_imm(&mut self, code: Opcode, imm: OpIndex, pos: Option<usize>) {
-        self.emit_inst(code, [None, None, None], Some(imm), pos);
-    }
-
-    pub fn emit_code_with_type_imm(
-        &mut self,
-        code: Opcode,
-        t: ValueType,
-        imm: OpIndex,
-        pos: Option<usize>,
-    ) {
-        self.emit_inst(code, [Some(t), None, None], Some(imm), pos);
-    }
-
-    pub fn emit_code_with_flag_imm(
-        &mut self,
-        code: Opcode,
-        comma_ok: bool,
-        imm: OpIndex,
-        pos: Option<usize>,
-    ) {
-        let mut inst = Instruction::new(code, None, None, None, Some(imm));
-        let flag = if comma_ok { 1 } else { 0 };
-        inst.set_t2_with_index(flag);
-        self.code.push(inst);
-        self.pos.push(pos);
-    }
-
-    pub fn emit_code(&mut self, code: Opcode, pos: Option<usize>) {
-        self.emit_inst(code, [None, None, None], None, pos);
-    }
-    */
 
     pub fn add_local(&mut self, entity: Option<KeyData>) -> EntIndex {
         let result = self.local_alloc;

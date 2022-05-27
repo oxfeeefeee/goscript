@@ -31,26 +31,26 @@ use goscript_types::{
 };
 
 macro_rules! current_func_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.functions[*$owner.func_stack.last().unwrap()]
+    ($gen:ident) => {
+        &mut $gen.objects.functions[$gen.func_ctx_stack.last().unwrap().f_key]
     };
 }
 
 macro_rules! current_func {
-    ($owner:ident) => {
-        &$owner.objects.functions[*$owner.func_stack.last().unwrap()]
+    ($gen:ident) => {
+        &$gen.objects.functions[$gen.func_ctx_stack.last().unwrap().f_key]
     };
 }
 
 macro_rules! current_func_emitter {
-    ($owner:ident) => {
-        Emitter::new(current_func_mut!($owner))
+    ($gen:ident) => {
+        Emitter::new(current_func_mut!($gen), $gen.consts)
     };
 }
 
 macro_rules! use_ident_unique_key {
-    ($owner:ident, $var:expr) => {
-        $owner.t.object_use($var).data()
+    ($gen:ident, $var:expr) => {
+        $gen.t.object_use($var).data()
     };
 }
 
@@ -60,6 +60,38 @@ macro_rules! dbg_tc {
         let d = goscript_types::Displayer::new($obj, Some($self_.ast_objs), Some($self_.tc_objs));
         println!("{}", d);
     };
+}
+
+struct FuncCtx {
+    pub f_key: FunctionKey,
+    pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
+    pub max_reg_num: OpIndex,      // how many temporary spots (register) on stack needed
+}
+
+impl FuncCtx {
+    fn new(f_key: FunctionKey, tc_key: Option<TCTypeKey>) -> Self {
+        Self {
+            f_key,
+            tc_key,
+            max_reg_num: 0,
+        }
+    }
+}
+
+struct ExprCtx {
+    pub cur_reg: OpIndex,
+    pub max_reg: OpIndex,
+    pub store_to: Option<OpIndex>,
+}
+
+impl ExprCtx {
+    fn new(init_reg: OpIndex, store_to: Option<OpIndex>) -> Self {
+        Self {
+            cur_reg: init_reg,
+            max_reg: init_reg,
+            store_to,
+        }
+    }
 }
 
 /// CodeGen implements the code generation logic.
@@ -76,17 +108,17 @@ pub struct CodeGen<'a> {
     pkg_helper: &'a mut PkgHelper<'a>,
 
     pkg_key: PackageKey,
-    func_stack: Vec<FunctionKey>,
-    func_t_stack: Vec<TCTypeKey>, // for casting return values to interfaces
     blank_ident: IdentKey,
+    func_ctx_stack: Vec<FuncCtx>,
+    expr_ctx_stack: Vec<ExprCtx>,
 }
 
 impl<'a> CodeGen<'a> {
     pub fn new(
-        vmo: &'a mut VMObjects,
+        objects: &'a mut VMObjects,
         consts: &'a mut Consts,
-        asto: &'a AstObjects,
-        tco: &'a TCObjects,
+        ast_objs: &'a AstObjects,
+        tc_objs: &'a TCObjects,
         dummy_gcv: &'a mut GcoVec,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
@@ -94,24 +126,24 @@ impl<'a> CodeGen<'a> {
         struct_selector: &'a mut StructSelector,
         branch_helper: &'a mut BranchHelper,
         pkg_helper: &'a mut PkgHelper<'a>,
-        pkg: PackageKey,
-        bk: IdentKey,
+        pkg_key: PackageKey,
+        blank_ident: IdentKey,
     ) -> CodeGen<'a> {
         CodeGen {
-            objects: vmo,
-            consts: consts,
-            ast_objs: asto,
-            tc_objs: tco,
+            objects,
+            consts,
+            ast_objs,
+            tc_objs,
             dummy_gcv: dummy_gcv,
-            t: TypeLookup::new(tco, ti, type_cache),
-            iface_selector: iface_selector,
-            struct_selector: struct_selector,
-            branch_helper: branch_helper,
-            pkg_helper: pkg_helper,
-            pkg_key: pkg,
-            func_stack: Vec::new(),
-            func_t_stack: Vec::new(),
-            blank_ident: bk,
+            t: TypeLookup::new(tc_objs, ti, type_cache),
+            iface_selector,
+            struct_selector,
+            branch_helper,
+            pkg_helper,
+            pkg_key,
+            blank_ident,
+            func_ctx_stack: vec![],
+            expr_ctx_stack: vec![],
         }
     }
 
@@ -162,18 +194,21 @@ impl<'a> CodeGen<'a> {
         }
         // 2. try upvalue
         let upvalue = self
-            .func_stack
-            .clone()
+            .func_ctx_stack
             .iter()
             .skip(1) // skip package constructor
             .rev()
             .skip(1) // skip itself
-            .find_map(|ifunc| {
-                let f = &mut self.objects.functions[*ifunc];
+            .find_map(|ctx| {
+                let f = &mut self.objects.functions[ctx.f_key];
                 let index = f.entity_index(&entity_key).map(|x| *x);
                 if let Some(ind) = index {
-                    let desc =
-                        ValueDesc::new(*ifunc, ind.into(), self.t.obj_use_value_type(*ident), true);
+                    let desc = ValueDesc::new(
+                        ctx.f_key,
+                        ind.into(),
+                        self.t.obj_use_value_type(*ident),
+                        true,
+                    );
                     Some(desc)
                 } else {
                     None
@@ -538,12 +573,12 @@ impl<'a> CodeGen<'a> {
                 let pos = Some(*p);
                 match l {
                     LeftHandSide::Primitive(_) => {
-                        let fkey = self.func_stack.last().unwrap();
+                        let fkey = self.func_ctx_stack.last().unwrap().f_key;
                         current_func_emitter!(self).emit_store(
                             l,
                             rhs_index,
                             None,
-                            Some((self.pkg_helper.pairs_mut(), *fkey)),
+                            Some((self.pkg_helper.pairs_mut(), fkey)),
                             typ,
                             pos,
                         );
@@ -634,12 +669,12 @@ impl<'a> CodeGen<'a> {
                 // why no magic number?
                 // local index is resolved in gen_assign
                 let mut emitter = current_func_emitter!(self);
-                let fkey = self.func_stack.last().unwrap();
+                let fkey = self.func_ctx_stack.last().unwrap().f_key;
                 emitter.emit_store(
                     left,
                     -1,
                     Some(op),
-                    Some((self.pkg_helper.pairs_mut(), *fkey)),
+                    Some((self.pkg_helper.pairs_mut(), fkey)),
                     typ,
                     pos,
                 );
@@ -766,7 +801,7 @@ impl<'a> CodeGen<'a> {
             FuncFlag::Default,
         );
         let fkey = *f.as_function();
-        let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
+        let mut emitter = Emitter::new(&mut self.objects.functions[fkey], self.consts);
         if let Some(fl) = &typ.results {
             emitter.add_params(&fl, self.ast_objs, &self.t);
         }
@@ -778,17 +813,15 @@ impl<'a> CodeGen<'a> {
             }
             None => emitter.add_params(&typ.params, self.ast_objs, &self.t),
         };
-        self.func_stack.push(fkey);
-        self.func_t_stack.push(tc_type);
+        self.func_ctx_stack.push(FuncCtx::new(fkey, Some(tc_type)));
         // process function body
         self.visit_stmt_block(body);
 
         let func = &mut self.objects.functions[fkey];
         // it will not be executed if it's redundant
-        Emitter::new(func).emit_return(None, Some(body.r_brace));
+        Emitter::new(func, self.consts).emit_return(None, Some(body.r_brace));
 
-        self.func_stack.pop();
-        self.func_t_stack.pop();
+        self.func_ctx_stack.pop();
         fkey
     }
 
@@ -1209,8 +1242,12 @@ impl<'a> CodeGen<'a> {
                         let entity_key = use_ident_unique_key!(self, *ikey);
                         let func = current_func_mut!(self);
                         let ind = *func.entity_index(&entity_key).unwrap();
-                        let desc =
-                            ValueDesc::new(*self.func_stack.last().unwrap(), ind.into(), t, false);
+                        let desc = ValueDesc::new(
+                            self.func_ctx_stack.last().unwrap().f_key,
+                            ind.into(),
+                            t,
+                            false,
+                        );
                         if !func.is_ctor() {
                             let index = func.try_add_upvalue(&entity_key, desc);
                             func.emit_inst(
@@ -1237,9 +1274,9 @@ impl<'a> CodeGen<'a> {
                         let func = current_func_mut!(self);
                         func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
                         func.emit_raw_inst(key_to_u64(self.pkg_key), pos);
-                        let fkey = self.func_stack.last().unwrap();
+                        let fkey = self.func_ctx_stack.last().unwrap().f_key;
                         let i = current_func!(self).next_code_index() - 2;
-                        self.pkg_helper.add_pair(pkg, ident.into(), *fkey, i, false);
+                        self.pkg_helper.add_pair(pkg, ident.into(), fkey, i, false);
                     }
                     _ => unreachable!(),
                 }
@@ -1265,9 +1302,9 @@ impl<'a> CodeGen<'a> {
                     let func = current_func_mut!(self);
                     func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
                     func.emit_raw_inst(key_to_u64(pkey), pos);
-                    let fkey = self.func_stack.last().unwrap();
+                    let fkey = self.func_ctx_stack.last().unwrap().f_key;
                     let i = current_func!(self).next_code_index() - 2;
-                    self.pkg_helper.add_pair(pkey, sexpr.sel, *fkey, i, false);
+                    self.pkg_helper.add_pair(pkey, sexpr.sel, fkey, i, false);
                 }
                 None => {
                     self.visit_expr(&sexpr.expr);
@@ -1408,12 +1445,13 @@ impl<'a> CodeGen<'a> {
             ValueType::Closure,
         );
         self.pkg_key = pkey;
-        self.func_stack.push(fkey);
+        self.func_ctx_stack.push(FuncCtx::new(fkey, None));
 
         let (names, vars) = self.pkg_helper.sort_var_decls(files, self.t.type_info());
         self.add_pkg_var_member(pkey, &names);
 
-        self.pkg_helper.gen_imports(tcpkg, current_func_mut!(self));
+        self.pkg_helper
+            .gen_imports(tcpkg, &mut current_func_emitter!(self));
 
         for f in files.iter() {
             for d in f.decls.iter() {
@@ -1424,33 +1462,52 @@ impl<'a> CodeGen<'a> {
             self.gen_def_var(v);
         }
 
-        let mut emitter = Emitter::new(&mut self.objects.functions[fkey]);
+        let mut emitter = Emitter::new(&mut self.objects.functions[fkey], self.consts);
         emitter.emit_return(Some(index), None);
-        self.func_stack.pop();
+        self.func_ctx_stack.pop();
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) {
+        walk_stmt(self, stmt)
+    }
+
+    fn visit_expr(&mut self, expr: &Expr, cur_reg: OpIndex, store_to: Option<OpIndex>) {
+        self.push_expr_ctx(cur_reg, store_to);
+        if let Some(mode) = self.t.try_expr_mode(expr) {
+            if let OperandMode::Constant(_) = mode {
+                self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
+                self.pop_expr_ctx();
+                return;
+            }
+        }
+        walk_expr(self, expr);
+        self.pop_expr_ctx();
+    }
+
+    fn push_expr_ctx(&mut self, cur_reg: OpIndex, store_to: Option<OpIndex>) {
+        self.expr_ctx_stack.push(ExprCtx::new(cur_reg, store_to));
+    }
+
+    fn pop_expr_ctx(&mut self) {
+        let ctx = self.expr_ctx_stack.pop().unwrap();
+        let func_ctx = self.func_ctx_stack.last_mut().unwrap();
+        if func_ctx.max_reg_num < ctx.max_reg {
+            func_ctx.max_reg_num = ctx.max_reg
+        }
     }
 }
 
 impl<'a> ExprVisitor for CodeGen<'a> {
     type Result = ();
 
-    fn visit_expr(&mut self, expr: &Expr) {
-        if let Some(mode) = self.t.try_expr_mode(expr) {
-            if let OperandMode::Constant(_) = mode {
-                self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
-                return;
-            }
-        }
-        walk_expr(self, expr);
-    }
-
     fn visit_expr_ident(&mut self, expr: &Expr, ident: &IdentKey) {
         let index = self.resolve_any_ident(ident, Some(expr));
         let t = self.t.obj_use_value_type(*ident);
-        let fkey = self.func_stack.last().unwrap();
+        let fkey = self.func_ctx_stack.last().unwrap().f_key;
         let p = Some(self.ast_objs.idents[*ident].pos);
         current_func_emitter!(self).emit_load(
             index,
-            Some((self.pkg_helper.pairs_mut(), *fkey)),
+            Some((self.pkg_helper.pairs_mut(), fkey)),
             t,
             p,
         );
@@ -1488,10 +1545,10 @@ impl<'a> ExprVisitor for CodeGen<'a> {
         if let Some(key) = self.t.try_pkg_key(expr) {
             let pkg = self.pkg_helper.get_runtime_key(key);
             let t = self.t.obj_use_value_type(*ident);
-            let fkey = self.func_stack.last().unwrap();
+            let fkey = self.func_ctx_stack.last().unwrap().f_key;
             current_func_emitter!(self).emit_load(
                 EntIndex::PackageMember(pkg, (*ident).data()),
-                Some((self.pkg_helper.pairs_mut(), *fkey)),
+                Some((self.pkg_helper.pairs_mut(), fkey)),
                 t,
                 pos,
             );
@@ -1551,7 +1608,7 @@ impl<'a> ExprVisitor for CodeGen<'a> {
                     func.emit_code_with_type(Opcode::BIND_METHOD, final_lhs_type, pos);
                     let point = func.next_code_index();
                     func.emit_raw_inst(0, pos); // placeholder for FunctionKey
-                    let fkey = *self.func_stack.last().unwrap();
+                    let fkey = self.func_ctx_stack.last().unwrap().f_key;
                 }
             }
             SelectionType::NonMethod => {
@@ -1735,10 +1792,6 @@ impl<'a> ExprVisitor for CodeGen<'a> {
 impl<'a> StmtVisitor for CodeGen<'a> {
     type Result = ();
 
-    fn visit_stmt(&mut self, stmt: &Stmt) {
-        walk_stmt(self, stmt)
-    }
-
     fn visit_decl(&mut self, decl: &Decl) {
         walk_decl(self, decl)
     }
@@ -1872,7 +1925,7 @@ impl<'a> StmtVisitor for CodeGen<'a> {
             let return_types = self.get_exprs_final_types(&rstmt.results);
             let types = self
                 .t
-                .sig_returns_tc_types(*self.func_t_stack.last().unwrap());
+                .sig_returns_tc_types(self.func_ctx_stack.last().unwrap().tc_key.unwrap());
             assert_eq!(return_types.len(), types.len());
             let count: OpIndex = return_types.len() as OpIndex;
             let types: Vec<ValueType> = return_types
@@ -1911,12 +1964,12 @@ impl<'a> StmtVisitor for CodeGen<'a> {
                 );
             }
             Token::GOTO => {
-                let fkey = self.func_stack.last().unwrap();
+                let fkey = self.func_ctx_stack.last().unwrap().f_key;
                 let label = bstmt.label.unwrap();
                 let entity = use_ident_unique_key!(self, label);
                 self.branch_helper.go_to(
                     &mut self.objects.functions,
-                    *fkey,
+                    fkey,
                     entity,
                     bstmt.token_pos,
                 );

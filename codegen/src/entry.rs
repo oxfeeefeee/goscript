@@ -74,7 +74,7 @@ impl<'a> EntryGen<'a> {
         );
         let fkey = *f.as_function();
         let func = &mut self.objects.functions[fkey];
-        let mut emitter = Emitter::new(func);
+        let mut emitter = Emitter::new(func, &mut self.consts);
         emitter.emit_import(index, pkg, None);
         emitter.emit_load(
             EntIndex::PackageMember(pkg, main_ident.data()),
