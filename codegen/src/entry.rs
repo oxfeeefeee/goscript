@@ -6,8 +6,8 @@
 use super::branch::BranchHelper;
 use super::codegen::CodeGen;
 use super::consts::*;
-use super::emit::{CallStyle, Emitter};
-use super::package::{PkgHelper, PkgVarPairs};
+use super::context::*;
+use super::package::PkgHelper;
 use super::selector::*;
 use super::types::TypeCache;
 use goscript_parser::ast::Ident;
@@ -31,11 +31,10 @@ pub struct EntryGen<'a> {
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     dummy_gcv: GcoVec,
-    packages: Vec<PackageKey>,
     iface_selector: IfaceSelector,
     struct_selector: StructSelector,
-    // pkg_indices maps TCPackageKey to the index (in the generated code) of the package
-    pkg_indices: HashMap<TCPackageKey, OpIndex>,
+    // pkg_map maps TCPackageKey to runtime PackageKey
+    pkg_map: HashMap<TCPackageKey, PackageKey>,
     blank_ident: IdentKey,
 }
 
@@ -47,22 +46,15 @@ impl<'a> EntryGen<'a> {
             ast_objs: asto,
             tc_objs: tco,
             dummy_gcv: GcoVec::new(),
-            packages: Vec::new(),
             iface_selector: IfaceSelector::new(),
             struct_selector: StructSelector::new(),
-            pkg_indices: HashMap::new(),
+            pkg_map: HashMap::new(),
             blank_ident: bk,
         }
     }
 
     // generate the entry function for ByteCode
-    fn gen_entry_func(
-        &mut self,
-        pkg: PackageKey,
-        index: OpIndex,
-        main_ident: IdentKey,
-        pairs: &mut PkgVarPairs,
-    ) -> FunctionKey {
+    fn gen_entry_func(&mut self, pkg: PackageKey, main_ident: IdentKey) -> FunctionKey {
         // import the 0th pkg and call the main function of the pkg
         let fmeta = self.objects.s_meta.default_sig;
         let f = GosValue::function_with_meta(
@@ -73,9 +65,9 @@ impl<'a> EntryGen<'a> {
             FuncFlag::Default,
         );
         let fkey = *f.as_function();
-        let func = &mut self.objects.functions[fkey];
-        let mut emitter = Emitter::new(func, &mut self.consts);
-        emitter.emit_import(index, pkg, None);
+        let mut emitter = FuncCtx::new(fkey, None, &self.consts);
+        emitter.emit_import(pkg, None);
+
         emitter.emit_load(
             EntIndex::PackageMember(pkg, main_ident.data()),
             Some((pairs, fkey)),
@@ -94,31 +86,17 @@ impl<'a> EntryGen<'a> {
         main_pkg: TCPackageKey,
         main_ident: IdentKey,
     ) -> ByteCode {
-        let mut main_pkg_idx = None;
         for (&tcpkg, _) in checker_result.iter() {
-            // create vm packages and store the indices
             let pkey = self.objects.packages.insert(PackageVal::new());
-            self.packages.push(pkey);
-            let index = (self.packages.len() - 1) as OpIndex;
-            self.pkg_indices.insert(tcpkg, index);
-            if tcpkg == main_pkg {
-                main_pkg_idx = Some(index);
-            }
+            self.pkg_map.insert(tcpkg, pkey);
         }
         let mut type_cache: TypeCache = HashMap::new();
-        let mut pkg_vars = PkgVarPairs::new();
         let mut branch_helper = BranchHelper::new();
-        for (i, (tcpkg, ti)) in checker_result.iter().enumerate() {
-            let mut pkg_helper = PkgHelper::new(
-                self.ast_objs,
-                self.tc_objs,
-                &self.pkg_indices,
-                &self.packages,
-                &mut pkg_vars,
-            );
+        for (tcpkg, ti) in checker_result.iter() {
+            let mut pkg_helper = PkgHelper::new(self.ast_objs, self.tc_objs, &self.pkg_map);
             let mut cgen = CodeGen::new(
                 &mut self.objects,
-                &mut self.consts,
+                &self.consts,
                 self.ast_objs,
                 self.tc_objs,
                 &mut self.dummy_gcv,
@@ -128,27 +106,19 @@ impl<'a> EntryGen<'a> {
                 &mut self.struct_selector,
                 &mut branch_helper,
                 &mut pkg_helper,
-                self.packages[i],
+                self.pkg_map[tcpkg],
                 self.blank_ident,
             );
-            cgen.gen_with_files(&ti.ast_files, *tcpkg, i as OpIndex);
+            cgen.gen_with_files(&ti.ast_files, *tcpkg);
         }
-        let index = main_pkg_idx.unwrap();
-        let entry = self.gen_entry_func(
-            self.packages[index as usize],
-            index,
-            main_ident,
-            &mut pkg_vars,
-        );
+        let entry = self.gen_entry_func(self.pkg_map[&main_pkg], main_ident);
         let consts = self
             .consts
             .into_runtime_consts(self.ast_objs, &mut self.objects);
-        pkg_vars.patch_index(self.ast_objs, &mut self.objects);
         branch_helper.patch_go_tos(&mut self.objects.functions);
         ByteCode::new(
             self.objects,
             consts,
-            self.packages,
             self.iface_selector.result(),
             self.struct_selector.result(),
             entry,

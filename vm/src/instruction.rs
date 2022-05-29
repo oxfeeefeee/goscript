@@ -11,8 +11,8 @@ pub type OpIndex = i32;
 #[repr(u8)]
 pub enum Opcode {
     VOID,
-    LOAD,
-    STORE,
+
+    ASSIGN,
     LOAD_SLICE,
     STORE_SLICE,
     LOAD_ARRAY,
@@ -27,8 +27,8 @@ pub enum Opcode {
     STORE_PKG,
     LOAD_POINTER,
     STORE_POINTER,
-    LOAD_UPVALUE,
-    STORE_UPVALUE,
+    LOAD_UP_VALUE,
+    STORE_UP_VALUE,
 
     // arithmetic, logical, ref, arrow
     ADD,            // +
@@ -184,48 +184,7 @@ pub struct Instruction {
     pub s1: OpIndex,
 }
 
-impl Default for Instruction {
-    fn default() -> Self {
-        Instruction {
-            op0: Opcode::VOID,
-            op1: Opcode::VOID,
-            t0: ValueType::Void,
-            t1: ValueType::Void,
-            d: 0,
-            s0: 0,
-            s1: 0,
-        }
-    }
-}
-
 impl Instruction {
-    pub fn with_op_t_index(
-        op: Opcode,
-        t0: Option<ValueType>,
-        t1: Option<ValueType>,
-        d: OpIndex,
-        s0: OpIndex,
-        s1: OpIndex,
-    ) -> Self {
-        Self {
-            op0: op,
-            op1: Opcode::VOID,
-            t0: t0.unwrap_or(ValueType::Void),
-            t1: t1.unwrap_or(ValueType::Void),
-            d,
-            s0,
-            s1,
-        }
-    }
-
-    pub fn with_op_index(op: Opcode, d: OpIndex, s0: OpIndex, s1: OpIndex) -> Self {
-        Self::with_op_t_index(op, None, None, d, s0, s1)
-    }
-
-    pub fn set_op1_with_t(&mut self, t: ValueType) {
-        self.op1 = unsafe { std::mem::transmute(t) }
-    }
-
     pub fn op1_as_t(&self) -> ValueType {
         unsafe { std::mem::transmute(self.op1) }
     }

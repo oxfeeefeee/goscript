@@ -11,13 +11,11 @@ use super::metadata::*;
 use super::stack::Stack;
 use super::value::*;
 use crate::value::GosElem;
-use slotmap::{new_key_type, DenseSlotMap, KeyData};
+use slotmap::{new_key_type, DenseSlotMap};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::fmt::Write;
 use std::fmt::{self, Display};
 use std::hash::{Hash, Hasher};
@@ -1548,12 +1546,12 @@ impl ClosureObj {
 /// vars, funcs declared in a package
 #[derive(Clone, Debug)]
 pub struct PackageVal {
-    members: Vec<Rc<RefCell<GosValue>>>, // imports, const, var, func are all stored here
+    members: Vec<RefCell<GosValue>>, // imports, const, var, func are all stored here
     member_types: Vec<ValueType>,
     member_indices: HashMap<String, OpIndex>,
     init_funcs: Vec<GosValue>,
     // maps func_member_index of the constructor to pkg_member_index
-    var_mapping: Option<HashMap<OpIndex, OpIndex>>,
+    var_mapping: RefCell<Option<HashMap<OpIndex, OpIndex>>>,
 }
 
 impl PackageVal {
@@ -1563,12 +1561,12 @@ impl PackageVal {
             member_types: vec![],
             member_indices: HashMap::new(),
             init_funcs: vec![],
-            var_mapping: Some(HashMap::new()),
+            var_mapping: RefCell::new(Some(HashMap::new())),
         }
     }
 
     pub fn add_member(&mut self, name: String, val: GosValue, typ: ValueType) -> OpIndex {
-        self.members.push(Rc::new(RefCell::new(val)));
+        self.members.push(RefCell::new(val));
         self.member_types.push(typ);
         let index = (self.members.len() - 1) as OpIndex;
         self.member_indices.insert(name, index);
@@ -1577,7 +1575,11 @@ impl PackageVal {
 
     pub fn add_var_mapping(&mut self, name: String, fn_index: OpIndex) -> OpIndex {
         let index = *self.get_member_index(&name).unwrap();
-        self.var_mapping.as_mut().unwrap().insert(fn_index, index);
+        self.var_mapping
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .insert(fn_index, index);
         index
     }
 
@@ -1590,11 +1592,7 @@ impl PackageVal {
     }
 
     pub fn inited(&self) -> bool {
-        self.var_mapping.is_none()
-    }
-
-    pub fn set_inited(&mut self) {
-        self.var_mapping = None
+        self.var_mapping.borrow().is_none()
     }
 
     #[inline]
@@ -1614,38 +1612,18 @@ impl PackageVal {
 
     #[inline]
     pub fn init_vars(&self, vals: Vec<GosValue>) {
-        let mapping = self.var_mapping.as_ref().unwrap();
+        let mut borrow = self.var_mapping.borrow_mut();
+        let mapping = borrow.as_ref().unwrap();
         for (i, v) in vals.into_iter().enumerate() {
             let vi = mapping[&(i as OpIndex)];
             *self.member_mut(vi) = v;
         }
+        *borrow = None;
     }
 }
 
 // ----------------------------------------------------------------------------
 // FunctionVal
-
-/// EntIndex is for addressing a variable in the scope of a function
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum EntIndex {
-    Const(OpIndex),
-    LocalVar(OpIndex),
-    UpValue(OpIndex),
-    PackageMember(PackageKey, KeyData),
-    Blank,
-}
-
-impl From<EntIndex> for OpIndex {
-    fn from(t: EntIndex) -> OpIndex {
-        match t {
-            EntIndex::Const(i) => i,
-            EntIndex::LocalVar(i) => i,
-            EntIndex::UpValue(i) => i,
-            EntIndex::PackageMember(_, _) => unreachable!(),
-            EntIndex::Blank => unreachable!(),
-        }
-    }
-}
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum FuncFlag {
@@ -1659,18 +1637,14 @@ pub enum FuncFlag {
 pub struct FunctionVal {
     pub package: PackageKey,
     pub meta: Meta,
-    code: Vec<Instruction>,
-    pos: Vec<Option<usize>>,
-    pub up_ptrs: Vec<ValueDesc>,
-
+    pub flag: FuncFlag,
     pub stack_temp_types: Vec<ValueType>,
     pub ret_zeros: Vec<GosValue>,
-    pub local_zeros: Vec<GosValue>,
-    pub flag: FuncFlag,
 
-    entities: HashMap<KeyData, EntIndex>,
-    uv_entities: HashMap<KeyData, EntIndex>,
-    local_alloc: OpIndex,
+    pub code: Vec<Instruction>,
+    pub pos: Vec<Option<usize>>,
+    pub up_ptrs: Vec<ValueDesc>,
+    pub local_zeros: Vec<GosValue>,
 }
 
 impl FunctionVal {
@@ -1682,39 +1656,20 @@ impl FunctionVal {
         flag: FuncFlag,
     ) -> FunctionVal {
         let s = &metas[meta.key].as_signature();
-        let returns = s.results.iter().map(|m| m.zero(metas, gcv)).collect();
+        let ret_zeros = s.results.iter().map(|m| m.zero(metas, gcv)).collect();
         let mut p_types: Vec<ValueType> = s.recv.map_or(vec![], |m| vec![m.value_type(&metas)]);
         p_types.append(&mut s.params.iter().map(|m| m.value_type(&metas)).collect());
-
         FunctionVal {
-            package: package,
-            meta: meta,
+            package,
+            meta,
+            flag,
+            stack_temp_types: p_types,
+            ret_zeros,
             code: Vec::new(),
             pos: Vec::new(),
             up_ptrs: Vec::new(),
-            stack_temp_types: p_types,
-            ret_zeros: returns,
             local_zeros: Vec::new(),
-            flag: flag,
-            entities: HashMap::new(),
-            uv_entities: HashMap::new(),
-            local_alloc: 0,
         }
-    }
-
-    #[inline]
-    pub fn code(&self) -> &Vec<Instruction> {
-        &self.code
-    }
-
-    #[inline]
-    pub fn instruction_mut(&mut self, i: usize) -> &mut Instruction {
-        self.code.get_mut(i).unwrap()
-    }
-
-    #[inline]
-    pub fn pos(&self) -> &Vec<Option<usize>> {
-        &self.pos
     }
 
     #[inline]
@@ -1737,65 +1692,38 @@ impl FunctionVal {
         self.flag == FuncFlag::PkgCtor
     }
 
-    #[inline]
-    pub fn local_count(&self) -> usize {
-        self.local_alloc as usize - self.param_count() - self.ret_count()
-    }
+    // #[inline]
+    // pub fn local_count(&self) -> usize {
+    //     self.local_alloc as usize - self.param_count() - self.ret_count()
+    // }
 
-    #[inline]
-    pub fn entity_index(&self, entity: &KeyData) -> Option<&EntIndex> {
-        self.entities.get(entity)
-    }
+    // #[inline]
+    // pub fn offset(&self, loc: usize) -> OpIndex {
+    //     // todo: don't crash if OpIndex overflows
+    //     OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
+    // }
 
-    #[inline]
-    pub fn offset(&self, loc: usize) -> OpIndex {
-        // todo: don't crash if OpIndex overflows
-        OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
-    }
+    // #[inline]
+    // pub fn next_code_index(&self) -> usize {
+    //     self.code.len()
+    // }
 
-    #[inline]
-    pub fn next_code_index(&self) -> usize {
-        self.code.len()
-    }
+    // #[inline]
+    // pub fn add_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
+    //     self.code.push(i);
+    //     self.pos.push(pos);
+    // }
 
-    #[inline]
-    pub fn add_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
-        self.code.push(i);
-        self.pos.push(pos);
-    }
+    // pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
+    //     self.stack_temp_types.push(typ);
+    //     self.local_zeros.push(zero)
+    // }
 
-    pub fn add_const(&mut self, entity: KeyData, index: EntIndex) {
-        let old = self.entities.insert(entity, index);
-        assert_eq!(old, None);
-    }
-
-    pub fn add_local(&mut self, entity: Option<KeyData>) -> EntIndex {
-        let result = self.local_alloc;
-        if let Some(key) = entity {
-            let old = self.entities.insert(key, EntIndex::LocalVar(result));
-            assert_eq!(old, None);
-        };
-        self.local_alloc += 1;
-        EntIndex::LocalVar(result)
-    }
-
-    pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
-        self.stack_temp_types.push(typ);
-        self.local_zeros.push(zero)
-    }
-
-    pub fn try_add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
-        match self.uv_entities.get(entity) {
-            Some(i) => *i,
-            None => self.add_upvalue(entity, uv),
-        }
-    }
-
-    fn add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
-        self.up_ptrs.push(uv);
-        let i = (self.up_ptrs.len() - 1).try_into().unwrap();
-        let et = EntIndex::UpValue(i);
-        self.uv_entities.insert(*entity, et);
-        et
-    }
+    // fn add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
+    //     self.up_ptrs.push(uv);
+    //     let i = (self.up_ptrs.len() - 1).try_into().unwrap();
+    //     let et = EntIndex::UpValue(i);
+    //     self.uv_entities.insert(*entity, et);
+    //     et
+    // }
 }

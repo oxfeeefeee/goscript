@@ -62,42 +62,10 @@ macro_rules! dbg_tc {
     };
 }
 
-struct FuncCtx {
-    pub f_key: FunctionKey,
-    pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
-    pub max_reg_num: OpIndex,      // how many temporary spots (register) on stack needed
-}
-
-impl FuncCtx {
-    fn new(f_key: FunctionKey, tc_key: Option<TCTypeKey>) -> Self {
-        Self {
-            f_key,
-            tc_key,
-            max_reg_num: 0,
-        }
-    }
-}
-
-struct ExprCtx {
-    pub cur_reg: OpIndex,
-    pub max_reg: OpIndex,
-    pub store_to: Option<OpIndex>,
-}
-
-impl ExprCtx {
-    fn new(init_reg: OpIndex, store_to: Option<OpIndex>) -> Self {
-        Self {
-            cur_reg: init_reg,
-            max_reg: init_reg,
-            store_to,
-        }
-    }
-}
-
 /// CodeGen implements the code generation logic.
 pub struct CodeGen<'a> {
     objects: &'a mut VMObjects,
-    consts: &'a mut Consts,
+    consts: &'a Consts,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
     dummy_gcv: &'a mut GcoVec,
@@ -116,7 +84,7 @@ pub struct CodeGen<'a> {
 impl<'a> CodeGen<'a> {
     pub fn new(
         objects: &'a mut VMObjects,
-        consts: &'a mut Consts,
+        consts: &'a Consts,
         ast_objs: &'a AstObjects,
         tc_objs: &'a TCObjects,
         dummy_gcv: &'a mut GcoVec,
@@ -785,11 +753,11 @@ impl<'a> CodeGen<'a> {
     fn gen_func_def(
         &mut self,
         tc_type: TCTypeKey, // Meta,
-        fkey: FuncTypeKey,
+        f_type_key: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
     ) -> FunctionKey {
-        let typ = &self.ast_objs.ftypes[fkey];
+        let typ = &self.ast_objs.ftypes[f_type_key];
         let fmeta = self
             .t
             .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
@@ -1427,7 +1395,7 @@ impl<'a> CodeGen<'a> {
         on_stack_types
     }
 
-    pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey, index: OpIndex) {
+    pub fn gen_with_files(&mut self, files: &Vec<File>, tcpkg: TCPackageKey) {
         let pkey = self.pkg_key;
         let fmeta = self.objects.s_meta.default_sig;
         let f = GosValue::function_with_meta(
@@ -1463,7 +1431,7 @@ impl<'a> CodeGen<'a> {
         }
 
         let mut emitter = Emitter::new(&mut self.objects.functions[fkey], self.consts);
-        emitter.emit_return(Some(index), None);
+        emitter.emit_return(Some(self.pkg_key), None);
         self.func_ctx_stack.pop();
     }
 

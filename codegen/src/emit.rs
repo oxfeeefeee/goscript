@@ -19,71 +19,6 @@ pub enum CallStyle {
     Defer,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct IndexLhsInfo {
-    pub index: i8,
-    pub imm_index: Option<OpIndex>, // for IMM instructions
-    pub t1: ValueType,
-    pub t2: Option<ValueType>, // for non-IMM instructions
-}
-
-impl IndexLhsInfo {
-    pub fn new(
-        index: i8,
-        imm_index: Option<OpIndex>,
-        t1: ValueType,
-        t2: Option<ValueType>,
-    ) -> IndexLhsInfo {
-        IndexLhsInfo {
-            index: index,
-            imm_index: imm_index,
-            t1: t1,
-            t2: t2,
-        }
-    }
-
-    pub fn clone_with_index(&self, i: OpIndex) -> IndexLhsInfo {
-        let mut v = self.clone();
-        v.index = i8::try_from(i).unwrap();
-        v
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct SelLhsInfo {
-    pub index: i8,
-    pub field_indices: Vec<usize>, // for IMM instructions
-    pub t1: ValueType,
-}
-
-impl SelLhsInfo {
-    pub fn new(index: i8, field_indices: Vec<usize>, t1: ValueType) -> SelLhsInfo {
-        SelLhsInfo {
-            index: index,
-            field_indices: field_indices,
-            t1: t1,
-        }
-    }
-
-    pub fn clone_with_index(&self, i: OpIndex) -> SelLhsInfo {
-        let mut v = self.clone();
-        v.index = i8::try_from(i).unwrap();
-        v
-    }
-}
-
-/// LeftHandSide represents the left hand side of an assign stmt
-/// Primitive stores index of lhs variable
-/// IndexSelExpr stores the info of index or selection lhs
-/// Deref stores the index of lhs on the stack
-#[derive(Clone, Debug)]
-pub enum LeftHandSide {
-    Primitive(EntIndex),
-    IndexExpr(IndexLhsInfo),
-    SelExpr(SelLhsInfo),
-    Deref(OpIndex),
-}
-
 pub enum RightHandSide<'a> {
     Nothing,
     Values(&'a Vec<Expr>),
@@ -93,11 +28,11 @@ pub enum RightHandSide<'a> {
 
 pub struct Emitter<'a> {
     pub f: &'a mut FunctionVal,
-    consts: &'a mut Consts,
+    consts: &'a Consts,
 }
 
 impl<'a> Emitter<'a> {
-    pub fn new(f: &'a mut FunctionVal, consts: &'a mut Consts) -> Emitter<'a> {
+    pub fn new(f: &'a mut FunctionVal, consts: &'a Consts) -> Emitter<'a> {
         Emitter { f, consts }
     }
 
@@ -129,6 +64,70 @@ impl<'a> Emitter<'a> {
                 }
             })
             .sum()
+    }
+
+    pub fn emit_pre_call(&mut self, stack_base: OpIndex, param_count: OpIndex, pos: Option<usize>) {
+        let inst = Instruction::with_op_index(Opcode::PRE_CALL, 0, stack_base, param_count);
+        self.f.add_inst_pos(inst, pos);
+    }
+
+    pub fn emit_call(&mut self, style: CallStyle, pos: Option<usize>) {
+        let flag = match style {
+            CallStyle::Default => ValueType::Void,
+            CallStyle::Async => ValueType::FlagA,
+            CallStyle::Defer => ValueType::FlagB,
+        };
+        let inst = Instruction::with_op_t_index(Opcode::CALL, Some(flag), None, 0, 0, 0);
+        self.f.add_inst_pos(inst, pos);
+    }
+
+    pub fn emit_return(&mut self, pkg: Option<PackageKey>, pos: Option<usize>) {
+        let flag = match self.f.flag {
+            FuncFlag::Default => ValueType::Void,
+            FuncFlag::PkgCtor => ValueType::FlagA,
+            FuncFlag::HasDefer => ValueType::FlagB,
+        };
+        let index = pkg.map(|p| self.consts.add_package(p)).unwrap_or(0);
+        //let inst = Instruction::with_op_t_index(Opcode::RETURN, Some(flag), None, index, 0, 0);
+        //self.f.add_inst_pos(inst, pos);
+    }
+
+    pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
+        // self.f
+        //     .emit_inst(Opcode::IMPORT, [None, None, None], Some(index), pos);
+        // let cd = vec![
+        //     // init package vars
+        //     Instruction::new(
+        //         Opcode::LOAD_PKG_FIELD,
+        //         Some(ValueType::Int),
+        //         None,
+        //         None,
+        //         Some(0),
+        //     ),
+        //     Instruction::from_u64(key_to_u64(pkg)),
+        //     Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
+        //     Instruction::new(Opcode::CALL, None, None, None, None),
+        //     // call init functions
+        //     Instruction::new(
+        //         Opcode::PUSH_IMM,
+        //         Some(ValueType::Int32),
+        //         None,
+        //         None,
+        //         Some(0),
+        //     ),
+        //     Instruction::new(Opcode::LOAD_PKG_INIT, None, None, None, Some(0)),
+        //     Instruction::from_u64(key_to_u64(pkg)),
+        //     Instruction::new(Opcode::JUMP_IF_NOT, None, None, None, Some(3)),
+        //     Instruction::new(Opcode::PRE_CALL, Some(ValueType::Closure), None, None, None),
+        //     Instruction::new(Opcode::CALL, None, None, None, None),
+        //     Instruction::new(Opcode::JUMP, None, None, None, Some(-6)),
+        // ];
+        // let offset = cd.len() as OpIndex;
+        // self.f
+        //     .emit_inst(Opcode::JUMP_IF_NOT, [None, None, None], Some(offset), pos);
+        // for i in cd.into_iter() {
+        //     self.f.add_inst_pos(i, pos);
+        // }
     }
 
     // #[inline]
