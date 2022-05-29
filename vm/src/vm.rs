@@ -124,7 +124,6 @@ macro_rules! unary_op {
 pub struct ByteCode {
     pub objects: Pin<Box<VMObjects>>,
     pub consts: Vec<GosValue>,
-    pub packages: Vec<PackageKey>,
     /// For calling method via interfaces
     pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
     /// For embedded fields of structs
@@ -136,7 +135,6 @@ impl ByteCode {
     pub fn new(
         objects: Pin<Box<VMObjects>>,
         consts: Vec<GosValue>,
-        packages: Vec<PackageKey>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
         indices: Vec<Vec<OpIndex>>,
         entry: FunctionKey,
@@ -149,12 +147,11 @@ impl ByteCode {
             })
             .collect();
         ByteCode {
-            objects: objects,
-            consts: consts,
-            packages: packages,
-            ifaces: ifaces,
-            indices: indices,
-            entry: entry,
+            objects,
+            consts,
+            ifaces,
+            indices,
+            entry,
         }
     }
 }
@@ -359,7 +356,7 @@ impl<'a> Fiber<'a> {
         // allocate local variables
         stack.set_vec(0, func.local_zeros.clone());
 
-        let mut code = func.code();
+        let mut code = &func.code;
 
         let mut total_inst = 0;
         //let mut stats: HashMap<Opcode, usize> = HashMap::new();
@@ -378,10 +375,7 @@ impl<'a> Fiber<'a> {
                 match inst_op {
                     // desc: local
                     // s0: local/const
-                    Opcode::LOAD => stack.set(sb + inst.d, stack.read(inst.s0, sb, consts).clone()),
-                    // desc: local
-                    // s0: local/const
-                    Opcode::STORE => stack.set(
+                    Opcode::ASSIGN => stack.set(
                         sb + inst.d,
                         stack.read(inst.s0, sb, consts).copy_semantic(gcv),
                     ),
@@ -717,12 +711,12 @@ impl<'a> Fiber<'a> {
                     }
                     // desc: local
                     // s0: upvalue
-                    Opcode::LOAD_UPVALUE => {
+                    Opcode::LOAD_UP_VALUE => {
                         let uvs = frame.var_ptrs.as_ref().unwrap();
                         let val = uvs[inst.s0 as usize].value(stack).into_owned();
                         stack.set(inst.d + sb, val);
                     }
-                    Opcode::STORE_UPVALUE => {
+                    Opcode::STORE_UP_VALUE => {
                         let uvs = frame.var_ptrs.as_ref().unwrap();
                         let uv = &uvs[inst.d as usize];
                         match inst.op1 {
@@ -921,7 +915,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::PRE_CALL => {
                         let cls = stack
-                            .read(inst.s0, sb, consts)
+                            .read(inst.d, sb, consts)
                             .as_closure()
                             .unwrap()
                             .0
@@ -985,23 +979,22 @@ impl<'a> Fiber<'a> {
                                         frame = self.frames.last_mut().unwrap();
                                         func = nfunc;
                                         sb = frame.stack_base;
-                                        code = func.code();
+                                        code = &func.code;
                                         //dbg!(&consts);
                                         //dbg!(&code);
                                         //dbg!(&stack);
-                                        debug_assert!(func.local_count() == func.local_zeros.len());
                                     }
                                     ValueType::FlagA => {
                                         // goroutine
-                                        nframe.stack_base = 0;
-                                        let begin = inst.s0 + sb;
+                                        let begin = nframe.stack_base;
                                         let end = begin + nfunc.param_types().len() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let nstack = Stack::with_vec(vec);
+                                        nframe.stack_base = 0;
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagB => {
-                                        let begin = inst.s0 + sb;
+                                        let begin = nframe.stack_base;
                                         let end = begin + nfunc.param_types().len() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let deferred = DeferredCall {
@@ -1015,7 +1008,7 @@ impl<'a> Fiber<'a> {
                             }
                             ClosureObj::Ffi(ffic) => {
                                 let ptypes = &objs.metas[ffic.meta.key].as_signature().params_type;
-                                let begin = inst.s0 + sb;
+                                let begin = nframe.stack_base;
                                 let end = begin + ptypes.len() as OpIndex;
                                 let params = stack.move_vec(begin, end);
                                 // release stack so that code in ffi can yield
@@ -1055,7 +1048,10 @@ impl<'a> Fiber<'a> {
                                 let pkey = stack.read(inst.d, sb, consts).as_package();
                                 let pkg = &objs.packages[*pkey];
                                 // the var values left on the stack are for pkg members
-                                pkg.init_vars(stack.move_vec(inst.s0 + sb, inst.s1 + sb));
+                                let begin = sb;
+                                let end =
+                                    begin + frame.func_val(objs).stack_temp_types.len() as OpIndex;
+                                pkg.init_vars(stack.move_vec(begin, end));
                                 false
                             }
                             // func with deferred calls
@@ -1067,7 +1063,9 @@ impl<'a> Fiber<'a> {
                                     frame.pc -= 1;
 
                                     let call_vec_len = call.vec.len() as OpIndex;
-                                    stack.set_vec(inst.s0 + sb, call.vec);
+                                    let new_sb =
+                                        sb + frame.func_val(objs).stack_temp_types.len() as OpIndex;
+                                    stack.set_vec(new_sb, call.vec);
                                     let nframe = call.frame;
 
                                     self.frames.push(nframe);
@@ -1076,9 +1074,8 @@ impl<'a> Fiber<'a> {
                                     let fkey = frame.func();
                                     func = &objs.functions[fkey];
                                     sb = frame.stack_base;
-                                    code = func.code();
-                                    debug_assert!(func.local_count() == func.local_zeros.len());
-                                    let index = inst.s0 + sb + call_vec_len;
+                                    code = &func.code;
+                                    let index = new_sb + call_vec_len;
                                     stack.set_vec(index, func.local_zeros.clone());
                                     continue;
                                 }
@@ -1096,9 +1093,9 @@ impl<'a> Fiber<'a> {
                             // );
 
                             frame.on_drop(&stack);
-                            let begin = inst.s0 + sb;
-                            let end =
-                                begin + frame.func_val(objs).stack_temp_types.len() as OpIndex;
+                            let func = frame.func_val(objs);
+                            let begin = sb + func.ret_count() as OpIndex;
+                            let end = begin + func.stack_temp_types.len() as OpIndex;
                             stack.move_vec(begin, end);
                         }
 
@@ -1115,7 +1112,7 @@ impl<'a> Fiber<'a> {
                         sb = frame.stack_base;
                         // restore func, consts, code
                         func = &objs.functions[frame.func()];
-                        code = func.code();
+                        code = &func.code;
 
                         if let Some(p) = &mut panic {
                             p.call_stack.push((frame.func(), frame.pc - 1));
@@ -1458,7 +1455,7 @@ impl<'a> Fiber<'a> {
                         let pkey = *stack.read(inst.s0, sb, consts).as_package();
                         stack.set(
                             inst.d + sb,
-                            GosValue::new_bool(!objs.packages[pkey].inited()),
+                            GosValue::new_bool(objs.packages[pkey].inited()),
                         );
                     }
                     Opcode::SLICE => {
@@ -1794,7 +1791,7 @@ impl<'a> Fiber<'a> {
                         if let Some(files) = self.context.fs {
                             for (fkey, pc) in p.call_stack.iter() {
                                 let func = &objs.functions[*fkey];
-                                if let Some(p) = func.pos()[*pc as usize] {
+                                if let Some(p) = func.pos[*pc as usize] {
                                     println!("{}", files.position(p).unwrap_or(FilePos::null()));
                                 } else {
                                     println!("<no debug info available>");

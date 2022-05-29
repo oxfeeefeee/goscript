@@ -2,120 +2,54 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use super::emit::Emitter;
+use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
-use goscript_vm::instruction::*;
 use goscript_vm::value::*;
-use slotmap::Key;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-pub struct PkgVarPairs {
-    data: Vec<(PackageKey, IdentKey, FunctionKey, usize, bool)>,
-}
-
-impl PkgVarPairs {
-    pub fn new() -> PkgVarPairs {
-        PkgVarPairs { data: vec![] }
-    }
-
-    /// recode information so that we can patch_index, when codegen is done
-    pub fn add_pair(
-        &mut self,
-        pkg: PackageKey,
-        var: IdentKey,
-        func: FunctionKey,
-        i: usize,
-        is_s0: bool,
-    ) {
-        self.data.push((pkg, var, func, i, is_s0));
-    }
-
-    pub fn append(&mut self, other: &mut PkgVarPairs) {
-        self.data.append(&mut other.data);
-    }
-
-    /// patch_index sets correct var index of packages to the placeholder of
-    /// previously generated code
-    pub fn patch_index(&self, ast_objs: &AstObjects, vmo: &mut VMObjects) {
-        for (pkg, var, func, i, is_s0) in self.data.iter() {
-            let pkg_val = &vmo.packages[*pkg];
-            let id = &ast_objs.idents[*var];
-            let index = pkg_val.get_member_index(&id.name).unwrap();
-            let inst = vmo.functions[*func].instruction_mut(*i);
-            if *is_s0 {
-                inst.s0 = *index;
-            } else {
-                inst.s1 = *index;
-            }
-        }
-    }
-}
 
 pub struct PkgHelper<'a> {
     tc_objs: &'a TCObjects,
     ast_objs: &'a AstObjects,
-    pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
-    pkgs: &'a Vec<PackageKey>,
-    vars: &'a mut PkgVarPairs,
+    pkg_map: &'a HashMap<TCPackageKey, PackageKey>,
 }
 
 impl<'a> PkgHelper<'a> {
     pub fn new(
         ast_objs: &'a AstObjects,
         tc_objs: &'a TCObjects,
-        pkg_indices: &'a HashMap<TCPackageKey, OpIndex>,
-        pkgs: &'a Vec<PackageKey>,
-        pkg_vars: &'a mut PkgVarPairs,
+        pkg_map: &'a HashMap<TCPackageKey, PackageKey>,
     ) -> PkgHelper<'a> {
         PkgHelper {
-            tc_objs: tc_objs,
-            ast_objs: ast_objs,
-            pkg_indices: pkg_indices,
-            pkgs: pkgs,
-            vars: pkg_vars,
+            tc_objs,
+            ast_objs,
+            pkg_map,
         }
     }
 
-    pub fn pairs_mut(&mut self) -> &mut PkgVarPairs {
-        &mut self.vars
-    }
-
-    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, emitter: &mut Emitter) {
+    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, fctx: &mut FuncCtx) {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         let unsafe_ = self.tc_objs.universe().unsafe_pkg();
-        for key in pkg.imports().iter() {
-            if key != unsafe_ {
-                let index = self.pkg_indices[key];
-                emitter.emit_import(index, self.pkgs[index as usize], None);
+        for tckey in pkg.imports().iter() {
+            if tckey != unsafe_ {
+                let key = self.pkg_map[tckey];
+                fctx.emit_import(key, None);
             }
         }
     }
 
     pub fn get_runtime_key(&self, tcpkg: TCPackageKey) -> PackageKey {
-        let index = self.pkg_indices[&tcpkg];
-        self.pkgs[index as usize]
+        self.pkg_map[&tcpkg]
     }
 
-    pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> EntIndex {
+    pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> Entry {
         let pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
-        EntIndex::PackageMember(self.get_runtime_key(pkg), ident.data())
-    }
-
-    /// recode information so that we can patch_index, when codegen is done
-    pub fn add_pair(
-        &mut self,
-        pkg: PackageKey,
-        var: IdentKey,
-        func: FunctionKey,
-        i: usize,
-        is824: bool,
-    ) {
-        self.vars.add_pair(pkg, var, func, i, is824);
+        let addr = Addr::PkgMemberIndex(self.get_runtime_key(pkg), ident);
+        Entry::Direct(addr)
     }
 
     // sort_var_decls returns all var names and sorted var decl statments

@@ -6,28 +6,29 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Const {
     Var(GosValue),
-    Function(Meta, OpIndex),
+    Function(Meta, OpIndex), // deferred resolve
 }
 
 pub struct Consts {
-    consts: Vec<Const>,
-    const_indices: HashMap<Const, OpIndex>,
+    consts: RefCell<Vec<Const>>,
+    const_indices: RefCell<HashMap<Const, OpIndex>>,
 }
 
 impl Consts {
     pub fn new() -> Consts {
         Consts {
-            consts: vec![
+            consts: RefCell::new(vec![
                 Const::Var(GosValue::new_nil(ValueType::Void)),
                 Const::Var(GosValue::new_bool(true)),
                 Const::Var(GosValue::new_bool(false)),
-            ],
-            const_indices: HashMap::new(),
+            ]),
+            const_indices: RefCell::new(HashMap::new()),
         }
     }
 
@@ -43,20 +44,25 @@ impl Consts {
         2
     }
 
-    pub fn add_const(&mut self, v: GosValue) -> OpIndex {
+    pub fn add_const(&self, v: GosValue) -> OpIndex {
         self.add(Const::Var(v))
     }
 
-    pub fn add_metadata(&mut self, meta: Meta) -> OpIndex {
+    pub fn add_metadata(&self, meta: Meta) -> OpIndex {
         self.add_const(GosValue::new_metadata(meta))
     }
 
-    pub fn add_function(&mut self, obj_meta: Meta, index: OpIndex) -> OpIndex {
+    pub fn add_package(&self, pkg: PackageKey) -> OpIndex {
+        self.add_const(GosValue::new_package(pkg))
+    }
+
+    pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> OpIndex {
         self.add(Const::Function(obj_meta, index))
     }
 
     pub fn into_runtime_consts(self, ast_objs: &AstObjects, vmo: &mut VMObjects) -> Vec<GosValue> {
         self.consts
+            .into_inner()
             .into_iter()
             .map(|x| match x {
                 Const::Var(v) => v,
@@ -69,10 +75,10 @@ impl Consts {
             .collect()
     }
 
-    fn add(&mut self, c: Const) -> OpIndex {
-        *self.const_indices.entry(c).or_insert_with(|| {
-            self.consts.push(c);
-            self.consts.len() as OpIndex - 1
+    fn add(&self, c: Const) -> OpIndex {
+        *self.const_indices.borrow_mut().entry(c).or_insert_with(|| {
+            self.consts.borrow_mut().push(c);
+            self.consts.borrow().len() as OpIndex - 1
         })
     }
 }
