@@ -913,6 +913,9 @@ impl<'a> Fiber<'a> {
                             },
                         };
                     }
+                    // d: closure
+                    // s0: next stack base
+                    // s1: param count
                     Opcode::PRE_CALL => {
                         let cls = stack
                             .read(inst.d, sb, consts)
@@ -946,6 +949,7 @@ impl<'a> Fiber<'a> {
                         let val = GosValue::slice_with_data(v, inst.t0, gcv);
                         stack.set(inst.d + sb, val);
                     }
+                    // t0: call style
                     Opcode::CALL => {
                         let mut nframe = self.next_frames.pop().unwrap();
                         let cls = nframe.closure().clone();
@@ -1233,17 +1237,19 @@ impl<'a> Fiber<'a> {
                             frame.pc += inst.s1;
                         }
                     }
+                    // load user defined init function or jump 3 if failed
                     Opcode::LOAD_PKG_INIT_FUNC => {
                         let src = stack.read(inst.s0, sb, consts);
-                        let index = inst.s1;
+                        let index = *stack.read(inst.s1, sb, consts).as_int32();
                         let pkg = &objs.packages[*src.as_package()];
-                        match pkg.init_func(index) {
+                        match pkg.get_init_func(index) {
                             Some(f) => {
-                                stack.set(inst.d + sb, GosValue::new_bool(true));
-                                stack.set(inst.d + 1 + sb, GosValue::new_int32(index + 1));
-                                stack.set(inst.d + 2 + sb, f.clone());
+                                stack.set(inst.d + sb, f.clone());
+                                stack.set(inst.s1 + sb, GosValue::new_int32(index + 1));
                             }
-                            None => stack.set(inst.d + sb, GosValue::new_bool(false)),
+                            None => {
+                                frame.pc += 3;
+                            }
                         }
                     }
                     Opcode::BIND_METHOD => {
@@ -1453,10 +1459,9 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::IMPORT => {
                         let pkey = *stack.read(inst.s0, sb, consts).as_package();
-                        stack.set(
-                            inst.d + sb,
-                            GosValue::new_bool(objs.packages[pkey].inited()),
-                        );
+                        if objs.packages[pkey].inited() {
+                            frame.pc += inst.d
+                        }
                     }
                     Opcode::SLICE => {
                         let s = stack.read(inst.s0, sb, consts);

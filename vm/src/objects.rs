@@ -1606,7 +1606,7 @@ impl PackageVal {
     }
 
     #[inline]
-    pub fn init_func(&self, i: OpIndex) -> Option<&GosValue> {
+    pub fn get_init_func(&self, i: OpIndex) -> Option<&GosValue> {
         self.init_funcs.get(i as usize)
     }
 

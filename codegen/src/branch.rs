@@ -5,22 +5,22 @@
 /// Helper for patching branch points
 ///
 ///
+use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::token::Token;
-use goscript_vm::instruction::*;
+use goscript_types::ObjKey as TCObjKey;
 use goscript_vm::value::*;
-use slotmap::KeyData;
 use std::collections::HashMap;
 
 /// branch points of break and continue
 pub struct BranchBlock {
-    points: Vec<(usize, Token, Option<KeyData>)>,
-    label: Option<KeyData>,
+    points: Vec<(usize, Token, Option<TCObjKey>)>,
+    label: Option<TCObjKey>,
     is_loop: bool,
 }
 
 impl BranchBlock {
-    pub fn new(label: Option<KeyData>, is_loop: bool) -> BranchBlock {
+    pub fn new(label: Option<TCObjKey>, is_loop: bool) -> BranchBlock {
         BranchBlock {
             points: vec![],
             label: label,
@@ -32,9 +32,8 @@ impl BranchBlock {
 /// helper for break, continue and goto
 pub struct BranchHelper {
     block_stack: Vec<BranchBlock>,
-    next_block_label: Option<KeyData>,
-    labels: HashMap<KeyData, usize>,
-    go_tos: HashMap<(FunctionKey, usize), KeyData>,
+    next_block_label: Option<TCObjKey>,
+    labels: HashMap<TCObjKey, usize>,
 }
 
 impl BranchHelper {
@@ -43,20 +42,29 @@ impl BranchHelper {
             block_stack: vec![],
             next_block_label: None,
             labels: HashMap::new(),
-            go_tos: HashMap::new(),
         }
     }
 
-    pub fn add_point(
+    pub fn labels(&self) -> &HashMap<TCObjKey, usize> {
+        &self.labels
+    }
+
+    pub fn add_label(&mut self, label: TCObjKey, offset: usize, is_breakable: bool) {
+        self.labels.insert(label, offset);
+        if is_breakable {
+            self.next_block_label = Some(label);
+        }
+    }
+
+    pub fn add_jump_point(
         &mut self,
-        func: &mut FunctionVal,
+        fctx: &mut FuncCtx,
         token: Token,
-        label: Option<KeyData>,
+        label: Option<TCObjKey>,
         pos: usize,
     ) {
-        let index = func.code().len();
-        let inst = Instruction::with_op_index(Opcode::JUMP, 0, 0, 0);
-        func.add_inst_pos(inst, Some(pos));
+        fctx.emit_jump(0, Some(pos));
+        let index = fctx.next_code_index();
         self.block_stack
             .last_mut()
             .unwrap()
@@ -64,49 +72,13 @@ impl BranchHelper {
             .push((index, token, label));
     }
 
-    pub fn add_label(&mut self, label: KeyData, offset: usize, is_breakable: bool) {
-        self.labels.insert(label, offset);
-        if is_breakable {
-            self.next_block_label = Some(label);
-        }
-    }
-
-    pub fn go_to(
-        &mut self,
-        funcs: &mut FunctionObjs,
-        fkey: FunctionKey,
-        label: KeyData,
-        pos: usize,
-    ) {
-        let func = &mut funcs[fkey];
-        let current_offset = func.code().len();
-        let jump_to = match self.labels.get(&label) {
-            Some(l_offset) => (*l_offset as OpIndex) - (current_offset as OpIndex) - 1,
-            None => {
-                self.go_tos.insert((fkey, current_offset), label);
-                0
-            }
-        };
-        let inst = Instruction::with_op_index(Opcode::JUMP, jump_to, 0, 0);
-        func.add_inst_pos(inst, Some(pos));
-    }
-
-    pub fn patch_go_tos(&self, funcs: &mut FunctionObjs) {
-        for ((fkey, patch_offset), label) in self.go_tos.iter() {
-            let func = &mut funcs[*fkey];
-            let l_offset = self.labels[label];
-            let offset = (l_offset as OpIndex) - (*patch_offset as OpIndex) - 1;
-            func.instruction_mut(*patch_offset).d = offset;
-        }
-    }
-
     pub fn enter_block(&mut self, is_loop: bool) {
         self.block_stack
             .push(BranchBlock::new(self.next_block_label.take(), is_loop))
     }
 
-    pub fn leave_block(&mut self, func: &mut FunctionVal, begin: Option<usize>) {
-        let end = func.next_code_index();
+    pub fn leave_block(&mut self, fctx: &mut FuncCtx, begin: Option<usize>) {
+        let end = fctx.next_code_index();
         let block = self.block_stack.pop().unwrap();
         for (index, token, label) in block.points.into_iter() {
             let label_match = label.is_none() || label == block.label;
@@ -119,7 +91,7 @@ impl BranchHelper {
             };
             if label_match && break_this {
                 let current_pc = index as OpIndex + 1;
-                func.instruction_mut(index).d = target.unwrap() as OpIndex - current_pc;
+                fctx.inst_mut(index).d = Addr::Imm(target.unwrap() as OpIndex - current_pc);
             } else {
                 // this break/continue tries to jump out of an outer block
                 // so we add it to outer block's jump out points
@@ -158,17 +130,15 @@ impl SwitchJumpPoints {
         self.default = Some(index)
     }
 
-    pub fn patch_case(&mut self, func: &mut FunctionVal, case: usize, loc: usize) {
+    pub fn patch_case(&mut self, func: &mut FuncCtx, case: usize, loc: usize) {
         for i in self.cases[case].iter() {
-            let imm = (loc - i) as OpIndex - 1;
-            func.instruction_mut(*i).d = imm;
+            func.inst_mut(*i).d = Addr::Imm((loc - i) as OpIndex - 1);
         }
     }
 
-    pub fn patch_default(&mut self, func: &mut FunctionVal, loc: usize) {
+    pub fn patch_default(&mut self, func: &mut FuncCtx, loc: usize) {
         if let Some(de) = self.default {
-            let imm = (loc - de) as OpIndex - 1;
-            func.instruction_mut(de).d = imm;
+            func.inst_mut(de).d = Addr::Imm((loc - de) as OpIndex - 1);
         }
     }
 }
@@ -193,7 +163,7 @@ impl SwitchHelper {
         self.ends.add_case_clause();
     }
 
-    pub fn patch_ends(&mut self, func: &mut FunctionVal, loc: usize) {
+    pub fn patch_ends(&mut self, func: &mut FuncCtx, loc: usize) {
         for i in 0..self.ends.cases.len() {
             self.ends.patch_case(func, i, loc);
         }
@@ -269,7 +239,7 @@ impl<'a> SelectHelper<'a> {
         comm.end = end;
     }
 
-    pub fn emit_select(&mut self, func: &mut FunctionVal) {
+    pub fn emit_select(&mut self, func: &mut FuncCtx) {
         self.select_offset = func.next_code_index();
         for comm in self.comms.iter() {
             let (flag, t) = match &comm.typ {
@@ -279,14 +249,14 @@ impl<'a> SelectHelper<'a> {
                 CommType::RecvCommaOk(_) => (ValueType::FlagD, None),
                 CommType::Default => (ValueType::FlagE, None),
             };
-            func.add_inst_pos(
-                Instruction::with_op_t_index(Opcode::SELECT, Some(flag), t, 0, 0, 0),
+            func.push_inst_pos(
+                InterInst::with_op_t(Opcode::SELECT, Some(flag), t),
                 Some(comm.pos),
             );
         }
     }
 
-    pub fn patch_select(&self, func: &mut FunctionVal) {
+    pub fn patch_select(&self, func: &mut FuncCtx) {
         let count = self.comms.len();
         let offset = self.select_offset;
         let blocks_begin = self.comms.first().unwrap().begin as OpIndex;
@@ -294,17 +264,17 @@ impl<'a> SelectHelper<'a> {
         // set the block offset for each block.
         // the first block's offset is known(0) so the space is used for
         // the count of blocks.
-        func.instruction_mut(offset).d = count as OpIndex;
+        func.inst_mut(offset).d = Addr::Imm(count as OpIndex);
         for i in 1..count {
             let diff = self.comms[i].begin as OpIndex - blocks_begin;
-            func.instruction_mut(offset + i).d = diff;
+            func.inst_mut(offset + i).d = Addr::Imm(diff);
         }
 
         // set where to jump when the block ends
         for i in 0..count - 1 {
             let block_end = self.comms[i].end;
             let diff = blocks_end - block_end as OpIndex;
-            func.instruction_mut(block_end).d = diff;
+            func.inst_mut(block_end).d = Addr::Imm(diff);
         }
     }
 
