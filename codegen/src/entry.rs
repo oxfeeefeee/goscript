@@ -17,13 +17,12 @@ use goscript_parser::objects::*;
 use goscript_parser::FileSet;
 use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
 use goscript_vm::gc::GcoVec;
-use goscript_vm::instruction::*;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
-use slotmap::Key;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::vec;
 
 pub struct EntryGen<'a> {
     objects: Pin<Box<VMObjects>>,
@@ -65,18 +64,14 @@ impl<'a> EntryGen<'a> {
             FuncFlag::Default,
         );
         let fkey = *f.as_function();
-        let mut emitter = FuncCtx::new(fkey, None, &self.consts);
-        emitter.emit_import(pkg, None);
-
-        emitter.emit_load(
-            EntIndex::PackageMember(pkg, main_ident.data()),
-            Some((pairs, fkey)),
-            ValueType::Function,
-            None,
-        );
-        emitter.emit_pre_call(None);
-        emitter.emit_call(CallStyle::Default, None, None);
-        emitter.emit_return(None, None);
+        let mut fctx = FuncCtx::new(fkey, None, &self.consts);
+        fctx.emit_import(pkg, None);
+        let pkg_addr = Addr::Const(self.consts.add_package(pkg));
+        let index = Addr::PkgMemberIndex(pkg, main_ident);
+        fctx.emit_load_pkg(Addr::Regsiter(0), pkg_addr, index, None);
+        fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
+        fctx.emit_call(CallStyle::Default, None);
+        fctx.emit_return(None, None, &self.objects.functions);
         *f.as_function()
     }
 
@@ -92,9 +87,10 @@ impl<'a> EntryGen<'a> {
         }
         let mut type_cache: TypeCache = HashMap::new();
         let mut branch_helper = BranchHelper::new();
+        let mut result_funcs = vec![];
         for (tcpkg, ti) in checker_result.iter() {
             let mut pkg_helper = PkgHelper::new(self.ast_objs, self.tc_objs, &self.pkg_map);
-            let mut cgen = CodeGen::new(
+            let cgen = CodeGen::new(
                 &mut self.objects,
                 &self.consts,
                 self.ast_objs,
@@ -109,13 +105,13 @@ impl<'a> EntryGen<'a> {
                 self.pkg_map[tcpkg],
                 self.blank_ident,
             );
-            cgen.gen_with_files(&ti.ast_files, *tcpkg);
+            result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
+        }
+        for f in result_funcs.into_iter() {
+            f.into_runtime_func(self.ast_objs, &mut self.objects, branch_helper.labels());
         }
         let entry = self.gen_entry_func(self.pkg_map[&main_pkg], main_ident);
-        let consts = self
-            .consts
-            .into_runtime_consts(self.ast_objs, &mut self.objects);
-        branch_helper.patch_go_tos(&mut self.objects.functions);
+        let consts = self.consts.into_runtime_consts(&mut self.objects);
         ByteCode::new(
             self.objects,
             consts,

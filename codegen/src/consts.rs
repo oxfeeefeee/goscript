@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_parser::objects::Objects as AstObjects;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
@@ -60,7 +59,7 @@ impl Consts {
         self.add(Const::Function(obj_meta, index))
     }
 
-    pub fn into_runtime_consts(self, ast_objs: &AstObjects, vmo: &mut VMObjects) -> Vec<GosValue> {
+    pub fn into_runtime_consts(self, vmo: &mut VMObjects) -> Vec<GosValue> {
         self.consts
             .into_inner()
             .into_iter()
@@ -76,9 +75,12 @@ impl Consts {
     }
 
     fn add(&self, c: Const) -> OpIndex {
-        *self.const_indices.borrow_mut().entry(c).or_insert_with(|| {
-            self.consts.borrow_mut().push(c);
-            self.consts.borrow().len() as OpIndex - 1
-        })
+        match self.const_indices.borrow_mut().get_mut(&c) {
+            Some(v) => *v,
+            None => {
+                self.consts.borrow_mut().push(c);
+                self.consts.borrow().len() as OpIndex - 1
+            }
+        }
     }
 }

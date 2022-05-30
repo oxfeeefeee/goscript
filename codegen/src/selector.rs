@@ -34,13 +34,16 @@ impl<K: Eq + Hash, V> Selector<K, V> {
 
     pub fn add<K2V>(&mut self, key: K, k2v: K2V) -> OpIndex
     where
-        K2V: FnMut(K) -> V,
+        K2V: FnOnce(K) -> V,
     {
-        *self.mapping.entry(key).or_insert_with(|| {
-            let info = k2v(key);
-            self.vec.push(info);
-            self.vec.len() as OpIndex - 1
-        })
+        match self.mapping.get(&key) {
+            Some(v) => *v,
+            None => {
+                let info = k2v(key);
+                self.vec.push(info);
+                self.vec.len() as OpIndex - 1
+            }
+        }
     }
 }
 
