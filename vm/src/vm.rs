@@ -1484,113 +1484,103 @@ impl<'a> Fiber<'a> {
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
                     }
+                    Opcode::CLOSURE => {
+                        let func = &consts[inst.s0 as usize];
+                        let mut val =
+                            ClosureObj::new_gos(*func.as_function(), &objs.functions, None);
+                        match &mut val {
+                            ClosureObj::Gos(gos) => {
+                                if let Some(uvs) = &mut gos.uvs {
+                                    drop(frame);
+                                    for (_, uv) in uvs.iter_mut() {
+                                        let r: &mut UpValueState = &mut uv.inner.borrow_mut();
+                                        if let UpValueState::Open(d) = r {
+                                            // get frame index, and add_referred_by
+                                            for i in 1..frame_height {
+                                                let index = frame_height - i;
+                                                if self.frames[index].func() == d.func {
+                                                    let upframe = &mut self.frames[index];
+                                                    d.stack = Rc::downgrade(&self.stack);
+                                                    d.stack_base = upframe.stack_base as OpIndex;
+                                                    upframe.add_referred_by(d.index, d.typ, uv);
+                                                    // if not found, the upvalue is already closed, nothing to be done
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    frame = self.frames.last_mut().unwrap();
+                                }
+                            }
+                            _ => {}
+                        };
+                        stack.set(inst.d + sb, GosValue::new_closure(val, gcv));
+                    }
                     Opcode::LITERAL => {
                         frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
                         let arg = &consts[inst_ex.s0 as usize];
-                        let new_val = match arg.typ() {
-                            ValueType::Function => {
-                                // NEW a closure
-                                let mut val =
-                                    ClosureObj::new_gos(*arg.as_function(), &objs.functions, None);
-                                match &mut val {
-                                    ClosureObj::Gos(gos) => {
-                                        if let Some(uvs) = &mut gos.uvs {
-                                            drop(frame);
-                                            for (_, uv) in uvs.iter_mut() {
-                                                let r: &mut UpValueState =
-                                                    &mut uv.inner.borrow_mut();
-                                                if let UpValueState::Open(d) = r {
-                                                    // get frame index, and add_referred_by
-                                                    for i in 1..frame_height {
-                                                        let index = frame_height - i;
-                                                        if self.frames[index].func() == d.func {
-                                                            let upframe = &mut self.frames[index];
-                                                            d.stack = Rc::downgrade(&self.stack);
-                                                            d.stack_base =
-                                                                upframe.stack_base as OpIndex;
-                                                            upframe.add_referred_by(
-                                                                d.index, d.typ, uv,
-                                                            );
-                                                            // if not found, the upvalue is already closed, nothing to be done
-                                                            break;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            frame = self.frames.last_mut().unwrap();
-                                        }
+
+                        let begin = inst.s0;
+                        let count = inst.s1;
+                        let build_val = |m: &Meta| {
+                            let zero_val = m.zero(&objs.metas, gcv);
+                            let mut val = vec![];
+                            let mut cur_index = -1;
+                            for i in 0..count {
+                                let index = *stack.get(begin + i * 2).as_int();
+                                let elem = stack.get(begin + 1 + i * 2).clone();
+                                if index < 0 {
+                                    cur_index += 1;
+                                } else {
+                                    cur_index = index;
+                                }
+                                let gap = cur_index - (val.len() as isize);
+                                if gap == 0 {
+                                    val.push(elem);
+                                } else if gap > 0 {
+                                    for _ in 0..gap {
+                                        val.push(zero_val.clone());
                                     }
-                                    _ => {}
-                                };
-                                GosValue::new_closure(val, gcv)
-                            }
-                            ValueType::Metadata => {
-                                let begin = inst.s0;
-                                let count = inst.s1;
-                                let build_val = |m: &Meta| {
-                                    let zero_val = m.zero(&objs.metas, gcv);
-                                    let mut val = vec![];
-                                    let mut cur_index = -1;
-                                    for i in 0..count {
-                                        let index = *stack.get(begin + i * 2).as_int();
-                                        let elem = stack.get(begin + 1 + i * 2).clone();
-                                        if index < 0 {
-                                            cur_index += 1;
-                                        } else {
-                                            cur_index = index;
-                                        }
-                                        let gap = cur_index - (val.len() as isize);
-                                        if gap == 0 {
-                                            val.push(elem);
-                                        } else if gap > 0 {
-                                            for _ in 0..gap {
-                                                val.push(zero_val.clone());
-                                            }
-                                            val.push(elem);
-                                        } else {
-                                            val[cur_index as usize] = elem;
-                                        }
-                                    }
-                                    (val, zero_val.typ())
-                                };
-                                let md = arg.as_metadata();
-                                match &objs.metas[md.key] {
-                                    MetadataType::Slice(m) => {
-                                        let (val, typ) = build_val(m);
-                                        GosValue::slice_with_data(val, typ, gcv)
-                                    }
-                                    MetadataType::Array(m, _) => {
-                                        let (val, typ) = build_val(m);
-                                        GosValue::array_with_data(val, typ, gcv)
-                                    }
-                                    MetadataType::Map(_, _) => {
-                                        let map_val = GosValue::new_map(gcv);
-                                        let map = map_val.as_map().unwrap();
-                                        for i in 0..count {
-                                            let k = stack.get(begin + i * 2).clone();
-                                            let v = stack.get(begin + 1 + i * 2).clone();
-                                            map.0.insert(k, v);
-                                        }
-                                        map_val
-                                    }
-                                    MetadataType::Struct(_, _) => {
-                                        let struct_val = md.zero(&objs.metas, gcv);
-                                        {
-                                            let fields =
-                                                &mut struct_val.as_struct().0.borrow_fields_mut();
-                                            for i in 0..count {
-                                                let index = *stack.get(begin + i * 2).as_uint();
-                                                fields[index] =
-                                                    stack.get(begin + 1 + i * 2).clone();
-                                            }
-                                        }
-                                        struct_val
-                                    }
-                                    _ => unreachable!(),
+                                    val.push(elem);
+                                } else {
+                                    val[cur_index as usize] = elem;
                                 }
                             }
-                            _ => unimplemented!(),
+                            (val, zero_val.typ())
+                        };
+                        let md = arg.as_metadata();
+                        let new_val = match &objs.metas[md.key] {
+                            MetadataType::Slice(m) => {
+                                let (val, typ) = build_val(m);
+                                GosValue::slice_with_data(val, typ, gcv)
+                            }
+                            MetadataType::Array(m, _) => {
+                                let (val, typ) = build_val(m);
+                                GosValue::array_with_data(val, typ, gcv)
+                            }
+                            MetadataType::Map(_, _) => {
+                                let map_val = GosValue::new_map(gcv);
+                                let map = map_val.as_map().unwrap();
+                                for i in 0..count {
+                                    let k = stack.get(begin + i * 2).clone();
+                                    let v = stack.get(begin + 1 + i * 2).clone();
+                                    map.0.insert(k, v);
+                                }
+                                map_val
+                            }
+                            MetadataType::Struct(_, _) => {
+                                let struct_val = md.zero(&objs.metas, gcv);
+                                {
+                                    let fields = &mut struct_val.as_struct().0.borrow_fields_mut();
+                                    for i in 0..count {
+                                        let index = *stack.get(begin + i * 2).as_uint();
+                                        fields[index] = stack.get(begin + 1 + i * 2).clone();
+                                    }
+                                }
+                                struct_val
+                            }
+                            _ => unreachable!(),
                         };
                         stack.set(inst.d + sb, new_val);
                     }

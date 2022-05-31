@@ -99,7 +99,8 @@ pub enum Opcode {
     // built-in functinalities
     IMPORT,  // imports a package
     SLICE,   // for slice expressions
-    LITERAL, // for function literal or composite literal
+    CLOSURE, // for creating a closure with function literal
+    LITERAL, // for composite literal
     NEW,     // for built-in function new
     MAKE,    // for built-in function make
     COMPLEX, // for built-in function complex
