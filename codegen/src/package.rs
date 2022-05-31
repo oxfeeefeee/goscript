@@ -46,10 +46,10 @@ impl<'a> PkgHelper<'a> {
         self.pkg_map[&tcpkg]
     }
 
-    pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> Entry {
+    pub fn get_member_index(&self, okey: TCObjKey, ident: IdentKey) -> VirtualAddr {
         let pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
         let addr = Addr::PkgMemberIndex(self.get_runtime_key(pkg), ident);
-        Entry::Direct(addr)
+        VirtualAddr::Direct(addr)
     }
 
     // sort_var_decls returns all var names and sorted var decl statments

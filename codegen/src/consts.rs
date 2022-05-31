@@ -47,14 +47,6 @@ impl Consts {
         self.add(Const::Var(v))
     }
 
-    pub fn add_metadata(&self, meta: Meta) -> OpIndex {
-        self.add_const(GosValue::new_metadata(meta))
-    }
-
-    pub fn add_package(&self, pkg: PackageKey) -> OpIndex {
-        self.add_const(GosValue::new_package(pkg))
-    }
-
     pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> OpIndex {
         self.add(Const::Function(obj_meta, index))
     }

@@ -66,7 +66,7 @@ impl<'a> EntryGen<'a> {
         let fkey = *f.as_function();
         let mut fctx = FuncCtx::new(fkey, None, &self.consts);
         fctx.emit_import(pkg, None);
-        let pkg_addr = Addr::Const(self.consts.add_package(pkg));
+        let pkg_addr = fctx.add_package(pkg).as_direct_addr();
         let index = Addr::PkgMemberIndex(pkg, main_ident);
         fctx.emit_load_pkg(Addr::Regsiter(0), pkg_addr, index, None);
         fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
