@@ -1519,7 +1519,7 @@ impl<'a> Fiber<'a> {
                     Opcode::LITERAL => {
                         frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
-                        let arg = &consts[inst_ex.s0 as usize];
+                        let md = &consts[inst_ex.s0 as usize].as_metadata();
 
                         let begin = inst.s0;
                         let count = inst.s1;
@@ -1549,7 +1549,6 @@ impl<'a> Fiber<'a> {
                             }
                             (val, zero_val.typ())
                         };
-                        let md = arg.as_metadata();
                         let new_val = match &objs.metas[md.key] {
                             MetadataType::Slice(m) => {
                                 let (val, typ) = build_val(m);
