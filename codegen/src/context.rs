@@ -6,6 +6,7 @@ use super::consts::Consts;
 use super::types::TypeLookup;
 use goscript_parser::ast::*;
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
+use goscript_parser::Pos;
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
 use goscript_vm::instruction::Instruction;
 use goscript_vm::metadata::*;
@@ -75,6 +76,10 @@ pub enum VirtualAddr {
 }
 
 impl VirtualAddr {
+    pub fn new_reg(reg_index: OpIndex) -> VirtualAddr {
+        VirtualAddr::Direct(Addr::Regsiter(reg_index))
+    }
+
     pub fn as_direct_addr(&self) -> Addr {
         match self {
             Self::Direct(a) => *a,
@@ -90,47 +95,67 @@ impl VirtualAddr {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ExprMode {
     Load,
     Assign(VirtualAddr),
 }
 
 pub struct ExprCtx {
-    pub cur_reg: OpIndex,
     pub mode: ExprMode,
+    pub cur_reg: OpIndex,
     pub load_addr: Addr,
 }
 
 impl ExprCtx {
-    pub fn new(init_reg: OpIndex, mode: ExprMode) -> Self {
+    pub fn new(mode: ExprMode, init_reg: OpIndex) -> Self {
         Self {
-            cur_reg: init_reg,
             mode,
+            cur_reg: init_reg,
             load_addr: Addr::Void,
         }
     }
 
-    pub fn get_dest(&mut self) -> (Addr, Option<&VirtualAddr>) {
-        match &self.mode {
+    pub fn copy_result_from(&mut self, other: &Self) {
+        self.cur_reg = other.cur_reg;
+        self.load_addr = other.load_addr;
+    }
+
+    pub fn emit_load<F>(&mut self, fctx: &mut FuncCtx, pos: Option<Pos>, f: F)
+    where
+        F: FnOnce(&mut FuncCtx, Addr, Option<Pos>),
+    {
+        match self.mode.clone() {
             ExprMode::Load => {
-                self.alloc_reg_as_load_addr();
-                (self.load_addr, None)
+                self.load_addr = self.alloc_reg();
+                f(fctx, self.load_addr, pos);
             }
             ExprMode::Assign(va) => match va {
-                VirtualAddr::Direct(d) => (*d, None),
-                _ => (self.alloc_reg(), Some(va)),
+                VirtualAddr::Direct(d) => {
+                    f(fctx, d, pos);
+                }
+                _ => {
+                    let dest = self.alloc_reg();
+                    f(fctx, dest, pos);
+                    fctx.emit_assign(va.clone(), dest, pos);
+                }
             },
         }
     }
 
-    pub fn alloc_reg(&mut self) -> Addr {
+    pub fn emit_direct_load(&mut self, fctx: &mut FuncCtx, src: Addr, pos: Option<Pos>) {
+        match &self.mode {
+            ExprMode::Load => {
+                self.load_addr = src;
+            }
+            ExprMode::Assign(d) => fctx.emit_assign(d.clone(), src, pos),
+        }
+    }
+
+    fn alloc_reg(&mut self) -> Addr {
         let r = Addr::Regsiter(self.cur_reg);
         self.cur_reg += 1;
         r
-    }
-
-    pub fn alloc_reg_as_load_addr(&mut self) {
-        self.load_addr = self.alloc_reg();
     }
 }
 
@@ -285,34 +310,34 @@ impl<'a> FuncCtx<'a> {
         self.entities.get(entity)
     }
 
-    pub fn add_const(&mut self, cst: GosValue) -> VirtualAddr {
-        VirtualAddr::Direct(Addr::Const(self.consts.add_const(cst)))
+    pub fn add_const(&mut self, cst: GosValue) -> Addr {
+        Addr::Const(self.consts.add_const(cst))
     }
 
-    pub fn add_metadata(&self, meta: Meta) -> VirtualAddr {
+    pub fn add_metadata(&mut self, meta: Meta) -> Addr {
         self.add_const(GosValue::new_metadata(meta))
     }
 
-    pub fn add_package(&self, pkg: PackageKey) -> VirtualAddr {
+    pub fn add_package(&mut self, pkg: PackageKey) -> Addr {
         self.add_const(GosValue::new_package(pkg))
     }
 
-    pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> VirtualAddr {
-        VirtualAddr::Direct(Addr::Const(self.consts.add_function(obj_meta, index)))
+    pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> Addr {
+        Addr::Const(self.consts.add_function(obj_meta, index))
     }
 
-    pub fn add_const_var(&mut self, entity: TCObjKey, cst: GosValue) -> VirtualAddr {
+    pub fn add_const_var(&mut self, entity: TCObjKey, cst: GosValue) -> Addr {
         let addr = Addr::Const(self.consts.add_const(cst));
         let old = self.entities.insert(entity, addr);
         assert_eq!(old, None);
-        VirtualAddr::Direct(addr)
+        addr
     }
 
     pub fn add_local(
         &mut self,
         entity: Option<TCObjKey>,
         zero_val_type: Option<(GosValue, ValueType)>,
-    ) -> VirtualAddr {
+    ) -> Addr {
         let addr = Addr::LocalVar(self.local_alloc);
         if let Some(key) = entity {
             let old = self.entities.insert(key, addr);
@@ -324,7 +349,7 @@ impl<'a> FuncCtx<'a> {
             self.local_zeros.push(zero);
             self.stack_temp_types.push(typ);
         }
-        VirtualAddr::Direct(addr)
+        addr
     }
 
     pub fn add_upvalue(&mut self, entity: &TCObjKey, uv: ValueDesc) -> VirtualAddr {
@@ -401,6 +426,21 @@ impl<'a> FuncCtx<'a> {
         self.push_inst_pos(inst, pos);
     }
 
+    pub fn emit_literal(
+        &mut self,
+        d: Addr,
+        begin: OpIndex,
+        count: OpIndex,
+        meta: Addr,
+        pos: Option<usize>,
+    ) {
+        let inst = InterInst::with_op_index(Opcode::LITERAL, d, Addr::Imm(begin), Addr::Imm(count));
+        self.push_inst_pos(inst, pos);
+        let inst2 = InterInst::with_op(Opcode::VOID);
+        inst2.s0 = meta;
+        self.push_inst_pos(inst2, pos);
+    }
+
     pub fn emit_closure(&mut self, d: Addr, s: Addr, pos: Option<usize>) {
         let inst = InterInst::with_op_index(Opcode::CLOSURE, d, s, Addr::Void);
         self.push_inst_pos(inst, pos);
@@ -453,13 +493,13 @@ impl<'a> FuncCtx<'a> {
         let mut inst = InterInst::with_op(Opcode::CALL);
         inst.t0 = flag;
         if let Some(p) = pkg {
-            inst.d = self.add_package(p).as_direct_addr();
+            inst.d = self.add_package(p);
         }
         self.push_inst_pos(inst, pos);
     }
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
-        let pkg_addr = self.add_package(pkg).as_direct_addr();
+        let pkg_addr = self.add_package(pkg);
         let zero_addr = Addr::Const(self.consts.add_const(GosValue::new_int32(0)));
         let imm0 = Addr::Imm(0);
         let cd = vec![
