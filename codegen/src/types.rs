@@ -57,11 +57,11 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn const_value(&mut self, id: NodeId) -> GosValue {
+    pub fn const_type_value(&mut self, id: NodeId) -> (TCTypeKey, GosValue) {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
         let (v, _) = self.const_value_type(typ_val.typ, const_val);
-        v
+        (typ_val.typ, v)
     }
 
     #[inline]

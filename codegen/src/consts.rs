@@ -70,8 +70,10 @@ impl Consts {
         match self.const_indices.borrow_mut().get_mut(&c) {
             Some(v) => *v,
             None => {
-                self.consts.borrow_mut().push(c);
-                self.consts.borrow().len() as OpIndex - 1
+                let index = self.consts.borrow().len() as OpIndex;
+                self.consts.borrow_mut().push(c.clone());
+                self.const_indices.borrow_mut().insert(c, index);
+                index
             }
         }
     }
