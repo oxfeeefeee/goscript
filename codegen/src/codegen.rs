@@ -1000,45 +1000,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     current_func_emitter!(self).emit_load_index(t_result, t1, comma_ok, pos);
     // }
 
-    fn try_cast_to_iface(
-        &mut self,
-        lhs: Option<TCTypeKey>,
-        rhs: TCTypeKey,
-        rhs_index: OpIndex,
-        pos: usize,
-    ) -> ValueType {
-        let rhs_type = self.t.tc_type_to_value_type(rhs);
-        match lhs {
-            Some(t0) => match self.t.obj_underlying_value_type(t0) == ValueType::Interface {
-                true => {
-                    let vt1 = self.t.obj_underlying_value_type(rhs);
-                    match vt1 != ValueType::Interface && vt1 != ValueType::Void {
-                        true => {
-                            let index = self.iface_selector.get_index(
-                                (t0, rhs),
-                                &mut self.t,
-                                self.objects,
-                                self.dummy_gcv,
-                            );
-                            current_func_emitter!(self).emit_cast(
-                                ValueType::Interface,
-                                rhs_type,
-                                None,
-                                rhs_index,
-                                index,
-                                Some(pos),
-                            );
-                            ValueType::Interface
-                        }
-                        false => rhs_type,
-                    }
-                }
-                false => rhs_type,
-            },
-            None => rhs_type,
-        }
-    }
-
     // fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
     //     let (sig_params, variadic) = self.t.sig_params_tc_types(func);
     //     let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
@@ -1083,118 +1044,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //         init
     //     })
     // }
-
-    fn visit_composite_expr(&mut self, expr: &Expr, tctype: TCTypeKey) {
-        match expr {
-            Expr::CompositeLit(clit) => self.gen_composite_literal(clit, tctype),
-            _ => {
-                self.visit_expr(expr);
-            }
-        }
-        let t = self.t.expr_tc_type(expr);
-        self.try_cast_to_iface(Some(tctype), t, -1, expr.pos(self.ast_objs));
-    }
-
-    fn gen_composite_literal(&mut self, clit: &CompositeLit, tctype: TCTypeKey) {
-        let meta = self
-            .t
-            .tc_type_to_meta(tctype, &mut self.objects, self.dummy_gcv);
-        let vt = self.t.tc_type_to_value_type(tctype);
-        let pos = Some(clit.l_brace);
-        let typ = &self.tc_objs.types[tctype].underlying_val(&self.tc_objs);
-        let meta = meta.underlying(&self.objects.metas);
-        let mtype = &self.objects.metas[meta.key].clone();
-
-        let ectx = expr_ctx!(self);
-        let reg_base = ectx.cur_reg;
-        let count = match mtype {
-            MetadataType::Slice(_) | MetadataType::Array(_, _) => {
-                let elem_type = match typ {
-                    Type::Array(detail) => detail.elem(),
-                    Type::Slice(detail) => detail.elem(),
-                    _ => unreachable!(),
-                };
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let (key, elem) = match expr {
-                        Expr::KeyValue(kv) => {
-                            // the key is a constant
-                            let key_const = self.t.try_tc_const_value(kv.key.id()).unwrap();
-                            let (key_i64, ok) = key_const.int_as_i64();
-                            debug_assert!(ok);
-                            (key_i64 as i32, &kv.val)
-                        }
-                        _ => (-1, expr),
-                    };
-                    let reg_key = reg_base + i as OpIndex * 2;
-                    let ret_elem = reg_key + 1;
-                    let fctx = func_ctx!(self);
-                    let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
-                    self.push_expr_ctx(ExprMode::Assign(VirtualAddr::new_reg(ret_elem)), ret_elem);
-                    self.visit_composite_expr(elem, elem_type);
-                    self.pop_expr_ctx();
-                }
-                clit.elts.len()
-            }
-            MetadataType::Map(_, _) => {
-                let map_type = typ.try_as_map().unwrap();
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let reg_key = reg_base + i as OpIndex * 2;
-                    let ret_elem = reg_key + 1;
-                    match expr {
-                        Expr::KeyValue(kv) => {
-                            self.push_expr_ctx(
-                                ExprMode::Assign(VirtualAddr::new_reg(reg_key)),
-                                reg_key,
-                            );
-                            self.visit_composite_expr(&kv.key, map_type.key());
-                            self.pop_expr_ctx();
-                            self.push_expr_ctx(
-                                ExprMode::Assign(VirtualAddr::new_reg(ret_elem)),
-                                ret_elem,
-                            );
-                            self.visit_composite_expr(&kv.val, map_type.elem());
-                            self.pop_expr_ctx();
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                clit.elts.len()
-            }
-            MetadataType::Struct(f, _) => {
-                let fields = typ.try_as_struct().unwrap().fields();
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let (index, expr) = match expr {
-                        Expr::KeyValue(kv) => {
-                            let ident = kv.key.try_as_ident().unwrap();
-                            let index = f.index_by_name(&self.ast_objs.idents[*ident].name);
-                            (index, &kv.val)
-                        }
-                        _ => (i, expr),
-                    };
-                    let reg_key = reg_base + i as OpIndex * 2;
-                    let ret_elem = reg_key + 1;
-                    let fctx = func_ctx!(self);
-                    let index_addr = fctx.add_const(GosValue::new_uint(index));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
-                    self.push_expr_ctx(ExprMode::Assign(VirtualAddr::new_reg(ret_elem)), ret_elem);
-                    let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
-                    self.visit_composite_expr(expr, field_type);
-                    self.pop_expr_ctx();
-                }
-                clit.elts.len()
-            }
-            _ => {
-                dbg!(&mtype);
-                unreachable!()
-            }
-        };
-        let fctx = func_ctx!(self);
-        let meta_addr = fctx.add_const(GosValue::new_metadata(meta));
-        expr_ctx!(self).emit_load(fctx, pos, |f, d, p| {
-            f.emit_literal(d, reg_base, count as OpIndex, meta_addr, pos);
-        });
-    }
 
     // fn gen_ref_expr(&mut self, expr: &Expr, whole_expr: Option<&Expr>) {
     //     let pos = Some(expr.pos(&self.ast_objs));
@@ -1302,12 +1151,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         // emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
     }
 
-    fn gen_const(&mut self, node: NodeId, pos: Option<Pos>) {
-        let val = self.t.const_value(node);
+    fn gen_const(&mut self, expr: &Expr, pos: Option<Pos>) {
+        let (tc_type, val) = self.t.const_type_value(expr.id());
         let mut fctx = func_ctx!(self);
         let t = val.typ();
         let addr = fctx.add_const(val);
-        expr_ctx!(self).emit_direct_load(fctx, addr, pos);
+        self.cur_expr_emit_direct_assign(tc_type, addr, pos);
     }
 
     // fn gen_load_field(
@@ -1393,15 +1242,36 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     on_stack_types
     // }
 
+    fn should_cast_to_iface(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> Option<OpIndex> {
+        match self.t.obj_underlying_value_type(lhs) == ValueType::Interface {
+            true => {
+                let vt1 = self.t.obj_underlying_value_type(rhs);
+                match vt1 != ValueType::Interface && vt1 != ValueType::Void {
+                    true => {
+                        let index = self.iface_selector.get_index(
+                            (lhs, rhs),
+                            &mut self.t,
+                            self.objects,
+                            self.dummy_gcv,
+                        );
+                        Some(index)
+                    }
+                    false => None,
+                }
+            }
+            false => None,
+        }
+    }
+
     fn visit_stmt(&mut self, stmt: &Stmt) {
         walk_stmt(self, stmt)
     }
 
-    fn visit_expr(&mut self, expr: &Expr, cur_reg: OpIndex, mode: ExprMode) -> ExprCtx {
+    fn visit_expr(&mut self, expr: &Expr, mode: ExprMode, cur_reg: OpIndex) -> ExprCtx {
         self.push_expr_ctx(mode, cur_reg);
         if let Some(mode) = self.t.try_expr_mode(expr) {
             if let OperandMode::Constant(_) = mode {
-                self.gen_const(expr.id(), Some(expr.pos(&self.ast_objs)));
+                self.gen_const(expr, Some(expr.pos(&self.ast_objs)));
                 return self.pop_expr_ctx();
             }
         }
@@ -1417,6 +1287,25 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let ctx = self.expr_ctx_stack.pop().unwrap();
         func_ctx!(self).update_max_reg(ctx.cur_reg);
         ctx
+    }
+
+    fn cur_expr_emit_assign<F>(&mut self, rhs_type: TCTypeKey, pos: Option<Pos>, f: F)
+    where
+        F: FnOnce(&mut FuncCtx, Addr, Option<Pos>),
+    {
+        let lhs = expr_ctx!(self).lhs_type();
+        let index = lhs
+            .map(|x| self.should_cast_to_iface(x, rhs_type))
+            .flatten();
+        expr_ctx!(self).emit_assign(func_ctx!(self), index, pos, f);
+    }
+
+    fn cur_expr_emit_direct_assign(&mut self, rhs_type: TCTypeKey, src: Addr, pos: Option<Pos>) {
+        let lhs = expr_ctx!(self).lhs_type();
+        let index = lhs
+            .map(|x| self.should_cast_to_iface(x, rhs_type))
+            .flatten();
+        expr_ctx!(self).emit_direct_assign(func_ctx!(self), src, index, pos);
     }
 
     pub fn gen_with_files(mut self, files: &Vec<File>, tcpkg: TCPackageKey) -> Vec<FuncCtx<'c>> {
@@ -1464,12 +1353,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     type Result = ();
 
-    fn visit_expr_ident(&mut self, expr: &Expr, ident: &IdentKey) {
-        let addr = self.resolve_any_ident(ident, Some(expr)).as_direct_addr();
-        //let t = self.t.obj_use_value_type(*ident);
-        let fctx = func_ctx!(self);
-        let p = Some(self.ast_objs.idents[*ident].pos);
-        expr_ctx!(self).emit_direct_load(fctx, addr, p);
+    fn visit_expr_ident(&mut self, this: &Expr, ident: &IdentKey) {
+        let addr = self.resolve_any_ident(ident, Some(this)).as_direct_addr();
+        let pos = Some(self.ast_objs.idents[*ident].pos);
+        let tc_type = self.t.expr_tc_type(this);
+        self.cur_expr_emit_direct_assign(tc_type, addr, pos);
     }
 
     fn visit_expr_ellipsis(&mut self, _: &Expr, _els: &Option<Expr>) {
@@ -1477,28 +1365,133 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_expr_basic_lit(&mut self, this: &Expr, blit: &BasicLit) {
-        self.gen_const(this.id(), Some(blit.pos));
+        self.gen_const(this, Some(blit.pos));
     }
 
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) {
-        let tc_type = self.t.node_tc_type(this.id());
+        let tc_type = self.t.expr_tc_type(this);
         let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let fctx = func_ctx!(self);
         let addr = fctx.add_const(GosValue::new_function(fkey));
         let pos = Some(flit.body.l_brace);
-        expr_ctx!(self).emit_load(fctx, pos, |f, d, p| f.emit_closure(d, addr, p));
+        self.cur_expr_emit_assign(tc_type, pos, |f, d, p| f.emit_closure(d, addr, p));
     }
 
     fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
-        let tctype = self.t.expr_tc_type(clit.typ.as_ref().unwrap());
-        //self.gen_composite_literal(clit, tctype);
+        let tc_type = self.t.expr_tc_type(clit.typ.as_ref().unwrap());
+        let meta = self
+            .t
+            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
+        //let vt = self.t.tc_type_to_value_type(tc_type);
+        let pos = Some(clit.l_brace);
+        let typ = &self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
+        let meta = meta.underlying(&self.objects.metas);
+        let mtype = &self.objects.metas[meta.key].clone();
+
+        let ectx = expr_ctx!(self);
+        let reg_base = ectx.cur_reg;
+        let count = match mtype {
+            MetadataType::Slice(_) | MetadataType::Array(_, _) => {
+                let elem_type = match typ {
+                    Type::Array(detail) => detail.elem(),
+                    Type::Slice(detail) => detail.elem(),
+                    _ => unreachable!(),
+                };
+                for (i, expr) in clit.elts.iter().enumerate() {
+                    let (key, elem) = match expr {
+                        Expr::KeyValue(kv) => {
+                            // the key is a constant
+                            let key_const = self.t.try_tc_const_value(kv.key.id()).unwrap();
+                            let (key_i64, ok) = key_const.int_as_i64();
+                            debug_assert!(ok);
+                            (key_i64 as i32, &kv.val)
+                        }
+                        _ => (-1, expr),
+                    };
+                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_elem = reg_key + 1;
+                    let fctx = func_ctx!(self);
+                    let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
+                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
+                    self.visit_expr(
+                        elem,
+                        ExprMode::Store(VirtualAddr::new_reg(reg_elem), Some(elem_type)),
+                        reg_elem,
+                    );
+                }
+                clit.elts.len()
+            }
+            MetadataType::Map(_, _) => {
+                let map_type = typ.try_as_map().unwrap();
+                for (i, expr) in clit.elts.iter().enumerate() {
+                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_elem = reg_key + 1;
+                    match expr {
+                        Expr::KeyValue(kv) => {
+                            self.visit_expr(
+                                &kv.key,
+                                ExprMode::Store(
+                                    VirtualAddr::new_reg(reg_key),
+                                    Some(map_type.key()),
+                                ),
+                                reg_key,
+                            );
+                            self.visit_expr(
+                                &kv.val,
+                                ExprMode::Store(
+                                    VirtualAddr::new_reg(reg_elem),
+                                    Some(map_type.elem()),
+                                ),
+                                reg_elem,
+                            );
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                clit.elts.len()
+            }
+            MetadataType::Struct(f, _) => {
+                let fields = typ.try_as_struct().unwrap().fields();
+                for (i, expr) in clit.elts.iter().enumerate() {
+                    let (index, expr) = match expr {
+                        Expr::KeyValue(kv) => {
+                            let ident = kv.key.try_as_ident().unwrap();
+                            let index = f.index_by_name(&self.ast_objs.idents[*ident].name);
+                            (index, &kv.val)
+                        }
+                        _ => (i, expr),
+                    };
+                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_elem = reg_key + 1;
+                    let fctx = func_ctx!(self);
+                    let index_addr = fctx.add_const(GosValue::new_uint(index));
+                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
+                    let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
+                    self.visit_expr(
+                        expr,
+                        ExprMode::Store(VirtualAddr::new_reg(reg_elem), Some(field_type)),
+                        reg_elem,
+                    );
+                }
+                clit.elts.len()
+            }
+            _ => {
+                dbg!(&mtype);
+                unreachable!()
+            }
+        };
+        let fctx = func_ctx!(self);
+        let meta_addr = fctx.add_const(GosValue::new_metadata(meta));
+        self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
+            f.emit_literal(d, reg_base, count as OpIndex, meta_addr, p);
+        });
     }
 
     fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) {
         let ectx = expr_ctx!(self);
         let (r, m) = (ectx.cur_reg, ectx.mode.clone());
-        let inner_ctx = self.visit_expr(expr, r, m);
+        let inner_ctx = self.visit_expr(expr, m, r);
         expr_ctx!(self).copy_result_from(&inner_ctx);
     }
 
@@ -1510,7 +1503,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         //     let pkg_addr = fctx.add_package(pkg).as_direct_addr();
         //     let index = Addr::PkgMemberIndex(pkg, *ident);
         //     //let t = self.t.obj_use_value_type(*ident);
-        //     expr_ctx!(self).emit_load(fctx, pos, |f, d, p| f.emit_load_pkg(d, pkg_addr, index, p));
+        //     expr_ctx!(self).emit_assign(fctx, pos, |f, d, p| f.emit_load_pkg(d, pkg_addr, index, p));
         //     return;
         // }
 

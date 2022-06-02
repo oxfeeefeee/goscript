@@ -15,12 +15,12 @@ pub type IfaceSelector = Selector<(TCTypeKey, TCTypeKey), (Meta, Vec<IfaceBindin
 
 pub type StructSelector = Selector<Vec<OpIndex>, Vec<OpIndex>>;
 
-pub struct Selector<K: Eq + Hash, V> {
+pub struct Selector<K: Eq + Hash + Clone, V> {
     vec: Vec<V>,
     mapping: HashMap<K, OpIndex>,
 }
 
-impl<K: Eq + Hash, V> Selector<K, V> {
+impl<K: Eq + Hash + Clone, V> Selector<K, V> {
     pub fn new() -> Selector<K, V> {
         Selector {
             vec: vec![],
@@ -39,9 +39,11 @@ impl<K: Eq + Hash, V> Selector<K, V> {
         match self.mapping.get(&key) {
             Some(v) => *v,
             None => {
-                let info = k2v(key);
+                let info = k2v(key.clone());
+                let index = self.vec.len() as OpIndex;
                 self.vec.push(info);
-                self.vec.len() as OpIndex - 1
+                self.mapping.insert(key, index);
+                index
             }
         }
     }
