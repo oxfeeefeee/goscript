@@ -263,22 +263,23 @@ impl<'a> TypeLookup<'a> {
     pub fn selection_vtypes_indices_sel_typ(
         &mut self,
         id: NodeId,
-    ) -> (ValueType, ValueType, &Vec<usize>, SelectionType) {
+    ) -> (TCTypeKey, TCTypeKey, &Vec<usize>, SelectionType) {
         let sel = &self.ti.selections[&id];
-        let t0 = self.tc_type_to_value_type(sel.recv().unwrap());
+        let recv_type = sel.recv().unwrap();
         let obj = &self.tc_objs.lobjs[sel.obj()];
-        let t1 = self.tc_type_to_value_type(obj.typ().unwrap());
-        let sel_typ = match t1 {
-            ValueType::Closure => match obj.entity_type() {
+        let expr_type = obj.typ().unwrap();
+        let sel_typ = if self.tc_objs.types[expr_type].try_as_signature().is_some() {
+            match obj.entity_type() {
                 EntityType::Func(ptr_recv) => match ptr_recv {
                     true => SelectionType::MethodPtrRecv,
                     false => SelectionType::MethodNonPtrRecv,
                 },
                 _ => SelectionType::NonMethod,
-            },
-            _ => SelectionType::NonMethod,
+            }
+        } else {
+            SelectionType::NonMethod
         };
-        (t0, t1, &sel.indices(), sel_typ)
+        (recv_type, expr_type, &sel.indices(), sel_typ)
     }
 
     pub fn tc_type_to_meta(

@@ -205,7 +205,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             .tc_type_to_meta(tc_type, self.objects, self.dummy_gcv);
         let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
         let ctx = func_ctx!(self);
-        let ident_key = Some(okey.data());
         let index = ctx.add_local(
             Some(okey),
             Some((zero_val, meta.value_type(&self.objects.metas))),
@@ -1045,104 +1044,126 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     })
     // }
 
-    // fn gen_ref_expr(&mut self, expr: &Expr, whole_expr: Option<&Expr>) {
-    //     let pos = Some(expr.pos(&self.ast_objs));
-    //     match expr {
-    //         Expr::Ident(ikey) => {
-    //             let index = self.resolve_any_ident(ikey, None);
-    //             match index {
-    //                 EntIndex::LocalVar(_) => {
-    //                     let meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
-    //                     let t = meta.value_type(&self.objects.metas);
-    //                     let entity_key = use_ident_unique_key!(self, *ikey);
-    //                     let func = current_func_mut!(self);
-    //                     let ind = *func.entity_index(&entity_key).unwrap();
-    //                     let desc = ValueDesc::new(
-    //                         self.func_ctx_stack.last().unwrap().f_key,
-    //                         ind.into(),
-    //                         t,
-    //                         false,
-    //                     );
-    //                     if !func.is_ctor() {
-    //                         let index = func.try_add_upvalue(&entity_key, desc);
-    //                         func.emit_inst(
-    //                             Opcode::REF_UPVALUE,
-    //                             [Some(t), None, None],
-    //                             Some(index.into()),
-    //                             pos,
-    //                         );
-    //                     } else {
-    //                         // for package ctors, all locals are "closed"
-    //                         let mut emitter = current_func_emitter!(self);
-    //                         emitter.emit_load(ind, None, t, pos);
-    //                         emitter
-    //                             .f
-    //                             .emit_inst(Opcode::REF, [Some(t), None, None], None, pos);
-    //                     }
-    //                 }
-    //                 EntIndex::UpValue(i) => {
-    //                     let t = self.t.expr_value_type(expr);
-    //                     let func = current_func_mut!(self);
-    //                     func.emit_inst(Opcode::REF_UPVALUE, [Some(t), None, None], Some(i), pos);
-    //                 }
-    //                 EntIndex::PackageMember(pkg, ident) => {
-    //                     let func = current_func_mut!(self);
-    //                     func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
-    //                     func.emit_raw_inst(key_to_u64(self.pkg_key), pos);
-    //                     let fkey = self.func_ctx_stack.last().unwrap().f_key;
-    //                     let i = current_func!(self).next_code_index() - 2;
-    //                     self.pkg_helper.add_pair(pkg, ident.into(), fkey, i, false);
-    //                 }
-    //                 _ => unreachable!(),
-    //             }
-    //         }
-    //         Expr::Index(iexpr) => {
-    //             let (t0, t2) =
-    //                 self.t
-    //                     .sliceable_expr_value_types(&iexpr.expr, self.objects, self.dummy_gcv);
-    //             let t1 = self.t.expr_value_type(&iexpr.index);
-    //             self.visit_expr(&iexpr.expr);
-    //             self.visit_expr(&iexpr.index);
-    //             let pos = Some(iexpr.index.pos(&self.ast_objs));
-    //             current_func_mut!(self).emit_inst(
-    //                 Opcode::REF_SLICE_MEMBER,
-    //                 [Some(t0), Some(t1), Some(t2)],
-    //                 None,
-    //                 pos,
-    //             );
-    //         }
-    //         Expr::Selector(sexpr) => match self.t.try_pkg_key(&sexpr.expr) {
-    //             Some(key) => {
-    //                 let pkey = self.pkg_helper.get_runtime_key(key);
-    //                 let func = current_func_mut!(self);
-    //                 func.emit_inst(Opcode::REF_PKG_MEMBER, [None, None, None], Some(0), pos);
-    //                 func.emit_raw_inst(key_to_u64(pkey), pos);
-    //                 let fkey = self.func_ctx_stack.last().unwrap().f_key;
-    //                 let i = current_func!(self).next_code_index() - 2;
-    //                 self.pkg_helper.add_pair(pkey, sexpr.sel, fkey, i, false);
-    //             }
-    //             None => {
-    //                 self.visit_expr(&sexpr.expr);
-    //                 let (t0, _, indices, _) = self.t.selection_vtypes_indices_sel_typ(sexpr.id());
-    //                 current_func_emitter!(self).emit_struct_field_op(
-    //                     Opcode::REF_STRUCT_FIELD,
-    //                     indices,
-    //                     t0,
-    //                     pos,
-    //                 );
-    //             }
-    //         },
-    //         Expr::CompositeLit(clit) => {
-    //             self.visit_expr_composit_lit(whole_expr.unwrap(), clit);
-    //             let typ = self.t.expr_value_type(expr);
-    //             current_func_mut!(self).emit_inst(Opcode::REF, [Some(typ), None, None], None, pos);
-    //         }
-    //         _ => {
-    //             dbg!(&expr);
-    //             unimplemented!()
-    //         }
-    //     }
-    // }
+    fn visit_expr_ref(&mut self, expr: &Expr, ref_tc_type: TCTypeKey) {
+        let pos = Some(expr.pos(&self.ast_objs));
+        match expr {
+            Expr::Ident(ikey) => {
+                let va = self.resolve_any_ident(ikey, None);
+                match va {
+                    VirtualAddr::Direct(_) => {
+                        let meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
+                        let t = meta.value_type(&self.objects.metas);
+                        let entity_key = self.t.object_use(*ikey);
+                        let fctx = func_ctx!(self);
+                        let ind = *fctx.entity_index(&entity_key).unwrap();
+                        let desc = ValueDesc::new(fctx.f_key, ind.as_var_index(), t, false);
+                        // for package ctors, all locals are "closed"
+                        if !fctx.is_ctor(&self.objects.functions) {
+                            let uv_index = fctx.add_upvalue(&entity_key, desc);
+                            self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                                let inst = InterInst::with_op_index(
+                                    Opcode::REF_UPVALUE,
+                                    d,
+                                    uv_index.as_direct_addr(),
+                                    Addr::Void,
+                                );
+                                f.emit_inst(inst, p);
+                            });
+                        } else {
+                            self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                                let inst =
+                                    InterInst::with_op_index(Opcode::REF, d, ind, Addr::Void);
+                                f.emit_inst(inst, p);
+                            });
+                        }
+                    }
+                    VirtualAddr::UpValue(addr) => {
+                        self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                            let inst =
+                                InterInst::with_op_index(Opcode::REF_UPVALUE, d, addr, Addr::Void);
+                            f.emit_inst(inst, p);
+                        });
+                    }
+                    VirtualAddr::PackageMember(pkg, ident) => {
+                        self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                            let inst =
+                                InterInst::with_op_index(Opcode::REF_PKG_MEMBER, d, pkg, ident);
+                            f.emit_inst(inst, p);
+                        });
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            Expr::Index(iexpr) => {
+                let (t0, _) =
+                    self.t
+                        .sliceable_expr_value_types(&iexpr.expr, self.objects, self.dummy_gcv);
+                let t1 = self.t.expr_value_type(&iexpr.index);
+                let init_reg = expr_ctx!(self).cur_reg;
+                self.visit_expr(&iexpr.expr, ExprMode::Load, init_reg);
+                let index_reg = expr_ctx!(self).alloc_reg();
+                self.visit_expr(&iexpr.index, ExprMode::Load, index_reg.as_reg_index());
+                let pos = Some(iexpr.index.pos(&self.ast_objs));
+                self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::REF_SLICE_MEMBER,
+                        Some(t0),
+                        Some(t1),
+                        d,
+                        Addr::Regsiter(init_reg),
+                        index_reg,
+                    );
+                    f.emit_inst(inst, p);
+                });
+            }
+            Expr::Selector(sexpr) => match self.t.try_pkg_key(&sexpr.expr) {
+                Some(key) => {
+                    let pkey = self.pkg_helper.get_runtime_key(key);
+                    let pkg_addr = func_ctx!(self).add_package(pkey);
+                    let index = Addr::PkgMemberIndex(pkey, sexpr.sel);
+                    self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                        let inst =
+                            InterInst::with_op_index(Opcode::REF_PKG_MEMBER, d, pkg_addr, index);
+                        f.emit_inst(inst, p);
+                    });
+                }
+                None => {
+                    let init_reg = expr_ctx!(self).cur_reg;
+                    self.visit_expr(&sexpr.expr, ExprMode::Load, init_reg);
+                    let (_, _, indices, _) = self.t.selection_vtypes_indices_sel_typ(sexpr.id());
+                    let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
+                    let (op, index) =
+                        self.get_struct_field_op_index(rt_indices, Opcode::REF_STRUCT_FIELD);
+                    self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                        let inst = InterInst::with_op_index(
+                            op,
+                            d,
+                            Addr::Regsiter(init_reg),
+                            Addr::Imm(index),
+                        );
+                        f.emit_inst(inst, p);
+                    });
+                }
+            },
+            Expr::CompositeLit(_) => {
+                let cur_reg = expr_ctx!(self).cur_reg;
+                self.visit_expr(expr, ExprMode::Load, cur_reg);
+                self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(
+                        Opcode::REF,
+                        d,
+                        Addr::Regsiter(cur_reg),
+                        Addr::Void,
+                    );
+                    f.emit_inst(inst, p);
+                });
+            }
+            _ => {
+                dbg!(&expr);
+                unimplemented!()
+            }
+        }
+    }
 
     fn gen_type_meta(&mut self, typ: &Expr) {
         // let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
@@ -1153,33 +1174,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
     fn gen_const(&mut self, expr: &Expr, pos: Option<Pos>) {
         let (tc_type, val) = self.t.const_type_value(expr.id());
-        let mut fctx = func_ctx!(self);
-        let t = val.typ();
+        let fctx = func_ctx!(self);
+        //let t = val.typ();
         let addr = fctx.add_const(val);
         self.cur_expr_emit_direct_assign(tc_type, addr, pos);
     }
-
-    // fn gen_load_field(
-    //     &mut self,
-    //     indices: &[usize],
-    //     mdata: Meta,
-    //     typ: ValueType,
-    //     pos: Option<usize>,
-    // ) -> (Meta, ValueType) {
-    //     if indices.len() > 0 {
-    //         current_func_emitter!(self).emit_struct_field_op(
-    //             Opcode::LOAD_STRUCT_FIELD,
-    //             indices,
-    //             typ,
-    //             pos,
-    //         );
-    //         let field_meta = self.get_field_meta(&mdata, indices);
-    //         let field_type = field_meta.value_type(&self.objects.metas);
-    //         (field_meta, field_type)
-    //     } else {
-    //         (mdata, typ)
-    //     }
-    // }
 
     fn get_field_meta(&self, parent: &Meta, indices: &[usize]) -> Meta {
         match parent.mtype_unwraped(&self.objects.metas) {
@@ -1241,6 +1240,27 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     }
     //     on_stack_types
     // }
+
+    pub fn get_struct_field_op_index(
+        &mut self,
+        indices: Vec<OpIndex>,
+        default_op: Opcode,
+    ) -> (Opcode, OpIndex) {
+        debug_assert!(indices.len() > 0);
+        if indices.len() == 1 {
+            (default_op, indices[0] as OpIndex)
+        } else {
+            (
+                match default_op {
+                    Opcode::REF_STRUCT_FIELD => Opcode::REF_STRUCT_EMBEDDED_FIELD,
+                    Opcode::LOAD_STRUCT => Opcode::LOAD_STRUCT_EMBEDDED,
+                    Opcode::STORE_STRUCT => Opcode::STORE_STRUCT_EMBEDDED,
+                    _ => unreachable!(),
+                },
+                self.struct_selector.get_index(indices),
+            )
+        }
+    }
 
     fn should_cast_to_iface(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> Option<OpIndex> {
         match self.t.obj_underlying_value_type(lhs) == ValueType::Interface {
@@ -1495,79 +1515,106 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         expr_ctx!(self).copy_result_from(&inner_ctx);
     }
 
-    fn visit_expr_selector(&mut self, this: &Expr, expr: &Expr, ident: &IdentKey) {
-        // let pos = Some(expr.pos(&self.ast_objs));
-        // if let Some(key) = self.t.try_pkg_key(expr) {
-        //     let pkg = self.pkg_helper.get_runtime_key(key);
-        //     let mut fctx = func_ctx!(self);
-        //     let pkg_addr = fctx.add_package(pkg).as_direct_addr();
-        //     let index = Addr::PkgMemberIndex(pkg, *ident);
-        //     //let t = self.t.obj_use_value_type(*ident);
-        //     expr_ctx!(self).emit_assign(fctx, pos, |f, d, p| f.emit_load_pkg(d, pkg_addr, index, p));
-        //     return;
-        // }
+    fn visit_expr_selector(&mut self, this: &Expr, lhs_expr: &Expr, ident: &IdentKey) {
+        let pos = Some(lhs_expr.pos(&self.ast_objs));
+        if let Some(key) = self.t.try_pkg_key(lhs_expr) {
+            let pkg = self.pkg_helper.get_runtime_key(key);
+            let fctx = func_ctx!(self);
+            let pkg_addr = fctx.add_package(pkg);
+            let index = Addr::PkgMemberIndex(pkg, *ident);
+            let tc_type = self.t.expr_tc_type(this);
+            self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
+                f.emit_load_pkg(d, pkg_addr, index, p)
+            });
+            return;
+        }
 
-        // let lhs_meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
-        // let lhs_type = lhs_meta.value_type(&self.objects.metas);
-        // let (_, _, indices, stype) = self.t.selection_vtypes_indices_sel_typ(this.id());
-        // let indices = indices.clone();
-        // match &stype {
-        //     SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
-        //         let index_count = indices.len();
-        //         let index = indices[index_count - 1] as OpIndex; // the final index
-        //         let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
-        //         let lhs_has_embedded = index_count > 1;
-        //         let final_lhs_meta = match lhs_has_embedded {
-        //             false => lhs_meta,
-        //             true => self.get_field_meta(&lhs_meta, &embedded_indices),
-        //         };
-        //         let final_lhs_type = final_lhs_meta.value_type(&self.objects.metas);
-        //         if (final_lhs_type != ValueType::Pointer && final_lhs_type != ValueType::Interface)
-        //             && stype == SelectionType::MethodPtrRecv
-        //         {
-        //             if !lhs_has_embedded {
-        //                 self.gen_ref_expr(expr, None);
-        //             } else {
-        //                 self.visit_expr(expr);
-        //                 current_func_emitter!(self).emit_struct_field_op(
-        //                     Opcode::REF_STRUCT_FIELD,
-        //                     &embedded_indices,
-        //                     lhs_type,
-        //                     pos,
-        //                 );
-        //             }
-        //         } else {
-        //             self.visit_expr(expr);
-        //             if lhs_has_embedded {
-        //                 self.gen_load_field(&embedded_indices, lhs_meta, lhs_type, pos);
-        //             }
-        //             if final_lhs_type == ValueType::Pointer
-        //                 && stype == SelectionType::MethodNonPtrRecv
-        //             {
-        //                 current_func_mut!(self).emit_code_with_type(Opcode::DEREF, lhs_type, pos);
-        //             }
-        //         }
+        let lhs_meta = self
+            .t
+            .node_meta(lhs_expr.id(), self.objects, self.dummy_gcv);
+        //let lhs_type = lhs_meta.value_type(&self.objects.metas);
+        let (recv_type, expr_type, indices, stype) =
+            self.t.selection_vtypes_indices_sel_typ(this.id());
+        let indices = indices.clone();
+        let ectx = expr_ctx!(self);
+        let reg_i = ectx.cur_reg;
+        let reg = Addr::Regsiter(reg_i);
+        match &stype {
+            SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
+                let index_count = indices.len();
+                let final_index = indices[index_count - 1] as OpIndex;
+                let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
+                let lhs_has_embedded = index_count > 1;
+                let final_lhs_meta = match lhs_has_embedded {
+                    false => lhs_meta,
+                    true => self.get_field_meta(&lhs_meta, &embedded_indices),
+                };
+                let final_lhs_type = final_lhs_meta.value_type(&self.objects.metas);
+                if (final_lhs_type != ValueType::Pointer && final_lhs_type != ValueType::Interface)
+                    && stype == SelectionType::MethodPtrRecv
+                {
+                    if !lhs_has_embedded {
+                        self.push_expr_ctx(ExprMode::Load, reg_i);
+                        self.visit_expr_ref(lhs_expr, recv_type);
+                        self.pop_expr_ctx();
+                    } else {
+                        self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                        let rt_indices = embedded_indices.iter().map(|x| *x as OpIndex).collect();
+                        let (op, index) =
+                            self.get_struct_field_op_index(rt_indices, Opcode::REF_STRUCT_FIELD);
+                        let inst = InterInst::with_op_index(op, reg, reg, Addr::Imm(index));
+                        func_ctx!(self).emit_inst(inst, pos);
+                    }
+                } else {
+                    self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                    if lhs_has_embedded {
+                        let rt_indices = embedded_indices.iter().map(|x| *x as OpIndex).collect();
+                        let (op, index) =
+                            self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
+                        let inst = InterInst::with_op_index(op, reg, reg, Addr::Imm(index));
+                        func_ctx!(self).emit_inst(inst, pos);
+                    }
+                    if final_lhs_type == ValueType::Pointer
+                        && stype == SelectionType::MethodNonPtrRecv
+                    {
+                        let inst =
+                            InterInst::with_op_index(Opcode::LOAD_POINTER, reg, reg, Addr::Void);
+                        func_ctx!(self).emit_inst(inst, pos);
+                    }
+                }
 
-        //         if final_lhs_type == ValueType::Interface {
-        //             current_func_mut!(self).emit_code_with_type_imm(
-        //                 Opcode::BIND_INTERFACE_METHOD,
-        //                 final_lhs_type,
-        //                 index,
-        //                 pos,
-        //             );
-        //         } else {
-        //             let func = current_func_mut!(self);
-        //             func.emit_code_with_type(Opcode::BIND_METHOD, final_lhs_type, pos);
-        //             let point = func.next_code_index();
-        //             func.emit_raw_inst(0, pos); // placeholder for FunctionKey
-        //             let fkey = self.func_ctx_stack.last().unwrap().f_key;
-        //         }
-        //     }
-        //     SelectionType::NonMethod => {
-        //         self.visit_expr(expr);
-        //         self.gen_load_field(&indices, lhs_meta, lhs_type, pos);
-        //     }
-        // }
+                if final_lhs_type == ValueType::Interface {
+                    self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
+                        let inst = InterInst::with_op_index(
+                            Opcode::BIND_INTERFACE_METHOD,
+                            d,
+                            reg,
+                            Addr::Imm(final_index),
+                        );
+                        f.emit_inst(inst, p);
+                    });
+                } else {
+                    self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
+                        let inst = InterInst::with_op_index(
+                            Opcode::BIND_METHOD,
+                            d,
+                            reg,
+                            Addr::Method(f.f_key, *ident),
+                        );
+                        f.emit_inst(inst, p);
+                    });
+                }
+            }
+            SelectionType::NonMethod => {
+                self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
+                let (op, index) = self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
+                self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(op, d, reg, Addr::Imm(index));
+                    f.emit_inst(inst, p);
+                });
+            }
+        }
     }
 
     fn visit_expr_index(&mut self, e: &Expr, container: &Expr, index: &Expr) {
@@ -1634,7 +1681,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
     fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) {
         // if op == &Token::AND {
-        //     self.gen_ref_expr(expr, Some(this));
+        //     self.visit_expr_ref(expr, Some(this));
         //     return;
         // }
 

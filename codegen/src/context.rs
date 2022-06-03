@@ -22,7 +22,8 @@ pub enum Addr {
     Regsiter(OpIndex),
     Imm(OpIndex),
     PkgMemberIndex(PackageKey, IdentKey), // deferred resolve
-    Label(TCObjKey),                      // deferred resolve
+    Method(FunctionKey, IdentKey),
+    Label(TCObjKey), // deferred resolve
     Void,
 }
 
@@ -30,6 +31,13 @@ impl Addr {
     pub fn as_var_index(self) -> OpIndex {
         match self {
             Self::LocalVar(i) => i,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_reg_index(self) -> OpIndex {
+        match self {
+            Self::Regsiter(i) => i,
             _ => unreachable!(),
         }
     }
@@ -187,7 +195,7 @@ impl ExprCtx {
         }
     }
 
-    fn alloc_reg(&mut self) -> Addr {
+    pub fn alloc_reg(&mut self) -> Addr {
         let r = Addr::Regsiter(self.cur_reg);
         self.cur_reg += 1;
         r
@@ -469,12 +477,12 @@ impl<'a> FuncCtx<'a> {
             VirtualAddr::Blank => unreachable!(),
             VirtualAddr::ZeroValue => unreachable!(),
         };
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_load_pkg(&mut self, d: Addr, pkg: Addr, index: Addr, pos: Option<usize>) {
         let inst = InterInst::with_op_index(Opcode::LOAD_PKG, d, pkg, index);
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_literal(
@@ -486,10 +494,10 @@ impl<'a> FuncCtx<'a> {
         pos: Option<usize>,
     ) {
         let inst = InterInst::with_op_index(Opcode::LITERAL, d, Addr::Imm(begin), Addr::Imm(count));
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
         let mut inst2 = InterInst::with_op(Opcode::VOID);
         inst2.s0 = meta;
-        self.push_inst_pos(inst2, pos);
+        self.emit_inst(inst2, pos);
     }
 
     pub fn emit_cast(
@@ -502,18 +510,18 @@ impl<'a> FuncCtx<'a> {
         pos: Option<usize>,
     ) {
         let inst = InterInst::with_op_t_index(Opcode::CAST, Some(to_type), from_type, d, s0, s1);
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_closure(&mut self, d: Addr, s: Addr, pos: Option<usize>) {
         let inst = InterInst::with_op_index(Opcode::CLOSURE, d, s, Addr::Void);
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_jump(&mut self, offset: OpIndex, pos: Option<usize>) {
         let inst =
             InterInst::with_op_index(Opcode::JUMP, Addr::Imm(offset), Addr::Void, Addr::Void);
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_pre_call(
@@ -529,7 +537,7 @@ impl<'a> FuncCtx<'a> {
             Addr::Imm(stack_base),
             Addr::Imm(param_count),
         );
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_call(&mut self, style: CallStyle, pos: Option<usize>) {
@@ -540,7 +548,7 @@ impl<'a> FuncCtx<'a> {
         };
         let mut inst = InterInst::with_op(Opcode::CALL);
         inst.t0 = flag;
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_return(
@@ -559,7 +567,7 @@ impl<'a> FuncCtx<'a> {
         if let Some(p) = pkg {
             inst.d = self.add_package(p);
         }
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
     }
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
@@ -588,9 +596,9 @@ impl<'a> FuncCtx<'a> {
         ];
         let offset = Addr::Imm(cd.len() as OpIndex);
         let inst = InterInst::with_op_index(Opcode::IMPORT, offset, pkg_addr, Addr::Void);
-        self.push_inst_pos(inst, pos);
+        self.emit_inst(inst, pos);
         for i in cd.into_iter() {
-            self.push_inst_pos(i, pos);
+            self.emit_inst(i, pos);
         }
 
         self.update_max_reg(2);
@@ -615,7 +623,7 @@ impl<'a> FuncCtx<'a> {
             .collect();
     }
 
-    pub fn push_inst_pos(&mut self, i: InterInst, pos: Option<usize>) {
+    pub fn emit_inst(&mut self, i: InterInst, pos: Option<usize>) {
         self.code.push(i);
         self.pos.push(pos);
     }

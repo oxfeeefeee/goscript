@@ -249,7 +249,7 @@ impl<'a> SelectHelper<'a> {
                 CommType::RecvCommaOk(_) => (ValueType::FlagD, None),
                 CommType::Default => (ValueType::FlagE, None),
             };
-            func.push_inst_pos(
+            func.emit_inst(
                 InterInst::with_op_t(Opcode::SELECT, Some(flag), t),
                 Some(comm.pos),
             );
