@@ -88,11 +88,15 @@ impl VirtualAddr {
         VirtualAddr::Direct(Addr::Regsiter(reg_index))
     }
 
-    pub fn as_direct_addr(&self) -> Addr {
+    pub fn try_as_direct_addr(&self) -> Option<Addr> {
         match self {
-            Self::Direct(a) => *a,
-            _ => unreachable!(),
+            Self::Direct(a) => Some(*a),
+            _ => None,
         }
+    }
+
+    pub fn as_direct_addr(&self) -> Addr {
+        self.try_as_direct_addr().unwrap()
     }
 
     pub fn is_blank(&self) -> bool {
@@ -109,10 +113,21 @@ pub enum ExprMode {
     Store(VirtualAddr, Option<TCTypeKey>),
 }
 
+impl ExprMode {
+    pub fn as_store(&self) -> (VirtualAddr, Option<TCTypeKey>) {
+        match self {
+            Self::Store(va, t) => (va.clone(), *t),
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct ExprCtx {
     pub mode: ExprMode,
     pub cur_reg: OpIndex,
     pub load_addr: Addr,
+    pub occupying_reg: bool,
 }
 
 impl ExprCtx {
@@ -121,6 +136,7 @@ impl ExprCtx {
             mode,
             cur_reg: init_reg,
             load_addr: Addr::Void,
+            occupying_reg: false,
         }
     }
 
@@ -129,11 +145,6 @@ impl ExprCtx {
             ExprMode::Load => None,
             ExprMode::Store(_, t) => t,
         }
-    }
-
-    pub fn copy_result_from(&mut self, other: &Self) {
-        self.cur_reg = other.cur_reg;
-        self.load_addr = other.load_addr;
     }
 
     pub fn emit_assign<F>(
@@ -147,7 +158,8 @@ impl ExprCtx {
     {
         match self.mode.clone() {
             ExprMode::Load => {
-                self.load_addr = self.alloc_reg();
+                self.load_addr = self.inc_cur_reg();
+                self.occupying_reg = true;
                 f(fctx, self.load_addr, pos);
             }
             ExprMode::Store(va, _) => match va {
@@ -156,10 +168,11 @@ impl ExprCtx {
                     Self::cast_to_iface(cast_index, fctx, d, d, pos);
                 }
                 _ => {
-                    let d = self.alloc_reg();
+                    let d = self.inc_cur_reg();
                     f(fctx, d, pos);
                     Self::cast_to_iface(cast_index, fctx, d, d, pos);
                     fctx.emit_assign(va.clone(), d, pos);
+                    self.dec_cur_reg(); // done with the reg
                 }
             },
         }
@@ -175,6 +188,7 @@ impl ExprCtx {
         match self.mode.clone() {
             ExprMode::Load => {
                 self.load_addr = src;
+                self.occupying_reg = false;
             }
             ExprMode::Store(va, _) => match va {
                 VirtualAddr::Direct(d) => {
@@ -183,22 +197,28 @@ impl ExprCtx {
                     }
                 }
                 _ => {
-                    let reg = self.alloc_reg();
+                    let reg = self.inc_cur_reg();
                     let src = if Self::cast_to_iface(cast_index, fctx, reg, src, pos) {
                         reg
                     } else {
                         src
                     };
-                    fctx.emit_assign(VirtualAddr::Direct(reg), src, pos);
+                    fctx.emit_assign(va, src, pos);
+                    self.dec_cur_reg(); // done with the reg
                 }
             },
         }
     }
 
-    pub fn alloc_reg(&mut self) -> Addr {
+    pub fn inc_cur_reg(&mut self) -> Addr {
         let r = Addr::Regsiter(self.cur_reg);
         self.cur_reg += 1;
         r
+    }
+
+    pub fn dec_cur_reg(&mut self) {
+        assert!(self.cur_reg > 0);
+        self.cur_reg -= 1;
     }
 
     fn cast_to_iface(
@@ -210,7 +230,7 @@ impl ExprCtx {
     ) -> bool {
         match cast_index {
             Some(index) => {
-                fctx.emit_cast(dst, src, Addr::Imm(index), ValueType::Interface, None, pos);
+                fctx.emit_cast_iface(dst, src, index, pos);
                 true
             }
             None => false,
@@ -511,6 +531,10 @@ impl<'a> FuncCtx<'a> {
     ) {
         let inst = InterInst::with_op_t_index(Opcode::CAST, Some(to_type), from_type, d, s0, s1);
         self.emit_inst(inst, pos);
+    }
+
+    pub fn emit_cast_iface(&mut self, d: Addr, s: Addr, index: OpIndex, pos: Option<usize>) {
+        self.emit_cast(d, s, Addr::Imm(index), ValueType::Interface, None, pos);
     }
 
     pub fn emit_closure(&mut self, d: Addr, s: Addr, pos: Option<usize>) {

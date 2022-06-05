@@ -1044,7 +1044,68 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     })
     // }
 
-    fn visit_expr_ref(&mut self, expr: &Expr, ref_tc_type: TCTypeKey) {
+    fn gen_expr_index(
+        &mut self,
+        container: &Expr,
+        index: &Expr,
+        val_tc_type: TCTypeKey,
+        ok_lhs_ectx: Option<ExprCtx>,
+    ) {
+        let container_addr = self.load(|g| g.gen_expr(container));
+        let index_reg = self.load(|g| g.gen_expr(index));
+        let pos = Some(container.pos(&self.ast_objs));
+        match ok_lhs_ectx {
+            Some(mut ok_ctx) => {
+                let direct = |gen: &mut CodeGen, e: &ExprCtx, t| {
+                    let (va, typ) = e.mode.as_store();
+                    let cast_index = gen.should_cast_to_iface(typ.unwrap(), t);
+                    let d =
+                        va.try_as_direct_addr().is_some() && typ.is_some() && !cast_index.is_none();
+                    (d, cast_index)
+                };
+                let mut val_ectx = expr_ctx!(self).clone();
+                let (direct_val, cast_val) = direct(self, &val_ectx, val_tc_type);
+                let (direct_ok, cast_ok) = direct(self, &ok_ctx, self.t.bool_tc_type());
+
+                let val_addr = match direct_val {
+                    true => val_ectx.mode.as_store().0.as_direct_addr(),
+                    false => expr_ctx!(self).inc_cur_reg(),
+                };
+                let ok_addr = match direct_ok {
+                    true => ok_ctx.mode.as_store().0.as_direct_addr(),
+                    false => expr_ctx!(self).inc_cur_reg(),
+                };
+                let inst =
+                    InterInst::with_op_index(Opcode::LOAD_MAP, val_addr, container_addr, index_reg);
+                let inst_ex =
+                    InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
+                let fctx = func_ctx!(self);
+                fctx.emit_inst(inst, pos);
+                fctx.emit_inst(inst_ex, pos);
+
+                if !direct_val {
+                    val_ectx.emit_direct_assign(fctx, val_addr, cast_val, pos);
+                }
+                if !direct_ok {
+                    ok_ctx.emit_direct_assign(fctx, ok_addr, cast_ok, pos);
+                }
+            }
+            None => {
+                let op = match self.t.expr_value_type(container) {
+                    ValueType::Map => Opcode::LOAD_MAP,
+                    ValueType::Array => Opcode::LOAD_ARRAY,
+                    ValueType::Slice => Opcode::LOAD_SLICE,
+                    _ => unreachable!(),
+                };
+                self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(op, d, container_addr, index_reg);
+                    f.emit_inst(inst, p);
+                });
+            }
+        }
+    }
+
+    fn gen_expr_ref(&mut self, expr: &Expr, ref_tc_type: TCTypeKey) {
         let pos = Some(expr.pos(&self.ast_objs));
         match expr {
             Expr::Ident(ikey) => {
@@ -1099,10 +1160,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     self.t
                         .sliceable_expr_value_types(&iexpr.expr, self.objects, self.dummy_gcv);
                 let t1 = self.t.expr_value_type(&iexpr.index);
-                let init_reg = expr_ctx!(self).cur_reg;
-                self.visit_expr(&iexpr.expr, ExprMode::Load, init_reg);
-                let index_reg = expr_ctx!(self).alloc_reg();
-                self.visit_expr(&iexpr.index, ExprMode::Load, index_reg.as_reg_index());
+                let lhs_addr = self.load(|g| g.gen_expr(&iexpr.expr));
+                let index_addr = self.load(|g| g.gen_expr(&iexpr.index));
                 let pos = Some(iexpr.index.pos(&self.ast_objs));
                 self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
                     let inst = InterInst::with_op_t_index(
@@ -1110,8 +1169,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         Some(t0),
                         Some(t1),
                         d,
-                        Addr::Regsiter(init_reg),
-                        index_reg,
+                        lhs_addr,
+                        index_addr,
                     );
                     f.emit_inst(inst, p);
                 });
@@ -1128,33 +1187,21 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     });
                 }
                 None => {
-                    let init_reg = expr_ctx!(self).cur_reg;
-                    self.visit_expr(&sexpr.expr, ExprMode::Load, init_reg);
+                    let struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
                     let (_, _, indices, _) = self.t.selection_vtypes_indices_sel_typ(sexpr.id());
                     let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
                     let (op, index) =
                         self.get_struct_field_op_index(rt_indices, Opcode::REF_STRUCT_FIELD);
                     self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
-                        let inst = InterInst::with_op_index(
-                            op,
-                            d,
-                            Addr::Regsiter(init_reg),
-                            Addr::Imm(index),
-                        );
+                        let inst = InterInst::with_op_index(op, d, struct_addr, Addr::Imm(index));
                         f.emit_inst(inst, p);
                     });
                 }
             },
             Expr::CompositeLit(_) => {
-                let cur_reg = expr_ctx!(self).cur_reg;
-                self.visit_expr(expr, ExprMode::Load, cur_reg);
+                let addr = self.load(|g| g.gen_expr(expr));
                 self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(
-                        Opcode::REF,
-                        d,
-                        Addr::Regsiter(cur_reg),
-                        Addr::Void,
-                    );
+                    let inst = InterInst::with_op_index(Opcode::REF, d, addr, Addr::Void);
                     f.emit_inst(inst, p);
                 });
             }
@@ -1178,6 +1225,15 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         //let t = val.typ();
         let addr = fctx.add_const(val);
         self.cur_expr_emit_direct_assign(tc_type, addr, pos);
+    }
+
+    fn gen_expr(&mut self, expr: &Expr) {
+        if let Some(mode) = self.t.try_expr_mode(expr) {
+            if let OperandMode::Constant(_) = mode {
+                self.gen_const(expr, Some(expr.pos(&self.ast_objs)));
+            }
+        }
+        walk_expr(self, expr);
     }
 
     fn get_field_meta(&self, parent: &Meta, indices: &[usize]) -> Meta {
@@ -1287,16 +1343,28 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         walk_stmt(self, stmt)
     }
 
-    fn visit_expr(&mut self, expr: &Expr, mode: ExprMode, cur_reg: OpIndex) -> ExprCtx {
-        self.push_expr_ctx(mode, cur_reg);
-        if let Some(mode) = self.t.try_expr_mode(expr) {
-            if let OperandMode::Constant(_) = mode {
-                self.gen_const(expr, Some(expr.pos(&self.ast_objs)));
-                return self.pop_expr_ctx();
-            }
+    fn load<F>(&mut self, f: F) -> Addr
+    where
+        F: FnOnce(&mut CodeGen),
+    {
+        let reg = expr_ctx!(self).cur_reg;
+        self.push_expr_ctx(ExprMode::Load, reg);
+        f(self);
+        let ectx = self.pop_expr_ctx();
+        if ectx.occupying_reg {
+            expr_ctx!(self).inc_cur_reg();
         }
-        walk_expr(self, expr);
-        self.pop_expr_ctx()
+        ectx.load_addr
+    }
+
+    fn store<F>(&mut self, va: VirtualAddr, lhs_type: Option<TCTypeKey>, f: F)
+    where
+        F: FnOnce(&mut CodeGen),
+    {
+        let reg = expr_ctx!(self).cur_reg;
+        self.push_expr_ctx(ExprMode::Store(va, lhs_type), reg);
+        f(self);
+        self.pop_expr_ctx();
     }
 
     fn push_expr_ctx(&mut self, mode: ExprMode, cur_reg: OpIndex) {
@@ -1434,11 +1502,9 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     let fctx = func_ctx!(self);
                     let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
                     fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
-                    self.visit_expr(
-                        elem,
-                        ExprMode::Store(VirtualAddr::new_reg(reg_elem), Some(elem_type)),
-                        reg_elem,
-                    );
+                    self.store(VirtualAddr::new_reg(reg_elem), Some(elem_type), |g| {
+                        g.gen_expr(elem)
+                    });
                 }
                 clit.elts.len()
             }
@@ -1449,21 +1515,13 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     let reg_elem = reg_key + 1;
                     match expr {
                         Expr::KeyValue(kv) => {
-                            self.visit_expr(
-                                &kv.key,
-                                ExprMode::Store(
-                                    VirtualAddr::new_reg(reg_key),
-                                    Some(map_type.key()),
-                                ),
-                                reg_key,
-                            );
-                            self.visit_expr(
-                                &kv.val,
-                                ExprMode::Store(
-                                    VirtualAddr::new_reg(reg_elem),
-                                    Some(map_type.elem()),
-                                ),
-                                reg_elem,
+                            self.store(VirtualAddr::new_reg(reg_key), Some(map_type.key()), |g| {
+                                g.gen_expr(&kv.key)
+                            });
+                            self.store(
+                                VirtualAddr::new_reg(reg_elem),
+                                Some(map_type.elem()),
+                                |g| g.gen_expr(&kv.val),
                             );
                         }
                         _ => unreachable!(),
@@ -1488,11 +1546,9 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     let index_addr = fctx.add_const(GosValue::new_uint(index));
                     fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
                     let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
-                    self.visit_expr(
-                        expr,
-                        ExprMode::Store(VirtualAddr::new_reg(reg_elem), Some(field_type)),
-                        reg_elem,
-                    );
+                    self.store(VirtualAddr::new_reg(reg_elem), Some(field_type), |g| {
+                        g.gen_expr(expr)
+                    });
                 }
                 clit.elts.len()
             }
@@ -1509,10 +1565,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) {
-        let ectx = expr_ctx!(self);
-        let (r, m) = (ectx.cur_reg, ectx.mode.clone());
-        let inner_ctx = self.visit_expr(expr, m, r);
-        expr_ctx!(self).copy_result_from(&inner_ctx);
+        self.gen_expr(expr);
     }
 
     fn visit_expr_selector(&mut self, this: &Expr, lhs_expr: &Expr, ident: &IdentKey) {
@@ -1536,9 +1589,6 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         let (recv_type, expr_type, indices, stype) =
             self.t.selection_vtypes_indices_sel_typ(this.id());
         let indices = indices.clone();
-        let ectx = expr_ctx!(self);
-        let reg_i = ectx.cur_reg;
-        let reg = Addr::Regsiter(reg_i);
         match &stype {
             SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
                 let index_count = indices.len();
@@ -1550,45 +1600,57 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     true => self.get_field_meta(&lhs_meta, &embedded_indices),
                 };
                 let final_lhs_type = final_lhs_meta.value_type(&self.objects.metas);
-                if (final_lhs_type != ValueType::Pointer && final_lhs_type != ValueType::Interface)
+                let recv_addr = if (final_lhs_type != ValueType::Pointer
+                    && final_lhs_type != ValueType::Interface)
                     && stype == SelectionType::MethodPtrRecv
                 {
                     if !lhs_has_embedded {
-                        self.push_expr_ctx(ExprMode::Load, reg_i);
-                        self.visit_expr_ref(lhs_expr, recv_type);
-                        self.pop_expr_ctx();
+                        self.load(|g| g.gen_expr_ref(lhs_expr, recv_type))
                     } else {
-                        self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                        let lhs_addr = self.load(|g| g.gen_expr(lhs_expr));
                         let rt_indices = embedded_indices.iter().map(|x| *x as OpIndex).collect();
                         let (op, index) =
                             self.get_struct_field_op_index(rt_indices, Opcode::REF_STRUCT_FIELD);
-                        let inst = InterInst::with_op_index(op, reg, reg, Addr::Imm(index));
+                        let result_addr = expr_ctx!(self).inc_cur_reg();
+                        let inst =
+                            InterInst::with_op_index(op, result_addr, lhs_addr, Addr::Imm(index));
                         func_ctx!(self).emit_inst(inst, pos);
+                        result_addr
                     }
                 } else {
-                    self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                    let mut struct_addr = self.load(|g| g.gen_expr(lhs_expr));
                     if lhs_has_embedded {
                         let rt_indices = embedded_indices.iter().map(|x| *x as OpIndex).collect();
                         let (op, index) =
                             self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
-                        let inst = InterInst::with_op_index(op, reg, reg, Addr::Imm(index));
+                        let addr = expr_ctx!(self).inc_cur_reg();
+                        let inst =
+                            InterInst::with_op_index(op, addr, struct_addr, Addr::Imm(index));
                         func_ctx!(self).emit_inst(inst, pos);
+                        struct_addr = addr;
                     }
                     if final_lhs_type == ValueType::Pointer
                         && stype == SelectionType::MethodNonPtrRecv
                     {
-                        let inst =
-                            InterInst::with_op_index(Opcode::LOAD_POINTER, reg, reg, Addr::Void);
+                        let addr = expr_ctx!(self).inc_cur_reg();
+                        let inst = InterInst::with_op_index(
+                            Opcode::LOAD_POINTER,
+                            addr,
+                            struct_addr,
+                            Addr::Void,
+                        );
                         func_ctx!(self).emit_inst(inst, pos);
+                        struct_addr = addr;
                     }
-                }
+                    struct_addr
+                };
 
                 if final_lhs_type == ValueType::Interface {
                     self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
                         let inst = InterInst::with_op_index(
                             Opcode::BIND_INTERFACE_METHOD,
                             d,
-                            reg,
+                            recv_addr,
                             Addr::Imm(final_index),
                         );
                         f.emit_inst(inst, p);
@@ -1598,7 +1660,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                         let inst = InterInst::with_op_index(
                             Opcode::BIND_METHOD,
                             d,
-                            reg,
+                            recv_addr,
                             Addr::Method(f.f_key, *ident),
                         );
                         f.emit_inst(inst, p);
@@ -1606,11 +1668,11 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 }
             }
             SelectionType::NonMethod => {
-                self.visit_expr(lhs_expr, ExprMode::Load, reg_i);
+                let lhs_addr = self.load(|g| g.gen_expr(lhs_expr));
                 let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
                 let (op, index) = self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
                 self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(op, d, reg, Addr::Imm(index));
+                    let inst = InterInst::with_op_index(op, d, lhs_addr, Addr::Imm(index));
                     f.emit_inst(inst, p);
                 });
             }
@@ -1618,8 +1680,8 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_expr_index(&mut self, e: &Expr, container: &Expr, index: &Expr) {
-        // let t = self.t.expr_value_type(e);
-        // self.gen_index(container, index, t, false);
+        let t = self.t.expr_tc_type(e);
+        self.gen_expr_index(container, index, t, None);
     }
 
     fn visit_expr_slice(
@@ -1681,7 +1743,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
     fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) {
         // if op == &Token::AND {
-        //     self.visit_expr_ref(expr, Some(this));
+        //     self.gen_expr_ref(expr, Some(this));
         //     return;
         // }
 

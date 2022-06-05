@@ -384,7 +384,7 @@ impl<'a> Fiber<'a> {
                     // s1: index
                     Opcode::LOAD_SLICE => {
                         let slice = stack.read(inst.s0, sb, consts);
-                        let index = *stack.read(inst.s1, sb, consts).as_uint();
+                        let index = stack.read(inst.s1, sb, consts).as_index();
                         match slice.slice_array_equivalent(index) {
                             Ok((array, i)) => match array.dispatcher_a_s().array_get(&array, i) {
                                 Ok(val) => stack.set(sb + inst.d, val),
@@ -398,7 +398,7 @@ impl<'a> Fiber<'a> {
                     // s1: value
                     Opcode::STORE_SLICE => {
                         let dest = stack.read(inst.d, sb, consts);
-                        let index = *stack.read(inst.s0, sb, consts).as_uint();
+                        let index = stack.read(inst.s0, sb, consts).as_index();
                         match dest.slice_array_equivalent(index) {
                             Ok((array, i)) => match inst.op1 {
                                 Opcode::VOID => {
@@ -431,7 +431,7 @@ impl<'a> Fiber<'a> {
                     // s1: index
                     Opcode::LOAD_ARRAY => {
                         let array = stack.read(inst.s0, sb, consts);
-                        let index = *stack.read(inst.s1, sb, consts).as_uint();
+                        let index = stack.read(inst.s1, sb, consts).as_index();
                         match array.dispatcher_a_s().array_get(&array, index) {
                             Ok(val) => stack.set(inst.d + sb, val),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -442,7 +442,7 @@ impl<'a> Fiber<'a> {
                     // s1: value
                     Opcode::STORE_ARRAY => {
                         let array = stack.read(inst.d, sb, consts);
-                        let index = *stack.read(inst.s0, sb, consts).as_uint();
+                        let index = stack.read(inst.s0, sb, consts).as_index();
                         match inst.op1 {
                             Opcode::VOID => {
                                 let val = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
@@ -470,31 +470,38 @@ impl<'a> Fiber<'a> {
                     // desc: local
                     // s0: map
                     // s1: key
-                    // type0: FlagA indicating it's a comma-ok
                     Opcode::LOAD_MAP => {
-                        frame.pc += 1;
                         let map = stack.read(inst.s0, sb, consts);
                         let key = stack.read(inst.s1, sb, consts);
                         let val = match map.as_map() {
                             Some(map) => map.0.get(&key),
                             None => None,
                         };
-                        if inst.t1 != ValueType::FlagA {
-                            match val {
-                                Some(v) => stack.set(inst.d + sb, v),
-                                None => go_panic_str!(panic, "read from nil map", frame, code),
-                            }
-                        } else {
-                            let (v, ok) = match val {
-                                Some(v) => (v, true),
-                                None => {
-                                    let inst_ex = &code[frame.pc as usize];
-                                    (stack.read(inst_ex.s0, sb, consts).clone(), false)
-                                }
-                            };
-                            stack.set(inst.d + sb, v);
-                            stack.set(inst.d + 1 + sb, GosValue::new_bool(ok));
+                        match val {
+                            Some(v) => stack.set(inst.d + sb, v),
+                            None => go_panic_str!(panic, "read from nil map", frame, code),
                         }
+                    }
+                    // inst.d: local
+                    // inst_ex.d: local
+                    // inst.s0: map
+                    // inst.s1: key
+                    // inst_ex.s0: zero_val
+                    Opcode::LOAD_MAP_OK => {
+                        frame.pc += 1;
+                        let inst_ex = &code[frame.pc as usize];
+                        let map = stack.read(inst.s0, sb, consts);
+                        let key = stack.read(inst.s1, sb, consts);
+                        let val = match map.as_map() {
+                            Some(map) => map.0.get(&key),
+                            None => None,
+                        };
+                        let (v, ok) = match val {
+                            Some(v) => (v, true),
+                            None => (stack.read(inst_ex.s0, sb, consts).copy_semantic(gcv), false),
+                        };
+                        stack.set(inst.d + sb, v);
+                        stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
                     }
                     // desc: map
                     // s0: index
@@ -1394,34 +1401,21 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE_ASSERT => {
                         let val = stack.read(inst.s0, sb, consts);
-                        let do_try = inst.t0 == ValueType::FlagA;
-                        let result = match val.as_some_interface() {
-                            Ok(iface) => match &iface as &InterfaceObj {
-                                InterfaceObj::Gos(v, b) => {
-                                    let meta = b.as_ref().unwrap().0;
-                                    let want_meta = consts[inst.s1 as usize].as_metadata();
-                                    if *want_meta == meta {
-                                        Ok((v.copy_semantic(gcv), true))
-                                    } else {
-                                        if do_try {
-                                            Ok((want_meta.zero(&objs.metas, gcv), false))
-                                        } else {
-                                            Err("interface conversion: wrong type".to_owned())
-                                        }
-                                    }
-                                }
-                                InterfaceObj::Ffi(_) => {
-                                    Err("FFI interface do not support type assertion".to_owned())
-                                }
-                            },
-                            Err(e) => Err(e),
-                        };
-                        match result {
+                        match type_assert(val, &consts[inst.s1 as usize], gcv, None) {
+                            Ok((val, _)) => {
+                                stack.set(inst.d + sb, val);
+                            }
+                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                        }
+                    }
+                    Opcode::TYPE_ASSERT_OK => {
+                        frame.pc += 1;
+                        let inst_ex = &code[frame.pc as usize];
+                        let val = stack.read(inst.s0, sb, consts);
+                        match type_assert(val, &consts[inst.s1 as usize], gcv, Some(&objs.metas)) {
                             Ok((val, ok)) => {
                                 stack.set(inst.d + sb, val);
-                                if do_try {
-                                    stack.set(inst.d + sb, GosValue::new_bool(ok));
-                                }
+                                stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
@@ -1868,6 +1862,34 @@ fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<G
 }
 
 #[inline(always)]
+fn type_assert(
+    val: &GosValue,
+    want_meta: &GosValue,
+    gcv: &GcoVec,
+    metas: Option<&MetadataObjs>,
+) -> RuntimeResult<(GosValue, bool)> {
+    match val.as_some_interface() {
+        Ok(iface) => match &iface as &InterfaceObj {
+            InterfaceObj::Gos(v, b) => {
+                let meta = b.as_ref().unwrap().0;
+                let want_meta = want_meta.as_metadata();
+                if *want_meta == meta {
+                    Ok((v.copy_semantic(gcv), true))
+                } else {
+                    if let Some(mobjs) = metas {
+                        Ok((want_meta.zero(mobjs, gcv), false))
+                    } else {
+                        Err("interface conversion: wrong type".to_owned())
+                    }
+                }
+            }
+            InterfaceObj::Ffi(_) => Err("FFI interface do not support type assertion".to_owned()),
+        },
+        Err(e) => Err(e),
+    }
+}
+
+#[inline(always)]
 fn get_struct_and_index(
     val: GosValue,
     indices: &Vec<OpIndex>,
@@ -1929,6 +1951,7 @@ fn cast_receiver(
     }
 }
 
+#[inline]
 pub fn bind_iface_method(
     iface: &InterfaceObj,
     index: usize,

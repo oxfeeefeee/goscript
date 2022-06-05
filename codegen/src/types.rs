@@ -604,6 +604,10 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn bool_tc_type(&self) -> TCTypeKey {
+        self.tc_objs.universe().types()[&BasicType::Bool]
+    }
+
     fn range_tc_types(&self, typ: TCTypeKey) -> [TCTypeKey; 3] {
         let t_int = self.tc_objs.universe().types()[&BasicType::Int];
         let typ = self.tc_objs.types[typ].underlying().unwrap_or(typ);
