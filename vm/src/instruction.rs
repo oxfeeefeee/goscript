@@ -18,6 +18,7 @@ pub enum Opcode {
     LOAD_ARRAY,
     STORE_ARRAY,
     LOAD_MAP,
+    LOAD_MAP_OK,
     STORE_MAP,
     LOAD_STRUCT,
     STORE_STRUCT,
@@ -93,6 +94,7 @@ pub enum Opcode {
     BIND_INTERFACE_METHOD,
     CAST,
     TYPE_ASSERT,
+    TYPE_ASSERT_OK,
     TYPE,
     ZERO_VALUE,
 
