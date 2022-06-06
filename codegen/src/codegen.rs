@@ -974,31 +974,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     //     }
     // }
 
-    // fn gen_type_assert(&mut self, expr: &Expr, typ: &Option<Expr>, comma_ok: bool) {
-    //     self.visit_expr(expr);
-    //     let t = self.t.expr_tc_type(typ.as_ref().unwrap());
-    //     let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
-    //     let func = current_func_mut!(self);
-    //     let index = func.add_const(None, GosValue::new_metadata(meta));
-    //     let pos = expr.pos(self.ast_objs);
-    //     func.emit_code_with_flag_imm(Opcode::TYPE_ASSERT, comma_ok, index.into(), Some(pos));
-    // }
-
-    // fn gen_index(&mut self, container: &Expr, index: &Expr, t_result: ValueType, comma_ok: bool) {
-    //     let t1 = self.t.expr_value_type(index);
-    //     self.visit_expr(container);
-    //     let pos = Some(container.pos(&self.ast_objs));
-    //     if let Some(const_val) = self.t.try_tc_const_value(index.id()) {
-    //         let (ival, _) = const_val.to_int().int_as_i64();
-    //         if let Ok(i) = OpIndex::try_from(ival) {
-    //             current_func_emitter!(self).emit_load_index_imm(i, t_result, comma_ok, pos);
-    //             return;
-    //         }
-    //     }
-    //     self.visit_expr(index);
-    //     current_func_emitter!(self).emit_load_index(t_result, t1, comma_ok, pos);
-    // }
-
     // fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
     //     let (sig_params, variadic) = self.t.sig_params_tc_types(func);
     //     let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
@@ -1055,40 +1030,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let index_reg = self.load(|g| g.gen_expr(index));
         let pos = Some(container.pos(&self.ast_objs));
         match ok_lhs_ectx {
-            Some(mut ok_ctx) => {
-                let direct = |gen: &mut CodeGen, e: &ExprCtx, t| {
-                    let (va, typ) = e.mode.as_store();
-                    let cast_index = gen.should_cast_to_iface(typ.unwrap(), t);
-                    let d =
-                        va.try_as_direct_addr().is_some() && typ.is_some() && !cast_index.is_none();
-                    (d, cast_index)
-                };
-                let mut val_ectx = expr_ctx!(self).clone();
-                let (direct_val, cast_val) = direct(self, &val_ectx, val_tc_type);
-                let (direct_ok, cast_ok) = direct(self, &ok_ctx, self.t.bool_tc_type());
-
-                let val_addr = match direct_val {
-                    true => val_ectx.mode.as_store().0.as_direct_addr(),
-                    false => expr_ctx!(self).inc_cur_reg(),
-                };
-                let ok_addr = match direct_ok {
-                    true => ok_ctx.mode.as_store().0.as_direct_addr(),
-                    false => expr_ctx!(self).inc_cur_reg(),
-                };
-                let inst =
-                    InterInst::with_op_index(Opcode::LOAD_MAP, val_addr, container_addr, index_reg);
-                let inst_ex =
-                    InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
-                let fctx = func_ctx!(self);
-                fctx.emit_inst(inst, pos);
-                fctx.emit_inst(inst_ex, pos);
-
-                if !direct_val {
-                    val_ectx.emit_direct_assign(fctx, val_addr, cast_val, pos);
-                }
-                if !direct_ok {
-                    ok_ctx.emit_direct_assign(fctx, ok_addr, cast_ok, pos);
-                }
+            Some(mut ok_ectx) => {
+                self.emit_comma_ok(&mut ok_ectx, val_tc_type, container_addr, index_reg, pos);
             }
             None => {
                 let op = match self.t.expr_value_type(container) {
@@ -1099,6 +1042,33 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 };
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
                     let inst = InterInst::with_op_index(op, d, container_addr, index_reg);
+                    f.emit_inst(inst, p);
+                });
+            }
+        }
+    }
+
+    fn gen_expr_type_assert(
+        &mut self,
+        expr: &Expr,
+        typ: &Option<Expr>,
+        ok_lhs_ectx: Option<ExprCtx>,
+    ) {
+        let val_addr = self.load(|g| g.gen_expr(expr));
+        let val_tc_type = self.t.expr_tc_type(typ.as_ref().unwrap());
+        let meta = self
+            .t
+            .tc_type_to_meta(val_tc_type, self.objects, self.dummy_gcv);
+        let meta_addr = func_ctx!(self).add_const(GosValue::new_metadata(meta));
+        let pos = Some(expr.pos(self.ast_objs));
+        match ok_lhs_ectx {
+            Some(mut ok_ectx) => {
+                self.emit_comma_ok(&mut ok_ectx, val_tc_type, val_addr, meta_addr, pos);
+            }
+            None => {
+                self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
+                    let inst =
+                        InterInst::with_op_index(Opcode::TYPE_ASSERT, d, val_addr, meta_addr);
                     f.emit_inst(inst, p);
                 });
             }
@@ -1318,22 +1288,76 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn should_cast_to_iface(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> Option<OpIndex> {
-        match self.t.obj_underlying_value_type(lhs) == ValueType::Interface {
+    fn emit_comma_ok(
+        &mut self,
+        ok_ectx: &mut ExprCtx,
+        val_tc_type: TCTypeKey,
+        s0: Addr,
+        s1: Addr,
+        pos: Option<usize>,
+    ) {
+        let val_ectx = expr_ctx!(self);
+        let (val_addr, val_direct, val_cast_i) = CodeGen::get_store_addr(
+            &mut self.t,
+            self.iface_selector,
+            val_ectx,
+            self.objects,
+            self.dummy_gcv,
+            val_tc_type,
+        );
+        let bool_tc_type = self.t.bool_tc_type();
+        let (ok_addr, ok_direct, ok_cast_i) = CodeGen::get_store_addr(
+            &mut self.t,
+            self.iface_selector,
+            ok_ectx,
+            self.objects,
+            self.dummy_gcv,
+            bool_tc_type,
+        );
+        let inst = InterInst::with_op_index(Opcode::TYPE_ASSERT_OK, val_addr, s0, s1);
+        let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
+        let fctx = func_ctx!(self);
+        fctx.emit_inst(inst, pos);
+        fctx.emit_inst(inst_ex, pos);
+
+        if !val_direct {
+            val_ectx.emit_direct_assign(fctx, val_addr, val_cast_i, pos);
+        }
+        if !ok_direct {
+            ok_ectx.emit_direct_assign(fctx, ok_addr, ok_cast_i, pos);
+        }
+    }
+
+    fn get_store_addr(
+        t: &mut TypeLookup,
+        iface_sel: &mut IfaceSelector,
+        ectx: &mut ExprCtx,
+        objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+        t_rhs: TCTypeKey,
+    ) -> (Addr, bool, Option<OpIndex>) {
+        let (va, typ) = ectx.mode.as_store();
+        let need_cast = typ.is_some() && t.should_cast_to_iface(typ.unwrap(), t_rhs);
+        let direct = need_cast || va.try_as_direct_addr().is_some();
+        let addr = match direct {
+            true => va.as_direct_addr(),
+            false => ectx.inc_cur_reg(),
+        };
+        let cast_index =
+            need_cast.then(|| iface_sel.get_index((typ.unwrap(), t_rhs), t, objs, dummy_gcv));
+        (addr, direct, cast_index)
+    }
+
+    fn cast_to_iface_index(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> Option<OpIndex> {
+        match self.t.should_cast_to_iface(lhs, rhs) {
             true => {
-                let vt1 = self.t.obj_underlying_value_type(rhs);
-                match vt1 != ValueType::Interface && vt1 != ValueType::Void {
-                    true => {
-                        let index = self.iface_selector.get_index(
-                            (lhs, rhs),
-                            &mut self.t,
-                            self.objects,
-                            self.dummy_gcv,
-                        );
-                        Some(index)
-                    }
-                    false => None,
-                }
+                let index = self.iface_selector.get_index(
+                    (lhs, rhs),
+                    &mut self.t,
+                    self.objects,
+                    self.dummy_gcv,
+                );
+                Some(index)
             }
             false => None,
         }
@@ -1382,17 +1406,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         F: FnOnce(&mut FuncCtx, Addr, Option<Pos>),
     {
         let lhs = expr_ctx!(self).lhs_type();
-        let index = lhs
-            .map(|x| self.should_cast_to_iface(x, rhs_type))
-            .flatten();
+        let index = lhs.map(|x| self.cast_to_iface_index(x, rhs_type)).flatten();
         expr_ctx!(self).emit_assign(func_ctx!(self), index, pos, f);
     }
 
     fn cur_expr_emit_direct_assign(&mut self, rhs_type: TCTypeKey, src: Addr, pos: Option<Pos>) {
         let lhs = expr_ctx!(self).lhs_type();
-        let index = lhs
-            .map(|x| self.should_cast_to_iface(x, rhs_type))
-            .flatten();
+        let index = lhs.map(|x| self.cast_to_iface_index(x, rhs_type)).flatten();
         expr_ctx!(self).emit_direct_assign(func_ctx!(self), src, index, pos);
     }
 
@@ -1692,30 +1712,42 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         high: &Option<Expr>,
         max: &Option<Expr>,
     ) -> Self::Result {
-        // self.visit_expr(expr);
-        // let (t0, t1) = self
-        //     .t
-        //     .sliceable_expr_value_types(expr, self.objects, self.dummy_gcv);
-        // let pos = Some(expr.pos(&self.ast_objs));
-        // match low {
-        //     None => current_func_emitter!(self).emit_push_imm(ValueType::Int, 0, pos),
-        //     Some(e) => self.visit_expr(e),
-        // }
-        // match high {
-        //     None => current_func_emitter!(self).emit_push_imm(ValueType::Int, -1, pos),
-        //     Some(e) => self.visit_expr(e),
-        // }
-        // match max {
-        //     None => current_func_mut!(self).emit_code_with_type2(Opcode::SLICE, t0, Some(t1), pos),
-        //     Some(e) => {
-        //         self.visit_expr(e);
-        //         current_func_mut!(self).emit_code_with_type2(Opcode::SLICE_FULL, t0, Some(t1), pos);
-        //     }
-        // }
+        let (t0, tct_elem) = self
+            .t
+            .sliceable_expr_value_types(expr, self.objects, self.dummy_gcv);
+        let pos = Some(expr.pos(&self.ast_objs));
+
+        let slice_array_addr = self.load(|g| g.gen_expr(expr));
+        let low_addr = match low {
+            None => func_ctx!(self).add_const(GosValue::new_int(0)),
+            Some(e) => self.load(|g| g.gen_expr(e)),
+        };
+        let high_addr = match high {
+            None => func_ctx!(self).add_const(GosValue::new_int(-1)),
+            Some(e) => self.load(|g| g.gen_expr(e)),
+        };
+        let max_addr = match max {
+            None => func_ctx!(self).add_const(GosValue::new_int(-1)),
+            Some(e) => self.load(|g| g.gen_expr(e)),
+        };
+        let t_elem = self.t.tc_type_to_value_type(tct_elem);
+        self.cur_expr_emit_assign(tct_elem, pos, |f, d, p| {
+            let inst = InterInst::with_op_t_index(
+                Opcode::SLICE,
+                Some(t0),
+                Some(t_elem),
+                d,
+                slice_array_addr,
+                low_addr,
+            );
+            let inst_ex = InterInst::with_op_index(Opcode::VOID, Addr::Void, high_addr, max_addr);
+            f.emit_inst(inst, pos);
+            f.emit_inst(inst_ex, pos);
+        })
     }
 
     fn visit_expr_type_assert(&mut self, _: &Expr, expr: &Expr, typ: &Option<Expr>) {
-        //self.gen_type_assert(expr, typ, false);
+        self.gen_expr_type_assert(expr, typ, None);
     }
 
     fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
