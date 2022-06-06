@@ -164,15 +164,24 @@ impl<'a> TypeLookup<'a> {
         e: &Expr,
         vm_objs: &mut VMObjects,
         dummy_gcv: &mut GcoVec,
-    ) -> (ValueType, ValueType) {
+    ) -> (ValueType, TCTypeKey) {
         let tc_type = self.expr_tc_type(&e);
         let typ = self.tc_objs.types[tc_type].underlying().unwrap_or(tc_type);
         let meta = self.tc_type_to_meta(typ, vm_objs, dummy_gcv);
         let metas = &vm_objs.metas;
         match &metas[meta.key] {
-            MetadataType::Array(m, _) => (ValueType::Array, m.value_type(&metas)),
-            MetadataType::Slice(m) => (ValueType::Slice, m.value_type(&metas)),
-            MetadataType::Str(_) => (ValueType::String, ValueType::Uint8),
+            MetadataType::Array(_, _) => (
+                ValueType::Array,
+                self.tc_objs.types[typ].try_as_array().unwrap().elem(),
+            ),
+            MetadataType::Slice(_) => (
+                ValueType::Slice,
+                self.tc_objs.types[typ].try_as_slice().unwrap().elem(),
+            ),
+            MetadataType::Str(_) => (
+                ValueType::String,
+                self.tc_objs.universe().types()[&BasicType::Uint8],
+            ),
             _ => unreachable!(),
         }
     }
@@ -606,6 +615,13 @@ impl<'a> TypeLookup<'a> {
 
     pub fn bool_tc_type(&self) -> TCTypeKey {
         self.tc_objs.universe().types()[&BasicType::Bool]
+    }
+
+    pub fn should_cast_to_iface(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> bool {
+        let vt1 = self.obj_underlying_value_type(rhs);
+        self.obj_underlying_value_type(lhs) == ValueType::Interface
+            && vt1 != ValueType::Interface
+            && vt1 != ValueType::Void
     }
 
     fn range_tc_types(&self, typ: TCTypeKey) -> [TCTypeKey; 3] {

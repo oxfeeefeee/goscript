@@ -1458,10 +1458,10 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::SLICE => {
-                        let s = stack.read(inst.s0, sb, consts);
-                        let begin = *stack.read(inst.s1, sb, consts).as_int();
                         frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
+                        let s = stack.read(inst.s0, sb, consts);
+                        let begin = *stack.read(inst.s1, sb, consts).as_int();
                         let end = *stack.read(inst_ex.s0, sb, consts).as_int();
                         let max = *stack.read(inst_ex.s1, sb, consts).as_int();
                         let result = match inst.t0 {
