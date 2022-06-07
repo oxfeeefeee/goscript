@@ -773,251 +773,322 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         fkey
     }
 
-    // fn gen_call(&mut self, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool, style: CallStyle) {
-    //     let pos = Some(func_expr.pos(&self.ast_objs));
-    //     match *self.t.expr_mode(func_expr) {
-    //         // built in function
-    //         OperandMode::Builtin(builtin) => {
-    //             let opcode = match builtin {
-    //                 Builtin::New => Opcode::NEW,
-    //                 Builtin::Make => Opcode::MAKE,
-    //                 Builtin::Complex => Opcode::COMPLEX,
-    //                 Builtin::Real => Opcode::REAL,
-    //                 Builtin::Imag => Opcode::IMAG,
-    //                 Builtin::Len => Opcode::LEN,
-    //                 Builtin::Cap => Opcode::CAP,
-    //                 Builtin::Append => Opcode::APPEND,
-    //                 Builtin::Copy => Opcode::COPY,
-    //                 Builtin::Delete => Opcode::DELETE,
-    //                 Builtin::Close => Opcode::CLOSE,
-    //                 Builtin::Panic => Opcode::PANIC,
-    //                 Builtin::Recover => Opcode::RECOVER,
-    //                 Builtin::Assert => Opcode::ASSERT,
-    //                 Builtin::Ffi => Opcode::FFI,
-    //                 _ => unimplemented!(),
-    //             };
-    //             for e in params.iter() {
-    //                 self.visit_expr(e);
-    //             }
-    //             // some of the built in funcs are not recorded
-    //             if let Some(t) = self.t.try_expr_tc_type(func_expr) {
-    //                 self.try_cast_params_to_iface(t, params, ellipsis);
-    //                 if opcode == Opcode::FFI {
-    //                     // FFI needs the signature of the call
-    //                     let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
-    //                     let mut emitter = current_func_emitter!(self);
-    //                     emitter.emit_load(EntIndex::TypeMeta(meta), None, ValueType::Metadata, pos);
-    //                 }
-    //             }
-    //             let (param0t, param_last_t) = match params.len() > 0 {
-    //                 true => (
-    //                     Some(self.t.expr_value_type(&params[0])),
-    //                     Some(self.t.expr_value_type(params.last().unwrap())),
-    //                 ),
-    //                 false => (None, None),
-    //             };
-    //             let bf = self.tc_objs.universe().builtins()[&builtin];
-    //             let param_count = params.len() as OpIndex;
-    //             let special_case = (opcode == Opcode::APPEND || opcode == Opcode::COPY)
-    //                 && param_last_t.map_or(false, |x| x == ValueType::String);
-    //             let (t_variadic, count) = match special_case {
-    //                 true => (Some(ValueType::FlagC), Some(0)), // special case,
-    //                 false => match bf.variadic {
-    //                     true => match ellipsis {
-    //                         true => (Some(ValueType::FlagB), Some(0)), // do not pack params if there is ellipsis
-    //                         false => (
-    //                             param_last_t,
-    //                             Some(bf.arg_count as OpIndex - param_count + 1),
-    //                         ),
-    //                     },
-    //                     false => (Some(ValueType::FlagA), Some(param_count as OpIndex)),
-    //                 },
-    //             };
-    //             let (t0, t1) = match opcode {
-    //                 Opcode::DELETE => (param0t, param_last_t),
-    //                 Opcode::MAKE | Opcode::NEW => {
-    //                     // provide the type of param0 too instead of only ValueType::Metadata
-    //                     let t = self.t.expr_tc_type(&params[0]);
-    //                     (param0t, Some(self.t.tc_type_to_value_type(t)))
-    //                 }
-    //                 Opcode::PANIC => (Some(ValueType::Interface), None),
-    //                 Opcode::APPEND | Opcode::COPY => {
-    //                     let (_, t_elem) = self.t.sliceable_expr_value_types(
-    //                         &params[0],
-    //                         self.objects,
-    //                         self.dummy_gcv,
-    //                     );
-    //                     (Some(t_elem), None)
-    //                 }
-    //                 _ => (param0t, None),
-    //             };
-    //             let func = current_func_mut!(self);
-    //             func.emit_inst(opcode, [t0, t1, t_variadic], count, pos);
-    //         }
-    //         // conversion
-    //         // from the specs:
-    //         /*
-    //         A non-constant value x can be converted to type T in any of these cases:
-    //             x is assignable to T.
-    //             +3 [struct] ignoring struct tags (see below), x's type and T have identical underlying types.
-    //             +4 [pointer] ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
-    //             +5 [number] x's type and T are both integer or floating point types.
-    //             +6 [number] x's type and T are both complex types.
-    //             +7 [string] x is an integer or a slice of bytes or runes and T is a string type.
-    //             +8 [slice] x is a string and T is a slice of bytes or runes.
-    //         A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
-    //             - x's type is identical to T.
-    //             - x's type V and T have identical underlying types and at least one of V or T is not a defined type.
-    //             +1 [interface] T is an interface type and x implements T.
-    //             +2 [channel] x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
-    //             - x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
-    //             - x is an untyped constant representable by a value of type T.
-    //         */
-    //         OperandMode::TypeExpr => {
-    //             assert!(params.len() == 1);
-    //             self.visit_expr(&params[0]);
-    //             let tc_to = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
-    //             let typ_to = self.t.tc_type_to_value_type(tc_to);
-    //             let tc_from = self.t.underlying_tc(self.t.expr_tc_type(&params[0]));
-    //             let typ_from = self.t.tc_type_to_value_type(tc_from);
+    fn gen_builtin_call(
+        &mut self,
+        func_expr: &Expr,
+        params: &Vec<Expr>,
+        builtin: &Builtin,
+        return_type: TCTypeKey,
+        ellipsis: bool,
+    ) {
+        let pos = Some(func_expr.pos(&self.ast_objs));
+        let slice_op_types = |g: &mut CodeGen| {
+            let t0 = if ellipsis && g.t.expr_value_type(&params[1]) == ValueType::String {
+                ValueType::String
+            } else {
+                ValueType::Slice
+            };
+            let (_, t_elem) =
+                g.t.sliceable_expr_value_types(&params[0], g.objects, g.dummy_gcv);
+            (t0, g.t.tc_type_to_value_type(t_elem))
+        };
+        match builtin {
+            Builtin::Make => {
+                let meta_addr = self.load(|g| g.gen_expr(&params[0]));
+                let mut flag = ValueType::FlagA;
+                let mut arg1 = Addr::Void;
+                let mut arg2 = Addr::Void;
+                if params.len() >= 2 {
+                    flag = ValueType::FlagB;
+                    arg1 = self.load(|g| g.gen_expr(&params[1]));
+                }
+                if params.len() >= 3 {
+                    flag = ValueType::FlagC;
+                    arg2 = self.load(|g| g.gen_expr(&params[2]));
+                }
+                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::MAKE,
+                        Some(flag),
+                        None,
+                        d,
+                        meta_addr,
+                        arg1,
+                    );
+                    f.emit_inst(inst, p);
+                    if arg2 != Addr::Void {
+                        let inst = InterInst::with_op_index(Opcode::VOID, d, arg2, Addr::Void);
+                        f.emit_inst(inst, p);
+                    }
+                });
+            }
+            Builtin::Complex => {
+                let addr0 = self.load(|g| g.gen_expr(&params[0]));
+                let addr1 = self.load(|g| g.gen_expr(&params[1]));
+                let t = self.t.expr_value_type(&params[0]);
+                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                    let inst =
+                        InterInst::with_op_t_index(Opcode::COMPLEX, Some(t), None, d, addr0, addr1);
+                    f.emit_inst(inst, p);
+                });
+            }
+            Builtin::New
+            | Builtin::Real
+            | Builtin::Imag
+            | Builtin::Len
+            | Builtin::Cap
+            | Builtin::Ffi => {
+                let addr0 = self.load(|g| g.gen_expr(&params[0]));
+                let addr1 = if params.len() > 1 {
+                    self.load(|g| g.gen_expr(&params[1]))
+                } else {
+                    Addr::Void
+                };
+                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                    let op = match builtin {
+                        Builtin::New => Opcode::NEW,
+                        Builtin::Real => Opcode::REAL,
+                        Builtin::Imag => Opcode::IMAG,
+                        Builtin::Len => Opcode::LEN,
+                        Builtin::Cap => Opcode::CAP,
+                        Builtin::Ffi => Opcode::FFI,
+                        _ => unreachable!(),
+                    };
+                    let inst = InterInst::with_op_index(op, d, addr0, addr1);
+                    f.emit_inst(inst, p);
+                });
+            }
+            Builtin::Append => {
+                let ft = self.t.try_expr_tc_type(func_expr).unwrap();
+                let init_reg = expr_ctx!(self).cur_reg;
+                self.gen_call_params(ft, params, ellipsis);
+                let types = slice_op_types(self);
+                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::APPEND,
+                        Some(types.0),
+                        Some(types.1),
+                        d,
+                        Addr::Regsiter(init_reg),
+                        Addr::Regsiter(init_reg + 1),
+                    );
+                    f.emit_inst(inst, p);
+                });
+                expr_ctx!(self).cur_reg = init_reg;
+            }
+            Builtin::Copy => {
+                let addr0 = self.load(|g| g.gen_expr(&params[0]));
+                let addr1 = self.load(|g| g.gen_expr(&params[1]));
+                let types = slice_op_types(self);
+                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::COPY,
+                        Some(types.0),
+                        Some(types.1),
+                        d,
+                        addr0,
+                        addr1,
+                    );
+                    f.emit_inst(inst, p);
+                });
+            }
+            Builtin::Delete | Builtin::Close | Builtin::Panic | Builtin::Assert => {
+                let addr0 = self.load(|g| g.gen_expr(&params[0]));
+                let addr1 = if params.len() > 1 {
+                    self.load(|g| g.gen_expr(&params[1]))
+                } else {
+                    Addr::Void
+                };
+                let op = match builtin {
+                    Builtin::Delete => Opcode::DELETE,
+                    Builtin::Close => Opcode::CLOSE,
+                    Builtin::Panic => Opcode::PANIC,
+                    Builtin::Assert => Opcode::ASSERT,
+                    _ => unreachable!(),
+                };
+                let inst = InterInst::with_op_index(op, Addr::Void, addr0, addr1);
+                func_ctx!(self).emit_inst(inst, pos);
+            }
 
-    //             if typ_from == ValueType::Void
-    //                 || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
-    //             {
-    //                 // just ignore conversion if it's nil or types are identical
-    //                 // or convert between Named type and underlying type,
-    //                 // or both types are Named in case they are Structs
-    //             } else {
-    //                 match typ_to {
-    //                     ValueType::Interface => {
-    //                         if typ_from != ValueType::Void {
-    //                             let iface_index = self.iface_selector.get_index(
-    //                                 (tc_to, tc_from),
-    //                                 &mut self.t,
-    //                                 self.objects,
-    //                                 self.dummy_gcv,
-    //                             );
-    //                             current_func_emitter!(self).emit_cast(
-    //                                 typ_to,
-    //                                 typ_from,
-    //                                 None,
-    //                                 -1,
-    //                                 iface_index,
-    //                                 pos,
-    //                             );
-    //                         }
-    //                     }
-    //                     ValueType::Int
-    //                     | ValueType::Int8
-    //                     | ValueType::Int16
-    //                     | ValueType::Int32
-    //                     | ValueType::Int64
-    //                     | ValueType::Uint
-    //                     | ValueType::UintPtr
-    //                     | ValueType::Uint8
-    //                     | ValueType::Uint16
-    //                     | ValueType::Uint32
-    //                     | ValueType::Uint64
-    //                     | ValueType::Float32
-    //                     | ValueType::Float64
-    //                     | ValueType::Complex64
-    //                     | ValueType::Complex128
-    //                     | ValueType::String
-    //                     | ValueType::Slice
-    //                     | ValueType::UnsafePtr
-    //                     | ValueType::Pointer => {
-    //                         let t_extra = match typ_to {
-    //                             ValueType::String => (typ_from == ValueType::Slice).then(|| {
-    //                                 self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()
-    //                             }),
-    //                             ValueType::Slice => {
-    //                                 Some(self.tc_objs.types[tc_to].try_as_slice().unwrap().elem())
-    //                             }
-    //                             ValueType::Pointer => {
-    //                                 Some(self.tc_objs.types[tc_to].try_as_pointer().unwrap().base())
-    //                             }
-    //                             ValueType::Channel => Some(tc_to),
-    //                             _ => None,
-    //                         };
-    //                         let t2 = t_extra.map(|x| self.t.tc_type_to_value_type(x));
+            Builtin::Recover => {
+                let inst = InterInst::with_op(Opcode::RECOVER);
+                func_ctx!(self).emit_inst(inst, pos);
+            }
+            _ => unimplemented!(),
+        };
+    }
 
-    //                         current_func_emitter!(self).emit_cast(typ_to, typ_from, t2, -1, 0, pos);
-    //                     }
-    //                     ValueType::Channel => { /* nothing to be done */ }
-    //                     _ => {
-    //                         dbg!(typ_to);
-    //                         unreachable!()
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         // normal goscript function
-    //         _ => {
-    //             self.visit_expr(func_expr);
-    //             current_func_emitter!(self).emit_pre_call(pos);
-    //             let _ = params.iter().map(|e| self.visit_expr(e)).count();
-    //             let t = self.t.expr_tc_type(func_expr);
-    //             self.try_cast_params_to_iface(t, params, ellipsis);
+    fn gen_expr_call(
+        &mut self,
+        func_expr: &Expr,
+        params: &Vec<Expr>,
+        ellipsis: bool,
+        return_type: Option<TCTypeKey>,
+        style: CallStyle,
+    ) {
+        match *self.t.expr_mode(func_expr) {
+            // built in function
+            OperandMode::Builtin(builtin) => {
+                self.gen_builtin_call(func_expr, params, &builtin, return_type.unwrap(), ellipsis);
+            }
+            // conversion
+            // from the specs:
+            /*
+            A non-constant value x can be converted to type T in any of these cases:
+                x is assignable to T.
+                +3 [struct] ignoring struct tags (see below), x's type and T have identical underlying types.
+                +4 [pointer] ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
+                +5 [number] x's type and T are both integer or floating point types.
+                +6 [number] x's type and T are both complex types.
+                +7 [string] x is an integer or a slice of bytes or runes and T is a string type.
+                +8 [slice] x is a string and T is a slice of bytes or runes.
+            A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
+                - x's type is identical to T.
+                - x's type V and T have identical underlying types and at least one of V or T is not a defined type.
+                +1 [interface] T is an interface type and x implements T.
+                +2 [channel] x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
+                - x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
+                - x is an untyped constant representable by a value of type T.
+            */
+            OperandMode::TypeExpr => {
+                // assert!(params.len() == 1);
+                // self.visit_expr(&params[0]);
+                // let tc_to = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
+                // let typ_to = self.t.tc_type_to_value_type(tc_to);
+                // let tc_from = self.t.underlying_tc(self.t.expr_tc_type(&params[0]));
+                // let typ_from = self.t.tc_type_to_value_type(tc_from);
 
-    //             // do not pack params if there is ellipsis
-    //             let ftc = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
-    //             let variadic_typ = if !ellipsis {
-    //                 let meta = self.t.tc_type_to_meta(ftc, self.objects, self.dummy_gcv);
-    //                 let metas = &self.objects.metas;
-    //                 let call_meta = metas[meta.key].as_signature();
-    //                 call_meta.variadic.map(|x| x.1.value_type(metas))
-    //             } else {
-    //                 None
-    //             };
-    //             current_func_emitter!(self).emit_call(style, variadic_typ, pos);
-    //         }
-    //     }
-    // }
+                // if typ_from == ValueType::Void
+                //     || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
+                // {
+                //     // just ignore conversion if it's nil or types are identical
+                //     // or convert between Named type and underlying type,
+                //     // or both types are Named in case they are Structs
+                // } else {
+                //     match typ_to {
+                //         ValueType::Interface => {
+                //             if typ_from != ValueType::Void {
+                //                 let iface_index = self.iface_selector.get_index(
+                //                     (tc_to, tc_from),
+                //                     &mut self.t,
+                //                     self.objects,
+                //                     self.dummy_gcv,
+                //                 );
+                //                 current_func_emitter!(self).emit_cast(
+                //                     typ_to,
+                //                     typ_from,
+                //                     None,
+                //                     -1,
+                //                     iface_index,
+                //                     pos,
+                //                 );
+                //             }
+                //         }
+                //         ValueType::Int
+                //         | ValueType::Int8
+                //         | ValueType::Int16
+                //         | ValueType::Int32
+                //         | ValueType::Int64
+                //         | ValueType::Uint
+                //         | ValueType::UintPtr
+                //         | ValueType::Uint8
+                //         | ValueType::Uint16
+                //         | ValueType::Uint32
+                //         | ValueType::Uint64
+                //         | ValueType::Float32
+                //         | ValueType::Float64
+                //         | ValueType::Complex64
+                //         | ValueType::Complex128
+                //         | ValueType::String
+                //         | ValueType::Slice
+                //         | ValueType::UnsafePtr
+                //         | ValueType::Pointer => {
+                //             let t_extra = match typ_to {
+                //                 ValueType::String => (typ_from == ValueType::Slice).then(|| {
+                //                     self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()
+                //                 }),
+                //                 ValueType::Slice => {
+                //                     Some(self.tc_objs.types[tc_to].try_as_slice().unwrap().elem())
+                //                 }
+                //                 ValueType::Pointer => {
+                //                     Some(self.tc_objs.types[tc_to].try_as_pointer().unwrap().base())
+                //                 }
+                //                 ValueType::Channel => Some(tc_to),
+                //                 _ => None,
+                //             };
+                //             let t2 = t_extra.map(|x| self.t.tc_type_to_value_type(x));
 
-    // fn try_cast_params_to_iface(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
-    //     let (sig_params, variadic) = self.t.sig_params_tc_types(func);
-    //     let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
-    //     let param_types = self.get_exprs_final_types(params);
+                //             current_func_emitter!(self).emit_cast(typ_to, typ_from, t2, -1, 0, pos);
+                //         }
+                //         ValueType::Channel => { /* nothing to be done */ }
+                //         _ => {
+                //             dbg!(typ_to);
+                //             unreachable!()
+                //         }
+                //     }
+                //}
+            }
+            // normal goscript function
+            _ => {
+                // self.visit_expr(func_expr);
+                // current_func_emitter!(self).emit_pre_call(pos);
+                // let _ = params.iter().map(|e| self.visit_expr(e)).count();
+                // let t = self.t.expr_tc_type(func_expr);
+                // self.try_cast_params_to_iface(t, params, ellipsis);
 
-    //     for (i, v) in sig_params[..non_variadic_count].iter().enumerate() {
-    //         let rhs_index = i as OpIndex - params.len() as OpIndex;
-    //         self.try_cast_to_iface(Some(*v), param_types[i].0, rhs_index, param_types[i].1);
-    //     }
-    //     if !ellipsis {
-    //         if let Some(t) = variadic {
-    //             if self.t.obj_underlying_value_type(t) == ValueType::Interface {
-    //                 for (i, p) in param_types.iter().enumerate().skip(non_variadic_count) {
-    //                     let rhs_index = i as OpIndex - params.len() as OpIndex;
-    //                     self.try_cast_to_iface(Some(t), p.0, rhs_index, p.1);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+                // // do not pack params if there is ellipsis
+                // let ftc = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
+                // let variadic_typ = if !ellipsis {
+                //     let meta = self.t.tc_type_to_meta(ftc, self.objects, self.dummy_gcv);
+                //     let metas = &self.objects.metas;
+                //     let call_meta = metas[meta.key].as_signature();
+                //     call_meta.variadic.map(|x| x.1.value_type(metas))
+                // } else {
+                //     None
+                // };
+                // current_func_emitter!(self).emit_call(style, variadic_typ, pos);
+            }
+        }
+    }
 
-    // fn get_exprs_final_types(&self, params: &Vec<Expr>) -> Vec<(TCTypeKey, usize)> {
-    //     params.iter().fold(vec![], |mut init, e| {
-    //         let pos = e.pos(&self.ast_objs);
-    //         match e {
-    //             Expr::Call(call) => {
-    //                 let typ = self.t.node_tc_type(call.id());
-    //                 match &self.tc_objs.types[typ] {
-    //                     Type::Tuple(tuple) => init.extend(
-    //                         tuple
-    //                             .vars()
-    //                             .iter()
-    //                             .map(|o| (self.tc_objs.lobjs[*o].typ().unwrap(), pos))
-    //                             .collect::<Vec<(TCTypeKey, usize)>>()
-    //                             .iter(),
-    //                     ),
-    //                     _ => init.push((typ, pos)),
-    //                 }
-    //             }
-    //             _ => init.push((self.t.expr_tc_type(e), pos)),
-    //         };
-    //         init
-    //     })
-    // }
+    fn gen_call_params(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
+        let (sig_params, variadic) = self.t.sig_params_tc_types(func);
+        let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
+
+        let init_reg = expr_ctx!(self).cur_reg;
+        for (i, e) in params.iter().enumerate() {
+            let addr = expr_ctx!(self).inc_cur_reg();
+            let lhs_type = if i < non_variadic_count {
+                sig_params[i]
+            } else {
+                variadic.unwrap()
+            };
+            self.store(VirtualAddr::Direct(addr), Some(lhs_type), |g| g.gen_expr(e));
+        }
+
+        debug_assert!(params.len() >= non_variadic_count);
+        let variadic_count = params.len() - non_variadic_count;
+        if !ellipsis && variadic_count > 0 {
+            if let Some(t) = variadic {
+                let variadic_begin_reg = init_reg + non_variadic_count as OpIndex;
+                let pos = Some(params[non_variadic_count].pos(&self.ast_objs));
+                let t_elem = self.t.tc_type_to_value_type(t);
+                let begin = Addr::Regsiter(variadic_begin_reg);
+                let end = Addr::Regsiter(variadic_begin_reg + variadic_count as OpIndex);
+                let inst = InterInst::with_op_t_index(
+                    Opcode::PACK_VARIADIC,
+                    Some(t_elem),
+                    None,
+                    begin,
+                    begin,
+                    end,
+                );
+                func_ctx!(self).emit_inst(inst, pos);
+
+                expr_ctx!(self).cur_reg = variadic_begin_reg + 1; // done with the rest registers
+            }
+        }
+    }
 
     fn gen_expr_index(
         &mut self,

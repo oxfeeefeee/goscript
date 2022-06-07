@@ -1589,7 +1589,7 @@ impl<'a> Fiber<'a> {
                             MetadataType::Slice(vmeta) => {
                                 let (cap, len) = match inst.t0 {
                                     // 3 args
-                                    ValueType::FlagD => {
+                                    ValueType::FlagC => {
                                         frame.pc += 1;
                                         let inst_ex = &code[frame.pc as usize];
                                         (
@@ -1598,7 +1598,7 @@ impl<'a> Fiber<'a> {
                                         )
                                     }
                                     // 2 args
-                                    ValueType::FlagC => {
+                                    ValueType::FlagB => {
                                         let len =
                                             *stack.read(inst.s1, sb, consts).as_int() as usize;
                                         (len, len)
@@ -1612,11 +1612,11 @@ impl<'a> Fiber<'a> {
                             MetadataType::Channel(_, val_meta) => {
                                 let cap = match inst.t0 {
                                     // 2 args
-                                    ValueType::FlagC => {
+                                    ValueType::FlagB => {
                                         *stack.read(inst.s1, sb, consts).as_int() as usize
                                     }
                                     // 1 arg
-                                    ValueType::FlagB => 0,
+                                    ValueType::FlagA => 0,
                                     _ => unreachable!(),
                                 };
                                 let zero = val_meta.zero(&objs.metas, gcv);
@@ -1651,7 +1651,7 @@ impl<'a> Fiber<'a> {
                                 stack.read(inst.s0, sb, consts).as_complex64().r,
                             ),
                             ValueType::Complex128 => GosValue::new_float64(
-                                stack.read(inst.s0, sb, consts).as_complex128().r,
+                                stack.read(inst.s1, sb, consts).as_complex128().r,
                             ),
                             _ => unreachable!(),
                         };
@@ -1663,7 +1663,7 @@ impl<'a> Fiber<'a> {
                                 stack.read(inst.s0, sb, consts).as_complex64().i,
                             ),
                             ValueType::Complex128 => GosValue::new_float64(
-                                stack.read(inst.s0, sb, consts).as_complex128().i,
+                                stack.read(inst.s1, sb, consts).as_complex128().i,
                             ),
                             _ => unreachable!(),
                         };
@@ -1678,37 +1678,28 @@ impl<'a> Fiber<'a> {
                         stack.set(inst.d + sb, GosValue::new_int(l as isize));
                     }
                     Opcode::APPEND => {
-                        match inst.op1_as_t() {
-                            ValueType::FlagA => unreachable!(),
-                            ValueType::FlagB => {} // default case, nothing to do
-                            ValueType::FlagC => {
-                                // special case, appending string as bytes
-                                let s = stack.read(inst.s0, sb, consts).as_string();
-                                let arr = GosValue::new_non_gc_array(
-                                    ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
-                                    ValueType::Uint8,
-                                );
-                                let b_slice =
-                                    GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap();
-                                stack.set(inst.d + sb, b_slice);
-                            }
-                            _ => {}
-                        };
                         let a = stack.read(inst.s0, sb, consts).clone();
-                        let b = stack.read(inst.s1, sb, consts).clone();
-                        match dispatcher_a_s_for(inst.t0).slice_append(a, b, gcv) {
+                        let b = if inst.t0 != ValueType::String {
+                            stack.read(inst.s1, sb, consts).clone()
+                        } else {
+                            // special case, appending string as bytes
+                            let s = stack.read(inst.s0, sb, consts).as_string();
+                            let arr = GosValue::new_non_gc_array(
+                                ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
+                                ValueType::Uint8,
+                            );
+                            GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap()
+                        };
+
+                        match dispatcher_a_s_for(inst.t1).slice_append(a, b, gcv) {
                             Ok(slice) => stack.set(inst.d + sb, slice),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         };
                     }
                     Opcode::COPY => {
-                        let t2 = match inst.op1_as_t() {
-                            ValueType::FlagC => ValueType::String,
-                            _ => ValueType::Slice,
-                        };
                         let a = stack.read(inst.s0, sb, consts).clone();
                         let b = stack.read(inst.s1, sb, consts).clone();
-                        let count = match t2 {
+                        let count = match inst.t0 {
                             ValueType::String => {
                                 let string = b.as_string();
                                 match a.as_slice::<Elem8>() {
@@ -1716,8 +1707,7 @@ impl<'a> Fiber<'a> {
                                     None => 0,
                                 }
                             }
-                            ValueType::Slice => dispatcher_a_s_for(inst.t0).slice_copy_from(a, b),
-                            _ => unreachable!(),
+                            _ => dispatcher_a_s_for(inst.t1).slice_copy_from(a, b),
                         };
                         stack.set(inst.d + sb, GosValue::new_int(count as isize));
                     }
