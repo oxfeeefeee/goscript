@@ -527,14 +527,27 @@ impl<'a> FuncCtx<'a> {
         s1: Addr,
         to_type: ValueType,
         from_type: Option<ValueType>,
+        extra_type: Option<ValueType>,
         pos: Option<usize>,
     ) {
-        let inst = InterInst::with_op_t_index(Opcode::CAST, Some(to_type), from_type, d, s0, s1);
+        let mut inst =
+            InterInst::with_op_t_index(Opcode::CAST, Some(to_type), from_type, d, s0, s1);
+        if let Some(t) = extra_type {
+            inst.set_op1_with_t(t);
+        }
         self.emit_inst(inst, pos);
     }
 
     pub fn emit_cast_iface(&mut self, d: Addr, s: Addr, index: OpIndex, pos: Option<usize>) {
-        self.emit_cast(d, s, Addr::Imm(index), ValueType::Interface, None, pos);
+        self.emit_cast(
+            d,
+            s,
+            Addr::Imm(index),
+            ValueType::Interface,
+            None,
+            None,
+            pos,
+        );
     }
 
     pub fn emit_closure(&mut self, d: Addr, s: Addr, pos: Option<usize>) {

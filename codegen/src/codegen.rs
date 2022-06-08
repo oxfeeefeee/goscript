@@ -232,7 +232,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
             let (val, typ) = self.t.ident_const_value_type(name);
-            //self.current_func_add_const_def(name, val, typ);
+            self.add_const_def(name, val, typ);
         }
     }
 
@@ -243,149 +243,130 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     /// x++
     /// for x := range xxx
     /// recv clause of select stmt
-    // fn gen_assign(
-    //     &mut self,
-    //     token: &Token,
-    //     lhs_exprs: &Vec<&Expr>,
-    //     rhs: RightHandSide,
-    // ) -> Option<usize> {
-    //     let lhs = lhs_exprs
-    //         .iter()
-    //         .map(|expr| {
-    //             match expr {
-    //                 Expr::Ident(ident) => {
-    //                     let is_def = self.t.ident_is_def(ident);
-    //                     let (vaddr, t, p) = self.add_local_or_resolve_ident(ident, is_def);
-    //                     (vaddr, t, p)
-    //                 }
-    //                 Expr::Index(ind_expr) => {
-    //                     let obj = &ind_expr.as_ref().expr;
-    //                     self.visit_expr(obj);
-    //                     let obj_typ = self.t.expr_value_type(obj);
-    //                     let ind = &ind_expr.as_ref().index;
-    //                     let pos = ind_expr.as_ref().l_brack;
+    fn gen_assign(
+        &mut self,
+        token: &Token,
+        lhs_exprs: &Vec<&Expr>,
+        rhs: RightHandSide,
+    ) -> Option<usize> {
+        let lhs = lhs_exprs
+            .iter()
+            .map(|expr| match expr {
+                Expr::Ident(ident) => {
+                    let is_def = self.t.ident_is_def(ident);
+                    let (vaddr, typ, pos) = self.add_local_or_resolve_ident(ident, is_def);
+                    (vaddr, typ, pos)
+                }
+                Expr::Index(ind_expr) => {
+                    let obj = &ind_expr.as_ref().expr;
+                    let obj_addr = self.load(|g| g.gen_expr(obj));
+                    let ind = &ind_expr.as_ref().index;
+                    let ind_addr = self.load(|g| g.gen_expr(ind));
+                    let obj_typ = self.t.expr_value_type(obj);
+                    let typ = Some(self.t.expr_tc_type(expr));
+                    let pos = ind_expr.as_ref().l_brack;
+                    let va = match obj_typ {
+                        ValueType::Array => VirtualAddr::ArrayEntry(obj_addr, ind_addr),
+                        ValueType::Slice => VirtualAddr::SliceEntry(obj_addr, ind_addr),
+                        ValueType::Map => VirtualAddr::MapEntry(obj_addr, ind_addr),
+                        _ => unreachable!(),
+                    };
+                    (va, typ, pos)
+                }
+                Expr::Selector(sexpr) => {
+                    let typ = Some(self.t.expr_tc_type(expr));
+                    let pos = self.ast_objs.idents[sexpr.sel].pos;
+                    match self.t.try_pkg_key(&sexpr.expr) {
+                        Some(key) => {
+                            let pkg = self.pkg_helper.get_runtime_key(key);
+                            let pkg_addr = func_ctx!(self).add_const(GosValue::new_package(pkg));
+                            let index_addr = Addr::PkgMemberIndex(pkg, sexpr.sel);
+                            (VirtualAddr::PackageMember(pkg_addr, index_addr), typ, pos)
+                        }
+                        None => {
+                            let struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
+                            let t = self
+                                .t
+                                .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
+                            let name = &self.ast_objs.idents[sexpr.sel].name;
+                            let indices: Vec<OpIndex> = t
+                                .field_indices(name, &self.objects.metas)
+                                .iter()
+                                .map(|x| *x as OpIndex)
+                                .collect();
+                            let (_, index) = self.get_struct_field_op_index(indices, Opcode::VOID);
+                            (
+                                VirtualAddr::StructMember(struct_addr, Addr::Imm(index)),
+                                typ,
+                                pos,
+                            )
+                        }
+                    }
+                }
+                Expr::Star(sexpr) => {
+                    let typ = Some(self.t.expr_tc_type(expr));
+                    let pos = sexpr.star;
+                    let addr = self.load(|g| g.gen_expr(&sexpr.expr));
+                    (VirtualAddr::Pointee(addr), typ, pos)
+                }
+                _ => unreachable!(),
+            })
+            .collect::<Vec<(VirtualAddr, Option<TCTypeKey>, usize)>>();
 
-    //                     let mut index_const = None;
-    //                     let mut index_typ = None;
-    //                     if let Some(const_val) = self.t.try_tc_const_value(ind.id()) {
-    //                         let (ival, _) = const_val.to_int().int_as_i64();
-    //                         if let Ok(i) = OpIndex::try_from(ival) {
-    //                             index_const = Some(i);
-    //                         }
-    //                     }
-    //                     if index_const.is_none() {
-    //                         self.visit_expr(ind);
-    //                         index_typ = Some(self.t.expr_value_type(ind));
-    //                     }
-    //                     (
-    //                         LeftHandSide::IndexExpr(IndexLhsInfo::new(
-    //                             0,
-    //                             index_const,
-    //                             obj_typ,
-    //                             index_typ,
-    //                         )), // the true index will be calculated later
-    //                         Some(self.t.expr_tc_type(expr)),
-    //                         pos,
-    //                     )
-    //                 }
-    //                 Expr::Selector(sexpr) => {
-    //                     let pos = self.ast_objs.idents[sexpr.sel].pos;
-    //                     match self.t.try_pkg_key(&sexpr.expr) {
-    //                         Some(key) => {
-    //                             let pkg = self.pkg_helper.get_runtime_key(key);
-    //                             (
-    //                                 // the true index will be calculated later
-    //                                 LeftHandSide::Primitive(EntIndex::PackageMember(
-    //                                     pkg,
-    //                                     sexpr.sel.data(),
-    //                                 )),
-    //                                 Some(self.t.expr_tc_type(expr)),
-    //                                 pos,
-    //                             )
-    //                         }
-    //                         None => {
-    //                             let t =
-    //                                 self.t
-    //                                     .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
-    //                             let name = &self.ast_objs.idents[sexpr.sel].name;
-    //                             let indices = t.field_indices(name, &self.objects.metas).to_vec();
-    //                             self.visit_expr(&sexpr.expr);
-    //                             let obj_typ = self.t.expr_value_type(&sexpr.expr);
-    //                             (
-    //                                 // the true index will be calculated later
-    //                                 LeftHandSide::SelExpr(SelLhsInfo::new(0, indices, obj_typ)),
-    //                                 Some(self.t.expr_tc_type(expr)),
-    //                                 pos,
-    //                             )
-    //                         }
-    //                     }
-    //                 }
-    //                 Expr::Star(sexpr) => {
-    //                     self.visit_expr(&sexpr.expr);
-    //                     (
-    //                         LeftHandSide::Deref(0), // the true index will be calculated later
-    //                         Some(self.t.expr_tc_type(expr)),
-    //                         sexpr.star,
-    //                     )
-    //                 }
-    //                 _ => unreachable!(),
-    //             }
-    //         })
-    //         .collect::<Vec<(LeftHandSide, Option<TCTypeKey>, usize)>>();
-
-    //     match rhs {
-    //         RightHandSide::Nothing => {
-    //             let code = match token {
-    //                 Token::INC => Opcode::UNARY_ADD,
-    //                 Token::DEC => Opcode::UNARY_SUB,
-    //                 _ => unreachable!(),
-    //             };
-    //             let typ = self.t.expr_value_type(&lhs_exprs[0]);
-    //             self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
-    //             None
-    //         }
-    //         RightHandSide::Values(rhs_exprs) => {
-    //             let simple_op = match token {
-    //                 Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
-    //                 Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
-    //                 Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
-    //                 Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
-    //                 Token::REM_ASSIGN => Some(Opcode::REM),         // %=
-    //                 Token::AND_ASSIGN => Some(Opcode::AND),         // &=
-    //                 Token::OR_ASSIGN => Some(Opcode::OR),           // |=
-    //                 Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
-    //                 Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
-    //                 Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
-    //                 Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
-    //                 Token::ASSIGN | Token::DEFINE => None,
-    //                 _ => unreachable!(),
-    //             };
-    //             if let Some(code) = simple_op {
-    //                 assert_eq!(lhs_exprs.len(), 1);
-    //                 assert_eq!(rhs_exprs.len(), 1);
-    //                 let ltyp = self.t.expr_value_type(&lhs_exprs[0]);
-    //                 let rtyp = match code {
-    //                     Opcode::SHL | Opcode::SHR => {
-    //                         let t = self.t.expr_value_type(&rhs_exprs[0]);
-    //                         Some(t)
-    //                     }
-    //                     _ => None,
-    //                 };
-    //                 self.gen_op_assign(
-    //                     &lhs[0].0,
-    //                     (code, rtyp),
-    //                     Some(&rhs_exprs[0]),
-    //                     ltyp,
-    //                     lhs[0].2,
-    //                 );
-    //                 None
-    //             } else {
-    //                 self.gen_assign_def_var(&lhs, &None, &rhs)
-    //             }
-    //         }
-    //         _ => self.gen_assign_def_var(&lhs, &None, &rhs),
-    //     }
-    // }
+        None
+        // match rhs {
+        //     RightHandSide::Nothing => {
+        //         let code = match token {
+        //             Token::INC => Opcode::UNARY_ADD,
+        //             Token::DEC => Opcode::UNARY_SUB,
+        //             _ => unreachable!(),
+        //         };
+        //         let typ = self.t.expr_value_type(&lhs_exprs[0]);
+        //         self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
+        //         None
+        //     }
+        //     RightHandSide::Values(rhs_exprs) => {
+        //         let simple_op = match token {
+        //             Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
+        //             Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
+        //             Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
+        //             Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
+        //             Token::REM_ASSIGN => Some(Opcode::REM),         // %=
+        //             Token::AND_ASSIGN => Some(Opcode::AND),         // &=
+        //             Token::OR_ASSIGN => Some(Opcode::OR),           // |=
+        //             Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
+        //             Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
+        //             Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
+        //             Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
+        //             Token::ASSIGN | Token::DEFINE => None,
+        //             _ => unreachable!(),
+        //         };
+        //         if let Some(code) = simple_op {
+        //             assert_eq!(lhs_exprs.len(), 1);
+        //             assert_eq!(rhs_exprs.len(), 1);
+        //             let ltyp = self.t.expr_value_type(&lhs_exprs[0]);
+        //             let rtyp = match code {
+        //                 Opcode::SHL | Opcode::SHR => {
+        //                     let t = self.t.expr_value_type(&rhs_exprs[0]);
+        //                     Some(t)
+        //                 }
+        //                 _ => None,
+        //             };
+        //             self.gen_op_assign(
+        //                 &lhs[0].0,
+        //                 (code, rtyp),
+        //                 Some(&rhs_exprs[0]),
+        //                 ltyp,
+        //                 lhs[0].2,
+        //             );
+        //             None
+        //         } else {
+        //             self.gen_assign_def_var(&lhs, &None, &rhs)
+        //         }
+        //     }
+        //     _ => self.gen_assign_def_var(&lhs, &None, &rhs),
+        // }
+    }
 
     // fn gen_assign_def_var(
     //     &mut self,
@@ -780,8 +761,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         builtin: &Builtin,
         return_type: TCTypeKey,
         ellipsis: bool,
+        pos: Option<usize>,
     ) {
-        let pos = Some(func_expr.pos(&self.ast_objs));
         let slice_op_types = |g: &mut CodeGen| {
             let t0 = if ellipsis && g.t.expr_value_type(&params[1]) == ValueType::String {
                 ValueType::String
@@ -918,6 +899,104 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         };
     }
 
+    fn gen_conversion(&mut self, to: &Expr, from: &Expr, pos: Option<usize>) {
+        // conversion
+        // from the specs:
+        /*
+        A non-constant value x can be converted to type T in any of these cases:
+            x is assignable to T.
+            +3 [struct] ignoring struct tags (see below), x's type and T have identical underlying types.
+            +4 [pointer] ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
+            +5 [number] x's type and T are both integer or floating point types.
+            +6 [number] x's type and T are both complex types.
+            +7 [string] x is an integer or a slice of bytes or runes and T is a string type.
+            +8 [slice] x is a string and T is a slice of bytes or runes.
+        A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
+            - x's type is identical to T.
+            - x's type V and T have identical underlying types and at least one of V or T is not a defined type.
+            +1 [interface] T is an interface type and x implements T.
+            +2 [channel] x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
+            - x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
+            - x is an untyped constant representable by a value of type T.
+        */
+        let from_addr = self.load(|g| g.gen_expr(from));
+        let mut converted = false;
+
+        let tc_to = self.t.underlying_tc(self.t.expr_tc_type(to));
+        let typ_to = self.t.tc_type_to_value_type(tc_to);
+        let tc_from = self.t.underlying_tc(self.t.expr_tc_type(from));
+        let typ_from = self.t.tc_type_to_value_type(tc_from);
+
+        if typ_from == ValueType::Void || identical_ignore_tags(tc_to, tc_from, self.tc_objs) {
+            // just ignore conversion if it's nil or types are identical
+            // or convert between Named type and underlying type,
+            // or both types are Named in case they are Structs
+        } else {
+            match typ_to {
+                ValueType::Interface => {
+                    if typ_from != ValueType::Void {
+                        let iface_index = self.iface_selector.get_index(
+                            (tc_to, tc_from),
+                            &mut self.t,
+                            self.objects,
+                            self.dummy_gcv,
+                        );
+                        self.cur_expr_emit_assign(tc_to, pos, |f, d, p| {
+                            f.emit_cast_iface(d, from_addr, iface_index, p);
+                        });
+                        converted = true;
+                    }
+                }
+                ValueType::Int
+                | ValueType::Int8
+                | ValueType::Int16
+                | ValueType::Int32
+                | ValueType::Int64
+                | ValueType::Uint
+                | ValueType::UintPtr
+                | ValueType::Uint8
+                | ValueType::Uint16
+                | ValueType::Uint32
+                | ValueType::Uint64
+                | ValueType::Float32
+                | ValueType::Float64
+                | ValueType::Complex64
+                | ValueType::Complex128
+                | ValueType::String
+                | ValueType::Slice
+                | ValueType::UnsafePtr
+                | ValueType::Pointer => {
+                    let t_extra = match typ_to {
+                        ValueType::String => (typ_from == ValueType::Slice)
+                            .then(|| self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()),
+                        ValueType::Slice => {
+                            Some(self.tc_objs.types[tc_to].try_as_slice().unwrap().elem())
+                        }
+                        ValueType::Pointer => {
+                            Some(self.tc_objs.types[tc_to].try_as_pointer().unwrap().base())
+                        }
+                        ValueType::Channel => Some(tc_to),
+                        _ => None,
+                    };
+                    let t2 = t_extra.map(|x| self.t.tc_type_to_value_type(x));
+
+                    self.cur_expr_emit_assign(tc_to, pos, |f, d, p| {
+                        f.emit_cast(d, from_addr, Addr::Void, typ_to, Some(typ_from), t2, p);
+                    });
+                    converted = true;
+                }
+                ValueType::Channel => { /* nothing to be done */ }
+                _ => {
+                    dbg!(typ_to);
+                    unreachable!()
+                }
+            }
+        }
+        if !converted {
+            self.cur_expr_emit_direct_assign(tc_to, from_addr, pos);
+        }
+    }
+
     fn gen_expr_call(
         &mut self,
         func_expr: &Expr,
@@ -926,127 +1005,40 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         return_type: Option<TCTypeKey>,
         style: CallStyle,
     ) {
+        let pos = Some(func_expr.pos(&self.ast_objs));
         match *self.t.expr_mode(func_expr) {
             // built in function
             OperandMode::Builtin(builtin) => {
-                self.gen_builtin_call(func_expr, params, &builtin, return_type.unwrap(), ellipsis);
+                self.gen_builtin_call(
+                    func_expr,
+                    params,
+                    &builtin,
+                    return_type.unwrap(),
+                    ellipsis,
+                    pos,
+                );
             }
             // conversion
-            // from the specs:
-            /*
-            A non-constant value x can be converted to type T in any of these cases:
-                x is assignable to T.
-                +3 [struct] ignoring struct tags (see below), x's type and T have identical underlying types.
-                +4 [pointer] ignoring struct tags (see below), x's type and T are pointer types that are not defined types, and their pointer base types have identical underlying types.
-                +5 [number] x's type and T are both integer or floating point types.
-                +6 [number] x's type and T are both complex types.
-                +7 [string] x is an integer or a slice of bytes or runes and T is a string type.
-                +8 [slice] x is a string and T is a slice of bytes or runes.
-            A value x is assignable to a variable of type T ("x is assignable to T") if one of the following conditions applies:
-                - x's type is identical to T.
-                - x's type V and T have identical underlying types and at least one of V or T is not a defined type.
-                +1 [interface] T is an interface type and x implements T.
-                +2 [channel] x is a bidirectional channel value, T is a channel type, x's type V and T have identical element types, and at least one of V or T is not a defined type.
-                - x is the predeclared identifier nil and T is a pointer, function, slice, map, channel, or interface type.
-                - x is an untyped constant representable by a value of type T.
-            */
             OperandMode::TypeExpr => {
-                // assert!(params.len() == 1);
-                // self.visit_expr(&params[0]);
-                // let tc_to = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
-                // let typ_to = self.t.tc_type_to_value_type(tc_to);
-                // let tc_from = self.t.underlying_tc(self.t.expr_tc_type(&params[0]));
-                // let typ_from = self.t.tc_type_to_value_type(tc_from);
-
-                // if typ_from == ValueType::Void
-                //     || identical_ignore_tags(tc_to, tc_from, self.tc_objs)
-                // {
-                //     // just ignore conversion if it's nil or types are identical
-                //     // or convert between Named type and underlying type,
-                //     // or both types are Named in case they are Structs
-                // } else {
-                //     match typ_to {
-                //         ValueType::Interface => {
-                //             if typ_from != ValueType::Void {
-                //                 let iface_index = self.iface_selector.get_index(
-                //                     (tc_to, tc_from),
-                //                     &mut self.t,
-                //                     self.objects,
-                //                     self.dummy_gcv,
-                //                 );
-                //                 current_func_emitter!(self).emit_cast(
-                //                     typ_to,
-                //                     typ_from,
-                //                     None,
-                //                     -1,
-                //                     iface_index,
-                //                     pos,
-                //                 );
-                //             }
-                //         }
-                //         ValueType::Int
-                //         | ValueType::Int8
-                //         | ValueType::Int16
-                //         | ValueType::Int32
-                //         | ValueType::Int64
-                //         | ValueType::Uint
-                //         | ValueType::UintPtr
-                //         | ValueType::Uint8
-                //         | ValueType::Uint16
-                //         | ValueType::Uint32
-                //         | ValueType::Uint64
-                //         | ValueType::Float32
-                //         | ValueType::Float64
-                //         | ValueType::Complex64
-                //         | ValueType::Complex128
-                //         | ValueType::String
-                //         | ValueType::Slice
-                //         | ValueType::UnsafePtr
-                //         | ValueType::Pointer => {
-                //             let t_extra = match typ_to {
-                //                 ValueType::String => (typ_from == ValueType::Slice).then(|| {
-                //                     self.tc_objs.types[tc_from].try_as_slice().unwrap().elem()
-                //                 }),
-                //                 ValueType::Slice => {
-                //                     Some(self.tc_objs.types[tc_to].try_as_slice().unwrap().elem())
-                //                 }
-                //                 ValueType::Pointer => {
-                //                     Some(self.tc_objs.types[tc_to].try_as_pointer().unwrap().base())
-                //                 }
-                //                 ValueType::Channel => Some(tc_to),
-                //                 _ => None,
-                //             };
-                //             let t2 = t_extra.map(|x| self.t.tc_type_to_value_type(x));
-
-                //             current_func_emitter!(self).emit_cast(typ_to, typ_from, t2, -1, 0, pos);
-                //         }
-                //         ValueType::Channel => { /* nothing to be done */ }
-                //         _ => {
-                //             dbg!(typ_to);
-                //             unreachable!()
-                //         }
-                //     }
-                //}
+                assert!(params.len() == 1);
+                self.gen_conversion(func_expr, &params[0], pos);
             }
             // normal goscript function
             _ => {
-                // self.visit_expr(func_expr);
-                // current_func_emitter!(self).emit_pre_call(pos);
-                // let _ = params.iter().map(|e| self.visit_expr(e)).count();
-                // let t = self.t.expr_tc_type(func_expr);
-                // self.try_cast_params_to_iface(t, params, ellipsis);
+                let func_addr = self.load(|g| g.gen_expr(func_expr));
+                let inst = InterInst::with_op_index(
+                    Opcode::PRE_CALL,
+                    Addr::Void,
+                    func_addr,
+                    Addr::Imm(params.len() as OpIndex),
+                );
+                func_ctx!(self).emit_inst(inst, pos);
+                let ft = self.t.try_expr_tc_type(func_expr).unwrap();
+                self.gen_call_params(ft, params, ellipsis);
+                func_ctx!(self).emit_call(style, pos);
 
-                // // do not pack params if there is ellipsis
-                // let ftc = self.t.underlying_tc(self.t.expr_tc_type(func_expr));
-                // let variadic_typ = if !ellipsis {
-                //     let meta = self.t.tc_type_to_meta(ftc, self.objects, self.dummy_gcv);
-                //     let metas = &self.objects.metas;
-                //     let call_meta = metas[meta.key].as_signature();
-                //     call_meta.variadic.map(|x| x.1.value_type(metas))
-                // } else {
-                //     None
-                // };
-                // current_func_emitter!(self).emit_call(style, variadic_typ, pos);
+                let return_count = self.t.sig_returns_tc_types(ft).len();
+                expr_ctx!(self).cur_reg += return_count as OpIndex;
             }
         }
     }
@@ -1254,10 +1246,10 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     }
 
     fn gen_type_meta(&mut self, typ: &Expr) {
-        // let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
-        // let mut emitter = current_func_emitter!(self);
-        // let pos = Some(typ.pos(&self.ast_objs));
-        // emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
+        let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
+        let pos = Some(typ.pos(&self.ast_objs));
+        let addr = func_ctx!(self).add_const(GosValue::new_metadata(m));
+        self.cur_expr_emit_direct_assign(self.t.expr_tc_type(typ), addr, pos);
     }
 
     fn gen_const(&mut self, expr: &Expr, pos: Option<Pos>) {
@@ -1284,23 +1276,17 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    // fn current_func_add_const_def(
-    //     &mut self,
-    //     ikey: &IdentKey,
-    //     cst: GosValue,
-    //     typ: ValueType,
-    // ) -> EntIndex {
-    //     let func = current_func_mut!(self);
-    //     let index = func.add_const(Some(self.t.object_def(*ikey).data()), cst.clone());
-    //     if func.is_ctor() {
-    //         let pkg_key = func.package;
-    //         drop(func);
-    //         let pkg = &mut self.objects.packages[pkg_key];
-    //         let ident = &self.ast_objs.idents[*ikey];
-    //         pkg.add_member(ident.name.clone(), cst, typ);
-    //     }
-    //     index
-    // }
+    fn add_const_def(&mut self, ikey: &IdentKey, cst: GosValue, typ: ValueType) -> Addr {
+        let fctx = func_ctx!(self);
+        let index = fctx.add_const_var(self.t.object_def(*ikey), cst.clone());
+        if fctx.is_ctor(&self.objects.functions) {
+            let pkg_key = self.objects.functions[fctx.f_key].package;
+            let pkg = &mut self.objects.packages[pkg_key];
+            let ident = &self.ast_objs.idents[*ikey];
+            pkg.add_member(ident.name.clone(), cst, typ);
+        }
+        index
+    }
 
     // fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
     //     for n in names.iter() {
@@ -1352,7 +1338,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     Opcode::REF_STRUCT_FIELD => Opcode::REF_STRUCT_EMBEDDED_FIELD,
                     Opcode::LOAD_STRUCT => Opcode::LOAD_STRUCT_EMBEDDED,
                     Opcode::STORE_STRUCT => Opcode::STORE_STRUCT_EMBEDDED,
-                    _ => unreachable!(),
+                    _ => default_op,
                 },
                 self.struct_selector.get_index(indices),
             )
@@ -1821,103 +1807,120 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         self.gen_expr_type_assert(expr, typ, None);
     }
 
-    fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
-        // self.gen_call(func_expr, params, ellipsis, CallStyle::Default);
+    fn visit_expr_call(
+        &mut self,
+        this: &Expr,
+        func_expr: &Expr,
+        params: &Vec<Expr>,
+        ellipsis: bool,
+    ) {
+        let rtt = self.t.try_expr_tc_type(this);
+        self.gen_expr_call(func_expr, params, ellipsis, rtt, CallStyle::Default);
     }
 
-    fn visit_expr_star(&mut self, _: &Expr, expr: &Expr) {
-        // let pos = Some(expr.pos(&self.ast_objs));
-        // match self.t.expr_mode(expr) {
-        //     OperandMode::TypeExpr => {
-        //         let m = self
-        //             .t
-        //             .tc_type_to_meta(self.t.expr_tc_type(expr), self.objects, self.dummy_gcv)
-        //             .ptr_to();
-        //         let mut emitter = current_func_emitter!(self);
-        //         emitter.emit_load(EntIndex::TypeMeta(m), None, ValueType::Metadata, pos);
-        //     }
-        //     _ => {
-        //         self.visit_expr(expr);
-        //         let t = self.t.expr_value_type(expr);
-        //         current_func_mut!(self).emit_code_with_type(Opcode::DEREF, t, pos);
-        //     }
-        // }
+    fn visit_expr_star(&mut self, this: &Expr, expr: &Expr) {
+        match self.t.expr_mode(expr) {
+            OperandMode::TypeExpr => {
+                self.gen_type_meta(this);
+            }
+            _ => {
+                let pos = Some(expr.pos(&self.ast_objs));
+                let typ = self.t.expr_tc_type(this);
+                let addr = self.load(|g| g.gen_expr(expr));
+                self.cur_expr_emit_assign(typ, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(Opcode::REF, d, addr, Addr::Void);
+                    f.emit_inst(inst, p);
+                });
+            }
+        }
     }
 
     fn visit_expr_unary(&mut self, this: &Expr, expr: &Expr, op: &Token) {
-        // if op == &Token::AND {
-        //     self.gen_expr_ref(expr, Some(this));
-        //     return;
-        // }
+        let typ = self.t.expr_tc_type(this);
+        if op == &Token::AND {
+            self.gen_expr_ref(expr, typ);
+            return;
+        }
 
-        // self.visit_expr(expr);
-        // let code = match op {
-        //     Token::ADD => Opcode::UNARY_ADD,
-        //     Token::SUB => Opcode::UNARY_SUB,
-        //     Token::XOR => Opcode::UNARY_XOR,
-        //     Token::NOT => Opcode::NOT,
-        //     Token::ARROW => Opcode::RECV,
-        //     _ => {
-        //         dbg!(op);
-        //         unreachable!()
-        //     }
-        // };
-        // let t = self.t.expr_value_type(expr);
-        // let pos = Some(expr.pos(&self.ast_objs));
-        // current_func_mut!(self).emit_code_with_type(code, t, pos);
+        let addr = self.load(|g| g.gen_expr(expr));
+        let opcode = match op {
+            Token::ADD => Opcode::UNARY_ADD,
+            Token::SUB => Opcode::UNARY_SUB,
+            Token::XOR => Opcode::UNARY_XOR,
+            Token::NOT => Opcode::NOT,
+            Token::ARROW => Opcode::RECV,
+            _ => {
+                dbg!(op);
+                unreachable!()
+            }
+        };
+        let pos = Some(expr.pos(&self.ast_objs));
+        self.cur_expr_emit_assign(typ, pos, |f, d, p| {
+            let inst = InterInst::with_op_index(opcode, d, addr, Addr::Void);
+            f.emit_inst(inst, p);
+        });
     }
 
-    fn visit_expr_binary(&mut self, _: &Expr, left: &Expr, op: &Token, right: &Expr) {
-        // self.visit_expr(left);
-        // let t = self.t.expr_value_type(left);
-        // let code = match op {
-        //     Token::ADD => Opcode::ADD,
-        //     Token::SUB => Opcode::SUB,
-        //     Token::MUL => Opcode::MUL,
-        //     Token::QUO => Opcode::QUO,
-        //     Token::REM => Opcode::REM,
-        //     Token::AND => Opcode::AND,
-        //     Token::OR => Opcode::OR,
-        //     Token::XOR => Opcode::XOR,
-        //     Token::SHL => Opcode::SHL,
-        //     Token::SHR => Opcode::SHR,
-        //     Token::AND_NOT => Opcode::AND_NOT,
-        //     Token::LAND => Opcode::SHORT_CIRCUIT_AND,
-        //     Token::LOR => Opcode::SHORT_CIRCUIT_OR,
-        //     Token::EQL => Opcode::EQL,
-        //     Token::LSS => Opcode::LSS,
-        //     Token::GTR => Opcode::GTR,
-        //     Token::NEQ => Opcode::NEQ,
-        //     Token::LEQ => Opcode::LEQ,
-        //     Token::GEQ => Opcode::GEQ,
-        //     _ => unreachable!(),
-        // };
-        // let pos = Some(left.pos(&self.ast_objs));
-        // // handles short circuit
-        // let mark = match code {
-        //     Opcode::SHORT_CIRCUIT_AND | Opcode::SHORT_CIRCUIT_OR => {
-        //         let emitter = current_func_emitter!(self);
-        //         emitter.f.emit_code(code, pos);
-        //         Some(emitter.f.next_code_index() - 1)
-        //     }
-        //     _ => None,
-        // };
-        // self.visit_expr(right);
+    fn visit_expr_binary(&mut self, this: &Expr, left: &Expr, op: &Token, right: &Expr) {
+        let typ = self.t.expr_tc_type(this);
+        let left_addr = self.load(|g| g.gen_expr(left));
+        let t = self.t.expr_value_type(left);
+        let code = match op {
+            Token::ADD => Opcode::ADD,
+            Token::SUB => Opcode::SUB,
+            Token::MUL => Opcode::MUL,
+            Token::QUO => Opcode::QUO,
+            Token::REM => Opcode::REM,
+            Token::AND => Opcode::AND,
+            Token::OR => Opcode::OR,
+            Token::XOR => Opcode::XOR,
+            Token::SHL => Opcode::SHL,
+            Token::SHR => Opcode::SHR,
+            Token::AND_NOT => Opcode::AND_NOT,
+            Token::LAND => Opcode::JUMP_IF,
+            Token::LOR => Opcode::JUMP_IF_NOT,
+            Token::EQL => Opcode::EQL,
+            Token::LSS => Opcode::LSS,
+            Token::GTR => Opcode::GTR,
+            Token::NEQ => Opcode::NEQ,
+            Token::LEQ => Opcode::LEQ,
+            Token::GEQ => Opcode::GEQ,
+            _ => unreachable!(),
+        };
+        let pos = Some(left.pos(&self.ast_objs));
+        // handles short circuit
+        let mark = match code {
+            Opcode::JUMP_IF | Opcode::JUMP_IF_NOT => {
+                let fctx = func_ctx!(self);
+                let inst = InterInst::with_op_index(code, Addr::Void, left_addr, Addr::Void);
+                fctx.emit_inst(inst, pos);
+                Some(fctx.next_code_index() - 1)
+            }
+            _ => None,
+        };
 
-        // if let Some(i) = mark {
-        //     let emitter = current_func_emitter!(self);
-        //     let diff = emitter.f.next_code_index() - i - 1;
-        //     current_func_emitter!(self)
-        //         .f
-        //         .instruction_mut(i)
-        //         .set_imm(diff as OpIndex);
-        // } else {
-        //     let t1 = match code {
-        //         Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.expr_value_type(right)),
-        //         _ => None,
-        //     };
-        //     current_func_mut!(self).emit_code_with_type2(code, t, t1, pos);
-        // }
+        let right_addr = self.load(|g| g.gen_expr(right));
+
+        if let Some(i) = mark {
+            let fctx = func_ctx!(self);
+            let diff = fctx.next_code_index() - i - 1;
+            fctx.inst_mut(i).d = Addr::Imm(diff as OpIndex);
+            let const_addr = match code {
+                Opcode::JUMP_IF => fctx.add_const(GosValue::new_bool(true)),
+                Opcode::JUMP_IF_NOT => fctx.add_const(GosValue::new_bool(false)),
+                _ => unreachable!(),
+            };
+            self.cur_expr_emit_direct_assign(typ, const_addr, pos);
+        } else {
+            let t1 = match code {
+                Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.expr_value_type(right)),
+                _ => None,
+            };
+            self.cur_expr_emit_assign(typ, pos, |f, d, p| {
+                let inst = InterInst::with_op_t_index(code, Some(t), t1, d, left_addr, right_addr);
+                f.emit_inst(inst, p);
+            });
+        }
     }
 
     fn visit_expr_key_value(&mut self, _e: &Expr, _key: &Expr, _val: &Expr) {
@@ -1969,7 +1972,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         //         }
         //         Spec::Type(ts) => {
         //             let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcv);
-        //             self.current_func_add_const_def(
+        //             self.add_const_def(
         //                 &ts.name,
         //                 GosValue::new_metadata(m),
         //                 ValueType::Metadata,
