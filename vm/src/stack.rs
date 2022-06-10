@@ -60,8 +60,8 @@ impl Stack {
         consts: &[GosValue],
     ) -> GosValue {
         let d = match op {
-            Opcode::UNARY_ADD => lhs.inc(t),
-            Opcode::UNARY_SUB => lhs.dec(t),
+            Opcode::INC => lhs.inc(t),
+            Opcode::DEC => lhs.dec(t),
             Opcode::ADD => lhs.binary_op_add(self.read(rhs, sb, consts).data(), t),
             Opcode::SUB => lhs.binary_op_sub(self.read(rhs, sb, consts).data(), t),
             Opcode::MUL => lhs.binary_op_mul(self.read(rhs, sb, consts).data(), t),

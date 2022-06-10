@@ -263,15 +263,22 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     let ind = &ind_expr.as_ref().index;
                     let ind_addr = self.load(|g| g.gen_expr(ind));
                     let obj_typ = self.t.expr_value_type(obj);
-                    let typ = Some(self.t.expr_tc_type(expr));
+                    let typ = self.t.expr_tc_type(expr);
                     let pos = ind_expr.as_ref().l_brack;
                     let va = match obj_typ {
                         ValueType::Array => VirtualAddr::ArrayEntry(obj_addr, ind_addr),
                         ValueType::Slice => VirtualAddr::SliceEntry(obj_addr, ind_addr),
-                        ValueType::Map => VirtualAddr::MapEntry(obj_addr, ind_addr),
+                        ValueType::Map => {
+                            let zero = self
+                                .t
+                                .tc_type_to_meta(typ, self.objects, self.dummy_gcv)
+                                .zero(&self.objects.metas, self.dummy_gcv);
+                            let zero_addr = func_ctx!(self).add_const(zero);
+                            VirtualAddr::MapEntry(obj_addr, ind_addr, zero_addr)
+                        }
                         _ => unreachable!(),
                     };
-                    (va, typ, pos)
+                    (va, Some(typ), pos)
                 }
                 Expr::Selector(sexpr) => {
                     let typ = Some(self.t.expr_tc_type(expr));
@@ -313,346 +320,193 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             })
             .collect::<Vec<(VirtualAddr, Option<TCTypeKey>, usize)>>();
 
-        None
-        // match rhs {
-        //     RightHandSide::Nothing => {
-        //         let code = match token {
-        //             Token::INC => Opcode::UNARY_ADD,
-        //             Token::DEC => Opcode::UNARY_SUB,
-        //             _ => unreachable!(),
-        //         };
-        //         let typ = self.t.expr_value_type(&lhs_exprs[0]);
-        //         self.gen_op_assign(&lhs[0].0, (code, None), None, typ, lhs[0].2);
-        //         None
-        //     }
-        //     RightHandSide::Values(rhs_exprs) => {
-        //         let simple_op = match token {
-        //             Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
-        //             Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
-        //             Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
-        //             Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
-        //             Token::REM_ASSIGN => Some(Opcode::REM),         // %=
-        //             Token::AND_ASSIGN => Some(Opcode::AND),         // &=
-        //             Token::OR_ASSIGN => Some(Opcode::OR),           // |=
-        //             Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
-        //             Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
-        //             Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
-        //             Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
-        //             Token::ASSIGN | Token::DEFINE => None,
-        //             _ => unreachable!(),
-        //         };
-        //         if let Some(code) = simple_op {
-        //             assert_eq!(lhs_exprs.len(), 1);
-        //             assert_eq!(rhs_exprs.len(), 1);
-        //             let ltyp = self.t.expr_value_type(&lhs_exprs[0]);
-        //             let rtyp = match code {
-        //                 Opcode::SHL | Opcode::SHR => {
-        //                     let t = self.t.expr_value_type(&rhs_exprs[0]);
-        //                     Some(t)
-        //                 }
-        //                 _ => None,
-        //             };
-        //             self.gen_op_assign(
-        //                 &lhs[0].0,
-        //                 (code, rtyp),
-        //                 Some(&rhs_exprs[0]),
-        //                 ltyp,
-        //                 lhs[0].2,
-        //             );
-        //             None
-        //         } else {
-        //             self.gen_assign_def_var(&lhs, &None, &rhs)
-        //         }
-        //     }
-        //     _ => self.gen_assign_def_var(&lhs, &None, &rhs),
-        // }
+        match rhs {
+            RightHandSide::Nothing => {
+                let code = match token {
+                    Token::INC => Opcode::INC,
+                    Token::DEC => Opcode::DEC,
+                    _ => unreachable!(),
+                };
+                let typ = self.t.expr_value_type(&lhs_exprs[0]);
+                self.gen_op_assign(&lhs[0].0, code, typ, None, None, lhs[0].2);
+                None
+            }
+            RightHandSide::Values(rhs_exprs) => {
+                let simple_op = match token {
+                    Token::ADD_ASSIGN => Some(Opcode::ADD_ASSIGN), // +=
+                    Token::SUB_ASSIGN => Some(Opcode::SUB_ASSIGN), // -=
+                    Token::MUL_ASSIGN => Some(Opcode::MUL_ASSIGN), // *=
+                    Token::QUO_ASSIGN => Some(Opcode::QUO_ASSIGN), // /=
+                    Token::REM_ASSIGN => Some(Opcode::REM_ASSIGN), // %=
+                    Token::AND_ASSIGN => Some(Opcode::AND_ASSIGN), // &=
+                    Token::OR_ASSIGN => Some(Opcode::OR_ASSIGN),   // |=
+                    Token::XOR_ASSIGN => Some(Opcode::XOR_ASSIGN), // ^=
+                    Token::SHL_ASSIGN => Some(Opcode::SHL_ASSIGN), // <<=
+                    Token::SHR_ASSIGN => Some(Opcode::SHR_ASSIGN), // >>=
+                    Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT_ASSIGN), // &^=
+                    Token::ASSIGN | Token::DEFINE => None,
+                    _ => unreachable!(),
+                };
+                if let Some(code) = simple_op {
+                    assert_eq!(lhs_exprs.len(), 1);
+                    assert_eq!(rhs_exprs.len(), 1);
+                    let ltyp = self.t.expr_value_type(&lhs_exprs[0]);
+                    let rtyp = match code {
+                        Opcode::SHL | Opcode::SHR => {
+                            let t = self.t.expr_value_type(&rhs_exprs[0]);
+                            Some(t)
+                        }
+                        _ => None,
+                    };
+                    self.gen_op_assign(&lhs[0].0, code, ltyp, Some(&rhs_exprs[0]), rtyp, lhs[0].2);
+                    None
+                } else {
+                    self.gen_assign_def_var(&lhs, &None, &rhs)
+                }
+            }
+            _ => self.gen_assign_def_var(&lhs, &None, &rhs),
+        }
     }
 
-    // fn gen_assign_def_var(
-    //     &mut self,
-    //     lhs: &Vec<(LeftHandSide, Option<TCTypeKey>, usize)>,
-    //     typ: &Option<Expr>,
-    //     rhs: &RightHandSide,
-    // ) -> Option<usize> {
-    //     let mut range_marker = None;
-    //     let mut lhs_on_stack_top = false;
-    //     // handle the right hand side
-    //     let types = match rhs {
-    //         RightHandSide::Nothing => {
-    //             // define without values
-    //             let t = self.t.expr_tc_type(&typ.as_ref().unwrap());
-    //             let meta = self.t.tc_type_to_meta(t, self.objects, self.dummy_gcv);
-    //             let mut types = Vec::with_capacity(lhs.len());
-    //             for (_, _, pos) in lhs.iter() {
-    //                 let mut emitter = current_func_emitter!(self);
-    //                 let i = emitter.add_const(None, GosValue::new_metadata(meta));
-    //                 emitter.emit_push_zero_val(i.into(), Some(*pos));
-    //                 types.push(t);
-    //             }
-    //             types
-    //         }
-    //         RightHandSide::Values(values) => {
-    //             let val0 = &values[0];
-    //             let val0_mode = self.t.expr_mode(val0);
-    //             if values.len() == 1
-    //                 && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
-    //             {
-    //                 let comma_ok = lhs.len() == 2;
-    //                 let types = if comma_ok {
-    //                     self.t.expr_tuple_tc_types(val0)
-    //                 } else {
-    //                     vec![self.t.expr_tc_type(val0)]
-    //                 };
-    //                 match val0 {
-    //                     Expr::TypeAssert(tae) => {
-    //                         self.gen_type_assert(&tae.expr, &tae.typ, comma_ok);
-    //                     }
-    //                     Expr::Index(ie) => {
-    //                         let t = self.t.tc_type_to_value_type(types[0]);
-    //                         self.gen_index(&ie.expr, &ie.index, t, comma_ok);
-    //                     }
-    //                     Expr::Unary(recv_expr) => {
-    //                         assert_eq!(recv_expr.op, Token::ARROW);
-    //                         self.visit_expr(&recv_expr.expr);
-    //                         let t = self.t.expr_value_type(&recv_expr.expr);
-    //                         assert_eq!(t, ValueType::Channel);
-    //                         let comma_ok_flag = comma_ok.then(|| ValueType::FlagA);
-    //                         current_func_mut!(self).emit_code_with_type2(
-    //                             Opcode::RECV,
-    //                             t,
-    //                             comma_ok_flag,
-    //                             Some(recv_expr.op_pos),
-    //                         );
-    //                     }
-    //                     _ => {
-    //                         unreachable!()
-    //                     }
-    //                 }
-    //                 types
-    //             } else if values.len() == lhs.len() {
-    //                 // define or assign with values
-    //                 let mut types = Vec::with_capacity(values.len());
-    //                 for val in values.iter() {
-    //                     self.visit_expr(val);
-    //                     let rhs_type = self.t.expr_tc_type(val);
-    //                     types.push(rhs_type);
-    //                 }
-    //                 types
-    //             } else if values.len() == 1 {
-    //                 let expr = val0;
-    //                 // define or assign with function call on the right
-    //                 if let Expr::Call(_) = expr {
-    //                     self.visit_expr(expr);
-    //                 } else {
-    //                     unreachable!()
-    //                 }
-    //                 self.t.expr_tuple_tc_types(expr)
-    //             } else {
-    //                 unreachable!();
-    //             }
-    //         }
-    //         RightHandSide::Range(r) => {
-    //             // the range statement
-    //             self.visit_expr(r);
-    //             let tkv = self.t.expr_range_tc_types(r);
-    //             let types = [
-    //                 Some(self.t.tc_type_to_value_type(tkv[0])),
-    //                 Some(self.t.tc_type_to_value_type(tkv[1])),
-    //                 Some(self.t.tc_type_to_value_type(tkv[2])),
-    //             ];
-    //             let pos = Some(r.pos(&self.ast_objs));
-    //             let func = current_func_mut!(self);
-    //             func.emit_inst(Opcode::RANGE_INIT, types, None, pos);
-    //             range_marker = Some(func.next_code_index());
-    //             // the block_end address to be set
-    //             func.emit_inst(Opcode::RANGE, types, None, pos);
-    //             tkv[1..].to_vec()
-    //         }
-    //         RightHandSide::SelectRecv(rhs) => {
-    //             // only when in select stmt, lhs in stack is on top of the rhs
-    //             lhs_on_stack_top = true;
-    //             let comma_ok = lhs.len() == 2 && self.t.expr_mode(rhs) == &OperandMode::CommaOk;
-    //             if comma_ok {
-    //                 self.t.expr_tuple_tc_types(rhs)
-    //             } else {
-    //                 vec![self.t.expr_tc_type(rhs)]
-    //             }
-    //         }
-    //     };
+    fn gen_op_assign(
+        &mut self,
+        left: &VirtualAddr,
+        opcode: Opcode,
+        typ: ValueType,
+        right: Option<&Expr>,
+        r_type: Option<ValueType>,
+        p: usize,
+    ) {
+        let pos = Some(p);
+        let rhs_addr = match right {
+            Some(e) => self.load(|g| g.gen_expr(e)),
+            // inc/dec
+            None => Addr::Void,
+        };
+        func_ctx!(self).emit_assign(left.clone(), rhs_addr, Some((opcode, typ, r_type)), pos);
+    }
 
-    //     let mut on_stack_types = vec![];
-    //     // lhs types
-    //     for (i, _, _) in lhs.iter().rev() {
-    //         on_stack_types.append(&mut CodeGen::lhs_on_stack_value_types(i));
-    //     }
-    //     let lhs_stack_space = on_stack_types.len() as OpIndex;
+    fn gen_assign_def_var(
+        &mut self,
+        lhs: &Vec<(VirtualAddr, Option<TCTypeKey>, usize)>,
+        typ: &Option<Expr>,
+        rhs: &RightHandSide,
+    ) -> Option<usize> {
+        //let mut range_marker = None;
+        // handle the right hand side
+        match rhs {
+            RightHandSide::Nothing => {
+                // define without values
+                let t = self.t.expr_tc_type(&typ.as_ref().unwrap());
+                let zero = self
+                    .t
+                    .tc_type_to_meta(t, self.objects, self.dummy_gcv)
+                    .zero(&self.objects.metas, self.dummy_gcv);
+                let zero_addr = func_ctx!(self).add_const(zero);
+                let fctx = func_ctx!(self);
+                for (addr, _, p) in lhs {
+                    // dont need to worry about casting to interface
+                    fctx.emit_assign(addr.clone(), zero_addr, None, Some(*p))
+                }
+                None
+            }
+            RightHandSide::Values(values) => {
+                let val0 = &values[0];
+                let val0_mode = self.t.expr_mode(val0);
+                if values.len() == 1
+                    && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
+                {
+                    let comma_ok = lhs.len() == 2;
+                    let types = if comma_ok {
+                        self.t.expr_tuple_tc_types(val0)
+                    } else {
+                        vec![self.t.expr_tc_type(val0)]
+                    };
 
-    //     assert_eq!(lhs.len(), types.len());
-    //     let total_val = types.len() as OpIndex;
-    //     let total_stack_space = lhs_stack_space + total_val;
-    //     let (mut current_indexing_deref_index, rhs_begin_index) = match lhs_on_stack_top {
-    //         true => (-lhs_stack_space, -total_stack_space),
-    //         false => (-total_stack_space, -total_val),
-    //     };
-    //     let mut rhs_types = lhs
-    //         .iter()
-    //         .enumerate()
-    //         .map(|(i, (l, _, p))| {
-    //             let rhs_index = i as OpIndex + rhs_begin_index;
-    //             let typ = self.try_cast_to_iface(lhs[i].1, types[i], rhs_index, *p);
-    //             let pos = Some(*p);
-    //             match l {
-    //                 LeftHandSide::Primitive(_) => {
-    //                     let fkey = self.func_ctx_stack.last().unwrap().f_key;
-    //                     current_func_emitter!(self).emit_store(
-    //                         l,
-    //                         rhs_index,
-    //                         None,
-    //                         Some((self.pkg_helper.pairs_mut(), fkey)),
-    //                         typ,
-    //                         pos,
-    //                     );
-    //                 }
-    //                 LeftHandSide::IndexExpr(info) => {
-    //                     current_func_emitter!(self).emit_store(
-    //                         &LeftHandSide::IndexExpr(
-    //                             info.clone_with_index(current_indexing_deref_index),
-    //                         ),
-    //                         rhs_index,
-    //                         None,
-    //                         None,
-    //                         typ,
-    //                         pos,
-    //                     );
-    //                     // the lhs of IndexExpr takes two spots
-    //                     current_indexing_deref_index += 2;
-    //                 }
-    //                 LeftHandSide::SelExpr(info) => {
-    //                     current_func_emitter!(self).emit_store(
-    //                         &LeftHandSide::SelExpr(
-    //                             info.clone_with_index(current_indexing_deref_index),
-    //                         ),
-    //                         rhs_index,
-    //                         None,
-    //                         None,
-    //                         typ,
-    //                         pos,
-    //                     );
-    //                     // the lhs of SelExpr takes two spots
-    //                     current_indexing_deref_index += 1;
-    //                 }
-    //                 LeftHandSide::Deref(_) => {
-    //                     current_func_emitter!(self).emit_store(
-    //                         &LeftHandSide::Deref(current_indexing_deref_index),
-    //                         rhs_index,
-    //                         None,
-    //                         None,
-    //                         typ,
-    //                         pos,
-    //                     );
-    //                     current_indexing_deref_index += 1;
-    //                 }
-    //             }
-    //             typ
-    //         })
-    //         .collect();
-
-    //     let pos = Some(lhs[0].2);
-    //     if !lhs_on_stack_top {
-    //         on_stack_types.append(&mut rhs_types);
-    //     } else {
-    //         on_stack_types.splice(0..0, rhs_types);
-    //     }
-    //     current_func_emitter!(self).emit_pop(&on_stack_types, pos);
-    //     range_marker
-    // }
-
-    // fn gen_op_assign(
-    //     &mut self,
-    //     left: &LeftHandSide,
-    //     op: (Opcode, Option<ValueType>),
-    //     right: Option<&Expr>,
-    //     typ: ValueType,
-    //     p: usize,
-    // ) {
-    //     let pos = Some(p);
-    //     let mut on_stack_types = CodeGen::lhs_on_stack_value_types(left);
-
-    //     match right {
-    //         Some(e) => {
-    //             self.visit_expr(e);
-    //             on_stack_types.push(self.t.expr_value_type(e));
-    //         }
-    //         None => {}
-    //     };
-
-    //     // If this is SHL/SHR,  cast the rhs to uint32
-    //     if let Some(t) = op.1 {
-    //         if t != ValueType::Uint32 {
-    //             current_func_emitter!(self).emit_cast(ValueType::Uint32, t, None, -1, 0, pos);
-    //             *on_stack_types.last_mut().unwrap() = ValueType::Uint32;
-    //         }
-    //     }
-
-    //     match left {
-    //         LeftHandSide::Primitive(_) => {
-    //             // why no magic number?
-    //             // local index is resolved in gen_assign
-    //             let mut emitter = current_func_emitter!(self);
-    //             let fkey = self.func_ctx_stack.last().unwrap().f_key;
-    //             emitter.emit_store(
-    //                 left,
-    //                 -1,
-    //                 Some(op),
-    //                 Some((self.pkg_helper.pairs_mut(), fkey)),
-    //                 typ,
-    //                 pos,
-    //             );
-    //         }
-    //         LeftHandSide::IndexExpr(info) => {
-    //             // stack looks like this(bottom to top) :
-    //             //  [... target, index, value] or [... target, value]
-    //             current_func_emitter!(self).emit_store(
-    //                 &LeftHandSide::IndexExpr(
-    //                     info.clone_with_index(-(on_stack_types.len() as OpIndex)),
-    //                 ),
-    //                 -1,
-    //                 Some(op),
-    //                 None,
-    //                 typ,
-    //                 pos,
-    //             );
-    //         }
-    //         LeftHandSide::SelExpr(info) => {
-    //             // stack looks like this(bottom to top) :
-    //             //  [... target, index, value] or [... target, value]
-    //             current_func_emitter!(self).emit_store(
-    //                 &LeftHandSide::SelExpr(
-    //                     info.clone_with_index(-(on_stack_types.len() as OpIndex)),
-    //                 ),
-    //                 -1,
-    //                 Some(op),
-    //                 None,
-    //                 typ,
-    //                 pos,
-    //             );
-    //         }
-    //         LeftHandSide::Deref(_) => {
-    //             // stack looks like this(bottom to top) :
-    //             //  [... target, value]
-    //             let mut emitter = current_func_emitter!(self);
-    //             emitter.emit_store(
-    //                 &LeftHandSide::Deref(-(on_stack_types.len() as OpIndex)),
-    //                 -1,
-    //                 Some(op),
-    //                 None,
-    //                 typ,
-    //                 pos,
-    //             );
-    //         }
-    //     }
-    //     current_func_emitter!(self).emit_pop(&on_stack_types, pos);
-    // }
+                    let mut cur_reg = expr_ctx!(self).cur_reg;
+                    self.push_expr_ctx(ExprMode::Store(lhs[0].0.clone(), lhs[0].1), cur_reg);
+                    cur_reg += 1;
+                    let ok_ectx = comma_ok.then(|| {
+                        let mode = ExprMode::Store(lhs[1].0.clone(), None);
+                        ExprCtx::new(mode, cur_reg)
+                    });
+                    match val0 {
+                        Expr::TypeAssert(tae) => {
+                            self.gen_expr_type_assert(&tae.expr, &tae.typ, ok_ectx);
+                        }
+                        Expr::Index(ie) => {
+                            self.gen_expr_index(&ie.expr, &ie.index, types[0], ok_ectx);
+                        }
+                        Expr::Unary(recv_expr) => {
+                            assert_eq!(recv_expr.op, Token::ARROW);
+                            self.gen_expr_recv(
+                                &recv_expr.expr,
+                                types[0],
+                                ok_ectx,
+                                Some(recv_expr.op_pos),
+                            );
+                        }
+                        _ => {
+                            unreachable!()
+                        }
+                    }
+                    self.pop_expr_ctx();
+                    None
+                } else if values.len() == lhs.len() {
+                    unimplemented!()
+                    // // define or assign with values
+                    // let mut types = Vec::with_capacity(values.len());
+                    // for val in values.iter() {
+                    //     self.visit_expr(val);
+                    //     let rhs_type = self.t.expr_tc_type(val);
+                    //     types.push(rhs_type);
+                    // }
+                    // types
+                } else if values.len() == 1 {
+                    unimplemented!()
+                    // let expr = val0;
+                    // // define or assign with function call on the right
+                    // if let Expr::Call(_) = expr {
+                    //     self.visit_expr(expr);
+                    // } else {
+                    //     unreachable!()
+                    // }
+                    // self.t.expr_tuple_tc_types(expr)
+                } else {
+                    unreachable!();
+                }
+            }
+            RightHandSide::Range(r) => {
+                unimplemented!()
+                // // the range statement
+                // self.visit_expr(r);
+                // let tkv = self.t.expr_range_tc_types(r);
+                // let types = [
+                //     Some(self.t.tc_type_to_value_type(tkv[0])),
+                //     Some(self.t.tc_type_to_value_type(tkv[1])),
+                //     Some(self.t.tc_type_to_value_type(tkv[2])),
+                // ];
+                // let pos = Some(r.pos(&self.ast_objs));
+                // let func = current_func_mut!(self);
+                // func.emit_inst(Opcode::RANGE_INIT, types, None, pos);
+                // range_marker = Some(func.next_code_index());
+                // // the block_end address to be set
+                // func.emit_inst(Opcode::RANGE, types, None, pos);
+                // tkv[1..].to_vec()
+            }
+            RightHandSide::SelectRecv(rhs) => {
+                unimplemented!()
+                // // only when in select stmt, lhs in stack is on top of the rhs
+                // lhs_on_stack_top = true;
+                // let comma_ok = lhs.len() == 2 && self.t.expr_mode(rhs) == &OperandMode::CommaOk;
+                // if comma_ok {
+                //     self.t.expr_tuple_tc_types(rhs)
+                // } else {
+                //     vec![self.t.expr_tc_type(rhs)]
+                // }
+            }
+        }
+    }
 
     // fn gen_switch_body(&mut self, body: &BlockStmt, tag_type: ValueType) {
     //     let mut helper = SwitchHelper::new();
@@ -1082,6 +936,34 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
+    fn gen_expr_recv(
+        &mut self,
+        channel: &Expr,
+        val_tc_type: TCTypeKey,
+        ok_lhs_ectx: Option<ExprCtx>,
+        pos: Option<usize>,
+    ) {
+        let channel_addr = self.load(|g| g.gen_expr(channel));
+        match ok_lhs_ectx {
+            Some(mut ok_ectx) => {
+                self.emit_comma_ok(
+                    &mut ok_ectx,
+                    Opcode::RECV_OK,
+                    val_tc_type,
+                    channel_addr,
+                    Addr::Void,
+                    pos,
+                );
+            }
+            None => {
+                self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(Opcode::RECV, d, channel_addr, Addr::Void);
+                    f.emit_inst(inst, p);
+                });
+            }
+        }
+    }
+
     fn gen_expr_index(
         &mut self,
         container: &Expr,
@@ -1094,7 +976,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let pos = Some(container.pos(&self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
-                self.emit_comma_ok(&mut ok_ectx, val_tc_type, container_addr, index_reg, pos);
+                self.emit_comma_ok(
+                    &mut ok_ectx,
+                    Opcode::LOAD_MAP_OK,
+                    val_tc_type,
+                    container_addr,
+                    index_reg,
+                    pos,
+                );
             }
             None => {
                 let op = match self.t.expr_value_type(container) {
@@ -1126,7 +1015,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let pos = Some(expr.pos(self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
-                self.emit_comma_ok(&mut ok_ectx, val_tc_type, val_addr, meta_addr, pos);
+                self.emit_comma_ok(
+                    &mut ok_ectx,
+                    Opcode::TYPE_ASSERT_OK,
+                    val_tc_type,
+                    val_addr,
+                    meta_addr,
+                    pos,
+                );
             }
             None => {
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
@@ -1348,6 +1244,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn emit_comma_ok(
         &mut self,
         ok_ectx: &mut ExprCtx,
+        op: Opcode,
         val_tc_type: TCTypeKey,
         s0: Addr,
         s1: Addr,
@@ -1371,11 +1268,17 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             self.dummy_gcv,
             bool_tc_type,
         );
-        let inst = InterInst::with_op_index(Opcode::TYPE_ASSERT_OK, val_addr, s0, s1);
-        let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
+
         let fctx = func_ctx!(self);
-        fctx.emit_inst(inst, pos);
-        fctx.emit_inst(inst_ex, pos);
+        if s1 != Addr::Void {
+            let inst = InterInst::with_op_index(op, val_addr, s0, s1);
+            let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
+            fctx.emit_inst(inst, pos);
+            fctx.emit_inst(inst_ex, pos);
+        } else {
+            let inst = InterInst::with_op_index(op, val_addr, s0, ok_addr);
+            fctx.emit_inst(inst, pos);
+        }
 
         if !val_direct {
             val_ectx.emit_direct_assign(fctx, val_addr, val_cast_i, pos);
@@ -1578,7 +1481,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     let reg_elem = reg_key + 1;
                     let fctx = func_ctx!(self);
                     let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
+                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, None, pos);
                     self.store(VirtualAddr::new_reg(reg_elem), Some(elem_type), |g| {
                         g.gen_expr(elem)
                     });
@@ -1621,7 +1524,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     let reg_elem = reg_key + 1;
                     let fctx = func_ctx!(self);
                     let index_addr = fctx.add_const(GosValue::new_uint(index));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, pos);
+                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, None, pos);
                     let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
                     self.store(VirtualAddr::new_reg(reg_elem), Some(field_type), |g| {
                         g.gen_expr(expr)
@@ -1840,11 +1743,15 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         if op == &Token::AND {
             self.gen_expr_ref(expr, typ);
             return;
+        } else if op == &Token::ARROW {
+            self.gen_expr_recv(expr, typ, None, Some(this.pos(&self.ast_objs)))
+        } else if op == &Token::ADD {
+            self.gen_expr(expr);
+            return;
         }
 
         let addr = self.load(|g| g.gen_expr(expr));
         let opcode = match op {
-            Token::ADD => Opcode::UNARY_ADD,
             Token::SUB => Opcode::UNARY_SUB,
             Token::XOR => Opcode::UNARY_XOR,
             Token::NOT => Opcode::NOT,
@@ -1854,7 +1761,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 unreachable!()
             }
         };
-        let pos = Some(expr.pos(&self.ast_objs));
+        let pos = Some(this.pos(&self.ast_objs));
         self.cur_expr_emit_assign(typ, pos, |f, d, p| {
             let inst = InterInst::with_op_index(opcode, d, addr, Addr::Void);
             f.emit_inst(inst, p);

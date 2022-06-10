@@ -54,7 +54,8 @@ pub enum Opcode {
     AND_NOT_ASSIGN, // $^
     SHL_ASSIGN,     // <<
     SHR_ASSIGN,     // >>
-    UNARY_ADD,      // +
+    INC,            //++
+    DEC,            //--
     UNARY_SUB,      // -
     UNARY_XOR,      // ^
     NOT,            // !
@@ -70,8 +71,9 @@ pub enum Opcode {
     REF_STRUCT_FIELD,
     REF_STRUCT_EMBEDDED_FIELD,
     REF_PKG_MEMBER,
-    SEND, // <-
-    RECV, // <-
+    SEND,    // <-
+    RECV,    // <-
+    RECV_OK, // <-
 
     // call
     PRE_CALL,
