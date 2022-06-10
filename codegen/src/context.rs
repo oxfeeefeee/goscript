@@ -74,7 +74,7 @@ pub enum VirtualAddr {
     UpValue(Addr),
     SliceEntry(Addr, Addr),
     ArrayEntry(Addr, Addr),
-    MapEntry(Addr, Addr),
+    MapEntry(Addr, Addr, Addr),
     StructMember(Addr, Addr),
     StructEmbedded(Addr, Addr),
     PackageMember(Addr, Addr),
@@ -171,7 +171,7 @@ impl ExprCtx {
                     let d = self.inc_cur_reg();
                     f(fctx, d, pos);
                     Self::cast_to_iface(cast_index, fctx, d, d, pos);
-                    fctx.emit_assign(va.clone(), d, pos);
+                    fctx.emit_assign(va.clone(), d, None, pos);
                     self.dec_cur_reg(); // done with the reg
                 }
             },
@@ -193,7 +193,7 @@ impl ExprCtx {
             ExprMode::Store(va, _) => match va {
                 VirtualAddr::Direct(d) => {
                     if !Self::cast_to_iface(cast_index, fctx, d, src, pos) {
-                        fctx.emit_assign(va, src, pos)
+                        fctx.emit_assign(va, src, None, pos)
                     }
                 }
                 _ => {
@@ -203,7 +203,7 @@ impl ExprCtx {
                     } else {
                         src
                     };
-                    fctx.emit_assign(va, src, pos);
+                    fctx.emit_assign(va, src, None, pos);
                     self.dec_cur_reg(); // done with the reg
                 }
             },
@@ -466,12 +466,22 @@ impl<'a> FuncCtx<'a> {
             .sum()
     }
 
-    pub fn emit_assign(&mut self, lhs: VirtualAddr, rhs: Addr, pos: Option<usize>) {
+    pub fn emit_assign(
+        &mut self,
+        lhs: VirtualAddr,
+        rhs: Addr,
+        op_ex: Option<(Opcode, ValueType, Option<ValueType>)>,
+        pos: Option<usize>,
+    ) {
         if lhs.is_blank() {
             return;
         }
-        let inst = match lhs {
-            VirtualAddr::Direct(l) => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
+        let mut inst_ex = None;
+        let mut inst = match lhs {
+            VirtualAddr::Direct(l) => match op_ex {
+                Some((op, _, _)) => InterInst::with_op_index(op, l, rhs, Addr::Void),
+                None => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
+            },
             VirtualAddr::UpValue(l) => {
                 InterInst::with_op_index(Opcode::STORE_UP_VALUE, l, rhs, Addr::Void)
             }
@@ -481,7 +491,15 @@ impl<'a> FuncCtx<'a> {
             VirtualAddr::ArrayEntry(a, i) => {
                 InterInst::with_op_index(Opcode::STORE_ARRAY, a, i, rhs)
             }
-            VirtualAddr::MapEntry(m, k) => InterInst::with_op_index(Opcode::STORE_MAP, m, k, rhs),
+            VirtualAddr::MapEntry(m, k, zero) => {
+                inst_ex = Some(InterInst::with_op_index(
+                    Opcode::VOID,
+                    Addr::Void,
+                    zero,
+                    Addr::Void,
+                ));
+                InterInst::with_op_index(Opcode::STORE_MAP, m, k, rhs)
+            }
             VirtualAddr::StructMember(s, i) => {
                 InterInst::with_op_index(Opcode::STORE_STRUCT, s, i, rhs)
             }
@@ -497,7 +515,17 @@ impl<'a> FuncCtx<'a> {
             VirtualAddr::Blank => unreachable!(),
             VirtualAddr::ZeroValue => unreachable!(),
         };
+        if let Some((op, t0, t1)) = op_ex {
+            inst.op1 = op;
+            inst.t0 = t0;
+            if let Some(t) = t1 {
+                inst.t1 = t;
+            }
+        };
         self.emit_inst(inst, pos);
+        if let Some(i) = inst_ex {
+            self.emit_inst(i, pos);
+        }
     }
 
     pub fn emit_load_pkg(&mut self, d: Addr, pkg: Addr, index: Addr, pos: Option<usize>) {

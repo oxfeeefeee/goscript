@@ -507,7 +507,6 @@ impl<'a> Fiber<'a> {
                     // s0: index
                     // s1: value
                     Opcode::STORE_MAP => {
-                        frame.pc += 1;
                         let dest = stack.read(inst.d, sb, consts);
                         match dest.as_some_map() {
                             Ok(map) => {
@@ -519,6 +518,7 @@ impl<'a> Fiber<'a> {
                                         map.0.insert(key.clone(), val);
                                     }
                                     _ => {
+                                        frame.pc += 1;
                                         let old = match map.0.get(&key) {
                                             Some(v) => v,
                                             None => {
@@ -769,6 +769,12 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::SHL_ASSIGN => shift_op_assign!(stack, binary_op_shl, inst, sb, consts),
                     Opcode::SHR_ASSIGN => shift_op_assign!(stack, binary_op_shr, inst, sb, consts),
+                    Opcode::INC => unsafe {
+                        stack.get_mut(inst.s0 + sb).data_mut().inc(inst.t0);
+                    },
+                    Opcode::DEC => unsafe {
+                        stack.get_mut(inst.s0 + sb).data_mut().dec(inst.t0);
+                    },
                     Opcode::UNARY_SUB => unary_op!(stack, unary_negate, inst, sb, consts),
                     Opcode::UNARY_XOR => unary_op!(stack, unary_xor, inst, sb, consts),
                     Opcode::NOT => unary_op!(stack, logical_not, inst, sb, consts),
@@ -903,7 +909,7 @@ impl<'a> Fiber<'a> {
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         panic_if_err!(re, panic, frame, code);
                     }
-                    Opcode::RECV => {
+                    Opcode::RECV | Opcode::RECV_OK => {
                         match stack.read(inst.s0, sb, consts).as_channel().cloned() {
                             Some(chan) => {
                                 drop(stack_mut_ref);
@@ -911,8 +917,8 @@ impl<'a> Fiber<'a> {
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcv);
                                 stack.set(inst.d + sb, unwrapped);
-                                if inst.t0 == ValueType::FlagA {
-                                    stack.set(inst.d + sb + 1, GosValue::new_bool(ok));
+                                if inst.op0 == Opcode::RECV_OK {
+                                    stack.set(inst.s1 + sb, GosValue::new_bool(ok));
                                 }
                             }
                             None => loop {
@@ -1758,7 +1764,6 @@ impl<'a> Fiber<'a> {
                         };
                         stack.set(inst.d + sb, val);
                     }
-                    Opcode::UNARY_ADD => unreachable!(),
                     Opcode::VOID => unreachable!(),
                 }
             } //yield unit
