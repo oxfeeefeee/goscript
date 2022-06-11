@@ -451,50 +451,81 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         }
                     }
                     self.pop_expr_ctx();
-                    None
                 } else if values.len() == lhs.len() {
-                    unimplemented!()
-                    // // define or assign with values
-                    // let mut types = Vec::with_capacity(values.len());
-                    // for val in values.iter() {
-                    //     self.visit_expr(val);
-                    //     let rhs_type = self.t.expr_tc_type(val);
-                    //     types.push(rhs_type);
-                    // }
-                    // types
+                    // define or assign with values
+                    let addr_types: Vec<(Addr, TCTypeKey)> = values
+                        .iter()
+                        .map(|x| (self.load(|g| g.gen_expr(x)), self.t.expr_tc_type(x)))
+                        .collect();
+                    for (i, l) in lhs.iter().enumerate() {
+                        self.store(l.0.clone(), l.1, |g| {
+                            g.cur_expr_emit_direct_assign(
+                                addr_types[i].1,
+                                addr_types[i].0,
+                                Some(l.2),
+                            );
+                        });
+                    }
                 } else if values.len() == 1 {
-                    unimplemented!()
-                    // let expr = val0;
-                    // // define or assign with function call on the right
-                    // if let Expr::Call(_) = expr {
-                    //     self.visit_expr(expr);
-                    // } else {
-                    //     unreachable!()
-                    // }
-                    // self.t.expr_tuple_tc_types(expr)
+                    // define or assign with function call on the right
+                    let reg_begin = expr_ctx!(self).cur_reg;
+                    self.gen_expr(&val0);
+                    let types = self.t.expr_tuple_tc_types(val0);
+                    for (i, l) in lhs.iter().enumerate() {
+                        self.store(l.0.clone(), l.1, |g| {
+                            g.cur_expr_emit_direct_assign(
+                                types[i],
+                                Addr::Regsiter(reg_begin + i as OpIndex),
+                                Some(l.2),
+                            );
+                        });
+                    }
                 } else {
                     unreachable!();
                 }
+                None
             }
             RightHandSide::Range(r) => {
-                unimplemented!()
-                // // the range statement
-                // self.visit_expr(r);
-                // let tkv = self.t.expr_range_tc_types(r);
-                // let types = [
-                //     Some(self.t.tc_type_to_value_type(tkv[0])),
-                //     Some(self.t.tc_type_to_value_type(tkv[1])),
-                //     Some(self.t.tc_type_to_value_type(tkv[2])),
-                // ];
-                // let pos = Some(r.pos(&self.ast_objs));
-                // let func = current_func_mut!(self);
-                // func.emit_inst(Opcode::RANGE_INIT, types, None, pos);
-                // range_marker = Some(func.next_code_index());
-                // // the block_end address to be set
-                // func.emit_inst(Opcode::RANGE, types, None, pos);
-                // tkv[1..].to_vec()
+                // the range statement
+                let right_addr = self.load(|g| g.gen_expr(r));
+                let tkv = self.t.expr_range_tc_types(r);
+                let types = [
+                    Some(self.t.tc_type_to_value_type(tkv[0])),
+                    //Some(self.t.tc_type_to_value_type(tkv[1])),
+                    Some(self.t.tc_type_to_value_type(tkv[2])),
+                ];
+                let pos = Some(r.pos(&self.ast_objs));
+                let init_inst = InterInst::with_op_t_index(
+                    Opcode::RANGE_INIT,
+                    types[0],
+                    types[1],
+                    Addr::Void,
+                    right_addr,
+                    Addr::Void,
+                );
+                func_ctx!(self).emit_inst(init_inst, pos);
+                let range_marker = func_ctx!(self).next_code_index();
+
+                let mut cur_reg = expr_ctx!(self).cur_reg;
+                let k_mode = ExprMode::Store(lhs[0].0.clone(), lhs[0].1);
+                self.push_expr_ctx(k_mode, cur_reg);
+                cur_reg += 1;
+                let v_mode = ExprMode::Store(lhs[1].0.clone(), lhs[1].1);
+                let mut ectx_ex = ExprCtx::new(v_mode, cur_reg);
+                self.emit_double_store(
+                    &mut ectx_ex,
+                    Opcode::RANGE,
+                    Addr::Imm(0), // the block_end address, to be set
+                    Addr::Void,
+                    tkv[0],
+                    Some(tkv[2]),
+                    pos,
+                );
+                self.pop_expr_ctx();
+
+                Some(range_marker)
             }
-            RightHandSide::SelectRecv(rhs) => {
+            RightHandSide::SelectRecv(_rhs) => {
                 unimplemented!()
                 // // only when in select stmt, lhs in stack is on top of the rhs
                 // lhs_on_stack_top = true;
@@ -946,12 +977,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let channel_addr = self.load(|g| g.gen_expr(channel));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
-                self.emit_comma_ok(
+                self.emit_double_store(
                     &mut ok_ectx,
                     Opcode::RECV_OK,
-                    val_tc_type,
                     channel_addr,
                     Addr::Void,
+                    val_tc_type,
+                    None,
                     pos,
                 );
             }
@@ -976,12 +1008,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let pos = Some(container.pos(&self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
-                self.emit_comma_ok(
+                self.emit_double_store(
                     &mut ok_ectx,
                     Opcode::LOAD_MAP_OK,
-                    val_tc_type,
                     container_addr,
                     index_reg,
+                    val_tc_type,
+                    None,
                     pos,
                 );
             }
@@ -1015,12 +1048,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let pos = Some(expr.pos(self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
-                self.emit_comma_ok(
+                self.emit_double_store(
                     &mut ok_ectx,
                     Opcode::TYPE_ASSERT_OK,
-                    val_tc_type,
                     val_addr,
                     meta_addr,
+                    val_tc_type,
+                    None,
                     pos,
                 );
             }
@@ -1241,13 +1275,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn emit_comma_ok(
+    fn emit_double_store(
         &mut self,
-        ok_ectx: &mut ExprCtx,
+        ectx_ex: &mut ExprCtx,
         op: Opcode,
-        val_tc_type: TCTypeKey,
         s0: Addr,
         s1: Addr,
+        t0: TCTypeKey,
+        t1: Option<TCTypeKey>,
         pos: Option<usize>,
     ) {
         let val_ectx = expr_ctx!(self);
@@ -1257,16 +1292,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             val_ectx,
             self.objects,
             self.dummy_gcv,
-            val_tc_type,
+            t0,
         );
-        let bool_tc_type = self.t.bool_tc_type();
+        let t1 = t1.unwrap_or(self.t.bool_tc_type());
         let (ok_addr, ok_direct, ok_cast_i) = CodeGen::get_store_addr(
             &mut self.t,
             self.iface_selector,
-            ok_ectx,
+            ectx_ex,
             self.objects,
             self.dummy_gcv,
-            bool_tc_type,
+            t1,
         );
 
         let fctx = func_ctx!(self);
@@ -1284,7 +1319,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             val_ectx.emit_direct_assign(fctx, val_addr, val_cast_i, pos);
         }
         if !ok_direct {
-            ok_ectx.emit_direct_assign(fctx, ok_addr, ok_cast_i, pos);
+            ectx_ex.emit_direct_assign(fctx, ok_addr, ok_cast_i, pos);
         }
     }
 

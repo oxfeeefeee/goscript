@@ -188,13 +188,14 @@ impl RangeStack {
         typ: ValueType,
         t_elem: ValueType,
         stack: &mut Stack,
-        index: OpIndex,
+        index_key: OpIndex,
+        index_val: OpIndex,
     ) -> bool {
         match typ {
             ValueType::Map => match self.maps.last_mut().unwrap().next() {
                 Some((k, v)) => {
-                    stack.set(index, k.clone());
-                    stack.set(index + 1, v.clone());
+                    stack.set(index_key, k.clone());
+                    stack.set(index_val, v.clone());
                     false
                 }
                 None => {
@@ -205,8 +206,8 @@ impl RangeStack {
             ValueType::Array | ValueType::Slice => {
                 match dispatcher_a_s_for(t_elem).array_slice_next(self.slices.last_mut().unwrap()) {
                     Some((k, v)) => {
-                        stack.set_int(index, k as isize);
-                        stack.set(index + 1, v);
+                        stack.set_int(index_key, k as isize);
+                        stack.set(index_val, v);
                         false
                     }
                     None => {
@@ -217,8 +218,8 @@ impl RangeStack {
             }
             ValueType::String => match self.strings.last_mut().unwrap().next() {
                 Some((k, v)) => {
-                    stack.set_int(index, k as isize);
-                    stack.set_int(index + 1, v as isize);
+                    stack.set_int(index_key, k as isize);
+                    stack.set_int(index_val, v as isize);
                     false
                 }
                 None => {

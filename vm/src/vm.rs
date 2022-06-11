@@ -1246,8 +1246,14 @@ impl<'a> Fiber<'a> {
                         panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RANGE => {
-                        if self.rstack.range_body(inst.t0, inst.t1, stack, inst.s0) {
-                            frame.pc += inst.s1;
+                        if self.rstack.range_body(
+                            inst.t0,
+                            inst.t1,
+                            stack,
+                            inst.s1 + sb,
+                            inst.d + sb,
+                        ) {
+                            frame.pc += inst.s0;
                         }
                     }
                     // load user defined init function or jump 3 if failed
