@@ -453,23 +453,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     self.pop_expr_ctx();
                 } else if values.len() == lhs.len() {
                     // define or assign with values
-                    let addr_types: Vec<(Addr, TCTypeKey)> = values
-                        .iter()
-                        .map(|x| (self.load(|g| g.gen_expr(x)), self.t.expr_tc_type(x)))
-                        .collect();
                     for (i, l) in lhs.iter().enumerate() {
-                        self.store(l.0.clone(), l.1, |g| {
-                            g.cur_expr_emit_direct_assign(
-                                addr_types[i].1,
-                                addr_types[i].0,
-                                Some(l.2),
-                            );
-                        });
+                        self.store(l.0.clone(), l.1, |g| g.gen_expr(&values[i]));
                     }
                 } else if values.len() == 1 {
-                    // define or assign with function call on the right
+                    // define or assign with function call that returns multiple value on the right
+                    self.discard(|g| g.gen_expr(&val0));
+                    // now assgin the return values
                     let reg_begin = expr_ctx!(self).cur_reg;
-                    self.gen_expr(&val0);
                     let types = self.t.expr_tuple_tc_types(val0);
                     for (i, l) in lhs.iter().enumerate() {
                         self.store(l.0.clone(), l.1, |g| {
@@ -644,7 +635,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         func_expr: &Expr,
         params: &Vec<Expr>,
         builtin: &Builtin,
-        return_type: TCTypeKey,
+        return_types: &[TCTypeKey],
         ellipsis: bool,
         pos: Option<usize>,
     ) {
@@ -672,7 +663,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     flag = ValueType::FlagC;
                     arg2 = self.load(|g| g.gen_expr(&params[2]));
                 }
-                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
                     let inst = InterInst::with_op_t_index(
                         Opcode::MAKE,
                         Some(flag),
@@ -692,7 +683,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 let addr0 = self.load(|g| g.gen_expr(&params[0]));
                 let addr1 = self.load(|g| g.gen_expr(&params[1]));
                 let t = self.t.expr_value_type(&params[0]);
-                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
                     let inst =
                         InterInst::with_op_t_index(Opcode::COMPLEX, Some(t), None, d, addr0, addr1);
                     f.emit_inst(inst, p);
@@ -710,7 +701,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 } else {
                     Addr::Void
                 };
-                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
                     let op = match builtin {
                         Builtin::New => Opcode::NEW,
                         Builtin::Real => Opcode::REAL,
@@ -729,7 +720,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 let init_reg = expr_ctx!(self).cur_reg;
                 self.gen_call_params(ft, params, ellipsis);
                 let types = slice_op_types(self);
-                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
                     let inst = InterInst::with_op_t_index(
                         Opcode::APPEND,
                         Some(types.0),
@@ -746,7 +737,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 let addr0 = self.load(|g| g.gen_expr(&params[0]));
                 let addr1 = self.load(|g| g.gen_expr(&params[1]));
                 let types = slice_op_types(self);
-                self.cur_expr_emit_assign(return_type, pos, |f, d, p| {
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
                     let inst = InterInst::with_op_t_index(
                         Opcode::COPY,
                         Some(types.0),
@@ -878,7 +869,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
         }
         if !converted {
-            self.cur_expr_emit_direct_assign(tc_to, from_addr, pos);
+            self.cur_expr_emit_direct_assign(tc_from, from_addr, pos);
         }
     }
 
@@ -887,21 +878,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         func_expr: &Expr,
         params: &Vec<Expr>,
         ellipsis: bool,
-        return_type: Option<TCTypeKey>,
         style: CallStyle,
     ) {
         let pos = Some(func_expr.pos(&self.ast_objs));
+        let ft = self.t.expr_tc_type(func_expr);
+        let return_types = self.t.sig_returns_tc_types(ft);
+
         match *self.t.expr_mode(func_expr) {
             // built in function
             OperandMode::Builtin(builtin) => {
-                self.gen_builtin_call(
-                    func_expr,
-                    params,
-                    &builtin,
-                    return_type.unwrap(),
-                    ellipsis,
-                    pos,
-                );
+                self.gen_builtin_call(func_expr, params, &builtin, &return_types, ellipsis, pos);
             }
             // conversion
             OperandMode::TypeExpr => {
@@ -911,18 +897,25 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             // normal goscript function
             _ => {
                 let func_addr = self.load(|g| g.gen_expr(func_expr));
+                let next_sb = Addr::Regsiter(expr_ctx!(self).cur_reg);
                 let inst = InterInst::with_op_index(
                     Opcode::PRE_CALL,
-                    Addr::Void,
                     func_addr,
+                    next_sb,
                     Addr::Imm(params.len() as OpIndex),
                 );
                 func_ctx!(self).emit_inst(inst, pos);
-                let ft = self.t.try_expr_tc_type(func_expr).unwrap();
+
                 self.gen_call_params(ft, params, ellipsis);
                 func_ctx!(self).emit_call(style, pos);
 
-                let return_count = self.t.sig_returns_tc_types(ft).len();
+                if !return_types.is_empty() {
+                    // assgin the first return value
+                    // the cases of returning multiple values are handled elsewhere
+                    self.cur_expr_emit_direct_assign(return_types[0], next_sb, pos);
+                }
+
+                let return_count = return_types.len();
                 expr_ctx!(self).cur_reg += return_count as OpIndex;
             }
         }
@@ -1175,14 +1168,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn gen_type_meta(&mut self, typ: &Expr) {
+    fn gen_expr_type(&mut self, typ: &Expr) {
         let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
         let pos = Some(typ.pos(&self.ast_objs));
         let addr = func_ctx!(self).add_const(GosValue::new_metadata(m));
         self.cur_expr_emit_direct_assign(self.t.expr_tc_type(typ), addr, pos);
     }
 
-    fn gen_const(&mut self, expr: &Expr, pos: Option<Pos>) {
+    fn gen_expr_const(&mut self, expr: &Expr, pos: Option<Pos>) {
         let (tc_type, val) = self.t.const_type_value(expr.id());
         let fctx = func_ctx!(self);
         //let t = val.typ();
@@ -1193,7 +1186,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn gen_expr(&mut self, expr: &Expr) {
         if let Some(mode) = self.t.try_expr_mode(expr) {
             if let OperandMode::Constant(_) = mode {
-                self.gen_const(expr, Some(expr.pos(&self.ast_objs)));
+                self.gen_expr_const(expr, Some(expr.pos(&self.ast_objs)));
             }
         }
         walk_expr(self, expr);
@@ -1386,6 +1379,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.pop_expr_ctx();
     }
 
+    fn discard<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut CodeGen),
+    {
+        let reg = expr_ctx!(self).cur_reg;
+        self.push_expr_ctx(ExprMode::Discard, reg);
+        f(self);
+        self.pop_expr_ctx();
+    }
+
     fn push_expr_ctx(&mut self, mode: ExprMode, cur_reg: OpIndex) {
         self.expr_ctx_stack.push(ExprCtx::new(mode, cur_reg));
     }
@@ -1468,7 +1471,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_expr_basic_lit(&mut self, this: &Expr, blit: &BasicLit) {
-        self.gen_const(this, Some(blit.pos));
+        self.gen_expr_const(this, Some(blit.pos));
     }
 
     /// Add function as a const and then generate a closure of it
@@ -1736,8 +1739,8 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 low_addr,
             );
             let inst_ex = InterInst::with_op_index(Opcode::VOID, Addr::Void, high_addr, max_addr);
-            f.emit_inst(inst, pos);
-            f.emit_inst(inst_ex, pos);
+            f.emit_inst(inst, p);
+            f.emit_inst(inst_ex, p);
         })
     }
 
@@ -1745,21 +1748,14 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         self.gen_expr_type_assert(expr, typ, None);
     }
 
-    fn visit_expr_call(
-        &mut self,
-        this: &Expr,
-        func_expr: &Expr,
-        params: &Vec<Expr>,
-        ellipsis: bool,
-    ) {
-        let rtt = self.t.try_expr_tc_type(this);
-        self.gen_expr_call(func_expr, params, ellipsis, rtt, CallStyle::Default);
+    fn visit_expr_call(&mut self, _: &Expr, func_expr: &Expr, params: &Vec<Expr>, ellipsis: bool) {
+        self.gen_expr_call(func_expr, params, ellipsis, CallStyle::Default);
     }
 
     fn visit_expr_star(&mut self, this: &Expr, expr: &Expr) {
         match self.t.expr_mode(expr) {
             OperandMode::TypeExpr => {
-                self.gen_type_meta(this);
+                self.gen_expr_type(this);
             }
             _ => {
                 let pos = Some(expr.pos(&self.ast_objs));
@@ -1870,27 +1866,27 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_expr_array_type(&mut self, this: &Expr, _: &Option<Expr>, _: &Expr) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_expr_struct_type(&mut self, this: &Expr, _s: &StructType) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_expr_func_type(&mut self, this: &Expr, _s: &FuncTypeKey) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_expr_interface_type(&mut self, this: &Expr, _s: &InterfaceType) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_map_type(&mut self, this: &Expr, _: &Expr, _: &Expr, _map: &Expr) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_chan_type(&mut self, this: &Expr, _chan: &Expr, _dir: &ChanDir) {
-        self.gen_type_meta(this)
+        self.gen_expr_type(this)
     }
 
     fn visit_bad_expr(&mut self, _: &Expr, _e: &BadExpr) {
@@ -1906,188 +1902,154 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_stmt_decl_gen(&mut self, gdecl: &GenDecl) {
-        // for s in gdecl.specs.iter() {
-        //     let spec = &self.ast_objs.specs[*s];
-        //     match spec {
-        //         Spec::Import(_) => {
-        //             //handled elsewhere
-        //         }
-        //         Spec::Type(ts) => {
-        //             let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcv);
-        //             self.add_const_def(
-        //                 &ts.name,
-        //                 GosValue::new_metadata(m),
-        //                 ValueType::Metadata,
-        //             );
-        //         }
-        //         Spec::Value(vs) => match &gdecl.token {
-        //             Token::VAR => {
-        //                 // package level vars are handled elsewhere due to ordering
-        //                 if !current_func!(self).is_ctor() {
-        //                     self.gen_def_var(vs);
-        //                 }
-        //             }
-        //             Token::CONST => self.gen_def_const(&vs.names),
-        //             _ => unreachable!(),
-        //         },
-        //     }
-        // }
+        for s in gdecl.specs.iter() {
+            let spec = &self.ast_objs.specs[*s];
+            match spec {
+                Spec::Import(_) => {
+                    //handled elsewhere
+                }
+                Spec::Type(ts) => {
+                    let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcv);
+                    self.add_const_def(&ts.name, GosValue::new_metadata(m), ValueType::Metadata);
+                }
+                Spec::Value(vs) => match &gdecl.token {
+                    Token::VAR => {
+                        // package level vars are handled elsewhere due to ordering
+                        if !func_ctx!(self).is_ctor(&self.objects.functions) {
+                            self.gen_def_var(vs);
+                        }
+                    }
+                    Token::CONST => self.gen_def_const(&vs.names),
+                    _ => unreachable!(),
+                },
+            }
+        }
     }
 
     fn visit_stmt_decl_func(&mut self, fdecl: &FuncDeclKey) -> Self::Result {
-        // let decl = &self.ast_objs.fdecls[*fdecl];
-        // if decl.body.is_none() {
-        //     return;
-        //     // unimplemented!()
-        // }
-        // let tc_type = self.t.obj_def_tc_type(decl.name);
-        // let stmt = decl.body.as_ref().unwrap();
-        // let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
-        // let cls = GosValue::new_closure_static(fkey, &self.objects.functions);
-        // // this is a struct method
-        // if let Some(self_ident) = &decl.recv {
-        //     let field = &self.ast_objs.fields[self_ident.list[0]];
-        //     let name = &self.ast_objs.idents[decl.name].name;
-        //     let meta = self
-        //         .t
-        //         .node_meta(field.typ.id(), self.objects, self.dummy_gcv);
-        //     meta.set_method_code(name, fkey, &mut self.objects.metas);
-        // } else {
-        //     let name = &self.ast_objs.idents[decl.name].name;
-        //     let pkg = &mut self.objects.packages[self.pkg_key];
-        //     match name.as_str() {
-        //         "init" => pkg.add_init_func(cls),
-        //         _ => {
-        //             pkg.add_member(name.clone(), cls, ValueType::Closure);
-        //         }
-        //     };
-        // }
+        let decl = &self.ast_objs.fdecls[*fdecl];
+        if decl.body.is_none() {
+            return;
+        }
+        let tc_type = self.t.obj_def_tc_type(decl.name);
+        let stmt = decl.body.as_ref().unwrap();
+        let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
+        let cls = GosValue::new_closure_static(fkey, &self.objects.functions);
+        // this is a struct method
+        if let Some(self_ident) = &decl.recv {
+            let field = &self.ast_objs.fields[self_ident.list[0]];
+            let name = &self.ast_objs.idents[decl.name].name;
+            let meta = self
+                .t
+                .node_meta(field.typ.id(), self.objects, self.dummy_gcv);
+            meta.set_method_code(name, fkey, &mut self.objects.metas);
+        } else {
+            let name = &self.ast_objs.idents[decl.name].name;
+            let pkg = &mut self.objects.packages[self.pkg_key];
+            match name.as_str() {
+                "init" => pkg.add_init_func(cls),
+                _ => {
+                    pkg.add_member(name.clone(), cls, ValueType::Closure);
+                }
+            };
+        }
     }
 
     fn visit_stmt_labeled(&mut self, lstmt: &LabeledStmtKey) {
-        // let stmt = &self.ast_objs.l_stmts[*lstmt];
-        // let offset = current_func!(self).code().len();
-        // let entity = self.t.object_def(stmt.label).data();
-        // let is_breakable = match &stmt.stmt {
-        //     Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
-        //     _ => false,
-        // };
-        // self.branch_helper.add_label(entity, offset, is_breakable);
-        // self.visit_stmt(&stmt.stmt);
+        let stmt = &self.ast_objs.l_stmts[*lstmt];
+        let offset = func_ctx!(self).next_code_index();
+        let entity = self.t.object_def(stmt.label);
+        let is_breakable = match &stmt.stmt {
+            Stmt::For(_) | Stmt::Range(_) | Stmt::Select(_) | Stmt::Switch(_) => true,
+            _ => false,
+        };
+        self.branch_helper.add_label(entity, offset, is_breakable);
+        self.visit_stmt(&stmt.stmt);
     }
 
     fn visit_stmt_send(&mut self, sstmt: &SendStmt) {
-        // self.visit_expr(&sstmt.chan);
-        // self.visit_expr(&sstmt.val);
-        // let t = self.t.expr_value_type(&sstmt.val);
-        // current_func_mut!(self).emit_code_with_type(Opcode::SEND, t, Some(sstmt.arrow));
+        let chan_addr = self.load(|g| g.gen_expr(&sstmt.chan));
+        let val_addr = self.load(|g| g.gen_expr(&sstmt.val));
+        let inst = InterInst::with_op_index(Opcode::SEND, Addr::Void, chan_addr, val_addr);
+        func_ctx!(self).emit_inst(inst, Some(sstmt.arrow));
     }
 
     fn visit_stmt_incdec(&mut self, idcstmt: &IncDecStmt) {
-        //self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], RightHandSide::Nothing);
+        self.gen_assign(&idcstmt.token, &vec![&idcstmt.expr], RightHandSide::Nothing);
     }
 
     fn visit_stmt_assign(&mut self, astmt: &AssignStmtKey) {
-        // let stmt = &self.ast_objs.a_stmts[*astmt];
-        // self.gen_assign(
-        //     &stmt.token,
-        //     &stmt.lhs.iter().map(|x| x).collect(),
-        //     RightHandSide::Values(&stmt.rhs),
-        // );
+        let stmt = &self.ast_objs.a_stmts[*astmt];
+        self.gen_assign(
+            &stmt.token,
+            &stmt.lhs.iter().map(|x| x).collect(),
+            RightHandSide::Values(&stmt.rhs),
+        );
     }
 
     fn visit_stmt_go(&mut self, gostmt: &GoStmt) {
-        // match &gostmt.call {
-        //     Expr::Call(call) => {
-        //         self.gen_call(
-        //             &call.func,
-        //             &call.args,
-        //             call.ellipsis.is_some(),
-        //             CallStyle::Async,
-        //         );
-        //     }
-        //     _ => unreachable!(),
-        // }
+        match &gostmt.call {
+            Expr::Call(call) => {
+                self.gen_expr_call(
+                    &call.func,
+                    &call.args,
+                    call.ellipsis.is_some(),
+                    CallStyle::Async,
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_stmt_defer(&mut self, dstmt: &DeferStmt) {
-        // current_func_mut!(self).flag = FuncFlag::HasDefer;
-        // match &dstmt.call {
-        //     Expr::Call(call) => {
-        //         self.gen_call(
-        //             &call.func,
-        //             &call.args,
-        //             call.ellipsis.is_some(),
-        //             CallStyle::Defer,
-        //         );
-        //     }
-        //     _ => unreachable!(),
-        // }
+        self.objects.functions[func_ctx!(self).f_key].flag = FuncFlag::HasDefer;
+        match &dstmt.call {
+            Expr::Call(call) => {
+                self.gen_expr_call(
+                    &call.func,
+                    &call.args,
+                    call.ellipsis.is_some(),
+                    CallStyle::Defer,
+                );
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_stmt_return(&mut self, rstmt: &ReturnStmt) {
-        // if !rstmt.results.is_empty() {
-        //     for expr in rstmt.results.iter() {
-        //         self.visit_expr(expr);
-        //     }
-
-        //     let return_types = self.get_exprs_final_types(&rstmt.results);
-        //     let types = self
-        //         .t
-        //         .sig_returns_tc_types(self.func_ctx_stack.last().unwrap().tc_key.unwrap());
-        //     assert_eq!(return_types.len(), types.len());
-        //     let count: OpIndex = return_types.len() as OpIndex;
-        //     let types: Vec<ValueType> = return_types
-        //         .iter()
-        //         .enumerate()
-        //         .map(|(i, typ)| {
-        //             let index = i as i32 - count;
-        //             let pos = typ.1;
-        //             let t = self.try_cast_to_iface(Some(types[i]), typ.0, index, pos);
-        //             let mut emitter = current_func_emitter!(self);
-        //             emitter.emit_store(
-        //                 &LeftHandSide::Primitive(EntIndex::LocalVar(i as OpIndex)),
-        //                 index,
-        //                 None,
-        //                 None,
-        //                 t,
-        //                 Some(pos),
-        //             );
-        //             t
-        //         })
-        //         .collect();
-        //     current_func_emitter!(self).emit_pop(&types, Some(rstmt.ret));
-        // }
-        // current_func_emitter!(self).emit_return(None, Some(rstmt.ret));
+        if !rstmt.results.is_empty() {
+            let types = self.t.sig_returns_tc_types(func_ctx!(self).tc_key.unwrap());
+            for (i, expr) in rstmt.results.iter().enumerate() {
+                let va = VirtualAddr::Direct(Addr::LocalVar(i as OpIndex));
+                self.store(va, Some(types[i]), |g| g.gen_expr(expr));
+            }
+        }
+        func_ctx!(self).emit_inst(InterInst::with_op(Opcode::RETURN), Some(rstmt.ret));
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {
-        // match bstmt.token {
-        //     Token::BREAK | Token::CONTINUE => {
-        //         let entity = bstmt.label.map(|x| use_ident_unique_key!(self, x));
-        //         self.branch_helper.add_point(
-        //             current_func_mut!(self),
-        //             bstmt.token.clone(),
-        //             entity,
-        //             bstmt.token_pos,
-        //         );
-        //     }
-        //     Token::GOTO => {
-        //         let fkey = self.func_ctx_stack.last().unwrap().f_key;
-        //         let label = bstmt.label.unwrap();
-        //         let entity = use_ident_unique_key!(self, label);
-        //         self.branch_helper.go_to(
-        //             &mut self.objects.functions,
-        //             fkey,
-        //             entity,
-        //             bstmt.token_pos,
-        //         );
-        //     }
-        //     Token::FALLTHROUGH => {
-        //         // handled in gen_switch_body
-        //     }
-        //     _ => unreachable!(),
-        // }
+        match bstmt.token {
+            Token::BREAK | Token::CONTINUE => {
+                let entity = bstmt.label.map(|x| self.t.object_use(x));
+                self.branch_helper.add_jump_point(
+                    func_ctx!(self),
+                    bstmt.token.clone(),
+                    entity,
+                    bstmt.token_pos,
+                );
+            }
+            Token::GOTO => {
+                let addr = Addr::Label(self.t.object_use(bstmt.label.unwrap()));
+                func_ctx!(self).emit_inst(
+                    InterInst::with_op_index(Opcode::JUMP, addr, Addr::Void, Addr::Void),
+                    Some(bstmt.token_pos),
+                )
+            }
+            Token::FALLTHROUGH => {
+                // handled in gen_switch_body
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn visit_stmt_block(&mut self, bstmt: &BlockStmt) {

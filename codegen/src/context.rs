@@ -111,6 +111,7 @@ impl VirtualAddr {
 pub enum ExprMode {
     Load,
     Store(VirtualAddr, Option<TCTypeKey>),
+    Discard,
 }
 
 impl ExprMode {
@@ -144,6 +145,7 @@ impl ExprCtx {
         match self.mode {
             ExprMode::Load => None,
             ExprMode::Store(_, t) => t,
+            ExprMode::Discard => None,
         }
     }
 
@@ -175,6 +177,7 @@ impl ExprCtx {
                     self.dec_cur_reg(); // done with the reg
                 }
             },
+            ExprMode::Discard => {}
         }
     }
 
@@ -207,6 +210,7 @@ impl ExprCtx {
                     self.dec_cur_reg(); // done with the reg
                 }
             },
+            ExprMode::Discard => {}
         }
     }
 
