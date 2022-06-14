@@ -2,16 +2,13 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use slotmap::{Key, KeyData};
-use std::convert::TryFrom;
-use std::iter::FromIterator;
-
 use super::branch::*;
 use super::consts::*;
 use super::package::PkgHelper;
 use super::selector::*;
 use super::types::{SelectionType, TypeCache, TypeLookup};
 use crate::context::*;
+use std::iter::FromIterator;
 
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
@@ -226,7 +223,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         } else {
             RightHandSide::Values(&vs.values)
         };
-        //self.gen_assign_def_var(&lhs, &vs.typ, &rhs);
+        self.gen_assign_def_var(&lhs, &vs.typ, &rhs);
     }
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
@@ -516,77 +513,84 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
                 Some(range_marker)
             }
-            RightHandSide::SelectRecv(_rhs) => {
-                unimplemented!()
-                // // only when in select stmt, lhs in stack is on top of the rhs
-                // lhs_on_stack_top = true;
-                // let comma_ok = lhs.len() == 2 && self.t.expr_mode(rhs) == &OperandMode::CommaOk;
-                // if comma_ok {
-                //     self.t.expr_tuple_tc_types(rhs)
-                // } else {
-                //     vec![self.t.expr_tc_type(rhs)]
-                // }
+            // For Select, the result is already in registers
+            RightHandSide::SelectRecv(addr, ok) => {
+                let l = &lhs[0];
+                func_ctx!(self).emit_assign(l.0.clone(), *addr, None, Some(l.2));
+                if *ok {
+                    let l = &lhs[1];
+                    let reg = Addr::Regsiter(addr.as_reg_index() + 1);
+                    func_ctx!(self).emit_assign(l.0.clone(), reg, None, Some(l.2));
+                }
+                None
             }
         }
     }
 
-    // fn gen_switch_body(&mut self, body: &BlockStmt, tag_type: ValueType) {
-    //     let mut helper = SwitchHelper::new();
-    //     let mut has_default = false;
-    //     for (i, stmt) in body.list.iter().enumerate() {
-    //         helper.add_case_clause();
-    //         let cc = SwitchHelper::to_case_clause(stmt);
-    //         match &cc.list {
-    //             Some(l) => {
-    //                 for c in l.iter() {
-    //                     let pos = Some(stmt.pos(&self.ast_objs));
-    //                     self.visit_expr(c);
-    //                     let func = current_func_mut!(self);
-    //                     helper.tags.add_case(i, func.next_code_index());
-    //                     func.emit_code_with_type(Opcode::SWITCH, tag_type, pos);
-    //                 }
-    //             }
-    //             None => has_default = true,
-    //         }
-    //     }
+    fn gen_switch_body(&mut self, body: &BlockStmt, tag_addr: Addr, tag_type: ValueType) {
+        let mut helper = SwitchHelper::new();
+        let mut has_default = false;
+        for (i, stmt) in body.list.iter().enumerate() {
+            helper.add_case_clause();
+            let cc = SwitchHelper::to_case_clause(stmt);
+            match &cc.list {
+                Some(l) => {
+                    for c in l.iter() {
+                        let pos = Some(stmt.pos(&self.ast_objs));
+                        let addr = self.load(|g| g.gen_expr(c));
+                        let fctx = func_ctx!(self);
+                        helper.tags.add_case(i, fctx.next_code_index());
+                        fctx.emit_inst(
+                            InterInst::with_op_t_index(
+                                Opcode::SWITCH,
+                                Some(tag_type),
+                                None,
+                                Addr::Void,
+                                tag_addr,
+                                addr,
+                            ),
+                            pos,
+                        );
+                    }
+                }
+                None => has_default = true,
+            }
+        }
 
-    //     // pop the tag
-    //     current_func_emitter!(self).emit_pop(&vec![tag_type], None);
+        let fctx = func_ctx!(self);
+        helper.tags.add_default(fctx.next_code_index());
+        fctx.emit_inst(InterInst::with_op(Opcode::JUMP), None);
 
-    //     let func = current_func_mut!(self);
-    //     helper.tags.add_default(func.next_code_index());
-    //     func.emit_code(Opcode::JUMP, None);
-
-    //     for (i, stmt) in body.list.iter().enumerate() {
-    //         let cc = SwitchHelper::to_case_clause(stmt);
-    //         let func = current_func_mut!(self);
-    //         let default = cc.list.is_none();
-    //         if default {
-    //             helper.tags.patch_default(func, func.next_code_index());
-    //         } else {
-    //             helper.tags.patch_case(func, i, func.next_code_index());
-    //         }
-    //         for s in cc.body.iter() {
-    //             self.visit_stmt(s);
-    //         }
-    //         if !SwitchHelper::has_fall_through(stmt) {
-    //             let func = current_func_mut!(self);
-    //             if default {
-    //                 helper.ends.add_default(func.next_code_index());
-    //             } else {
-    //                 helper.ends.add_case(i, func.next_code_index());
-    //             }
-    //             func.emit_code(Opcode::JUMP, None);
-    //         }
-    //     }
-    //     let end = current_func!(self).next_code_index();
-    //     helper.patch_ends(current_func_mut!(self), end);
-    //     // jump to the end if there is no default code
-    //     if !has_default {
-    //         let func = current_func_mut!(self);
-    //         helper.tags.patch_default(func, end);
-    //     }
-    // }
+        for (i, stmt) in body.list.iter().enumerate() {
+            let cc = SwitchHelper::to_case_clause(stmt);
+            let fctx = func_ctx!(self);
+            let default = cc.list.is_none();
+            if default {
+                helper.tags.patch_default(fctx, fctx.next_code_index());
+            } else {
+                helper.tags.patch_case(fctx, i, fctx.next_code_index());
+            }
+            for s in cc.body.iter() {
+                self.visit_stmt(s);
+            }
+            if !SwitchHelper::has_fall_through(stmt) {
+                let fctx = func_ctx!(self);
+                if default {
+                    helper.ends.add_default(fctx.next_code_index());
+                } else {
+                    helper.ends.add_case(i, fctx.next_code_index());
+                }
+                fctx.emit_inst(InterInst::with_op(Opcode::JUMP), None);
+            }
+        }
+        let end = func_ctx!(self).next_code_index();
+        helper.patch_ends(func_ctx!(self), end);
+        // jump to the end if there is no default code
+        if !has_default {
+            let func = func_ctx!(self);
+            helper.tags.patch_default(func, end);
+        }
+    }
 
     fn gen_func_def(
         &mut self,
@@ -882,11 +886,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     ) {
         let pos = Some(func_expr.pos(&self.ast_objs));
         let ft = self.t.expr_tc_type(func_expr);
-        let return_types = self.t.sig_returns_tc_types(ft);
 
         match *self.t.expr_mode(func_expr) {
             // built in function
             OperandMode::Builtin(builtin) => {
+                let return_types = self.t.sig_returns_tc_types(ft);
                 self.gen_builtin_call(func_expr, params, &builtin, &return_types, ellipsis, pos);
             }
             // conversion
@@ -909,6 +913,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 self.gen_call_params(ft, params, ellipsis);
                 func_ctx!(self).emit_call(style, pos);
 
+                let return_types = self.t.sig_returns_tc_types(ft);
                 if !return_types.is_empty() {
                     // assgin the first return value
                     // the cases of returning multiple values are handled elsewhere
@@ -1211,41 +1216,18 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         index
     }
 
-    // fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
-    //     for n in names.iter() {
-    //         let ident = &self.ast_objs.idents[*n];
-    //         let meta = self.t.obj_def_meta(*n, self.objects, self.dummy_gcv);
-    //         let val = meta.zero(&self.objects.metas, self.dummy_gcv);
-    //         self.objects.packages[pkey].add_member(
-    //             ident.name.clone(),
-    //             val,
-    //             meta.value_type(&self.objects.metas),
-    //         );
-    //     }
-    // }
-
-    // fn swallow_value(&mut self, expr: &Expr) {
-    //     let val_types = self.t.expr_value_types(expr);
-    //     current_func_emitter!(self).emit_pop(&val_types, Some(expr.pos(&self.ast_objs)));
-    // }
-
-    // fn lhs_on_stack_value_types(lhs: &LeftHandSide) -> Vec<ValueType> {
-    //     let mut on_stack_types = vec![];
-    //     match lhs {
-    //         LeftHandSide::Primitive(_) => {}
-    //         LeftHandSide::IndexExpr(info) => {
-    //             on_stack_types.push(info.t1);
-    //             if let Some(t) = info.t2 {
-    //                 on_stack_types.push(t);
-    //             }
-    //         }
-    //         LeftHandSide::SelExpr(info) => {
-    //             on_stack_types.push(info.t1);
-    //         }
-    //         LeftHandSide::Deref(_) => on_stack_types.push(ValueType::Pointer),
-    //     }
-    //     on_stack_types
-    // }
+    fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
+        for n in names.iter() {
+            let ident = &self.ast_objs.idents[*n];
+            let meta = self.t.obj_def_meta(*n, self.objects, self.dummy_gcv);
+            let val = meta.zero(&self.objects.metas, self.dummy_gcv);
+            self.objects.packages[pkey].add_member(
+                ident.name.clone(),
+                val,
+                meta.value_type(&self.objects.metas),
+            );
+        }
+    }
 
     pub fn get_struct_field_op_index(
         &mut self,
@@ -1352,7 +1334,10 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     }
 
     fn visit_stmt(&mut self, stmt: &Stmt) {
-        walk_stmt(self, stmt)
+        let init_reg = self.expr_ctx_stack.last().map(|x| x.cur_reg).unwrap_or(0);
+        self.push_expr_ctx(ExprMode::Discard, init_reg);
+        walk_stmt(self, stmt);
+        self.pop_expr_ctx();
     }
 
     fn load<F>(&mut self, f: F) -> Addr
@@ -1435,20 +1420,19 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.func_ctx_stack
             .push(FuncCtx::new(fkey, None, self.consts));
 
-        // let (names, vars) = self.pkg_helper.sort_var_decls(files, self.t.type_info());
-        // self.add_pkg_var_member(pkey, &names);
+        let (names, vars) = self.pkg_helper.sort_var_decls(files, self.t.type_info());
+        self.add_pkg_var_member(pkey, &names);
 
-        // self.pkg_helper
-        //     .gen_imports(tcpkg, &mut current_func_emitter!(self));
+        self.pkg_helper.gen_imports(tcpkg, &mut func_ctx!(self));
 
-        // for f in files.iter() {
-        //     for d in f.decls.iter() {
-        //         self.visit_decl(d)
-        //     }
-        // }
-        // for v in vars.iter() {
-        //     self.gen_def_var(v);
-        // }
+        for f in files.iter() {
+            for d in f.decls.iter() {
+                self.visit_decl(d)
+            }
+        }
+        for v in vars.iter() {
+            self.gen_def_var(v);
+        }
 
         func_ctx!(self).emit_return(Some(self.pkg_key), None, &self.objects.functions);
         self.results.push(self.func_ctx_stack.pop().unwrap());
@@ -2059,38 +2043,41 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_stmt_if(&mut self, ifstmt: &IfStmt) {
-        // if let Some(init) = &ifstmt.init {
-        //     self.visit_stmt(init);
-        // }
-        // self.visit_expr(&ifstmt.cond);
-        // let func = current_func_mut!(self);
-        // func.emit_code(Opcode::JUMP_IF_NOT, Some(ifstmt.if_pos));
-        // let top_marker = func.next_code_index();
+        if let Some(init) = &ifstmt.init {
+            self.visit_stmt(init);
+        }
+        let cond_addr = self.load(|g| g.gen_expr(&ifstmt.cond));
+        let fctx = func_ctx!(self);
+        // imm to be set later
+        fctx.emit_inst(
+            InterInst::with_op_index(Opcode::JUMP_IF_NOT, Addr::Void, cond_addr, Addr::Void),
+            Some(ifstmt.if_pos),
+        );
+        let top_marker = fctx.next_code_index();
 
-        // drop(func);
-        // self.visit_stmt_block(&ifstmt.body);
-        // let marker_if_arm_end = if ifstmt.els.is_some() {
-        //     let func = current_func_mut!(self);
-        //     // imm to be set later
-        //     func.emit_code(Opcode::JUMP, Some(ifstmt.if_pos));
-        //     Some(func.next_code_index())
-        // } else {
-        //     None
-        // };
+        self.visit_stmt_block(&ifstmt.body);
+        let marker_if_arm_end = if ifstmt.els.is_some() {
+            let fctx = func_ctx!(self);
+            // imm to be set later
+            fctx.emit_inst(InterInst::with_op(Opcode::JUMP), Some(ifstmt.if_pos));
+            Some(fctx.next_code_index())
+        } else {
+            None
+        };
 
-        // // set the correct else jump target
-        // let func = current_func_mut!(self);
-        // let offset = func.offset(top_marker);
-        // func.instruction_mut(top_marker - 1).set_imm(offset);
+        // set the correct else jump target
+        let fctx = func_ctx!(self);
+        let offset = fctx.offset(top_marker);
+        fctx.inst_mut(top_marker - 1).d = Addr::Imm(offset);
 
-        // if let Some(els) = &ifstmt.els {
-        //     self.visit_stmt(els);
-        //     // set the correct if_arm_end jump target
-        //     let func = current_func_mut!(self);
-        //     let marker = marker_if_arm_end.unwrap();
-        //     let offset = func.offset(marker);
-        //     func.instruction_mut(marker - 1).set_imm(offset);
-        // }
+        if let Some(els) = &ifstmt.els {
+            self.visit_stmt(els);
+            // set the correct if_arm_end jump target
+            let fctx = func_ctx!(self);
+            let marker = marker_if_arm_end.unwrap();
+            let offset = fctx.offset(marker);
+            fctx.inst_mut(marker - 1).d = Addr::Imm(offset);
+        }
     }
 
     fn visit_stmt_case(&mut self, _cclause: &CaseClause) {
@@ -2098,73 +2085,81 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
     }
 
     fn visit_stmt_switch(&mut self, sstmt: &SwitchStmt) {
-        // self.branch_helper.enter_block(false);
+        self.branch_helper.enter_block(false);
 
-        // if let Some(init) = &sstmt.init {
-        //     self.visit_stmt(init);
-        // }
-        // let tag_type = match &sstmt.tag {
-        //     Some(e) => {
-        //         self.visit_expr(e);
-        //         self.t.expr_value_type(e)
-        //     }
-        //     None => {
-        //         current_func_mut!(self).emit_code(Opcode::PUSH_TRUE, None);
-        //         ValueType::Bool
-        //     }
-        // };
+        if let Some(init) = &sstmt.init {
+            self.visit_stmt(init);
+        }
+        let (addr, typ) = match &sstmt.tag {
+            Some(e) => (self.load(|g| g.gen_expr(e)), self.t.expr_value_type(e)),
+            None => (
+                func_ctx!(self).add_const(GosValue::new_bool(true)),
+                ValueType::Bool,
+            ),
+        };
+        self.gen_switch_body(&*sstmt.body, addr, typ);
 
-        // self.gen_switch_body(&*sstmt.body, tag_type);
-
-        // self.branch_helper
-        //     .leave_block(current_func_mut!(self), None);
+        self.branch_helper.leave_block(func_ctx!(self), None);
     }
 
     fn visit_stmt_type_switch(&mut self, tstmt: &TypeSwitchStmt) {
-        // if let Some(init) = &tstmt.init {
-        //     self.visit_stmt(init);
-        // }
+        if let Some(init) = &tstmt.init {
+            self.visit_stmt(init);
+        }
 
-        // let (ident_expr, assert) = match &tstmt.assign {
-        //     Stmt::Assign(ass_key) => {
-        //         let ass = &self.ast_objs.a_stmts[*ass_key];
-        //         (Some(&ass.lhs[0]), &ass.rhs[0])
-        //     }
-        //     Stmt::Expr(e) => (None, &**e),
-        //     _ => unreachable!(),
-        // };
-        // let (v, pos) = match assert {
-        //     Expr::TypeAssert(ta) => (&ta.expr, Some(ta.l_paren)),
-        //     _ => unreachable!(),
-        // };
+        let (ident_expr, assert) = match &tstmt.assign {
+            Stmt::Assign(ass_key) => {
+                let ass = &self.ast_objs.a_stmts[*ass_key];
+                (Some(&ass.lhs[0]), &ass.rhs[0])
+            }
+            Stmt::Expr(e) => (None, &**e),
+            _ => unreachable!(),
+        };
+        let (v, pos) = match assert {
+            Expr::TypeAssert(ta) => (&ta.expr, Some(ta.l_paren)),
+            _ => unreachable!(),
+        };
 
-        // if let Some(_) = ident_expr {
-        //     let inst_data: Vec<(ValueType, OpIndex)> = tstmt
-        //         .body
-        //         .list
-        //         .iter()
-        //         .map(|stmt| {
-        //             let tc_obj = self.t.object_implicit(&stmt.id());
-        //             let (index, _, meta) = self.add_local_var(tc_obj);
-        //             (meta.value_type(&self.objects.metas), index.into())
-        //         })
-        //         .collect();
-        //     self.visit_expr(v);
-        //     let func = current_func_mut!(self);
-        //     func.emit_code_with_imm(Opcode::TYPE, inst_data.len() as OpIndex, pos);
-        //     for data in inst_data.into_iter() {
-        //         func.emit_inst(Opcode::VOID, [Some(data.0), None, None], Some(data.1), pos)
-        //     }
-        // } else {
-        //     self.visit_expr(v);
-        //     current_func_mut!(self).emit_code(Opcode::TYPE, pos);
-        // }
+        let dst = expr_ctx!(self).inc_cur_reg();
+        if let Some(_) = ident_expr {
+            let inst_data: Vec<(ValueType, Addr)> = tstmt
+                .body
+                .list
+                .iter()
+                .map(|stmt| {
+                    let tc_obj = self.t.object_implicit(&stmt.id());
+                    let (addr, _, meta) = self.add_local_var(tc_obj);
+                    (meta.value_type(&self.objects.metas), addr)
+                })
+                .collect();
+            let s0 = self.load(|g| g.gen_expr(v));
+            let count = Addr::Imm(inst_data.len() as OpIndex);
+            let fctx = func_ctx!(self);
+            fctx.emit_inst(InterInst::with_op_index(Opcode::TYPE, dst, s0, count), pos);
+            for (t, addr) in inst_data.into_iter() {
+                fctx.emit_inst(
+                    InterInst::with_op_t_index(
+                        Opcode::VOID,
+                        Some(t),
+                        None,
+                        addr,
+                        Addr::Void,
+                        Addr::Void,
+                    ),
+                    pos,
+                );
+            }
+        } else {
+            let s0 = self.load(|g| g.gen_expr(v));
+            let count = Addr::Imm(0);
+            func_ctx!(self).emit_inst(InterInst::with_op_index(Opcode::TYPE, dst, s0, count), pos);
+        }
 
-        // self.gen_switch_body(&*tstmt.body, ValueType::Metadata);
+        self.gen_switch_body(&*tstmt.body, dst, ValueType::Metadata);
     }
 
     fn visit_stmt_comm(&mut self, _cclause: &CommClause) {
-        unimplemented!();
+        unreachable!();
     }
 
     fn visit_stmt_select(&mut self, sstmt: &SelectStmt) {
@@ -2192,155 +2187,166 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         Since communication on nil channels can never proceed, a select with only nil
         channels and no default case blocks forever.
         */
-        // self.branch_helper.enter_block(false);
+        self.branch_helper.enter_block(false);
 
-        // let mut helper = SelectHelper::new();
-        // let comms: Vec<&CommClause> = sstmt
-        //     .body
-        //     .list
-        //     .iter()
-        //     .map(|s| SelectHelper::to_comm_clause(s))
-        //     .collect();
-        // for c in comms.iter() {
-        //     let (typ, pos) = match &c.comm {
-        //         Some(comm) => match comm {
-        //             Stmt::Send(send_stmt) => {
-        //                 self.visit_expr(&send_stmt.chan);
-        //                 self.visit_expr(&send_stmt.val);
-        //                 let t = self.t.expr_value_type(&send_stmt.val);
-        //                 (CommType::Send(t), send_stmt.arrow)
-        //             }
-        //             Stmt::Assign(ass_key) => {
-        //                 let ass = &self.ast_objs.a_stmts[*ass_key];
-        //                 let (e, pos) = SelectHelper::unwrap_recv(&ass.rhs[0]);
-        //                 self.visit_expr(e);
-        //                 let t = match &ass.lhs.len() {
-        //                     1 => CommType::Recv(&ass),
-        //                     2 => CommType::RecvCommaOk(&ass),
-        //                     _ => unreachable!(),
-        //                 };
-        //                 (t, pos)
-        //             }
-        //             Stmt::Expr(expr_stmt) => {
-        //                 let (e, pos) = SelectHelper::unwrap_recv(expr_stmt);
-        //                 self.visit_expr(e);
-        //                 (CommType::RecvNoLhs, pos)
-        //             }
-        //             _ => unreachable!(),
-        //         },
-        //         None => (CommType::Default, c.colon),
-        //     };
-        //     helper.add_comm(typ, pos);
-        // }
+        let mut helper = SelectHelper::new();
+        let comms: Vec<&CommClause> = sstmt
+            .body
+            .list
+            .iter()
+            .map(|s| SelectHelper::to_comm_clause(s))
+            .collect();
+        for c in comms.iter() {
+            let (typ, chan_addr, pos) = match &c.comm {
+                Some(comm) => match comm {
+                    Stmt::Send(send_stmt) => {
+                        let chan_addr = self.load(|g| g.gen_expr(&send_stmt.chan));
+                        let val_addr = self.load(|g| g.gen_expr(&send_stmt.val));
+                        (CommType::Send(val_addr), Some(chan_addr), send_stmt.arrow)
+                    }
+                    Stmt::Assign(ass_key) => {
+                        let ass = &self.ast_objs.a_stmts[*ass_key];
+                        let (e, pos) = SelectHelper::unwrap_recv(&ass.rhs[0]);
+                        let chan_addr = self.load(|g| g.gen_expr(e));
+                        let val_reg = expr_ctx!(self).inc_cur_reg();
+                        let t = match &ass.lhs.len() {
+                            1 => CommType::Recv(*ass_key, val_reg, false),
+                            2 => {
+                                expr_ctx!(self).inc_cur_reg(); // extra register for ok
+                                CommType::Recv(*ass_key, val_reg, true)
+                            }
+                            _ => unreachable!(),
+                        };
+                        (t, Some(chan_addr), pos)
+                    }
+                    Stmt::Expr(expr_stmt) => {
+                        let (e, pos) = SelectHelper::unwrap_recv(expr_stmt);
+                        let chan_addr = self.load(|g| g.gen_expr(e));
+                        (CommType::RecvNoLhs, Some(chan_addr), pos)
+                    }
+                    _ => unreachable!(),
+                },
+                None => (CommType::Default, None, c.colon),
+            };
+            helper.add_comm(typ, chan_addr, pos);
+        }
 
-        // helper.emit_select(current_func_mut!(self));
+        helper.emit_select(func_ctx!(self), Some(sstmt.select));
 
-        // let last_index = comms.len() - 1;
-        // for (i, c) in comms.iter().enumerate() {
-        //     let begin = current_func!(self).next_code_index();
+        let last_index = comms.len() - 1;
+        for (i, c) in comms.iter().enumerate() {
+            let begin = func_ctx!(self).next_code_index();
 
-        //     match helper.comm_type(i) {
-        //         CommType::Recv(ass) | CommType::RecvCommaOk(ass) => {
-        //             self.gen_assign(
-        //                 &ass.token,
-        //                 &ass.lhs.iter().map(|x| x).collect(),
-        //                 RightHandSide::SelectRecv(&ass.rhs[0]),
-        //             );
-        //         }
-        //         _ => {}
-        //     }
+            match helper.comm_type(i) {
+                CommType::Recv(ass_key, addr, ok) => {
+                    let ass = &self.ast_objs.a_stmts[*ass_key];
+                    self.gen_assign(
+                        &ass.token,
+                        &ass.lhs.iter().map(|x| x).collect(),
+                        RightHandSide::SelectRecv(*addr, *ok),
+                    );
+                }
+                _ => {}
+            }
 
-        //     for stmt in c.body.iter() {
-        //         self.visit_stmt(stmt);
-        //     }
-        //     let func = current_func_mut!(self);
-        //     let mut end = func.next_code_index();
-        //     // the last block doesn't jump
-        //     if i < last_index {
-        //         func.emit_code(Opcode::JUMP, None);
-        //     } else {
-        //         end -= 1;
-        //     }
+            for stmt in c.body.iter() {
+                self.visit_stmt(stmt);
+            }
+            let fctx = func_ctx!(self);
+            let mut end = fctx.next_code_index();
+            // the last block doesn't jump
+            if i < last_index {
+                fctx.emit_inst(InterInst::with_op(Opcode::JUMP), None);
+            } else {
+                end -= 1;
+            }
 
-        //     helper.set_block_begin_end(i, begin, end);
-        // }
+            helper.set_block_begin_end(i, begin, end);
+        }
 
-        // helper.patch_select(current_func_mut!(self));
+        helper.patch_select(func_ctx!(self));
 
-        // self.branch_helper
-        //     .leave_block(current_func_mut!(self), None);
+        self.branch_helper.leave_block(func_ctx!(self), None);
     }
 
     fn visit_stmt_for(&mut self, fstmt: &ForStmt) {
-        // self.branch_helper.enter_block(true);
+        self.branch_helper.enter_block(true);
 
-        // if let Some(init) = &fstmt.init {
-        //     self.visit_stmt(init);
-        // }
-        // let top_marker = current_func!(self).next_code_index();
-        // let out_marker = if let Some(cond) = &fstmt.cond {
-        //     self.visit_expr(&cond);
-        //     let func = current_func_mut!(self);
-        //     func.emit_code(Opcode::JUMP_IF_NOT, Some(fstmt.for_pos));
-        //     Some(func.next_code_index())
-        // } else {
-        //     None
-        // };
-        // self.visit_stmt_block(&fstmt.body);
-        // let continue_marker = if let Some(post) = &fstmt.post {
-        //     // "continue" jumps to post statements
-        //     let m = current_func!(self).next_code_index();
-        //     self.visit_stmt(post);
-        //     m
-        // } else {
-        //     // "continue" jumps to top directly if no post statements
-        //     top_marker
-        // };
+        if let Some(init) = &fstmt.init {
+            self.visit_stmt(init);
+        }
+        let top_marker = func_ctx!(self).next_code_index();
+        let out_marker = if let Some(cond) = &fstmt.cond {
+            let cond_addr = self.load(|g| g.gen_expr(&cond));
+            let fctx = func_ctx!(self);
+            fctx.emit_inst(
+                InterInst::with_op_index(Opcode::JUMP_IF_NOT, Addr::Void, cond_addr, Addr::Void),
+                Some(fstmt.for_pos),
+            );
+            Some(fctx.next_code_index() - 1)
+        } else {
+            None
+        };
+        self.visit_stmt_block(&fstmt.body);
+        let continue_marker = if let Some(post) = &fstmt.post {
+            // "continue" jumps to post statements
+            let m = func_ctx!(self).next_code_index();
+            self.visit_stmt(post);
+            m
+        } else {
+            // "continue" jumps to top directly if no post statements
+            top_marker
+        };
 
-        // // jump to the top
-        // let func = current_func_mut!(self);
-        // let offset = -func.offset(top_marker) - 1;
-        // func.emit_code_with_imm(Opcode::JUMP, offset, Some(fstmt.for_pos));
+        // jump to the top
+        let fctx = func_ctx!(self);
+        let offset = -fctx.offset(top_marker) - 1;
+        fctx.emit_inst(
+            InterInst::with_op_index(Opcode::JUMP, Addr::Imm(offset), Addr::Void, Addr::Void),
+            Some(fstmt.for_pos),
+        );
 
-        // // set the correct else jump out target
-        // if let Some(m) = out_marker {
-        //     let func = current_func_mut!(self);
-        //     let offset = func.offset(m);
-        //     func.instruction_mut(m - 1).set_imm(offset);
-        // }
+        // set the correct else jump out target
+        if let Some(m) = out_marker {
+            let fctx = func_ctx!(self);
+            let offset = fctx.offset(m);
+            fctx.inst_mut(m).d = Addr::Imm(offset);
+        }
 
-        // self.branch_helper
-        //     .leave_block(current_func_mut!(self), Some(continue_marker));
+        self.branch_helper
+            .leave_block(func_ctx!(self), Some(continue_marker));
     }
 
     fn visit_stmt_range(&mut self, rstmt: &RangeStmt) {
-        // self.branch_helper.enter_block(true);
+        self.branch_helper.enter_block(true);
 
-        // let blank = Expr::Ident(self.blank_ident);
-        // let lhs = vec![
-        //     rstmt.key.as_ref().unwrap_or(&blank),
-        //     rstmt.val.as_ref().unwrap_or(&blank),
-        // ];
-        // let marker = self
-        //     .gen_assign(&rstmt.token, &lhs, RightHandSide::Range(&rstmt.expr))
-        //     .unwrap();
+        let blank = Expr::Ident(self.blank_ident);
+        let lhs = vec![
+            rstmt.key.as_ref().unwrap_or(&blank),
+            rstmt.val.as_ref().unwrap_or(&blank),
+        ];
+        let marker = self
+            .gen_assign(&rstmt.token, &lhs, RightHandSide::Range(&rstmt.expr))
+            .unwrap();
 
-        // self.visit_stmt_block(&rstmt.body);
-        // // jump to the top
-        // let func = current_func_mut!(self);
-        // let offset = -func.offset(marker) - 1;
-        // // tell Opcode::RANGE where to jump after it's done
-        // let end_offset = func.offset(marker);
-        // func.instruction_mut(marker).set_imm(end_offset);
-        // func.emit_code_with_imm(Opcode::JUMP, offset, Some(rstmt.token_pos));
+        self.visit_stmt_block(&rstmt.body);
+        // jump to the top
+        let fctx = func_ctx!(self);
+        let offset = -fctx.offset(marker) - 1;
+        // tell Opcode::RANGE where to jump after it's done
+        let end_offset = fctx.offset(marker);
+        fctx.inst_mut(marker).s1 = Addr::Imm(end_offset);
+        fctx.emit_inst(
+            InterInst::with_op_index(Opcode::JUMP, Addr::Imm(offset), Addr::Void, Addr::Void),
+            Some(rstmt.token_pos),
+        );
 
-        // self.branch_helper
-        //     .leave_block(current_func_mut!(self), Some(marker));
+        self.branch_helper
+            .leave_block(func_ctx!(self), Some(marker));
     }
 
     fn visit_expr_stmt(&mut self, e: &Expr) {
-        // self.visit_expr(e);
-        // self.swallow_value(e);
+        self.discard(|g| g.gen_expr(&e));
     }
 
     fn visit_empty_stmt(&mut self, _e: &EmptyStmt) {}

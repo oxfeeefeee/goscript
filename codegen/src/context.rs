@@ -63,7 +63,12 @@ impl Addr {
                 let label_offset = labels[&key];
                 (label_offset as OpIndex) - (inst_index as OpIndex) - 1
             }
-            _ => unreachable!(),
+            Self::Imm(i) => i,
+            Self::Void => std::i32::MAX,
+            _ => {
+                dbg!(self);
+                unreachable!();
+            }
         }
     }
 }
@@ -327,7 +332,7 @@ pub enum RightHandSide<'a> {
     Nothing,
     Values(&'a Vec<Expr>),
     Range(&'a Expr),
-    SelectRecv(&'a Expr),
+    SelectRecv(Addr, bool),
 }
 
 #[derive(Clone, Copy, Debug)]
