@@ -2291,7 +2291,11 @@ impl Hash for GosValue {
                 Some(p) => PointerObj::hash(&p, state),
                 None => 0.hash(state),
             },
-            _ => unreachable!(),
+            ValueType::Metadata => self.as_metadata().hash(state),
+            _ => {
+                dbg!(self.typ);
+                unreachable!();
+            }
         }
     }
 }

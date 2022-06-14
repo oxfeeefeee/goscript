@@ -7,6 +7,7 @@
 ///
 use crate::context::*;
 use goscript_parser::ast::*;
+use goscript_parser::objects::AssignStmtKey;
 use goscript_parser::token::Token;
 use goscript_types::ObjKey as TCObjKey;
 use goscript_vm::value::*;
@@ -186,51 +187,67 @@ impl SwitchHelper {
     }
 }
 
-pub enum CommType<'a> {
-    Send(ValueType),
+pub enum CommType {
+    Send(Addr),
     RecvNoLhs,
-    Recv(&'a AssignStmt),
-    RecvCommaOk(&'a AssignStmt),
+    Recv(AssignStmtKey, Addr, bool),
     Default,
 }
 
-pub struct SelectComm<'a> {
-    typ: CommType<'a>,
-    pos: usize,
-    begin: usize,
-    end: usize,
-}
-
-impl<'a> SelectComm<'a> {
-    pub fn new(typ: CommType, pos: usize) -> SelectComm {
-        SelectComm {
-            typ: typ,
-            pos: pos,
-            begin: 0,
-            end: 0,
+impl CommType {
+    pub fn runtime_flag(&self) -> ValueType {
+        match self {
+            Self::Send(_) => ValueType::FlagA,
+            Self::RecvNoLhs => ValueType::FlagB,
+            Self::Recv(_, _, ok) => {
+                if !ok {
+                    ValueType::FlagC
+                } else {
+                    ValueType::FlagD
+                }
+            }
+            Self::Default => ValueType::FlagE,
         }
     }
 }
 
-pub struct SelectHelper<'a> {
-    comms: Vec<SelectComm<'a>>,
-    select_offset: usize,
+pub struct SelectComm {
+    typ: CommType,
+    chan_addr: Option<Addr>,
+    pos: usize,
+    begin: usize,
+    end: usize,
+    offset: usize,
 }
 
-impl<'a> SelectHelper<'a> {
-    pub fn new() -> SelectHelper<'a> {
-        SelectHelper {
-            comms: vec![],
-            select_offset: 0,
+impl SelectComm {
+    pub fn new(typ: CommType, chan_addr: Option<Addr>, pos: usize) -> SelectComm {
+        SelectComm {
+            typ,
+            chan_addr,
+            pos,
+            begin: 0,
+            end: 0,
+            offset: 0,
         }
+    }
+}
+
+pub struct SelectHelper {
+    comms: Vec<SelectComm>,
+}
+
+impl SelectHelper {
+    pub fn new() -> SelectHelper {
+        SelectHelper { comms: vec![] }
     }
 
     pub fn comm_type(&self, i: usize) -> &CommType {
         &self.comms[i].typ
     }
 
-    pub fn add_comm(&mut self, typ: CommType<'a>, pos: usize) {
-        self.comms.push(SelectComm::new(typ, pos));
+    pub fn add_comm(&mut self, typ: CommType, chan_addr: Option<Addr>, pos: usize) {
+        self.comms.push(SelectComm::new(typ, chan_addr, pos));
     }
 
     pub fn set_block_begin_end(&mut self, i: usize, begin: usize, end: usize) {
@@ -239,42 +256,58 @@ impl<'a> SelectHelper<'a> {
         comm.end = end;
     }
 
-    pub fn emit_select(&mut self, func: &mut FuncCtx) {
-        self.select_offset = func.next_code_index();
-        for comm in self.comms.iter() {
-            let (flag, t) = match &comm.typ {
-                CommType::Send(t) => (ValueType::FlagA, Some(*t)),
-                CommType::RecvNoLhs => (ValueType::FlagB, None),
-                CommType::Recv(_) => (ValueType::FlagC, None),
-                CommType::RecvCommaOk(_) => (ValueType::FlagD, None),
-                CommType::Default => (ValueType::FlagE, None),
+    pub fn emit_select(&mut self, fctx: &mut FuncCtx, pos: Option<usize>) {
+        let default_flag = self.comms.last().unwrap().typ.runtime_flag();
+        let select_offset = fctx.next_code_index();
+        fctx.emit_inst(
+            InterInst::with_op_t_index(
+                Opcode::SELECT,
+                Some(default_flag),
+                None,
+                Addr::Void,
+                Addr::Imm(self.comms.len() as OpIndex),
+                Addr::Void,
+            ),
+            pos,
+        );
+
+        for comm in self.comms.iter_mut() {
+            comm.offset = fctx.next_code_index();
+            let flag = comm.typ.runtime_flag();
+            match &comm.typ {
+                CommType::Send(val) | CommType::Recv(_, val, _) => fctx.emit_inst(
+                    InterInst::with_op_t_index(
+                        Opcode::VOID,
+                        Some(flag),
+                        None,
+                        Addr::Void,
+                        comm.chan_addr.unwrap(),
+                        *val,
+                    ),
+                    Some(comm.pos),
+                ),
+                CommType::RecvNoLhs => fctx.emit_inst(
+                    InterInst::with_op_t(Opcode::VOID, Some(flag), None),
+                    Some(comm.pos),
+                ),
+                CommType::Default => comm.offset = select_offset,
             };
-            func.emit_inst(
-                InterInst::with_op_t(Opcode::SELECT, Some(flag), t),
-                Some(comm.pos),
-            );
         }
     }
 
-    pub fn patch_select(&self, func: &mut FuncCtx) {
-        let count = self.comms.len();
-        let offset = self.select_offset;
+    pub fn patch_select(&self, fctx: &mut FuncCtx) {
         let blocks_begin = self.comms.first().unwrap().begin as OpIndex;
         let blocks_end = self.comms.last().unwrap().end as OpIndex;
         // set the block offset for each block.
-        // the first block's offset is known(0) so the space is used for
-        // the count of blocks.
-        func.inst_mut(offset).d = Addr::Imm(count as OpIndex);
-        for i in 1..count {
-            let diff = self.comms[i].begin as OpIndex - blocks_begin;
-            func.inst_mut(offset + i).d = Addr::Imm(diff);
+        for comm in self.comms.iter() {
+            let diff = comm.begin as OpIndex - blocks_begin;
+            fctx.inst_mut(comm.offset).d = Addr::Imm(diff);
         }
-
         // set where to jump when the block ends
-        for i in 0..count - 1 {
-            let block_end = self.comms[i].end;
+        for comm in self.comms[..self.comms.len() - 1].iter() {
+            let block_end = comm.end;
             let diff = blocks_end - block_end as OpIndex;
-            func.inst_mut(block_end).d = Addr::Imm(diff);
+            fctx.inst_mut(block_end).d = Addr::Imm(diff);
         }
     }
 

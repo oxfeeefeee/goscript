@@ -67,12 +67,13 @@ impl Consts {
     }
 
     fn add(&self, c: Const) -> OpIndex {
-        match self.const_indices.borrow_mut().get_mut(&c) {
+        let mut c_i_borrow = self.const_indices.borrow_mut();
+        match c_i_borrow.get(&c) {
             Some(v) => *v,
             None => {
                 let index = self.consts.borrow().len() as OpIndex;
                 self.consts.borrow_mut().push(c.clone());
-                self.const_indices.borrow_mut().insert(c, index);
+                c_i_borrow.insert(c, index);
                 index
             }
         }

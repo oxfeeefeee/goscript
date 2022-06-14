@@ -136,9 +136,15 @@ impl Channel {
     }
 }
 
-pub enum SelectComm {
-    Send(GosValue, GosValue, OpIndex),
-    Recv(GosValue, ValueType, OpIndex),
+pub enum SelectCommType {
+    Send(GosValue),
+    Recv(ValueType, OpIndex),
+}
+
+pub struct SelectComm {
+    pub typ: SelectCommType,
+    pub chan: GosValue,
+    pub offset: OpIndex,
 }
 
 pub struct Selector {
@@ -149,8 +155,8 @@ pub struct Selector {
 impl Selector {
     pub fn new(comms: Vec<SelectComm>, default_offset: Option<OpIndex>) -> Selector {
         Selector {
-            comms: comms,
-            default_offset: default_offset,
+            comms,
+            default_offset,
         }
     }
 
@@ -164,9 +170,9 @@ impl Selector {
                 .enumerate()
                 .choose_multiple(&mut rng, count)
             {
-                match entry {
-                    SelectComm::Send(c, val, _) => {
-                        match c.as_some_channel()?.chan.try_send(val.clone()) {
+                match &entry.typ {
+                    SelectCommType::Send(val) => {
+                        match entry.chan.as_some_channel()?.chan.try_send(val.clone()) {
                             Ok(_) => return Ok((i, None)),
                             Err(e) => match e {
                                 async_channel::TrySendError::Full(_) => {}
@@ -176,13 +182,15 @@ impl Selector {
                             },
                         }
                     }
-                    SelectComm::Recv(c, _, _) => match c.as_some_channel()?.chan.try_recv() {
-                        Ok(v) => return Ok((i, Some(v))),
-                        Err(e) => match e {
-                            async_channel::TryRecvError::Empty => {}
-                            async_channel::TryRecvError::Closed => return Ok((i, None)),
-                        },
-                    },
+                    SelectCommType::Recv(_, _) => {
+                        match entry.chan.as_some_channel()?.chan.try_recv() {
+                            Ok(v) => return Ok((i, Some(v))),
+                            Err(e) => match e {
+                                async_channel::TryRecvError::Empty => {}
+                                async_channel::TryRecvError::Closed => return Ok((i, None)),
+                            },
+                        }
+                    }
                 }
             }
 

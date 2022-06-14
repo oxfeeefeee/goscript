@@ -1150,7 +1150,7 @@ impl<'a> Fiber<'a> {
                     Opcode::SWITCH => {
                         let t = inst.t0;
                         let a = stack.read(inst.s0, sb, consts);
-                        let b = stack.read(inst.s0 + 1, sb, consts);
+                        let b = stack.read(inst.s1, sb, consts);
                         let ok = if t.copyable() {
                             a.data().compare_eql(b.data(), t)
                         } else if t != ValueType::Metadata {
@@ -1163,39 +1163,28 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::SELECT => {
-                        let blocks = inst.s1;
-                        let begin = frame.pc as usize - 1;
-                        let mut end = begin + blocks as usize;
-                        let end_code = &code[end - 1];
-                        let default_offset = match end_code.t0 {
-                            ValueType::FlagE => {
-                                end -= 1;
-                                Some(end_code.d)
-                            }
-                            _ => None,
-                        };
-                        let comms = code[begin..end]
-                            .iter()
-                            .enumerate()
-                            .rev()
-                            .map(|(i, sel_code)| {
-                                let offset = if i == 0 { 0 } else { sel_code.d };
-                                let flag = sel_code.t0;
-                                match &flag {
-                                    ValueType::FlagA => {
-                                        let chan = stack.read(inst.s0, sb, consts).clone();
-                                        let val =
-                                            stack.read(inst.s1, sb, consts).copy_semantic(gcv);
-                                        channel::SelectComm::Send(chan, val, offset)
-                                    }
-                                    ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
-                                        let chan = stack.read(inst.s0, sb, consts).clone();
-                                        channel::SelectComm::Recv(chan, flag, offset)
-                                    }
-                                    _ => unreachable!(),
+                        let comm_count = inst.s0;
+                        let has_default = inst.t0 == ValueType::FlagE;
+                        let default_offset = has_default.then(|| inst.d);
+                        let mut comms = Vec::with_capacity(comm_count as usize);
+                        for _ in 0..comm_count {
+                            let entry = &code[frame.pc as usize];
+                            frame.pc += 1;
+                            let chan = stack.read(entry.s0, sb, consts).clone();
+                            let offset = entry.d;
+                            let flag = entry.t0;
+                            let typ = match &flag {
+                                ValueType::FlagA => {
+                                    let val = stack.read(entry.s1, sb, consts).copy_semantic(gcv);
+                                    channel::SelectCommType::Send(val)
                                 }
-                            })
-                            .collect();
+                                ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
+                                    channel::SelectCommType::Recv(flag, entry.s1)
+                                }
+                                _ => unreachable!(),
+                            };
+                            comms.push(channel::SelectComm { typ, chan, offset });
+                        }
                         let selector = channel::Selector::new(comms, default_offset);
 
                         drop(stack_mut_ref);
@@ -1207,33 +1196,31 @@ impl<'a> Fiber<'a> {
                                 let block_offset = if i >= selector.comms.len() {
                                     selector.default_offset.unwrap()
                                 } else {
-                                    match &selector.comms[i] {
-                                        channel::SelectComm::Send(_, _, offset) => *offset,
-                                        channel::SelectComm::Recv(c, flag, offset) => {
+                                    let comm = &selector.comms[i];
+                                    match comm.typ {
+                                        channel::SelectCommType::Send(_) => {}
+                                        channel::SelectCommType::Recv(flag, dst) => {
                                             let (unwrapped, ok) = unwrap_recv_val!(
-                                                c.as_channel().as_ref().unwrap(),
+                                                comm.chan.as_channel().as_ref().unwrap(),
                                                 val,
                                                 gcv
                                             );
                                             match flag {
                                                 ValueType::FlagC => {
-                                                    stack.set(inst.d + sb, unwrapped);
+                                                    stack.set(dst + sb, unwrapped);
                                                 }
                                                 ValueType::FlagD => {
-                                                    stack.set(inst.d + sb, unwrapped);
-                                                    stack.set(
-                                                        inst.d + sb + 1,
-                                                        GosValue::new_bool(ok),
-                                                    );
+                                                    stack.set(dst + sb, unwrapped);
+                                                    stack.set(dst + 1 + sb, GosValue::new_bool(ok));
                                                 }
                                                 _ => {}
                                             }
-                                            *offset
                                         }
                                     }
+                                    comm.offset
                                 };
                                 // jump to the block
-                                frame.pc += (blocks - 1) + block_offset;
+                                frame.pc += block_offset;
                             }
                             Err(e) => {
                                 go_panic_str!(panic, &e, frame, code);
