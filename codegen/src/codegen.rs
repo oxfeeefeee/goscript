@@ -630,7 +630,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         // it will not be executed if it's redundant
         func_ctx!(self).emit_return(None, Some(body.r_brace), &self.objects.functions);
 
-        self.func_ctx_stack.pop();
+        let f = self.func_ctx_stack.pop().unwrap();
+        self.results.push(f);
         fkey
     }
 

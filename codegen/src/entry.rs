@@ -72,7 +72,8 @@ impl<'a> EntryGen<'a> {
         fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
         fctx.emit_call(CallStyle::Default, None);
         fctx.emit_return(None, None, &self.objects.functions);
-        *f.as_function()
+        fctx.into_runtime_func(self.ast_objs, &mut self.objects, &HashMap::new());
+        fkey
     }
 
     pub fn gen(

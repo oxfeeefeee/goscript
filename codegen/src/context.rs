@@ -342,6 +342,16 @@ pub enum CallStyle {
     Defer,
 }
 
+impl CallStyle {
+    pub fn into_flag(&self) -> ValueType {
+        match self {
+            CallStyle::Default => ValueType::Void,
+            CallStyle::Async => ValueType::FlagA,
+            CallStyle::Defer => ValueType::FlagB,
+        }
+    }
+}
+
 pub struct FuncCtx<'c> {
     pub f_key: FunctionKey,
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
@@ -615,13 +625,8 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn emit_call(&mut self, style: CallStyle, pos: Option<usize>) {
-        let flag = match style {
-            CallStyle::Default => ValueType::Void,
-            CallStyle::Async => ValueType::FlagA,
-            CallStyle::Defer => ValueType::FlagB,
-        };
-        let mut inst = InterInst::with_op(Opcode::CALL);
-        inst.t0 = flag;
+        let flag = style.into_flag();
+        let inst = InterInst::with_op_t(Opcode::CALL, Some(flag), None);
         self.emit_inst(inst, pos);
     }
 
@@ -636,8 +641,7 @@ impl<'a> FuncCtx<'a> {
             FuncFlag::PkgCtor => ValueType::FlagA,
             FuncFlag::HasDefer => ValueType::FlagB,
         };
-        let mut inst = InterInst::with_op(Opcode::CALL);
-        inst.t0 = flag;
+        let mut inst = InterInst::with_op_t(Opcode::RETURN, Some(flag), None);
         if let Some(p) = pkg {
             inst.d = self.add_package(p);
         }
@@ -651,7 +655,7 @@ impl<'a> FuncCtx<'a> {
         let cd = vec![
             InterInst::with_op_index(Opcode::LOAD_PKG, Addr::Regsiter(0), pkg_addr, imm0),
             InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(0), imm0, imm0),
-            InterInst::with_op_t(Opcode::CALL, Some(ValueType::Closure), None),
+            InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // call init functions
             // 1. init a temp var at reg0 as 0
             InterInst::with_op_index(Opcode::ASSIGN, Addr::Regsiter(0), zero_addr, Addr::Void),
@@ -664,7 +668,7 @@ impl<'a> FuncCtx<'a> {
                 Addr::Regsiter(0),
             ),
             InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(1), imm0, imm0),
-            InterInst::with_op(Opcode::CALL),
+            InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // jump back to LOAD_PKG_INIT_FUNC
             InterInst::with_op_index(Opcode::JUMP, Addr::Imm(-4), Addr::Void, Addr::Void),
         ];
@@ -679,15 +683,16 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn into_runtime_func(
-        mut self,
+        self,
         asto: &AstObjects,
         vmo: &mut VMObjects,
         labels: &HashMap<TCObjKey, usize>,
     ) {
         let func = &mut vmo.functions[self.f_key];
-        func.stack_temp_types.append(&mut self.stack_temp_types);
+        func.stack_temp_types = self.stack_temp_types;
         func.pos = self.pos;
         func.up_ptrs = self.up_ptrs;
+        func.reg_count = self.max_reg_num;
         func.local_zeros = self.local_zeros;
         func.code = self
             .code
