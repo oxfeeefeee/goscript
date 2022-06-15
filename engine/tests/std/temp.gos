@@ -1,35 +1,8 @@
 package main
 
-import (
-    "fmt2"
-    //"time"
-)
-
-
-
-
-type Person struct {
-	Name    string
-	Address *struct {
-		Street string
-		City   string
-	}
-}
-
-var data struct {
-	Name    string `json:"name"`
-	Address *struct {
-		Street string `json:"street"`
-		City   string `json:"city"`
-	} `json:"address"`
-}
-
 
 
 func main() {
-    //var person = (*Person)(data)  // ignoring tags, the underlying types are identical
-    //assert(person != nil)
-
-    var p Person = Person(data)
-    fmt2.Println(p)
+	i := 1
+    assert(i == 1)
 } 

@@ -1639,6 +1639,7 @@ pub struct FunctionVal {
     pub meta: Meta,
     pub flag: FuncFlag,
     pub stack_temp_types: Vec<ValueType>,
+    pub reg_count: OpIndex,
     pub ret_zeros: Vec<GosValue>,
 
     pub code: Vec<Instruction>,
@@ -1664,6 +1665,7 @@ impl FunctionVal {
             meta,
             flag,
             stack_temp_types: p_types,
+            reg_count: 0,
             ret_zeros,
             code: Vec::new(),
             pos: Vec::new(),
@@ -1691,39 +1693,4 @@ impl FunctionVal {
     pub fn is_ctor(&self) -> bool {
         self.flag == FuncFlag::PkgCtor
     }
-
-    // #[inline]
-    // pub fn local_count(&self) -> usize {
-    //     self.local_alloc as usize - self.param_count() - self.ret_count()
-    // }
-
-    // #[inline]
-    // pub fn offset(&self, loc: usize) -> OpIndex {
-    //     // todo: don't crash if OpIndex overflows
-    //     OpIndex::try_from((self.code.len() - loc) as isize).unwrap()
-    // }
-
-    // #[inline]
-    // pub fn next_code_index(&self) -> usize {
-    //     self.code.len()
-    // }
-
-    // #[inline]
-    // pub fn add_inst_pos(&mut self, i: Instruction, pos: Option<usize>) {
-    //     self.code.push(i);
-    //     self.pos.push(pos);
-    // }
-
-    // pub fn add_local_zero(&mut self, zero: GosValue, typ: ValueType) {
-    //     self.stack_temp_types.push(typ);
-    //     self.local_zeros.push(zero)
-    // }
-
-    // fn add_upvalue(&mut self, entity: &KeyData, uv: ValueDesc) -> EntIndex {
-    //     self.up_ptrs.push(uv);
-    //     let i = (self.up_ptrs.len() - 1).try_into().unwrap();
-    //     let et = EntIndex::UpValue(i);
-    //     self.uv_entities.insert(*entity, et);
-    //     et
-    // }
 }
