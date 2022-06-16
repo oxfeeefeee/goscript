@@ -1465,7 +1465,10 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     f.emit_inst(inst, p);
                 });
             }
-            _ => unreachable!(),
+            _ => {
+                dbg!(&va);
+                unreachable!()
+            }
         };
     }
 
@@ -1579,6 +1582,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             }
         };
         let fctx = func_ctx!(self);
+        fctx.update_max_reg(reg_base + count as OpIndex);
         let meta_addr = fctx.add_const(GosValue::new_metadata(meta));
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count as OpIndex, meta_addr, p);
