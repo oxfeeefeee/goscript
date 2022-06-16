@@ -6,6 +6,7 @@ use crate::value::*;
 
 const DEFAULT_CAPACITY: usize = 1024;
 
+#[derive(Debug)]
 pub struct Stack {
     vec: Vec<GosValue>,
 }
@@ -73,7 +74,10 @@ impl Stack {
             Opcode::AND_NOT => lhs.binary_op_and_not(self.read(rhs, sb, consts).data(), t),
             Opcode::SHL => lhs.binary_op_shl(self.read(rhs, sb, consts).data().as_uint32(), t),
             Opcode::SHR => lhs.binary_op_shr(self.read(rhs, sb, consts).data().as_uint32(), t),
-            _ => unreachable!(),
+            _ => {
+                dbg!(op);
+                unreachable!();
+            }
         };
         GosValue::new(t, d)
     }

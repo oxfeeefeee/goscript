@@ -165,7 +165,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             return index;
         }
         // 3. must be package member
-        self.pkg_helper.get_member_index(okey, *ident)
+        self.pkg_helper
+            .get_member_index(func_ctx!(self), okey, *ident)
     }
 
     fn add_local_or_resolve_ident(
@@ -330,17 +331,17 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
             RightHandSide::Values(rhs_exprs) => {
                 let simple_op = match token {
-                    Token::ADD_ASSIGN => Some(Opcode::ADD_ASSIGN), // +=
-                    Token::SUB_ASSIGN => Some(Opcode::SUB_ASSIGN), // -=
-                    Token::MUL_ASSIGN => Some(Opcode::MUL_ASSIGN), // *=
-                    Token::QUO_ASSIGN => Some(Opcode::QUO_ASSIGN), // /=
-                    Token::REM_ASSIGN => Some(Opcode::REM_ASSIGN), // %=
-                    Token::AND_ASSIGN => Some(Opcode::AND_ASSIGN), // &=
-                    Token::OR_ASSIGN => Some(Opcode::OR_ASSIGN),   // |=
-                    Token::XOR_ASSIGN => Some(Opcode::XOR_ASSIGN), // ^=
-                    Token::SHL_ASSIGN => Some(Opcode::SHL_ASSIGN), // <<=
-                    Token::SHR_ASSIGN => Some(Opcode::SHR_ASSIGN), // >>=
-                    Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT_ASSIGN), // &^=
+                    Token::ADD_ASSIGN => Some(Opcode::ADD),         // +=
+                    Token::SUB_ASSIGN => Some(Opcode::SUB),         // -=
+                    Token::MUL_ASSIGN => Some(Opcode::MUL),         // *=
+                    Token::QUO_ASSIGN => Some(Opcode::QUO),         // /=
+                    Token::REM_ASSIGN => Some(Opcode::REM),         // %=
+                    Token::AND_ASSIGN => Some(Opcode::AND),         // &=
+                    Token::OR_ASSIGN => Some(Opcode::OR),           // |=
+                    Token::XOR_ASSIGN => Some(Opcode::XOR),         // ^=
+                    Token::SHL_ASSIGN => Some(Opcode::SHL),         // <<=
+                    Token::SHR_ASSIGN => Some(Opcode::SHR),         // >>=
+                    Token::AND_NOT_ASSIGN => Some(Opcode::AND_NOT), // &^=
                     Token::ASSIGN | Token::DEFINE => None,
                     _ => unreachable!(),
                 };
@@ -611,7 +612,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             FuncFlag::Default,
         );
         let fkey = *f.as_function();
-        let mut fctx = FuncCtx::new(fkey, None, self.consts);
+        let mut fctx = FuncCtx::new(fkey, Some(tc_type), self.consts);
         if let Some(fl) = &typ.results {
             fctx.add_params(&fl, self.ast_objs, &self.t);
         }
@@ -627,7 +628,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         // process function body
         self.visit_stmt_block(body);
 
-        // it will not be executed if it's redundant
         func_ctx!(self).emit_return(None, Some(body.r_brace), &self.objects.functions);
 
         let f = self.func_ctx_stack.pop().unwrap();
@@ -901,8 +901,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
             // normal goscript function
             _ => {
-                let func_addr = self.load(|g| g.gen_expr(func_expr));
                 let next_sb = Addr::Regsiter(expr_ctx!(self).cur_reg);
+                // next_sb may func_addr overlap, which is fine
+                let func_addr = self.load(|g| g.gen_expr(func_expr));
                 let inst = InterInst::with_op_index(
                     Opcode::PRE_CALL,
                     func_addr,
@@ -1193,6 +1194,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         if let Some(mode) = self.t.try_expr_mode(expr) {
             if let OperandMode::Constant(_) = mode {
                 self.gen_expr_const(expr, Some(expr.pos(&self.ast_objs)));
+                return;
             }
         }
         walk_expr(self, expr);
@@ -1432,7 +1434,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
         }
         for v in vars.iter() {
+            self.push_expr_ctx(ExprMode::Discard, 0);
             self.gen_def_var(v);
+            self.pop_expr_ctx();
         }
 
         func_ctx!(self).emit_return(Some(self.pkg_key), None, &self.objects.functions);
@@ -1445,10 +1449,24 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     type Result = ();
 
     fn visit_expr_ident(&mut self, this: &Expr, ident: &IdentKey) {
-        let addr = self.resolve_any_ident(ident, Some(this)).as_direct_addr();
+        let va = self.resolve_any_ident(ident, Some(this));
         let pos = Some(self.ast_objs.idents[*ident].pos);
         let tc_type = self.t.expr_tc_type(this);
-        self.cur_expr_emit_direct_assign(tc_type, addr, pos);
+        match va {
+            VirtualAddr::Direct(addr) => self.cur_expr_emit_direct_assign(tc_type, addr, pos),
+            VirtualAddr::PackageMember(pkg, index) => {
+                self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
+                    f.emit_load_pkg(d, pkg, index, p)
+                });
+            }
+            VirtualAddr::UpValue(uv) => {
+                self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(Opcode::LOAD_UP_VALUE, d, uv, Addr::Void);
+                    f.emit_inst(inst, p);
+                });
+            }
+            _ => unreachable!(),
+        };
     }
 
     fn visit_expr_ellipsis(&mut self, _: &Expr, _els: &Option<Expr>) {
@@ -2009,7 +2027,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                 self.store(va, Some(types[i]), |g| g.gen_expr(expr));
             }
         }
-        func_ctx!(self).emit_inst(InterInst::with_op(Opcode::RETURN), Some(rstmt.ret));
+        func_ctx!(self).emit_return(None, Some(rstmt.ret), &self.objects.functions);
     }
 
     fn visit_stmt_branch(&mut self, bstmt: &BranchStmt) {

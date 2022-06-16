@@ -357,6 +357,7 @@ pub struct FuncCtx<'c> {
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
     consts: &'c Consts,
     pub max_reg_num: OpIndex, // how many temporary spots (register) on stack needed
+    returned: bool,
 
     stack_temp_types: Vec<ValueType>,
     code: Vec<InterInst>,
@@ -376,6 +377,7 @@ impl<'a> FuncCtx<'a> {
             tc_key,
             consts,
             max_reg_num: 0,
+            returned: false,
             stack_temp_types: vec![],
             code: vec![],
             pos: vec![],
@@ -498,7 +500,23 @@ impl<'a> FuncCtx<'a> {
         let mut inst_ex = None;
         let mut inst = match lhs {
             VirtualAddr::Direct(l) => match op_ex {
-                Some((op, _, _)) => InterInst::with_op_index(op, l, rhs, Addr::Void),
+                Some((op, _, _)) => {
+                    let ass_op = match op {
+                        Opcode::ADD => Opcode::ADD_ASSIGN,         // +=
+                        Opcode::SUB => Opcode::SUB_ASSIGN,         // -=
+                        Opcode::MUL => Opcode::MUL_ASSIGN,         // *=
+                        Opcode::QUO => Opcode::QUO_ASSIGN,         // /=
+                        Opcode::REM => Opcode::REM_ASSIGN,         // %=
+                        Opcode::AND => Opcode::AND_ASSIGN,         // &=
+                        Opcode::OR => Opcode::OR_ASSIGN,           // |=
+                        Opcode::XOR => Opcode::XOR_ASSIGN,         // ^=
+                        Opcode::SHL => Opcode::SHL_ASSIGN,         // <<=
+                        Opcode::SHR => Opcode::SHR_ASSIGN,         // >>=
+                        Opcode::AND_NOT => Opcode::AND_NOT_ASSIGN, // &^=
+                        _ => unreachable!(),
+                    };
+                    InterInst::with_op_index(ass_op, l, rhs, Addr::Void)
+                }
                 None => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
             },
             VirtualAddr::UpValue(l) => {
@@ -636,6 +654,10 @@ impl<'a> FuncCtx<'a> {
         pos: Option<usize>,
         fobjs: &FunctionObjs,
     ) {
+        if self.returned {
+            return;
+        }
+
         let flag = match fobjs[self.f_key].flag {
             FuncFlag::Default => ValueType::Void,
             FuncFlag::PkgCtor => ValueType::FlagA,
@@ -646,6 +668,7 @@ impl<'a> FuncCtx<'a> {
             inst.d = self.add_package(p);
         }
         self.emit_inst(inst, pos);
+        self.returned = true;
     }
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
