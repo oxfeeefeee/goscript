@@ -289,11 +289,11 @@ impl<'a> Context<'a> {
         fs: Option<&'a FileSet>,
     ) -> Context<'a> {
         Context {
-            exec: exec,
-            code: code,
-            gcv: gcv,
-            ffi_factory: ffi_factory,
-            fs: fs,
+            exec,
+            code,
+            gcv,
+            ffi_factory,
+            fs,
             next_id: Cell::new(0),
         }
     }
@@ -371,6 +371,7 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
+                //dbg!(inst);
                 //dbg!(inst_op);
                 match inst_op {
                     // desc: local
@@ -649,7 +650,7 @@ impl<'a> Fiber<'a> {
                                 *pkg.member_mut(index) = val;
                             }
                             _ => {
-                                let old = pkg.member(index);
+                                let mut old = pkg.member_mut(index);
                                 let val = stack.read_and_op(
                                     old.data(),
                                     inst.t0,
@@ -658,7 +659,7 @@ impl<'a> Fiber<'a> {
                                     sb,
                                     &consts,
                                 );
-                                *pkg.member_mut(index) = val;
+                                *old = val;
                             }
                         }
                     }
@@ -770,10 +771,10 @@ impl<'a> Fiber<'a> {
                     Opcode::SHL_ASSIGN => shift_op_assign!(stack, binary_op_shl, inst, sb, consts),
                     Opcode::SHR_ASSIGN => shift_op_assign!(stack, binary_op_shr, inst, sb, consts),
                     Opcode::INC => unsafe {
-                        stack.get_mut(inst.s0 + sb).data_mut().inc(inst.t0);
+                        stack.get_mut(inst.d + sb).data_mut().inc(inst.t0);
                     },
                     Opcode::DEC => unsafe {
-                        stack.get_mut(inst.s0 + sb).data_mut().dec(inst.t0);
+                        stack.get_mut(inst.d + sb).data_mut().dec(inst.t0);
                     },
                     Opcode::UNARY_SUB => unary_op!(stack, unary_negate, inst, sb, consts),
                     Opcode::UNARY_XOR => unary_op!(stack, unary_xor, inst, sb, consts),
