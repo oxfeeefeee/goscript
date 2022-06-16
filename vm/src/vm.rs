@@ -489,8 +489,8 @@ impl<'a> Fiber<'a> {
                     // inst.s1: key
                     // inst_ex.s0: zero_val
                     Opcode::LOAD_MAP_OK => {
-                        frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
+                        frame.pc += 1;
                         let map = stack.read(inst.s0, sb, consts);
                         let key = stack.read(inst.s1, sb, consts);
                         let val = match map.as_map() {
@@ -519,7 +519,6 @@ impl<'a> Fiber<'a> {
                                         map.0.insert(key.clone(), val);
                                     }
                                     _ => {
-                                        frame.pc += 1;
                                         let old = match map.0.get(&key) {
                                             Some(v) => v,
                                             None => {
@@ -527,6 +526,7 @@ impl<'a> Fiber<'a> {
                                                 stack.read(inst_ex.s0, sb, consts).clone()
                                             }
                                         };
+                                        frame.pc += 1;
                                         let val = stack.read_and_op(
                                             old.data(),
                                             inst.t0,
@@ -1402,7 +1402,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE_ASSERT => {
                         let val = stack.read(inst.s0, sb, consts);
-                        match type_assert(val, &consts[inst.s1 as usize], gcv, None) {
+                        match type_assert(val, cst(consts, inst.s1), gcv, None) {
                             Ok((val, _)) => {
                                 stack.set(inst.d + sb, val);
                             }
@@ -1410,10 +1410,10 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::TYPE_ASSERT_OK => {
-                        frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
+                        frame.pc += 1;
                         let val = stack.read(inst.s0, sb, consts);
-                        match type_assert(val, &consts[inst.s1 as usize], gcv, Some(&objs.metas)) {
+                        match type_assert(val, cst(consts, inst.s1), gcv, Some(&objs.metas)) {
                             Ok((val, ok)) => {
                                 stack.set(inst.d + sb, val);
                                 stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
@@ -1459,8 +1459,8 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::SLICE => {
-                        frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
+                        frame.pc += 1;
                         let s = stack.read(inst.s0, sb, consts);
                         let begin = *stack.read(inst.s1, sb, consts).as_int();
                         let end = *stack.read(inst_ex.s0, sb, consts).as_int();
@@ -1480,7 +1480,7 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::CLOSURE => {
-                        let func = &consts[inst.s0 as usize];
+                        let func = cst(consts, inst.s0);
                         let mut val =
                             ClosureObj::new_gos(*func.as_function(), &objs.functions, None);
                         match &mut val {
@@ -1512,11 +1512,11 @@ impl<'a> Fiber<'a> {
                         stack.set(inst.d + sb, GosValue::new_closure(val, gcv));
                     }
                     Opcode::LITERAL => {
-                        frame.pc += 1;
                         let inst_ex = &code[frame.pc as usize];
-                        let md = &consts[inst_ex.s0 as usize].as_metadata();
+                        frame.pc += 1;
+                        let md = cst(consts, inst_ex.s0).as_metadata();
 
-                        let begin = inst.s0;
+                        let begin = inst.s0 + sb;
                         let count = inst.s1;
                         let build_val = |m: &Meta| {
                             let zero_val = m.zero(&objs.metas, gcv);
@@ -1591,8 +1591,8 @@ impl<'a> Fiber<'a> {
                                 let (cap, len) = match inst.t0 {
                                     // 3 args
                                     ValueType::FlagC => {
-                                        frame.pc += 1;
                                         let inst_ex = &code[frame.pc as usize];
+                                        frame.pc += 1;
                                         (
                                             *stack.read(inst.s1, sb, consts).as_int() as usize,
                                             *stack.read(inst_ex.s0, sb, consts).as_int() as usize,
@@ -1849,6 +1849,11 @@ fn char_from_i32(i: i32) -> char {
 #[inline]
 fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<GosValue> {
     v.as_some_pointer()?.deref(stack, &objs.packages)
+}
+
+#[inline(always)]
+fn cst(consts: &Vec<GosValue>, i: OpIndex) -> &GosValue {
+    &consts[(-i - 1) as usize]
 }
 
 #[inline(always)]

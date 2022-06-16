@@ -578,11 +578,12 @@ impl<'a> FuncCtx<'a> {
         meta: Addr,
         pos: Option<usize>,
     ) {
-        let inst = InterInst::with_op_index(Opcode::LITERAL, d, Addr::Imm(begin), Addr::Imm(count));
+        let inst =
+            InterInst::with_op_index(Opcode::LITERAL, d, Addr::Regsiter(begin), Addr::Imm(count));
         self.emit_inst(inst, pos);
-        let mut inst2 = InterInst::with_op(Opcode::VOID);
-        inst2.s0 = meta;
-        self.emit_inst(inst2, pos);
+        let mut inst_ex = InterInst::with_op(Opcode::VOID);
+        inst_ex.s0 = meta;
+        self.emit_inst(inst_ex, pos);
     }
 
     pub fn emit_cast(
