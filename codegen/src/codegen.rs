@@ -8,6 +8,7 @@ use super::package::PkgHelper;
 use super::selector::*;
 use super::types::{SelectionType, TypeCache, TypeLookup};
 use crate::context::*;
+use std::collections::HashSet;
 use std::iter::FromIterator;
 
 use goscript_vm::gc::GcoVec;
@@ -46,6 +47,7 @@ pub struct CodeGen<'a, 'c> {
     tc_objs: &'a TCObjects,
     dummy_gcv: &'a mut GcoVec,
     t: TypeLookup<'a>,
+    zero_types: &'a mut HashSet<TCTypeKey>,
     iface_selector: &'a mut IfaceSelector,
     struct_selector: &'a mut StructSelector,
     branch_helper: &'a mut BranchHelper,
@@ -67,6 +69,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         dummy_gcv: &'a mut GcoVec,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
+        zero_types: &'a mut HashSet<TCTypeKey>,
         iface_selector: &'a mut IfaceSelector,
         struct_selector: &'a mut StructSelector,
         branch_helper: &'a mut BranchHelper,
@@ -81,6 +84,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             tc_objs,
             dummy_gcv,
             t: TypeLookup::new(tc_objs, ti, type_cache),
+            zero_types,
             iface_selector,
             struct_selector,
             branch_helper,
@@ -267,11 +271,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         ValueType::Array => VirtualAddr::ArrayEntry(obj_addr, ind_addr),
                         ValueType::Slice => VirtualAddr::SliceEntry(obj_addr, ind_addr),
                         ValueType::Map => {
-                            let zero = self
-                                .t
-                                .tc_type_to_meta(typ, self.objects, self.dummy_gcv)
-                                .zero(&self.objects.metas, self.dummy_gcv);
-                            let zero_addr = func_ctx!(self).add_const(zero);
+                            let zero_addr = self.add_zero_val(typ);
                             VirtualAddr::MapEntry(obj_addr, ind_addr, zero_addr)
                         }
                         _ => unreachable!(),
@@ -396,11 +396,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             RightHandSide::Nothing => {
                 // define without values
                 let t = self.t.expr_tc_type(&typ.as_ref().unwrap());
-                let zero = self
-                    .t
-                    .tc_type_to_meta(t, self.objects, self.dummy_gcv)
-                    .zero(&self.objects.metas, self.dummy_gcv);
-                let zero_addr = func_ctx!(self).add_const(zero);
+                let zero_addr = self.add_zero_val(t);
                 let fctx = func_ctx!(self);
                 for (addr, _, p) in lhs {
                     // dont need to worry about casting to interface
@@ -508,6 +504,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     Addr::Void,
                     tkv[0],
                     Some(tkv[2]),
+                    Addr::Void,
                     pos,
                 );
                 self.pop_expr_ctx();
@@ -979,17 +976,25 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             Some(mut ok_ectx) => {
                 self.emit_double_store(
                     &mut ok_ectx,
-                    Opcode::RECV_OK,
+                    Opcode::RECV,
                     channel_addr,
                     Addr::Void,
                     val_tc_type,
                     None,
+                    Addr::Void,
                     pos,
                 );
             }
             None => {
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(Opcode::RECV, d, channel_addr, Addr::Void);
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::RECV,
+                        None,
+                        Some(ValueType::FlagA),
+                        d,
+                        channel_addr,
+                        Addr::Void,
+                    );
                     f.emit_inst(inst, p);
                 });
             }
@@ -1005,29 +1010,43 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     ) {
         let container_addr = self.load(|g| g.gen_expr(container));
         let index_reg = self.load(|g| g.gen_expr(index));
+        let zero = self.add_zero_val(val_tc_type);
         let pos = Some(container.pos(&self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
                 self.emit_double_store(
                     &mut ok_ectx,
-                    Opcode::LOAD_MAP_OK,
+                    Opcode::LOAD_MAP,
                     container_addr,
                     index_reg,
                     val_tc_type,
                     None,
+                    zero,
                     pos,
                 );
             }
             None => {
-                let op = match self.t.expr_value_type(container) {
-                    ValueType::Map => Opcode::LOAD_MAP,
-                    ValueType::Array => Opcode::LOAD_ARRAY,
-                    ValueType::Slice => Opcode::LOAD_SLICE,
+                let (op, t1) = match self.t.expr_value_type(container) {
+                    ValueType::Map => (Opcode::LOAD_MAP, ValueType::FlagA),
+                    ValueType::Array => (Opcode::LOAD_ARRAY, ValueType::Void),
+                    ValueType::Slice => (Opcode::LOAD_SLICE, ValueType::Void),
                     _ => unreachable!(),
                 };
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(op, d, container_addr, index_reg);
+                    let inst = InterInst::with_op_t_index(
+                        op,
+                        None,
+                        Some(t1),
+                        d,
+                        container_addr,
+                        index_reg,
+                    );
                     f.emit_inst(inst, p);
+                    if op == Opcode::LOAD_MAP {
+                        let inst_ex =
+                            InterInst::with_op_index(Opcode::VOID, Addr::Void, zero, Addr::Void);
+                        f.emit_inst(inst_ex, p);
+                    }
                 });
             }
         }
@@ -1050,18 +1069,25 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             Some(mut ok_ectx) => {
                 self.emit_double_store(
                     &mut ok_ectx,
-                    Opcode::TYPE_ASSERT_OK,
+                    Opcode::TYPE_ASSERT,
                     val_addr,
                     meta_addr,
                     val_tc_type,
                     None,
+                    Addr::Void,
                     pos,
                 );
             }
             None => {
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
-                    let inst =
-                        InterInst::with_op_index(Opcode::TYPE_ASSERT, d, val_addr, meta_addr);
+                    let inst = InterInst::with_op_t_index(
+                        Opcode::TYPE_ASSERT,
+                        None,
+                        Some(ValueType::FlagA),
+                        d,
+                        val_addr,
+                        meta_addr,
+                    );
                     f.emit_inst(inst, p);
                 });
             }
@@ -1232,6 +1258,19 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
+    fn add_zero_val(&mut self, typ: TCTypeKey) -> Addr {
+        // if self.zero_types.insert(typ) {
+        //     // Make sure type info is cached
+        //     self.t.tc_type_to_meta(typ, self.objects, self.dummy_gcv);
+        // }
+        // Addr::ZeroValue(typ)
+        let zero = self
+            .t
+            .tc_type_to_meta(typ, self.objects, self.dummy_gcv)
+            .zero(&self.objects.metas, self.dummy_gcv);
+        Addr::Const(self.consts.add_const(zero))
+    }
+
     pub fn get_struct_field_op_index(
         &mut self,
         indices: Vec<OpIndex>,
@@ -1261,6 +1300,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         s1: Addr,
         t0: TCTypeKey,
         t1: Option<TCTypeKey>,
+        ex_s0: Addr,
         pos: Option<usize>,
     ) {
         let val_ectx = expr_ctx!(self);
@@ -1284,8 +1324,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
         let fctx = func_ctx!(self);
         if s1 != Addr::Void {
-            let inst = InterInst::with_op_index(op, val_addr, s0, s1);
-            let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, Addr::Void, Addr::Void);
+            let inst =
+                InterInst::with_op_t_index(op, None, Some(ValueType::FlagB), val_addr, s0, s1);
+            let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, ex_s0, Addr::Void);
             fctx.emit_inst(inst, pos);
             fctx.emit_inst(inst_ex, pos);
         } else {

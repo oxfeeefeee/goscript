@@ -15,12 +15,14 @@ use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
-use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
+use goscript_types::{
+    PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo, TypeKey as TCTypeKey,
+};
 use goscript_vm::gc::GcoVec;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::vec;
 
@@ -72,7 +74,12 @@ impl<'a> EntryGen<'a> {
         fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
         fctx.emit_call(CallStyle::Default, None);
         fctx.emit_return(None, None, &self.objects.functions);
-        fctx.into_runtime_func(self.ast_objs, &mut self.objects, &HashMap::new());
+        fctx.into_runtime_func(
+            self.ast_objs,
+            &mut self.objects,
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         fkey
     }
 
@@ -87,6 +94,7 @@ impl<'a> EntryGen<'a> {
             self.pkg_map.insert(tcpkg, pkey);
         }
         let mut type_cache: TypeCache = HashMap::new();
+        let mut zero_types: HashSet<TCTypeKey> = HashSet::new();
         let mut branch_helper = BranchHelper::new();
         let mut result_funcs = vec![];
         for (tcpkg, ti) in checker_result.iter() {
@@ -99,6 +107,7 @@ impl<'a> EntryGen<'a> {
                 &mut self.dummy_gcv,
                 &ti,
                 &mut type_cache,
+                &mut zero_types,
                 &mut self.iface_selector,
                 &mut self.struct_selector,
                 &mut branch_helper,
@@ -108,14 +117,32 @@ impl<'a> EntryGen<'a> {
             );
             result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
         }
+
+        let mut zero_indices = HashMap::new();
+        let mut all_consts: Vec<GosValue> = zero_types
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                zero_indices.insert(*t, i as OpIndex);
+                type_cache[t].zero(&self.objects.metas, &self.dummy_gcv)
+            })
+            .collect();
         for f in result_funcs.into_iter() {
-            f.into_runtime_func(self.ast_objs, &mut self.objects, branch_helper.labels());
+            f.into_runtime_func(
+                self.ast_objs,
+                &mut self.objects,
+                branch_helper.labels(),
+                &zero_indices,
+            );
         }
+
         let entry = self.gen_entry_func(self.pkg_map[&main_pkg], main_ident);
-        let consts = self.consts.into_runtime_consts(&mut self.objects);
+
+        all_consts.append(&mut self.consts.into_runtime_consts(&mut self.objects));
+
         ByteCode::new(
             self.objects,
-            consts,
+            all_consts,
             self.iface_selector.result(),
             self.struct_selector.result(),
             entry,

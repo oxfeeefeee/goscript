@@ -18,7 +18,6 @@ pub enum Opcode {
     LOAD_ARRAY,
     STORE_ARRAY,
     LOAD_MAP,
-    LOAD_MAP_OK,
     STORE_MAP,
     LOAD_STRUCT,
     STORE_STRUCT,
@@ -71,9 +70,8 @@ pub enum Opcode {
     REF_STRUCT_FIELD,
     REF_STRUCT_EMBEDDED_FIELD,
     REF_PKG_MEMBER,
-    SEND,    // <-
-    RECV,    // <-
-    RECV_OK, // <-
+    SEND, // <-
+    RECV, // <-
 
     // call
     PRE_CALL,
@@ -96,9 +94,7 @@ pub enum Opcode {
     BIND_INTERFACE_METHOD,
     CAST,
     TYPE_ASSERT,
-    TYPE_ASSERT_OK,
     TYPE,
-    ZERO_VALUE,
 
     // built-in functinalities
     IMPORT,  // imports a package

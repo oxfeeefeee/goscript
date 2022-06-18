@@ -24,6 +24,7 @@ pub enum Addr {
     PkgMemberIndex(PackageKey, IdentKey), // deferred resolve
     Method(FunctionKey, IdentKey),
     Label(TCObjKey), // deferred resolve
+    ZeroValue(TCTypeKey),
     Void,
 }
 
@@ -49,9 +50,12 @@ impl Addr {
         packages: &PackageObjs,
         inst_index: usize,
         labels: &HashMap<TCObjKey, usize>,
+        zeros: &HashMap<TCTypeKey, OpIndex>,
     ) -> OpIndex {
+        // Zero values are the first batch of consts
+        let const_base = zeros.len() as OpIndex;
         match self {
-            Self::Const(i) => -i - 1,
+            Self::Const(i) => -(i + const_base) - 1,
             Self::LocalVar(i) => i,
             Self::Regsiter(i) => reg_base + i,
             Self::PkgMemberIndex(key, ident) => {
@@ -64,6 +68,7 @@ impl Addr {
                 (label_offset as OpIndex) - (inst_index as OpIndex) - 1
             }
             Self::Imm(i) => i,
+            Self::ZeroValue(t) => -zeros[&t] - 1,
             Self::Void => std::i32::MAX,
             _ => {
                 dbg!(self);
@@ -309,6 +314,7 @@ impl InterInst {
         packages: &PackageObjs,
         inst_index: usize,
         labels: &HashMap<TCObjKey, usize>,
+        zeros: &HashMap<TCTypeKey, OpIndex>,
     ) -> Instruction {
         Instruction {
             op0: self.op0,
@@ -317,13 +323,13 @@ impl InterInst {
             t1: self.t1,
             d: self
                 .d
-                .into_index(reg_base, ast_objs, packages, inst_index, labels),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
             s0: self
                 .s0
-                .into_index(reg_base, ast_objs, packages, inst_index, labels),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
             s1: self
                 .s1
-                .into_index(reg_base, ast_objs, packages, inst_index, labels),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
         }
     }
 }
@@ -345,9 +351,9 @@ pub enum CallStyle {
 impl CallStyle {
     pub fn into_flag(&self) -> ValueType {
         match self {
-            CallStyle::Default => ValueType::Void,
-            CallStyle::Async => ValueType::FlagA,
-            CallStyle::Defer => ValueType::FlagB,
+            CallStyle::Default => ValueType::FlagA,
+            CallStyle::Async => ValueType::FlagB,
+            CallStyle::Defer => ValueType::FlagC,
         }
     }
 }
@@ -513,7 +519,12 @@ impl<'a> FuncCtx<'a> {
                         Opcode::SHL => Opcode::SHL_ASSIGN,         // <<=
                         Opcode::SHR => Opcode::SHR_ASSIGN,         // >>=
                         Opcode::AND_NOT => Opcode::AND_NOT_ASSIGN, // &^=
-                        _ => unreachable!(),
+                        Opcode::INC => Opcode::INC,
+                        Opcode::DEC => Opcode::DEC,
+                        _ => {
+                            dbg!(op);
+                            unreachable!()
+                        }
                     };
                     InterInst::with_op_index(ass_op, l, rhs, Addr::Void)
                 }
@@ -660,9 +671,9 @@ impl<'a> FuncCtx<'a> {
         }
 
         let flag = match fobjs[self.f_key].flag {
-            FuncFlag::Default => ValueType::Void,
-            FuncFlag::PkgCtor => ValueType::FlagA,
-            FuncFlag::HasDefer => ValueType::FlagB,
+            FuncFlag::Default => ValueType::FlagA,
+            FuncFlag::PkgCtor => ValueType::FlagB,
+            FuncFlag::HasDefer => ValueType::FlagC,
         };
         let mut inst = InterInst::with_op_t(Opcode::RETURN, Some(flag), None);
         if let Some(p) = pkg {
@@ -711,6 +722,7 @@ impl<'a> FuncCtx<'a> {
         asto: &AstObjects,
         vmo: &mut VMObjects,
         labels: &HashMap<TCObjKey, usize>,
+        zeros: &HashMap<TCTypeKey, OpIndex>,
     ) {
         let func = &mut vmo.functions[self.f_key];
         func.stack_temp_types = self.stack_temp_types;
@@ -722,7 +734,9 @@ impl<'a> FuncCtx<'a> {
             .code
             .into_iter()
             .enumerate()
-            .map(|(i, x)| x.into_runtime_inst(self.local_alloc, asto, &vmo.packages, i, labels))
+            .map(|(i, x)| {
+                x.into_runtime_inst(self.local_alloc, asto, &vmo.packages, i, labels, zeros)
+            })
             .collect();
     }
 
