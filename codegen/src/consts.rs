@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::*;
 use goscript_vm::metadata::*;
 use goscript_vm::value::*;
@@ -11,12 +12,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Const {
     Var(GosValue),
-    Function(Meta, OpIndex), // deferred resolve
+    ZeroValue(Meta),
+    Method(Meta, usize), // deferred resolve
 }
 
 pub struct Consts {
     consts: RefCell<Vec<Const>>,
-    const_indices: RefCell<HashMap<Const, OpIndex>>,
 }
 
 impl Consts {
@@ -27,55 +28,66 @@ impl Consts {
                 Const::Var(GosValue::new_bool(true)),
                 Const::Var(GosValue::new_bool(false)),
             ]),
-            const_indices: RefCell::new(HashMap::new()),
         }
     }
 
-    pub fn nil() -> OpIndex {
+    pub fn nil() -> usize {
         0
     }
 
-    pub fn true_() -> OpIndex {
+    pub fn true_() -> usize {
         1
     }
 
-    pub fn false_() -> OpIndex {
+    pub fn false_() -> usize {
         2
     }
 
-    pub fn add_const(&self, v: GosValue) -> OpIndex {
+    pub fn add_const(&self, v: GosValue) -> usize {
         self.add(Const::Var(v))
     }
 
-    pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> OpIndex {
-        self.add(Const::Function(obj_meta, index))
+    pub fn add_zero(&self, typ: Meta) -> usize {
+        self.add(Const::ZeroValue(typ))
     }
 
-    pub fn into_runtime_consts(self, vmo: &mut VMObjects) -> Vec<GosValue> {
-        self.consts
-            .into_inner()
-            .into_iter()
-            .map(|x| match x {
-                Const::Var(v) => v,
-                Const::Function(meta, i) => {
-                    let method = meta.get_method(i, &vmo.metas);
-                    let key = method.borrow().func.unwrap();
-                    GosValue::new_function(key)
+    pub fn add_method(&self, obj_type: Meta, index: usize) -> usize {
+        self.add(Const::Method(obj_type, index))
+    }
+
+    fn add(&self, c: Const) -> usize {
+        let mut borrow = self.consts.borrow_mut();
+        let index = borrow.len();
+        borrow.push(c);
+        index
+    }
+
+    // todo: remove redundancy
+    pub fn get_runtime_consts(
+        &self,
+        mobjs: &MetadataObjs,
+        gcv: &GcoVec,
+    ) -> (Vec<GosValue>, HashMap<usize, usize>) {
+        let mut map = HashMap::new();
+        let consts = self
+            .consts
+            .borrow()
+            .iter()
+            .enumerate()
+            .map(|(i, val)| {
+                map.insert(i, i);
+                match val {
+                    Const::Var(v) => v.clone(),
+                    Const::Method(m, index) => GosValue::new_function(
+                        m.get_method(*index as OpIndex, mobjs)
+                            .borrow()
+                            .func
+                            .unwrap(),
+                    ),
+                    Const::ZeroValue(m) => m.zero(mobjs, gcv),
                 }
             })
-            .collect()
-    }
-
-    fn add(&self, c: Const) -> OpIndex {
-        let mut c_i_borrow = self.const_indices.borrow_mut();
-        match c_i_borrow.get(&c) {
-            Some(v) => *v,
-            None => {
-                let index = self.consts.borrow().len() as OpIndex;
-                self.consts.borrow_mut().push(c.clone());
-                c_i_borrow.insert(c, index);
-                index
-            }
-        }
+            .collect();
+        (consts, map)
     }
 }
