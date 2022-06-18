@@ -16,7 +16,6 @@ use goscript_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::rc::Rc;
 
 // restore stack_ref after drop to allow code in block call yield
@@ -122,7 +121,7 @@ macro_rules! unary_op {
 
 #[derive(Debug)]
 pub struct ByteCode {
-    pub objects: Pin<Box<VMObjects>>,
+    pub objects: VMObjects,
     pub consts: Vec<GosValue>,
     /// For calling method via interfaces
     pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
@@ -133,7 +132,7 @@ pub struct ByteCode {
 
 impl ByteCode {
     pub fn new(
-        objects: Pin<Box<VMObjects>>,
+        objects: VMObjects,
         consts: Vec<GosValue>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
         indices: Vec<Vec<OpIndex>>,

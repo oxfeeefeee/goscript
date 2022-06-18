@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(dead_code)]
 use super::branch::BranchHelper;
 use super::codegen::CodeGen;
 use super::consts::*;
@@ -23,132 +22,7 @@ use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
 use std::collections::{HashMap, HashSet};
-use std::pin::Pin;
 use std::vec;
-
-pub struct EntryGen<'a> {
-    objects: Pin<Box<VMObjects>>,
-    consts: Consts,
-    ast_objs: &'a AstObjects,
-    tc_objs: &'a TCObjects,
-    dummy_gcv: GcoVec,
-    iface_selector: IfaceSelector,
-    struct_selector: StructSelector,
-    // pkg_map maps TCPackageKey to runtime PackageKey
-    pkg_map: HashMap<TCPackageKey, PackageKey>,
-    blank_ident: IdentKey,
-}
-
-impl<'a> EntryGen<'a> {
-    pub fn new(asto: &'a AstObjects, tco: &'a TCObjects, bk: IdentKey) -> EntryGen<'a> {
-        EntryGen {
-            objects: Box::pin(VMObjects::new()),
-            consts: Consts::new(),
-            ast_objs: asto,
-            tc_objs: tco,
-            dummy_gcv: GcoVec::new(),
-            iface_selector: IfaceSelector::new(),
-            struct_selector: StructSelector::new(),
-            pkg_map: HashMap::new(),
-            blank_ident: bk,
-        }
-    }
-
-    // generate the entry function for ByteCode
-    fn gen_entry_func(&mut self, pkg: PackageKey, main_ident: IdentKey) -> FunctionKey {
-        // import the 0th pkg and call the main function of the pkg
-        let fmeta = self.objects.s_meta.default_sig;
-        let f = GosValue::function_with_meta(
-            null_key!(),
-            fmeta.clone(),
-            &mut self.objects,
-            &self.dummy_gcv,
-            FuncFlag::Default,
-        );
-        let fkey = *f.as_function();
-        let mut fctx = FuncCtx::new(fkey, None, &self.consts);
-        fctx.emit_import(pkg, None);
-        let pkg_addr = fctx.add_package(pkg);
-        let index = Addr::PkgMemberIndex(pkg, main_ident);
-        fctx.emit_load_pkg(Addr::Regsiter(0), pkg_addr, index, None);
-        fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
-        fctx.emit_call(CallStyle::Default, None);
-        fctx.emit_return(None, None, &self.objects.functions);
-        fctx.into_runtime_func(
-            self.ast_objs,
-            &mut self.objects,
-            &HashMap::new(),
-            &HashMap::new(),
-        );
-        fkey
-    }
-
-    pub fn gen(
-        mut self,
-        checker_result: &HashMap<TCPackageKey, TypeInfo>,
-        main_pkg: TCPackageKey,
-        main_ident: IdentKey,
-    ) -> ByteCode {
-        for (&tcpkg, _) in checker_result.iter() {
-            let pkey = self.objects.packages.insert(PackageVal::new());
-            self.pkg_map.insert(tcpkg, pkey);
-        }
-        let mut type_cache: TypeCache = HashMap::new();
-        let mut zero_types: HashSet<TCTypeKey> = HashSet::new();
-        let mut branch_helper = BranchHelper::new();
-        let mut result_funcs = vec![];
-        for (tcpkg, ti) in checker_result.iter() {
-            let mut pkg_helper = PkgHelper::new(self.ast_objs, self.tc_objs, &self.pkg_map);
-            let cgen = CodeGen::new(
-                &mut self.objects,
-                &self.consts,
-                self.ast_objs,
-                self.tc_objs,
-                &mut self.dummy_gcv,
-                &ti,
-                &mut type_cache,
-                &mut zero_types,
-                &mut self.iface_selector,
-                &mut self.struct_selector,
-                &mut branch_helper,
-                &mut pkg_helper,
-                self.pkg_map[tcpkg],
-                self.blank_ident,
-            );
-            result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
-        }
-
-        let mut zero_indices = HashMap::new();
-        let mut all_consts: Vec<GosValue> = zero_types
-            .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                zero_indices.insert(*t, i as OpIndex);
-                type_cache[t].zero(&self.objects.metas, &self.dummy_gcv)
-            })
-            .collect();
-        for f in result_funcs.into_iter() {
-            f.into_runtime_func(
-                self.ast_objs,
-                &mut self.objects,
-                branch_helper.labels(),
-                &zero_indices,
-            );
-        }
-
-        let entry = self.gen_entry_func(self.pkg_map[&main_pkg], main_ident);
-
-        all_consts.append(&mut self.consts.into_runtime_consts(&mut self.objects));
-
-        ByteCode::new(
-            self.objects,
-            all_consts,
-            self.iface_selector.result(),
-            self.struct_selector.result(),
-            entry,
-        )
-    }
-}
 
 pub fn parse_check_gen<S: SourceRead>(
     path: &str,
@@ -156,23 +30,136 @@ pub fn parse_check_gen<S: SourceRead>(
     reader: &S,
     fset: &mut FileSet,
 ) -> Result<ByteCode, ErrorList> {
-    let asto = &mut AstObjects::new();
-    let tco = &mut goscript_types::TCObjects::new();
+    let ast_objs = &mut AstObjects::new();
+    let tc_objs = &mut goscript_types::TCObjects::new();
     let results = &mut HashMap::new();
     let pkgs = &mut HashMap::new();
     let el = ErrorList::new();
 
     let importer = &mut goscript_types::Importer::new(
-        &tconfig, reader, fset, pkgs, results, asto, tco, &el, 0,
+        &tconfig, reader, fset, pkgs, results, ast_objs, tc_objs, &el, 0,
     );
     let key = goscript_types::ImportKey::new(path, "./");
     let main_pkg = importer.import(&key);
     if el.len() > 0 {
         Err(el)
     } else {
-        let blank_ident = asto.idents.insert(Ident::blank(0));
-        let main_ident = asto.idents.insert(Ident::with_str(0, "main"));
-        let gen = EntryGen::new(asto, tco, blank_ident);
-        Ok(gen.gen(results, main_pkg.unwrap(), main_ident))
+        let blank_ident = ast_objs.idents.insert(Ident::blank(0));
+        let main_ident = ast_objs.idents.insert(Ident::with_str(0, "main"));
+        Ok(gen_byte_code(
+            ast_objs,
+            tc_objs,
+            results,
+            main_pkg.unwrap(),
+            main_ident,
+            blank_ident,
+        ))
     }
+}
+
+fn gen_byte_code(
+    ast_objs: &AstObjects,
+    tc_objs: &TCObjects,
+    checker_result: &HashMap<TCPackageKey, TypeInfo>,
+    main_pkg: TCPackageKey,
+    main_ident: IdentKey,
+    blank_ident: IdentKey,
+) -> ByteCode {
+    let mut objects = VMObjects::new();
+    let consts = Consts::new();
+    let mut dummy_gcv = GcoVec::new();
+    let mut iface_selector = IfaceSelector::new();
+    let mut struct_selector = StructSelector::new();
+    let mut pkg_map = HashMap::new();
+    let mut type_cache: TypeCache = HashMap::new();
+    let mut zero_types: HashSet<TCTypeKey> = HashSet::new();
+    let mut branch_helper = BranchHelper::new();
+    let mut result_funcs = vec![];
+
+    for (&tcpkg, _) in checker_result.iter() {
+        let pkey = objects.packages.insert(PackageVal::new());
+        pkg_map.insert(tcpkg, pkey);
+    }
+
+    let entry = gen_entry_func(
+        &mut objects,
+        &consts,
+        &dummy_gcv,
+        pkg_map[&main_pkg],
+        main_ident,
+    );
+    let entry_key = entry.f_key;
+    result_funcs.push(entry);
+
+    for (tcpkg, ti) in checker_result.iter() {
+        let mut pkg_helper = PkgHelper::new(ast_objs, tc_objs, &pkg_map);
+        let cgen = CodeGen::new(
+            &mut objects,
+            &consts,
+            ast_objs,
+            tc_objs,
+            &mut dummy_gcv,
+            &ti,
+            &mut type_cache,
+            &mut zero_types,
+            &mut iface_selector,
+            &mut struct_selector,
+            &mut branch_helper,
+            &mut pkg_helper,
+            pkg_map[tcpkg],
+            blank_ident,
+        );
+        result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
+    }
+
+    let mut zero_indices = HashMap::new();
+    let mut all_consts: Vec<GosValue> = zero_types
+        .iter()
+        .enumerate()
+        .map(|(i, t)| {
+            zero_indices.insert(*t, i as OpIndex);
+            type_cache[t].zero(&objects.metas, &dummy_gcv)
+        })
+        .collect();
+    for f in result_funcs.into_iter() {
+        f.into_runtime_func(
+            ast_objs,
+            &mut objects,
+            branch_helper.labels(),
+            &zero_indices,
+        );
+    }
+    all_consts.append(&mut consts.into_runtime_consts(&mut objects));
+
+    ByteCode::new(
+        objects,
+        all_consts,
+        iface_selector.result(),
+        struct_selector.result(),
+        entry_key,
+    )
+}
+
+// generate the entry function for ByteCode
+fn gen_entry_func<'a, 'c>(
+    objects: &'a mut VMObjects,
+    consts: &'c Consts,
+    gcv: &'a GcoVec,
+    pkg: PackageKey,
+    main_ident: IdentKey,
+) -> FuncCtx<'c> {
+    // import the 0th pkg and call the main function of the pkg
+    let fmeta = objects.s_meta.default_sig;
+    let fobj =
+        GosValue::function_with_meta(null_key!(), fmeta.clone(), objects, gcv, FuncFlag::Default);
+    let fkey = *fobj.as_function();
+    let mut fctx = FuncCtx::new(fkey, None, consts);
+    fctx.emit_import(pkg, None);
+    let pkg_addr = fctx.add_package(pkg);
+    let index = Addr::PkgMemberIndex(pkg, main_ident);
+    fctx.emit_load_pkg(Addr::Regsiter(0), pkg_addr, index, None);
+    fctx.emit_pre_call(Addr::Regsiter(0), 0, 0, None);
+    fctx.emit_call(CallStyle::Default, None);
+    fctx.emit_return(None, None, &objects.functions);
+    fctx
 }
