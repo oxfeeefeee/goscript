@@ -376,10 +376,13 @@ impl<'a> Fiber<'a> {
                 match inst_op {
                     // desc: local
                     // s0: local/const
-                    Opcode::ASSIGN => stack.set(
-                        sb + inst.d,
-                        stack.read(inst.s0, sb, consts).copy_semantic(gcv),
-                    ),
+                    Opcode::ASSIGN => {
+                        //dbg!(sb + inst.d, stack.read(inst.s0, sb, consts), &stack);
+                        stack.set(
+                            sb + inst.d,
+                            stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                        )
+                    }
                     // desc: local
                     // s0: slice
                     // s1: index
@@ -468,27 +471,12 @@ impl<'a> Fiber<'a> {
                             },
                         }
                     }
-                    // desc: local
-                    // s0: map
-                    // s1: key
-                    Opcode::LOAD_MAP => {
-                        let map = stack.read(inst.s0, sb, consts);
-                        let key = stack.read(inst.s1, sb, consts);
-                        let val = match map.as_map() {
-                            Some(map) => map.0.get(&key),
-                            None => None,
-                        };
-                        match val {
-                            Some(v) => stack.set(inst.d + sb, v),
-                            None => go_panic_str!(panic, "read from nil map", frame, code),
-                        }
-                    }
                     // inst.d: local
                     // inst_ex.d: local
                     // inst.s0: map
                     // inst.s1: key
                     // inst_ex.s0: zero_val
-                    Opcode::LOAD_MAP_OK => {
+                    Opcode::LOAD_MAP => {
                         let inst_ex = &code[frame.pc as usize];
                         frame.pc += 1;
                         let map = stack.read(inst.s0, sb, consts);
@@ -502,12 +490,17 @@ impl<'a> Fiber<'a> {
                             None => (stack.read(inst_ex.s0, sb, consts).copy_semantic(gcv), false),
                         };
                         stack.set(inst.d + sb, v);
-                        stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                        if inst.t1 == ValueType::FlagB {
+                            stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                        }
                     }
                     // desc: map
                     // s0: index
                     // s1: value
+                    // inst_ex.s0: zero_val
                     Opcode::STORE_MAP => {
+                        let inst_ex = &code[frame.pc as usize];
+                        frame.pc += 1;
                         let dest = stack.read(inst.d, sb, consts);
                         match dest.as_some_map() {
                             Ok(map) => {
@@ -521,10 +514,7 @@ impl<'a> Fiber<'a> {
                                     _ => {
                                         let old = match map.0.get(&key) {
                                             Some(v) => v,
-                                            None => {
-                                                let inst_ex = &code[frame.pc as usize];
-                                                stack.read(inst_ex.s0, sb, consts).clone()
-                                            }
+                                            None => stack.read(inst_ex.s0, sb, consts).clone(),
                                         };
                                         frame.pc += 1;
                                         let val = stack.read_and_op(
@@ -910,7 +900,7 @@ impl<'a> Fiber<'a> {
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         panic_if_err!(re, panic, frame, code);
                     }
-                    Opcode::RECV | Opcode::RECV_OK => {
+                    Opcode::RECV => {
                         match stack.read(inst.s0, sb, consts).as_channel().cloned() {
                             Some(chan) => {
                                 drop(stack_mut_ref);
@@ -918,7 +908,7 @@ impl<'a> Fiber<'a> {
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcv);
                                 stack.set(inst.d + sb, unwrapped);
-                                if inst.op0 == Opcode::RECV_OK {
+                                if inst.t1 == ValueType::FlagB {
                                     stack.set(inst.s1 + sb, GosValue::new_bool(ok));
                                 }
                             }
@@ -937,7 +927,7 @@ impl<'a> Fiber<'a> {
                             .unwrap()
                             .0
                             .clone();
-                        let next_sb = inst.s0;
+                        let next_sb = sb + inst.s0;
                         match &cls {
                             ClosureObj::Gos(gosc) => {
                                 let next_func = &objs.functions[gosc.func];
@@ -990,7 +980,7 @@ impl<'a> Fiber<'a> {
                                     nframe.var_ptrs = Some(ptrs);
                                 }
                                 match call_style {
-                                    ValueType::Void => {
+                                    ValueType::FlagA => {
                                         // default call
                                         self.frames.push(nframe);
                                         frame_height += 1;
@@ -1002,7 +992,7 @@ impl<'a> Fiber<'a> {
                                         //dbg!(&code);
                                         //dbg!(&stack);
                                     }
-                                    ValueType::FlagA => {
+                                    ValueType::FlagB => {
                                         // goroutine
                                         let begin = nframe.stack_base;
                                         let end = begin + nfunc.param_types().len() as OpIndex;
@@ -1011,7 +1001,7 @@ impl<'a> Fiber<'a> {
                                         nframe.stack_base = 0;
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
-                                    ValueType::FlagB => {
+                                    ValueType::FlagC => {
                                         let begin = nframe.stack_base;
                                         let end = begin + nfunc.param_types().len() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
@@ -1060,9 +1050,9 @@ impl<'a> Fiber<'a> {
 
                         let clear_stack = match inst.t0 {
                             // default case
-                            ValueType::Void => true,
+                            ValueType::FlagA => true,
                             // init_package func
-                            ValueType::FlagA => {
+                            ValueType::FlagB => {
                                 let pkey = stack.read(inst.d, sb, consts).as_package();
                                 let pkg = &objs.packages[*pkey];
                                 // the var values left on the stack are for pkg members
@@ -1074,7 +1064,7 @@ impl<'a> Fiber<'a> {
                                 false
                             }
                             // func with deferred calls
-                            ValueType::FlagB => {
+                            ValueType::FlagC => {
                                 if let Some(call) =
                                     frame.defer_stack.as_mut().map(|x| x.pop()).flatten()
                                 {
@@ -1402,21 +1392,14 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE_ASSERT => {
                         let val = stack.read(inst.s0, sb, consts);
-                        match type_assert(val, cst(consts, inst.s1), gcv, None) {
-                            Ok((val, _)) => {
-                                stack.set(inst.d + sb, val);
-                            }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
-                        }
-                    }
-                    Opcode::TYPE_ASSERT_OK => {
-                        let inst_ex = &code[frame.pc as usize];
-                        frame.pc += 1;
-                        let val = stack.read(inst.s0, sb, consts);
                         match type_assert(val, cst(consts, inst.s1), gcv, Some(&objs.metas)) {
                             Ok((val, ok)) => {
                                 stack.set(inst.d + sb, val);
-                                stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                                if inst.t1 == ValueType::FlagB {
+                                    let inst_ex = &code[frame.pc as usize];
+                                    frame.pc += 1;
+                                    stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                                }
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
@@ -1446,11 +1429,6 @@ impl<'a> Fiber<'a> {
                             stack.set(index.unwrap() + sb, val);
                             frame.pc += option_count;
                         }
-                    }
-                    Opcode::ZERO_VALUE => {
-                        let m = stack.read(inst.s0, sb, consts).as_metadata();
-                        let zero_val = m.zero(&objs.metas, gcv);
-                        stack.set(inst.d + sb, zero_val);
                     }
                     Opcode::IMPORT => {
                         let pkey = *stack.read(inst.s0, sb, consts).as_package();

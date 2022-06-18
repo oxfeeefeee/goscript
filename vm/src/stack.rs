@@ -6,7 +6,6 @@ use crate::value::*;
 
 const DEFAULT_CAPACITY: usize = 1024;
 
-#[derive(Debug)]
 pub struct Stack {
     vec: Vec<GosValue>,
 }
@@ -134,6 +133,12 @@ impl Stack {
     #[inline]
     pub(crate) fn get_data_mut(&mut self, index: OpIndex) -> &mut ValueData {
         unsafe { self.get_mut(index).data_mut() }
+    }
+}
+
+impl std::fmt::Debug for Stack {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{:#?}", &self.vec[..32])
     }
 }
 
