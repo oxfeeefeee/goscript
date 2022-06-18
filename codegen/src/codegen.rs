@@ -8,7 +8,6 @@ use super::package::PkgHelper;
 use super::selector::*;
 use super::types::{SelectionType, TypeCache, TypeLookup};
 use crate::context::*;
-use std::collections::HashSet;
 use std::iter::FromIterator;
 
 use goscript_vm::gc::GcoVec;
@@ -47,7 +46,6 @@ pub struct CodeGen<'a, 'c> {
     tc_objs: &'a TCObjects,
     dummy_gcv: &'a mut GcoVec,
     t: TypeLookup<'a>,
-    zero_types: &'a mut HashSet<TCTypeKey>,
     iface_selector: &'a mut IfaceSelector,
     struct_selector: &'a mut StructSelector,
     branch_helper: &'a mut BranchHelper,
@@ -69,7 +67,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         dummy_gcv: &'a mut GcoVec,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
-        zero_types: &'a mut HashSet<TCTypeKey>,
         iface_selector: &'a mut IfaceSelector,
         struct_selector: &'a mut StructSelector,
         branch_helper: &'a mut BranchHelper,
@@ -84,7 +81,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             tc_objs,
             dummy_gcv,
             t: TypeLookup::new(tc_objs, ti, type_cache),
-            zero_types,
             iface_selector,
             struct_selector,
             branch_helper,
@@ -154,7 +150,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 if let Some(ind) = index {
                     let desc = ValueDesc::new(
                         ctx.f_key,
-                        ind.as_var_index(),
+                        ind.as_var_index() as OpIndex,
                         self.t.obj_use_value_type(*ident),
                         true,
                     );
@@ -190,7 +186,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             if ctx.is_ctor(&self.objects.functions) {
                 let pkg_key = self.objects.functions[ctx.f_key].package;
                 let pkg = &mut self.objects.packages[pkg_key];
-                pkg.add_var_mapping(ident.name.clone(), index.as_var_index());
+                pkg.add_var_mapping(ident.name.clone(), index.as_var_index() as OpIndex);
             }
             (VirtualAddr::Direct(index), Some(tc_type), pos)
         } else {
@@ -460,7 +456,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         self.store(l.0.clone(), l.1, |g| {
                             g.cur_expr_emit_direct_assign(
                                 types[i],
-                                Addr::Regsiter(reg_begin + i as OpIndex),
+                                Addr::Regsiter(reg_begin + i),
                                 Some(l.2),
                             );
                         });
@@ -920,7 +916,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 }
 
                 let return_count = return_types.len();
-                expr_ctx!(self).cur_reg += return_count as OpIndex;
+                expr_ctx!(self).cur_reg += return_count;
             }
         }
     }
@@ -944,11 +940,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let variadic_count = params.len() - non_variadic_count;
         if !ellipsis && variadic_count > 0 {
             if let Some(t) = variadic {
-                let variadic_begin_reg = init_reg + non_variadic_count as OpIndex;
+                let variadic_begin_reg = init_reg + non_variadic_count;
                 let pos = Some(params[non_variadic_count].pos(&self.ast_objs));
                 let t_elem = self.t.tc_type_to_value_type(t);
                 let begin = Addr::Regsiter(variadic_begin_reg);
-                let end = Addr::Regsiter(variadic_begin_reg + variadic_count as OpIndex);
+                let end = Addr::Regsiter(variadic_begin_reg + variadic_count);
                 let inst = InterInst::with_op_t_index(
                     Opcode::PACK_VARIADIC,
                     Some(t_elem),
@@ -1106,7 +1102,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         let entity_key = self.t.object_use(*ikey);
                         let fctx = func_ctx!(self);
                         let ind = *fctx.entity_index(&entity_key).unwrap();
-                        let desc = ValueDesc::new(fctx.f_key, ind.as_var_index(), t, false);
+                        let desc =
+                            ValueDesc::new(fctx.f_key, ind.as_var_index() as OpIndex, t, false);
                         // for package ctors, all locals are "closed"
                         if !fctx.is_ctor(&self.objects.functions) {
                             let uv_index = fctx.add_upvalue(&entity_key, desc);
@@ -1418,7 +1415,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.pop_expr_ctx();
     }
 
-    fn push_expr_ctx(&mut self, mode: ExprMode, cur_reg: OpIndex) {
+    fn push_expr_ctx(&mut self, mode: ExprMode, cur_reg: usize) {
         self.expr_ctx_stack.push(ExprCtx::new(mode, cur_reg));
     }
 
@@ -1562,7 +1559,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                         }
                         _ => (-1, expr),
                     };
-                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_key = reg_base + i * 2;
                     let reg_elem = reg_key + 1;
                     let fctx = func_ctx!(self);
                     let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
@@ -1576,7 +1573,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             MetadataType::Map(_, _) => {
                 let map_type = typ.try_as_map().unwrap();
                 for (i, expr) in clit.elts.iter().enumerate() {
-                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_key = reg_base + i * 2;
                     let reg_elem = reg_key + 1;
                     match expr {
                         Expr::KeyValue(kv) => {
@@ -1605,7 +1602,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                         }
                         _ => (i, expr),
                     };
-                    let reg_key = reg_base + i as OpIndex * 2;
+                    let reg_key = reg_base + i * 2;
                     let reg_elem = reg_key + 1;
                     let fctx = func_ctx!(self);
                     let index_addr = fctx.add_const(GosValue::new_uint(index));
@@ -1623,10 +1620,10 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             }
         };
         let fctx = func_ctx!(self);
-        fctx.update_max_reg(reg_base + count as OpIndex);
+        fctx.update_max_reg(reg_base + count);
         let meta_addr = fctx.add_const(GosValue::new_metadata(meta));
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
-            f.emit_literal(d, reg_base, count as OpIndex, meta_addr, p);
+            f.emit_literal(d, reg_base, count, meta_addr, p);
         });
     }
 
@@ -1658,7 +1655,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         match &stype {
             SelectionType::MethodNonPtrRecv | SelectionType::MethodPtrRecv => {
                 let index_count = indices.len();
-                let final_index = indices[index_count - 1] as OpIndex;
+                let final_index = indices[index_count - 1];
                 let embedded_indices = Vec::from_iter(indices[..index_count - 1].iter().cloned());
                 let lhs_has_embedded = index_count > 1;
                 let final_lhs_meta = match lhs_has_embedded {
@@ -1717,7 +1714,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                             Opcode::BIND_INTERFACE_METHOD,
                             d,
                             recv_addr,
-                            Addr::Imm(final_index),
+                            Addr::Imm(final_index as OpIndex),
                         );
                         f.emit_inst(inst, p);
                     });
@@ -1727,7 +1724,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                             Opcode::BIND_METHOD,
                             d,
                             recv_addr,
-                            Addr::Method(f.f_key, *ident),
+                            f.add_method(final_lhs_meta, final_index),
                         );
                         f.emit_inst(inst, p);
                     });
@@ -2068,7 +2065,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         if !rstmt.results.is_empty() {
             let types = self.t.sig_returns_tc_types(func_ctx!(self).tc_key.unwrap());
             for (i, expr) in rstmt.results.iter().enumerate() {
-                let va = VirtualAddr::Direct(Addr::LocalVar(i as OpIndex));
+                let va = VirtualAddr::Direct(Addr::LocalVar(i));
                 self.store(va, Some(types[i]), |g| g.gen_expr(expr));
             }
         }

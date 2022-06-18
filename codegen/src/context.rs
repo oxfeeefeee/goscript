@@ -17,26 +17,24 @@ use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Addr {
-    Const(OpIndex),
-    LocalVar(OpIndex),
-    Regsiter(OpIndex),
+    Const(usize),
+    LocalVar(usize),
+    Regsiter(usize),
     Imm(OpIndex),
     PkgMemberIndex(PackageKey, IdentKey), // deferred resolve
-    Method(FunctionKey, IdentKey),
-    Label(TCObjKey), // deferred resolve
-    ZeroValue(TCTypeKey),
+    Label(TCObjKey),                      // deferred resolve
     Void,
 }
 
 impl Addr {
-    pub fn as_var_index(self) -> OpIndex {
+    pub fn as_var_index(self) -> usize {
         match self {
             Self::LocalVar(i) => i,
             _ => unreachable!(),
         }
     }
 
-    pub fn as_reg_index(self) -> OpIndex {
+    pub fn as_reg_index(self) -> usize {
         match self {
             Self::Regsiter(i) => i,
             _ => unreachable!(),
@@ -45,19 +43,18 @@ impl Addr {
 
     fn into_index(
         self,
-        reg_base: OpIndex,
+        reg_base: usize,
         ast_objs: &AstObjects,
         packages: &PackageObjs,
         inst_index: usize,
         labels: &HashMap<TCObjKey, usize>,
-        zeros: &HashMap<TCTypeKey, OpIndex>,
+        cst_map: &HashMap<usize, usize>,
     ) -> OpIndex {
         // Zero values are the first batch of consts
-        let const_base = zeros.len() as OpIndex;
         match self {
-            Self::Const(i) => -(i + const_base) - 1,
-            Self::LocalVar(i) => i,
-            Self::Regsiter(i) => reg_base + i,
+            Self::Const(i) => -(cst_map[&i] as OpIndex) - 1,
+            Self::LocalVar(i) => i as OpIndex,
+            Self::Regsiter(i) => (reg_base + i) as OpIndex,
             Self::PkgMemberIndex(key, ident) => {
                 let pkg = &packages[key];
                 let id = &ast_objs.idents[ident];
@@ -68,12 +65,7 @@ impl Addr {
                 (label_offset as OpIndex) - (inst_index as OpIndex) - 1
             }
             Self::Imm(i) => i,
-            Self::ZeroValue(t) => -zeros[&t] - 1,
             Self::Void => std::i32::MAX,
-            _ => {
-                dbg!(self);
-                unreachable!();
-            }
         }
     }
 }
@@ -94,7 +86,7 @@ pub enum VirtualAddr {
 }
 
 impl VirtualAddr {
-    pub fn new_reg(reg_index: OpIndex) -> VirtualAddr {
+    pub fn new_reg(reg_index: usize) -> VirtualAddr {
         VirtualAddr::Direct(Addr::Regsiter(reg_index))
     }
 
@@ -136,13 +128,13 @@ impl ExprMode {
 #[derive(Clone, Debug)]
 pub struct ExprCtx {
     pub mode: ExprMode,
-    pub cur_reg: OpIndex,
+    pub cur_reg: usize,
     pub load_addr: Addr,
     pub occupying_reg: bool,
 }
 
 impl ExprCtx {
-    pub fn new(mode: ExprMode, init_reg: OpIndex) -> Self {
+    pub fn new(mode: ExprMode, init_reg: usize) -> Self {
         Self {
             mode,
             cur_reg: init_reg,
@@ -309,12 +301,12 @@ impl InterInst {
 
     pub fn into_runtime_inst(
         self,
-        reg_base: OpIndex,
+        reg_base: usize,
         ast_objs: &AstObjects,
         packages: &PackageObjs,
         inst_index: usize,
         labels: &HashMap<TCObjKey, usize>,
-        zeros: &HashMap<TCTypeKey, OpIndex>,
+        cst_map: &HashMap<usize, usize>,
     ) -> Instruction {
         Instruction {
             op0: self.op0,
@@ -323,13 +315,13 @@ impl InterInst {
             t1: self.t1,
             d: self
                 .d
-                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, cst_map),
             s0: self
                 .s0
-                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, cst_map),
             s1: self
                 .s1
-                .into_index(reg_base, ast_objs, packages, inst_index, labels, zeros),
+                .into_index(reg_base, ast_objs, packages, inst_index, labels, cst_map),
         }
     }
 }
@@ -362,7 +354,7 @@ pub struct FuncCtx<'c> {
     pub f_key: FunctionKey,
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
     consts: &'c Consts,
-    pub max_reg_num: OpIndex, // how many temporary spots (register) on stack needed
+    pub max_reg_num: usize, // how many temporary spots (register) on stack needed
     returned: bool,
 
     stack_temp_types: Vec<ValueType>,
@@ -373,7 +365,7 @@ pub struct FuncCtx<'c> {
 
     entities: HashMap<TCObjKey, Addr>,
     uv_entities: HashMap<TCObjKey, Addr>,
-    local_alloc: OpIndex,
+    local_alloc: usize,
 }
 
 impl<'a> FuncCtx<'a> {
@@ -416,8 +408,16 @@ impl<'a> FuncCtx<'a> {
         self.entities.get(entity)
     }
 
-    pub fn add_const(&mut self, cst: GosValue) -> Addr {
+    pub fn add_const(&self, cst: GosValue) -> Addr {
         Addr::Const(self.consts.add_const(cst))
+    }
+
+    pub fn add_zero_val(&self, typ: Meta) -> Addr {
+        Addr::Const(self.consts.add_zero(typ))
+    }
+
+    pub fn add_method(&self, obj_type: Meta, index: usize) -> Addr {
+        Addr::Const(self.consts.add_method(obj_type, index))
     }
 
     pub fn add_metadata(&mut self, meta: Meta) -> Addr {
@@ -426,10 +426,6 @@ impl<'a> FuncCtx<'a> {
 
     pub fn add_package(&mut self, pkg: PackageKey) -> Addr {
         self.add_const(GosValue::new_package(pkg))
-    }
-
-    pub fn add_function(&self, obj_meta: Meta, index: OpIndex) -> Addr {
-        Addr::Const(self.consts.add_function(obj_meta, index))
     }
 
     pub fn add_const_var(&mut self, entity: TCObjKey, cst: GosValue) -> Addr {
@@ -584,13 +580,17 @@ impl<'a> FuncCtx<'a> {
     pub fn emit_literal(
         &mut self,
         d: Addr,
-        begin: OpIndex,
-        count: OpIndex,
+        begin: usize,
+        count: usize,
         meta: Addr,
         pos: Option<usize>,
     ) {
-        let inst =
-            InterInst::with_op_index(Opcode::LITERAL, d, Addr::Regsiter(begin), Addr::Imm(count));
+        let inst = InterInst::with_op_index(
+            Opcode::LITERAL,
+            d,
+            Addr::Regsiter(begin),
+            Addr::Imm(count as OpIndex),
+        );
         self.emit_inst(inst, pos);
         let mut inst_ex = InterInst::with_op(Opcode::VOID);
         inst_ex.s0 = meta;
@@ -722,20 +722,20 @@ impl<'a> FuncCtx<'a> {
         asto: &AstObjects,
         vmo: &mut VMObjects,
         labels: &HashMap<TCObjKey, usize>,
-        zeros: &HashMap<TCTypeKey, OpIndex>,
+        cst_map: &HashMap<usize, usize>,
     ) {
         let func = &mut vmo.functions[self.f_key];
         func.stack_temp_types = self.stack_temp_types;
         func.pos = self.pos;
         func.up_ptrs = self.up_ptrs;
-        func.reg_count = self.max_reg_num;
+        func.reg_count = self.max_reg_num as OpIndex;
         func.local_zeros = self.local_zeros;
         func.code = self
             .code
             .into_iter()
             .enumerate()
             .map(|(i, x)| {
-                x.into_runtime_inst(self.local_alloc, asto, &vmo.packages, i, labels, zeros)
+                x.into_runtime_inst(self.local_alloc, asto, &vmo.packages, i, labels, cst_map)
             })
             .collect();
     }
@@ -745,7 +745,7 @@ impl<'a> FuncCtx<'a> {
         self.pos.push(pos);
     }
 
-    pub fn update_max_reg(&mut self, max: OpIndex) {
+    pub fn update_max_reg(&mut self, max: usize) {
         if self.max_reg_num < max {
             self.max_reg_num = max
         }

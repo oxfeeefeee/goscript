@@ -14,14 +14,12 @@ use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
-use goscript_types::{
-    PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo, TypeKey as TCTypeKey,
-};
+use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
 use goscript_vm::gc::GcoVec;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(
@@ -72,7 +70,6 @@ fn gen_byte_code(
     let mut struct_selector = StructSelector::new();
     let mut pkg_map = HashMap::new();
     let mut type_cache: TypeCache = HashMap::new();
-    let mut zero_types: HashSet<TCTypeKey> = HashSet::new();
     let mut branch_helper = BranchHelper::new();
     let mut result_funcs = vec![];
 
@@ -101,7 +98,6 @@ fn gen_byte_code(
             &mut dummy_gcv,
             &ti,
             &mut type_cache,
-            &mut zero_types,
             &mut iface_selector,
             &mut struct_selector,
             &mut branch_helper,
@@ -112,28 +108,14 @@ fn gen_byte_code(
         result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
     }
 
-    let mut zero_indices = HashMap::new();
-    let mut all_consts: Vec<GosValue> = zero_types
-        .iter()
-        .enumerate()
-        .map(|(i, t)| {
-            zero_indices.insert(*t, i as OpIndex);
-            type_cache[t].zero(&objects.metas, &dummy_gcv)
-        })
-        .collect();
+    let (consts, cst_map) = consts.get_runtime_consts(&objects.metas, &dummy_gcv);
     for f in result_funcs.into_iter() {
-        f.into_runtime_func(
-            ast_objs,
-            &mut objects,
-            branch_helper.labels(),
-            &zero_indices,
-        );
+        f.into_runtime_func(ast_objs, &mut objects, branch_helper.labels(), &cst_map);
     }
-    all_consts.append(&mut consts.into_runtime_consts(&mut objects));
 
     ByteCode::new(
         objects,
-        all_consts,
+        consts,
         iface_selector.result(),
         struct_selector.result(),
         entry_key,
