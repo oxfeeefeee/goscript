@@ -1840,9 +1840,10 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 unreachable!()
             }
         };
+        let t = self.t.tc_type_to_value_type(typ);
         let pos = Some(this.pos(&self.ast_objs));
         self.cur_expr_emit_assign(typ, pos, |f, d, p| {
-            let inst = InterInst::with_op_index(opcode, d, addr, Addr::Void);
+            let inst = InterInst::with_op_t_index(opcode, Some(t), None, d, addr, Addr::Void);
             f.emit_inst(inst, p);
         });
     }

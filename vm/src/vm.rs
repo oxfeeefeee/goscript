@@ -110,10 +110,7 @@ macro_rules! shift_op_assign {
 
 macro_rules! unary_op {
     ($stack:expr, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
-        let vdata = $stack
-            .read($inst.s0, $sb, $consts)
-            .data()
-            .unary_negate($inst.t0);
+        let vdata = $stack.read($inst.s0, $sb, $consts).data().$op($inst.t0);
         let val = GosValue::new($inst.t0, vdata);
         $stack.set($inst.d + $sb, val);
     }};
