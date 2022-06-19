@@ -64,8 +64,8 @@ impl BranchHelper {
         label: Option<TCObjKey>,
         pos: usize,
     ) {
-        fctx.emit_jump(0, Some(pos));
         let index = fctx.next_code_index();
+        fctx.emit_jump(0, Some(pos));
         self.block_stack
             .last_mut()
             .unwrap()
