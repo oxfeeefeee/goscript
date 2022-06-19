@@ -683,7 +683,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn unary_not(&self, t: ValueType) -> ValueData {
+    pub fn logical_not(&self, t: ValueType) -> ValueData {
         debug_assert!(t == ValueType::Bool);
         let mut v = unsafe { self.copy_non_ptr() };
         v.boolean = unsafe { !self.boolean };
