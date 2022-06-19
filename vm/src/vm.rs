@@ -1057,8 +1057,7 @@ impl<'a> Fiber<'a> {
                                 // the var values left on the stack are for pkg members
                                 let func = frame.func_val(objs);
                                 let begin = sb;
-                                let end =
-                                    begin + func.stack_temp_types.len() as OpIndex + func.reg_count;
+                                let end = begin + func.stack_temp_types.len() as OpIndex;
                                 pkg.init_vars(stack.move_vec(begin, end));
                                 false
                             }

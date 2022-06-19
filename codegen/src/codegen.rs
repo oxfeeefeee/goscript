@@ -905,6 +905,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 );
                 func_ctx!(self).emit_inst(inst, pos);
 
+                // make sure params are at next_sb
+                expr_ctx!(self).cur_reg = next_sb.as_reg_index();
                 self.gen_call_params(ft, params, ellipsis);
                 func_ctx!(self).emit_call(style, pos);
 
@@ -923,7 +925,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
     fn gen_call_params(&mut self, func: TCTypeKey, params: &Vec<Expr>, ellipsis: bool) {
         let (sig_params, variadic) = self.t.sig_params_tc_types(func);
-        let non_variadic_count = variadic.map_or(sig_params.len(), |_| sig_params.len() - 1);
+        let need_pack = !ellipsis && variadic.is_some();
+        let non_variadic_count = sig_params.len() - if need_pack { 1 } else { 0 };
 
         let init_reg = expr_ctx!(self).cur_reg;
         for (i, e) in params.iter().enumerate() {
@@ -937,9 +940,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
 
         debug_assert!(params.len() >= non_variadic_count);
-        let variadic_count = params.len() - non_variadic_count;
-        if !ellipsis && variadic_count > 0 {
+        if need_pack {
             if let Some(t) = variadic {
+                let variadic_count = params.len() - non_variadic_count;
                 let variadic_begin_reg = init_reg + non_variadic_count;
                 let pos = Some(params[non_variadic_count].pos(&self.ast_objs));
                 let t_elem = self.t.tc_type_to_value_type(t);
