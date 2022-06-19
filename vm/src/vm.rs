@@ -367,7 +367,7 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
-                //dbg!(inst);
+                dbg!(inst);
                 //dbg!(inst_op);
                 match inst_op {
                     // desc: local
@@ -1224,8 +1224,8 @@ impl<'a> Fiber<'a> {
                             inst.t0,
                             inst.t1,
                             stack,
-                            inst.s1 + sb,
                             inst.d + sb,
+                            inst.s1 + sb,
                         ) {
                             frame.pc += inst.s0;
                         }
