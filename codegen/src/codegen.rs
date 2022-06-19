@@ -2383,7 +2383,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         // set the correct else jump out target
         if let Some(m) = out_marker {
             let fctx = func_ctx!(self);
-            let offset = fctx.offset(m);
+            let offset = fctx.offset(m) - 1;
             fctx.inst_mut(m).d = Addr::Imm(offset);
         }
 

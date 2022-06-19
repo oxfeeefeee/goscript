@@ -757,10 +757,12 @@ impl<'a> Fiber<'a> {
                     Opcode::SHL_ASSIGN => shift_op_assign!(stack, binary_op_shl, inst, sb, consts),
                     Opcode::SHR_ASSIGN => shift_op_assign!(stack, binary_op_shr, inst, sb, consts),
                     Opcode::INC => unsafe {
-                        stack.get_mut(inst.d + sb).data_mut().inc(inst.t0);
+                        let v = stack.get_mut(inst.d + sb).data_mut();
+                        *v = v.inc(inst.t0);
                     },
                     Opcode::DEC => unsafe {
-                        stack.get_mut(inst.d + sb).data_mut().dec(inst.t0);
+                        let v = stack.get_mut(inst.d + sb).data_mut();
+                        *v = v.dec(inst.t0);
                     },
                     Opcode::UNARY_SUB => unary_op!(stack, unary_negate, inst, sb, consts),
                     Opcode::UNARY_XOR => unary_op!(stack, unary_xor, inst, sb, consts),
