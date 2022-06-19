@@ -500,6 +500,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     Addr::Void,
                     tkv[0],
                     Some(tkv[2]),
+                    types[0],
+                    types[1],
                     Addr::Void,
                     pos,
                 );
@@ -980,6 +982,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     Addr::Void,
                     val_tc_type,
                     None,
+                    None,
+                    Some(ValueType::FlagB),
                     Addr::Void,
                     pos,
                 );
@@ -1020,6 +1024,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     index_reg,
                     val_tc_type,
                     None,
+                    None,
+                    Some(ValueType::FlagB),
                     zero,
                     pos,
                 );
@@ -1073,6 +1079,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     meta_addr,
                     val_tc_type,
                     None,
+                    None,
+                    Some(ValueType::FlagB),
                     Addr::Void,
                     pos,
                 );
@@ -1300,6 +1308,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         s1: Addr,
         t0: TCTypeKey,
         t1: Option<TCTypeKey>,
+        vt0: Option<ValueType>,
+        vt1: Option<ValueType>,
         ex_s0: Addr,
         pos: Option<usize>,
     ) {
@@ -1324,13 +1334,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
         let fctx = func_ctx!(self);
         if s1 != Addr::Void {
-            let inst =
-                InterInst::with_op_t_index(op, None, Some(ValueType::FlagB), val_addr, s0, s1);
+            let inst = InterInst::with_op_t_index(op, vt0, vt1, val_addr, s0, s1);
             let inst_ex = InterInst::with_op_index(Opcode::VOID, ok_addr, ex_s0, Addr::Void);
             fctx.emit_inst(inst, pos);
             fctx.emit_inst(inst_ex, pos);
         } else {
-            let inst = InterInst::with_op_index(op, val_addr, s0, ok_addr);
+            let inst = InterInst::with_op_t_index(op, vt0, vt1, val_addr, s0, ok_addr);
             fctx.emit_inst(inst, pos);
         }
 
@@ -2400,7 +2409,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         let offset = -fctx.offset(marker) - 1;
         // tell Opcode::RANGE where to jump after it's done
         let end_offset = fctx.offset(marker);
-        fctx.inst_mut(marker).s1 = Addr::Imm(end_offset);
+        fctx.inst_mut(marker).s0 = Addr::Imm(end_offset);
         fctx.emit_inst(
             InterInst::with_op_index(Opcode::JUMP, Addr::Imm(offset), Addr::Void, Addr::Void),
             Some(rstmt.token_pos),
