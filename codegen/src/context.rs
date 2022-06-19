@@ -499,33 +499,37 @@ impl<'a> FuncCtx<'a> {
         if lhs.is_blank() {
             return;
         }
+        let mut direct = false;
         let mut inst_ex = None;
         let mut inst = match lhs {
-            VirtualAddr::Direct(l) => match op_ex {
-                Some((op, _, _)) => {
-                    let ass_op = match op {
-                        Opcode::ADD => Opcode::ADD_ASSIGN,         // +=
-                        Opcode::SUB => Opcode::SUB_ASSIGN,         // -=
-                        Opcode::MUL => Opcode::MUL_ASSIGN,         // *=
-                        Opcode::QUO => Opcode::QUO_ASSIGN,         // /=
-                        Opcode::REM => Opcode::REM_ASSIGN,         // %=
-                        Opcode::AND => Opcode::AND_ASSIGN,         // &=
-                        Opcode::OR => Opcode::OR_ASSIGN,           // |=
-                        Opcode::XOR => Opcode::XOR_ASSIGN,         // ^=
-                        Opcode::SHL => Opcode::SHL_ASSIGN,         // <<=
-                        Opcode::SHR => Opcode::SHR_ASSIGN,         // >>=
-                        Opcode::AND_NOT => Opcode::AND_NOT_ASSIGN, // &^=
-                        Opcode::INC => Opcode::INC,
-                        Opcode::DEC => Opcode::DEC,
-                        _ => {
-                            dbg!(op);
-                            unreachable!()
-                        }
-                    };
-                    InterInst::with_op_index(ass_op, l, rhs, Addr::Void)
+            VirtualAddr::Direct(l) => {
+                direct = true;
+                match op_ex {
+                    Some((op, t0, t1)) => {
+                        let ass_op = match op {
+                            Opcode::ADD => Opcode::ADD_ASSIGN,         // +=
+                            Opcode::SUB => Opcode::SUB_ASSIGN,         // -=
+                            Opcode::MUL => Opcode::MUL_ASSIGN,         // *=
+                            Opcode::QUO => Opcode::QUO_ASSIGN,         // /=
+                            Opcode::REM => Opcode::REM_ASSIGN,         // %=
+                            Opcode::AND => Opcode::AND_ASSIGN,         // &=
+                            Opcode::OR => Opcode::OR_ASSIGN,           // |=
+                            Opcode::XOR => Opcode::XOR_ASSIGN,         // ^=
+                            Opcode::SHL => Opcode::SHL_ASSIGN,         // <<=
+                            Opcode::SHR => Opcode::SHR_ASSIGN,         // >>=
+                            Opcode::AND_NOT => Opcode::AND_NOT_ASSIGN, // &^=
+                            Opcode::INC => Opcode::INC,
+                            Opcode::DEC => Opcode::DEC,
+                            _ => {
+                                dbg!(op);
+                                unreachable!()
+                            }
+                        };
+                        InterInst::with_op_t_index(ass_op, Some(t0), t1, l, rhs, Addr::Void)
+                    }
+                    None => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
                 }
-                None => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
-            },
+            }
             VirtualAddr::UpValue(l) => {
                 InterInst::with_op_index(Opcode::STORE_UP_VALUE, l, rhs, Addr::Void)
             }
@@ -559,13 +563,15 @@ impl<'a> FuncCtx<'a> {
             VirtualAddr::Blank => unreachable!(),
             VirtualAddr::ZeroValue => unreachable!(),
         };
-        if let Some((op, t0, t1)) = op_ex {
-            inst.op1 = op;
-            inst.t0 = t0;
-            if let Some(t) = t1 {
-                inst.t1 = t;
-            }
-        };
+        if !direct {
+            if let Some((op, t0, t1)) = op_ex {
+                inst.op1 = op;
+                inst.t0 = t0;
+                if let Some(t) = t1 {
+                    inst.t1 = t;
+                }
+            };
+        }
         self.emit_inst(inst, pos);
         if let Some(i) = inst_ex {
             self.emit_inst(i, pos);

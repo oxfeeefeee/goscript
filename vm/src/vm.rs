@@ -1498,14 +1498,14 @@ impl<'a> Fiber<'a> {
                             let mut val = vec![];
                             let mut cur_index = -1;
                             for i in 0..count {
-                                let index = *stack.get(begin + i * 2).as_int();
+                                let index = *stack.get(begin + i * 2).as_int32();
                                 let elem = stack.get(begin + 1 + i * 2).clone();
                                 if index < 0 {
                                     cur_index += 1;
                                 } else {
                                     cur_index = index;
                                 }
-                                let gap = cur_index - (val.len() as isize);
+                                let gap = cur_index - (val.len() as i32);
                                 if gap == 0 {
                                     val.push(elem);
                                 } else if gap > 0 {
