@@ -357,7 +357,6 @@ pub struct FuncCtx<'c> {
     pub max_reg_num: usize, // how many temporary spots (register) on stack needed
     returned: bool,
 
-    stack_temp_types: Vec<ValueType>,
     code: Vec<InterInst>,
     pos: Vec<Option<usize>>,
     up_ptrs: Vec<ValueDesc>,
@@ -376,7 +375,6 @@ impl<'a> FuncCtx<'a> {
             consts,
             max_reg_num: 0,
             returned: false,
-            stack_temp_types: vec![],
             code: vec![],
             pos: vec![],
             up_ptrs: vec![],
@@ -435,11 +433,7 @@ impl<'a> FuncCtx<'a> {
         addr
     }
 
-    pub fn add_local(
-        &mut self,
-        entity: Option<TCObjKey>,
-        zero_val_type: Option<(GosValue, ValueType)>,
-    ) -> Addr {
+    pub fn add_local(&mut self, entity: Option<TCObjKey>, zero_val: Option<GosValue>) -> Addr {
         let addr = Addr::LocalVar(self.local_alloc);
         if let Some(key) = entity {
             let old = self.entities.insert(key, addr);
@@ -447,9 +441,8 @@ impl<'a> FuncCtx<'a> {
         };
         self.local_alloc += 1;
 
-        if let Some((zero, typ)) = zero_val_type {
+        if let Some(zero) = zero_val {
             self.local_zeros.push(zero);
-            self.stack_temp_types.push(typ);
         }
         addr
     }
@@ -644,19 +637,9 @@ impl<'a> FuncCtx<'a> {
         self.emit_inst(inst, pos);
     }
 
-    pub fn emit_pre_call(
-        &mut self,
-        cls: Addr,
-        stack_base: OpIndex,
-        param_count: OpIndex,
-        pos: Option<usize>,
-    ) {
-        let inst = InterInst::with_op_index(
-            Opcode::PRE_CALL,
-            cls,
-            Addr::Imm(stack_base),
-            Addr::Imm(param_count),
-        );
+    pub fn emit_pre_call(&mut self, cls: Addr, stack_base: OpIndex, pos: Option<usize>) {
+        let inst =
+            InterInst::with_op_index(Opcode::PRE_CALL, cls, Addr::Imm(stack_base), Addr::Void);
         self.emit_inst(inst, pos);
     }
 
@@ -731,7 +714,6 @@ impl<'a> FuncCtx<'a> {
         cst_map: &HashMap<usize, usize>,
     ) {
         let func = &mut vmo.functions[self.f_key];
-        func.stack_temp_types = self.stack_temp_types;
         func.pos = self.pos;
         func.up_ptrs = self.up_ptrs;
         func.reg_count = self.max_reg_num as OpIndex;

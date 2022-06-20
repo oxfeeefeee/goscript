@@ -138,7 +138,7 @@ impl Stack {
 
 impl std::fmt::Debug for Stack {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{:#?}", &self.vec[..32])
+        write!(f, "{:#?}", &self.vec[..16])
     }
 }
 

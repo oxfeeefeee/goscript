@@ -1638,7 +1638,7 @@ pub struct FunctionVal {
     pub package: PackageKey,
     pub meta: Meta,
     pub flag: FuncFlag,
-    pub stack_temp_types: Vec<ValueType>,
+    pub param_count: OpIndex,
     pub reg_count: OpIndex,
     pub ret_zeros: Vec<GosValue>,
 
@@ -1658,13 +1658,13 @@ impl FunctionVal {
     ) -> FunctionVal {
         let s = &metas[meta.key].as_signature();
         let ret_zeros = s.results.iter().map(|m| m.zero(metas, gcv)).collect();
-        let mut p_types: Vec<ValueType> = s.recv.map_or(vec![], |m| vec![m.value_type(&metas)]);
-        p_types.append(&mut s.params.iter().map(|m| m.value_type(&metas)).collect());
+        let mut param_count = s.recv.map_or(0, |_| 1);
+        param_count += s.params.len() as OpIndex;
         FunctionVal {
             package,
             meta,
             flag,
-            stack_temp_types: p_types,
+            param_count,
             reg_count: 0,
             ret_zeros,
             code: Vec::new(),
@@ -1675,18 +1675,18 @@ impl FunctionVal {
     }
 
     #[inline]
-    pub fn param_count(&self) -> usize {
-        self.stack_temp_types.len() - self.local_zeros.len()
+    pub fn param_count(&self) -> OpIndex {
+        self.param_count
     }
 
     #[inline]
-    pub fn param_types(&self) -> &[ValueType] {
-        &self.stack_temp_types[..self.param_count()]
+    pub fn local_count(&self) -> OpIndex {
+        self.local_zeros.len() as OpIndex
     }
 
     #[inline]
-    pub fn ret_count(&self) -> usize {
-        self.ret_zeros.len()
+    pub fn ret_count(&self) -> OpIndex {
+        self.ret_zeros.len() as OpIndex
     }
 
     #[inline]
