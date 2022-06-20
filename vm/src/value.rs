@@ -888,13 +888,24 @@ impl ValueData {
             ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
             ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
             ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
-            ValueType::String => dispatcher_a_s_for(t_elem).slice_debug_fmt(self, f),
-            ValueType::Array => dispatcher_a_s_for(t_elem).array_debug_fmt(self, f),
+            ValueType::String => write!(
+                f,
+                "Type: {:?}, Data: {:#?}",
+                t,
+                StrUtil::as_str(&self.clone(t).into_string())
+            ),
+            ValueType::Array => match t_elem {
+                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
+                _ => dispatcher_a_s_for(t_elem).array_debug_fmt(self, f),
+            },
             ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
             ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
             ValueType::UnsafePtr => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_unsafe_ptr()),
             ValueType::Closure => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_closure()),
-            ValueType::Slice => dispatcher_a_s_for(t_elem).slice_debug_fmt(self, f),
+            ValueType::Slice => match t_elem {
+                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
+                _ => dispatcher_a_s_for(t_elem).slice_debug_fmt(self, f),
+            },
             ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
             ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
             ValueType::Channel => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_channel()),

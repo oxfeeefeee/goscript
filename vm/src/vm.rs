@@ -350,7 +350,7 @@ impl<'a> Fiber<'a> {
         let mut stack_mut_ref = self.stack.borrow_mut();
         let mut stack: &mut Stack = &mut stack_mut_ref;
         // allocate local variables
-        stack.set_vec(0, func.local_zeros.clone());
+        stack.set_vec(func.param_count(), func.local_zeros.clone());
 
         let mut code = &func.code;
 
@@ -367,18 +367,15 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
-                dbg!(inst);
+                //dbg!(inst);
                 //dbg!(inst_op);
                 match inst_op {
                     // desc: local
                     // s0: local/const
-                    Opcode::ASSIGN => {
-                        //dbg!(sb + inst.d, stack.read(inst.s0, sb, consts), &stack);
-                        stack.set(
-                            sb + inst.d,
-                            stack.read(inst.s0, sb, consts).copy_semantic(gcv),
-                        )
-                    }
+                    Opcode::ASSIGN => stack.set(
+                        sb + inst.d,
+                        stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                    ),
                     // desc: local
                     // s0: slice
                     // s1: index
