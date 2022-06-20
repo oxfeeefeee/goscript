@@ -917,7 +917,6 @@ impl<'a> Fiber<'a> {
                     }
                     // d: closure
                     // s0: next stack base
-                    // s1: param count
                     Opcode::PRE_CALL => {
                         let cls = stack
                             .read(inst.d, sb, consts)
@@ -935,9 +934,10 @@ impl<'a> Fiber<'a> {
                                     // don't call copy_semantic because BIND_METHOD did it already
                                     returns_recv.push(r.clone());
                                 }
-                                let param_count = inst.s1;
                                 stack.set_min_size(
-                                    next_sb as usize + returns_recv.len() + param_count as usize,
+                                    next_sb as usize
+                                        + returns_recv.len()
+                                        + next_func.param_count() as usize,
                                 );
                                 stack.set_vec(next_sb, returns_recv);
                             }
@@ -993,7 +993,7 @@ impl<'a> Fiber<'a> {
                                     ValueType::FlagB => {
                                         // goroutine
                                         let begin = nframe.stack_base;
-                                        let end = begin + nfunc.param_types().len() as OpIndex;
+                                        let end = begin + nfunc.param_count() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let nstack = Stack::with_vec(vec);
                                         nframe.stack_base = 0;
@@ -1001,7 +1001,7 @@ impl<'a> Fiber<'a> {
                                     }
                                     ValueType::FlagC => {
                                         let begin = nframe.stack_base;
-                                        let end = begin + nfunc.param_types().len() as OpIndex;
+                                        let end = begin + nfunc.param_count() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let deferred = DeferredCall {
                                             frame: nframe,
@@ -1056,7 +1056,7 @@ impl<'a> Fiber<'a> {
                                 // the var values left on the stack are for pkg members
                                 let func = frame.func_val(objs);
                                 let begin = sb;
-                                let end = begin + func.stack_temp_types.len() as OpIndex;
+                                let end = begin + func.local_count();
                                 pkg.init_vars(stack.move_vec(begin, end));
                                 false
                             }
@@ -1069,8 +1069,8 @@ impl<'a> Fiber<'a> {
                                     frame.pc -= 1;
 
                                     let call_vec_len = call.vec.len() as OpIndex;
-                                    let new_sb =
-                                        sb + frame.func_val(objs).stack_temp_types.len() as OpIndex;
+                                    let cur_func = frame.func_val(objs);
+                                    let new_sb = sb + cur_func.ret_count() + cur_func.param_count();
                                     stack.set_vec(new_sb, call.vec);
                                     let nframe = call.frame;
 
@@ -1101,7 +1101,7 @@ impl<'a> Fiber<'a> {
                             frame.on_drop(&stack);
                             let func = frame.func_val(objs);
                             let begin = sb + func.ret_count() as OpIndex;
-                            let end = begin + func.stack_temp_types.len() as OpIndex;
+                            let end = begin + func.param_count() + func.local_count();
                             stack.move_vec(begin, end);
                         }
 

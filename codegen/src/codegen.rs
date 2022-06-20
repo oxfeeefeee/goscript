@@ -203,10 +203,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             .tc_type_to_meta(tc_type, self.objects, self.dummy_gcv);
         let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
         let ctx = func_ctx!(self);
-        let index = ctx.add_local(
-            Some(okey),
-            Some((zero_val, meta.value_type(&self.objects.metas))),
-        );
+        let index = ctx.add_local(Some(okey), Some(zero_val));
         (index, tc_type, meta)
     }
 
