@@ -258,6 +258,12 @@ impl SelectHelper {
 
     pub fn emit_select(&mut self, fctx: &mut FuncCtx, pos: Option<usize>) {
         let default_flag = self.comms.last().unwrap().typ.runtime_flag();
+        let count = self.comms.len()
+            - if default_flag == ValueType::FlagE {
+                1
+            } else {
+                0
+            };
         let select_offset = fctx.next_code_index();
         fctx.emit_inst(
             InterInst::with_op_t_index(
@@ -265,7 +271,7 @@ impl SelectHelper {
                 Some(default_flag),
                 None,
                 Addr::Void,
-                Addr::Imm(self.comms.len() as OpIndex),
+                Addr::Imm(count as OpIndex),
                 Addr::Void,
             ),
             pos,
