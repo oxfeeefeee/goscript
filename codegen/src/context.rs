@@ -23,6 +23,7 @@ pub enum Addr {
     Imm(OpIndex),
     PkgMemberIndex(PackageKey, IdentKey), // deferred resolve
     Label(TCObjKey),                      // deferred resolve
+    UntypedNil,                           // will be typed when assigned to var
     Void,
 }
 
@@ -65,6 +66,7 @@ impl Addr {
                 (label_offset as OpIndex) - (inst_index as OpIndex) - 1
             }
             Self::Imm(i) => i,
+            Self::UntypedNil => unreachable!(),
             Self::Void => std::i32::MAX,
         }
     }
@@ -82,7 +84,6 @@ pub enum VirtualAddr {
     PackageMember(Addr, Addr),
     Pointee(Addr),
     Blank,
-    ZeroValue,
 }
 
 impl VirtualAddr {
@@ -554,7 +555,6 @@ impl<'a> FuncCtx<'a> {
                 InterInst::with_op_index(Opcode::STORE_POINTER, p, rhs, Addr::Void)
             }
             VirtualAddr::Blank => unreachable!(),
-            VirtualAddr::ZeroValue => unreachable!(),
         };
         if !direct {
             if let Some((op, t0, t1)) = op_ex {

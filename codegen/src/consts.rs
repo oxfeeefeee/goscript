@@ -31,18 +31,6 @@ impl Consts {
         }
     }
 
-    pub fn nil() -> usize {
-        0
-    }
-
-    pub fn true_() -> usize {
-        1
-    }
-
-    pub fn false_() -> usize {
-        2
-    }
-
     pub fn add_const(&self, v: GosValue) -> usize {
         self.add(Const::Var(v))
     }
