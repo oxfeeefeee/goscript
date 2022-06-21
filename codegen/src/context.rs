@@ -678,7 +678,7 @@ impl<'a> FuncCtx<'a> {
         let imm0 = Addr::Imm(0);
         let cd = vec![
             InterInst::with_op_index(Opcode::LOAD_PKG, Addr::Regsiter(0), pkg_addr, imm0),
-            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(0), imm0, imm0),
+            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(0), imm0, Addr::Void),
             InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // call init functions
             // 1. init a temp var at reg0 as 0
@@ -691,7 +691,7 @@ impl<'a> FuncCtx<'a> {
                 pkg_addr,
                 Addr::Regsiter(0),
             ),
-            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(1), imm0, imm0),
+            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(1), imm0, Addr::Void),
             InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // jump back to LOAD_PKG_INIT_FUNC
             InterInst::with_op_index(Opcode::JUMP, Addr::Imm(-4), Addr::Void, Addr::Void),
