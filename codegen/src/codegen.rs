@@ -692,6 +692,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             | Builtin::Len
             | Builtin::Cap
             | Builtin::Ffi => {
+                let t = self.t.expr_value_type(&params[0]);
                 let addr0 = self.load(|g| g.gen_expr(&params[0]));
                 let addr1 = if params.len() > 1 {
                     self.load(|g| g.gen_expr(&params[1]))
@@ -708,7 +709,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         Builtin::Ffi => Opcode::FFI,
                         _ => unreachable!(),
                     };
-                    let inst = InterInst::with_op_index(op, d, addr0, addr1);
+                    let inst = InterInst::with_op_t_index(op, Some(t), None, d, addr0, addr1);
                     f.emit_inst(inst, p);
                 });
             }

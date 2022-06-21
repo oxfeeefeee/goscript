@@ -368,7 +368,6 @@ impl<'a> Fiber<'a> {
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
                 dbg!(inst);
-                //dbg!(inst_op);
                 match inst_op {
                     // desc: local
                     // s0: local/const
@@ -1608,13 +1607,13 @@ impl<'a> Fiber<'a> {
                         // the corresponding floating-point constituents
                         let val = match inst.t0 {
                             ValueType::Float32 => {
-                                let i = *stack.read(inst.s0, sb, consts).as_float32();
-                                let r = *stack.read(inst.s1, sb, consts).as_float32();
+                                let r = *stack.read(inst.s0, sb, consts).as_float32();
+                                let i = *stack.read(inst.s1, sb, consts).as_float32();
                                 GosValue::new_complex64(r, i)
                             }
                             ValueType::Float64 => {
-                                let i = *stack.read(inst.s0, sb, consts).as_float64();
-                                let r = *stack.read(inst.s1, sb, consts).as_float64();
+                                let r = *stack.read(inst.s0, sb, consts).as_float64();
+                                let i = *stack.read(inst.s1, sb, consts).as_float64();
                                 GosValue::new_complex128(r, i)
                             }
                             _ => unreachable!(),
@@ -1622,25 +1621,23 @@ impl<'a> Fiber<'a> {
                         stack.set(inst.d + sb, val);
                     }
                     Opcode::REAL => {
+                        let complex = stack.read(inst.s0, sb, consts);
                         let val = match inst.t0 {
-                            ValueType::Complex64 => GosValue::new_float32(
-                                stack.read(inst.s0, sb, consts).as_complex64().r,
-                            ),
-                            ValueType::Complex128 => GosValue::new_float64(
-                                stack.read(inst.s1, sb, consts).as_complex128().r,
-                            ),
+                            ValueType::Complex64 => GosValue::new_float32(complex.as_complex64().r),
+                            ValueType::Complex128 => {
+                                GosValue::new_float64(complex.as_complex128().r)
+                            }
                             _ => unreachable!(),
                         };
                         stack.set(inst.d + sb, val);
                     }
                     Opcode::IMAG => {
+                        let complex = stack.read(inst.s0, sb, consts);
                         let val = match inst.t0 {
-                            ValueType::Complex64 => GosValue::new_float32(
-                                stack.read(inst.s0, sb, consts).as_complex64().i,
-                            ),
-                            ValueType::Complex128 => GosValue::new_float64(
-                                stack.read(inst.s1, sb, consts).as_complex128().i,
-                            ),
+                            ValueType::Complex64 => GosValue::new_float32(complex.as_complex64().i),
+                            ValueType::Complex128 => {
+                                GosValue::new_float64(complex.as_complex128().i)
+                            }
                             _ => unreachable!(),
                         };
                         stack.set(inst.d + sb, val);
