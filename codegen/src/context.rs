@@ -131,7 +131,6 @@ pub struct ExprCtx {
     pub mode: ExprMode,
     pub cur_reg: usize,
     pub load_addr: Addr,
-    pub occupying_reg: bool,
 }
 
 impl ExprCtx {
@@ -140,7 +139,6 @@ impl ExprCtx {
             mode,
             cur_reg: init_reg,
             load_addr: Addr::Void,
-            occupying_reg: false,
         }
     }
 
@@ -164,7 +162,6 @@ impl ExprCtx {
         match self.mode.clone() {
             ExprMode::Load => {
                 self.load_addr = self.inc_cur_reg();
-                self.occupying_reg = true;
                 f(fctx, self.load_addr, pos);
             }
             ExprMode::Store(va, _) => match va {
@@ -194,7 +191,6 @@ impl ExprCtx {
         match self.mode.clone() {
             ExprMode::Load => {
                 self.load_addr = src;
-                self.occupying_reg = false;
             }
             ExprMode::Store(va, _) => match va {
                 VirtualAddr::Direct(d) => {
