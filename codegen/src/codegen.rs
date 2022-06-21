@@ -1287,9 +1287,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         } else {
             (
                 match default_op {
-                    Opcode::REF_STRUCT_FIELD => Opcode::REF_STRUCT_EMBEDDED_FIELD,
-                    Opcode::LOAD_STRUCT => Opcode::LOAD_STRUCT_EMBEDDED,
-                    Opcode::STORE_STRUCT => Opcode::STORE_STRUCT_EMBEDDED,
+                    Opcode::REF_STRUCT_FIELD => Opcode::REF_EMBEDDED,
+                    Opcode::LOAD_STRUCT => Opcode::LOAD_EMBEDDED,
+                    Opcode::STORE_STRUCT => Opcode::STORE_EMBEDDED,
                     _ => default_op,
                 },
                 self.struct_selector.get_index(indices),
@@ -1729,7 +1729,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 if final_lhs_type == ValueType::Interface {
                     self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
                         let inst = InterInst::with_op_index(
-                            Opcode::BIND_INTERFACE_METHOD,
+                            Opcode::BIND_I_METHOD,
                             d,
                             recv_addr,
                             Addr::Imm(final_index as OpIndex),

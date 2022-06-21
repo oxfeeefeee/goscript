@@ -3,7 +3,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(non_camel_case_types)]
-use std::fmt;
+use std::fmt::Debug;
+use std::fmt::{self};
 
 pub type OpIndex = i32;
 
@@ -21,8 +22,8 @@ pub enum Opcode {
     STORE_MAP,
     LOAD_STRUCT,
     STORE_STRUCT,
-    LOAD_STRUCT_EMBEDDED,
-    STORE_STRUCT_EMBEDDED,
+    LOAD_EMBEDDED,
+    STORE_EMBEDDED,
     LOAD_PKG,
     STORE_PKG,
     LOAD_POINTER,
@@ -68,7 +69,7 @@ pub enum Opcode {
     REF_UPVALUE,
     REF_SLICE_MEMBER,
     REF_STRUCT_FIELD,
-    REF_STRUCT_EMBEDDED_FIELD,
+    REF_EMBEDDED,
     REF_PKG_MEMBER,
     SEND, // <-
     RECV, // <-
@@ -89,9 +90,9 @@ pub enum Opcode {
     RANGE,
 
     // misc
-    LOAD_PKG_INIT_FUNC,
+    LOAD_INIT_FUNC,
     BIND_METHOD,
-    BIND_INTERFACE_METHOD,
+    BIND_I_METHOD,
     CAST,
     TYPE_ASSERT,
     TYPE,
@@ -174,7 +175,7 @@ impl ValueType {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy)]
 pub struct Instruction {
     pub op0: Opcode,
     pub op1: Opcode,
@@ -188,6 +189,41 @@ pub struct Instruction {
 impl Instruction {
     pub fn op1_as_t(&self) -> ValueType {
         unsafe { std::mem::transmute(self.op1) }
+    }
+}
+
+impl std::fmt::Debug for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{: <16}|", self.op0.to_string())?;
+        if self.op1 != Opcode::VOID {
+            write!(f, "{}\t|", self.op1)?;
+        }
+        fmt_index(self.d, f)?;
+        f.write_str("\t|")?;
+        fmt_index(self.s0, f)?;
+        f.write_str("\t|")?;
+        fmt_index(self.s1, f)?;
+        f.write_str("\t|")?;
+        fmt_type(self.t0, f)?;
+        f.write_str("\t|")?;
+        fmt_type(self.t1, f)?;
+        Ok(())
+    }
+}
+
+fn fmt_type(t: ValueType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    if t == ValueType::Void {
+        f.write_str("...")
+    } else {
+        t.fmt(f)
+    }
+}
+
+fn fmt_index(index: OpIndex, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    if index == OpIndex::MAX {
+        f.write_str("...")
+    } else {
+        index.fmt(f)
     }
 }
 

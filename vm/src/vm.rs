@@ -367,7 +367,7 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
-                //dbg!(inst);
+                dbg!(inst);
                 //dbg!(inst_op);
                 match inst_op {
                     // desc: local
@@ -560,7 +560,7 @@ impl<'a> Fiber<'a> {
                     // desc: local
                     // s0: struct
                     // s1: index of indices
-                    Opcode::LOAD_STRUCT_EMBEDDED => {
+                    Opcode::LOAD_EMBEDDED => {
                         let src = stack.read(inst.s0, sb, consts);
                         let (struct_, index) = get_struct_and_index(
                             src.clone(),
@@ -579,7 +579,7 @@ impl<'a> Fiber<'a> {
                     // desc: struct
                     // s0: index of indices
                     // s1: value
-                    Opcode::STORE_STRUCT_EMBEDDED => {
+                    Opcode::STORE_EMBEDDED => {
                         let dest = stack.read(inst.d, sb, consts);
                         let (struct_, index) = get_struct_and_index(
                             dest.clone(),
@@ -854,7 +854,7 @@ impl<'a> Fiber<'a> {
                             GosValue::new_pointer(PointerObj::StructField(struct_, inst.s1)),
                         );
                     }
-                    Opcode::REF_STRUCT_EMBEDDED_FIELD => {
+                    Opcode::REF_EMBEDDED => {
                         let src = stack.read(inst.s0, sb, consts);
                         let (struct_, index) = get_struct_and_index(
                             src.clone(),
@@ -1230,7 +1230,7 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     // load user defined init function or jump 3 if failed
-                    Opcode::LOAD_PKG_INIT_FUNC => {
+                    Opcode::LOAD_INIT_FUNC => {
                         let src = stack.read(inst.s0, sb, consts);
                         let index = *stack.read(inst.s1, sb, consts).as_int32();
                         let pkg = &objs.packages[*src.as_package()];
@@ -1255,7 +1255,7 @@ impl<'a> Fiber<'a> {
                             ),
                         );
                     }
-                    Opcode::BIND_INTERFACE_METHOD => {
+                    Opcode::BIND_I_METHOD => {
                         match stack.read(inst.s0, sb, consts).as_some_interface() {
                             Ok(iface) => {
                                 match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcv) {
