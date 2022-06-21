@@ -546,7 +546,7 @@ impl<'a> FuncCtx<'a> {
                 InterInst::with_op_index(Opcode::STORE_STRUCT, s, i, rhs)
             }
             VirtualAddr::StructEmbedded(s, i) => {
-                InterInst::with_op_index(Opcode::STORE_STRUCT_EMBEDDED, s, i, rhs)
+                InterInst::with_op_index(Opcode::STORE_EMBEDDED, s, i, rhs)
             }
             VirtualAddr::PackageMember(p, i) => {
                 InterInst::with_op_index(Opcode::STORE_PKG, p, i, rhs)
@@ -686,7 +686,7 @@ impl<'a> FuncCtx<'a> {
             // 2. load function to reg1 and do reg0++
             //  or jump 3 if loading failed
             InterInst::with_op_index(
-                Opcode::LOAD_PKG_INIT_FUNC,
+                Opcode::LOAD_INIT_FUNC,
                 Addr::Regsiter(1),
                 pkg_addr,
                 Addr::Regsiter(0),
