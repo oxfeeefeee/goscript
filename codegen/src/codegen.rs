@@ -1393,9 +1393,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.push_expr_ctx(ExprMode::Load, reg);
         f(self);
         let ectx = self.pop_expr_ctx();
-        if ectx.occupying_reg {
-            expr_ctx!(self).inc_cur_reg();
-        }
+        expr_ctx!(self).cur_reg = ectx.cur_reg;
         ectx.load_addr
     }
 
