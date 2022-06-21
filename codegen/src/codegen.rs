@@ -124,7 +124,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     "false" => {
                         VirtualAddr::Direct(func_ctx!(self).add_const(GosValue::new_bool(false)))
                     }
-                    "nil" => VirtualAddr::ZeroValue,
+                    "nil" => VirtualAddr::Direct(Addr::UntypedNil),
                     _ => self.resolve_var_ident(ident),
                 }
             }
@@ -1446,6 +1446,15 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn cur_expr_emit_direct_assign(&mut self, rhs_type: TCTypeKey, src: Addr, pos: Option<Pos>) {
         let lhs = expr_ctx!(self).lhs_type();
         let index = lhs.map(|x| self.cast_to_iface_index(x, rhs_type)).flatten();
+        let src = if src == Addr::UntypedNil {
+            let typ = match lhs {
+                Some(tct) => self.t.tc_type_to_value_type(tct),
+                None => ValueType::Void,
+            };
+            func_ctx!(self).add_const(GosValue::new_nil(typ))
+        } else {
+            src
+        };
         expr_ctx!(self).emit_direct_assign(func_ctx!(self), src, index, pos);
     }
 
