@@ -1077,9 +1077,10 @@ impl<'a> Fiber<'a> {
                                     self.frames.push(nframe);
                                     frame_height += 1;
                                     frame = self.frames.last_mut().unwrap();
+                                    frame.stack_base = new_sb; // the saved sb is invalidated
                                     let fkey = frame.func();
                                     func = &objs.functions[fkey];
-                                    sb = new_sb; // the saved sb is invalidated
+                                    sb = frame.stack_base;
                                     code = &func.code;
                                     let index = new_sb + call_vec_len;
                                     stack.set_vec(index, func.local_zeros.clone());
