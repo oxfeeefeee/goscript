@@ -1069,7 +1069,8 @@ impl<'a> Fiber<'a> {
 
                                     let call_vec_len = call.vec.len() as OpIndex;
                                     let cur_func = frame.func_val(objs);
-                                    let new_sb = sb + cur_func.ret_count() + cur_func.param_count();
+                                    // dont overwrite returns of current function
+                                    let new_sb = sb + cur_func.ret_count();
                                     stack.set_vec(new_sb, call.vec);
                                     let nframe = call.frame;
 
@@ -1078,7 +1079,7 @@ impl<'a> Fiber<'a> {
                                     frame = self.frames.last_mut().unwrap();
                                     let fkey = frame.func();
                                     func = &objs.functions[fkey];
-                                    sb = frame.stack_base;
+                                    sb = new_sb; // the saved sb is invalidated
                                     code = &func.code;
                                     let index = new_sb + call_vec_len;
                                     stack.set_vec(index, func.local_zeros.clone());
