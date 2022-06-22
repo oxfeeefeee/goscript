@@ -673,7 +673,7 @@ impl<'a> Fiber<'a> {
                                         old.data(),
                                         inst.t0,
                                         inst.op1,
-                                        inst.s1,
+                                        inst.s0,
                                         sb,
                                         &consts,
                                     )
@@ -723,7 +723,7 @@ impl<'a> Fiber<'a> {
                                     old.data(),
                                     inst.t0,
                                     inst.op1,
-                                    inst.s1,
+                                    inst.s0,
                                     sb,
                                     &consts,
                                 );
