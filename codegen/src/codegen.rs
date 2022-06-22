@@ -282,7 +282,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                             (VirtualAddr::PackageMember(pkg_addr, index_addr), typ, pos)
                         }
                         None => {
-                            let struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
+                            let mut struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
                             let t = self
                                 .t
                                 .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
@@ -292,12 +292,24 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                                 .iter()
                                 .map(|x| *x as OpIndex)
                                 .collect();
-                            let (_, index) = self.get_struct_field_op_index(indices, Opcode::VOID);
-                            (
-                                VirtualAddr::StructMember(struct_addr, Addr::Imm(index)),
-                                typ,
-                                pos,
-                            )
+                            let (op, index) =
+                                self.get_struct_field_op_index(indices, Opcode::LOAD_STRUCT);
+                            if op == Opcode::LOAD_STRUCT {
+                                if t.ptr_depth > 0 {
+                                    struct_addr = self.gen_load_pointer(struct_addr, Some(pos));
+                                }
+                                (
+                                    VirtualAddr::StructMember(struct_addr, Addr::Imm(index)),
+                                    typ,
+                                    pos,
+                                )
+                            } else {
+                                (
+                                    VirtualAddr::StructEmbedded(struct_addr, Addr::Imm(index)),
+                                    typ,
+                                    pos,
+                                )
+                            }
                         }
                     }
                 }
@@ -1028,6 +1040,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     ValueType::Map => (Opcode::LOAD_MAP, ValueType::FlagA),
                     ValueType::Array => (Opcode::LOAD_ARRAY, ValueType::Void),
                     ValueType::Slice => (Opcode::LOAD_SLICE, ValueType::Void),
+                    ValueType::String => (Opcode::LOAD_SLICE, ValueType::Void),
                     _ => unreachable!(),
                 };
                 self.cur_expr_emit_assign(val_tc_type, pos, |f, d, p| {
@@ -1300,6 +1313,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count, meta_addr, p);
         });
+    }
+
+    fn gen_load_pointer(&mut self, ptr: Addr, pos: Option<usize>) -> Addr {
+        let addr = expr_ctx!(self).inc_cur_reg();
+        let inst = InterInst::with_op_index(Opcode::LOAD_POINTER, addr, ptr, Addr::Void);
+        func_ctx!(self).emit_inst(inst, pos);
+        addr
     }
 
     fn gen_expr_type(&mut self, typ: &Expr) {
@@ -1713,15 +1733,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                     if final_lhs_type == ValueType::Pointer
                         && stype == SelectionType::MethodNonPtrRecv
                     {
-                        let addr = expr_ctx!(self).inc_cur_reg();
-                        let inst = InterInst::with_op_index(
-                            Opcode::LOAD_POINTER,
-                            addr,
-                            struct_addr,
-                            Addr::Void,
-                        );
-                        func_ctx!(self).emit_inst(inst, pos);
-                        struct_addr = addr;
+                        struct_addr = self.gen_load_pointer(struct_addr, pos);
                     }
                     struct_addr
                 };
