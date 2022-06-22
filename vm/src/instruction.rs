@@ -194,10 +194,12 @@ impl Instruction {
 
 impl std::fmt::Debug for Instruction {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{: <16}|", self.op0.to_string())?;
-        if self.op1 != Opcode::VOID {
-            write!(f, "{}\t|", self.op1)?;
-        }
+        let ops = if self.op1 == Opcode::VOID {
+            self.op0.to_string()
+        } else {
+            format!("{}.{}", self.op0, self.op1)
+        };
+        write!(f, "{: <16}|", ops)?;
         fmt_index(self.d, f)?;
         f.write_str("\t|")?;
         fmt_index(self.s0, f)?;

@@ -1928,7 +1928,7 @@ impl GosValue {
 
     #[inline]
     pub fn as_slice<T>(&self) -> Option<&(SliceObj<T>, RCount)> {
-        debug_assert!(self.typ == ValueType::Slice);
+        debug_assert!(self.typ == ValueType::Slice || self.typ == ValueType::String);
         self.data.as_slice::<T>()
     }
 
