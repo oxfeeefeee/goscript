@@ -1202,6 +1202,106 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
+    fn gen_expr_sub_composite_lit(&mut self, expr: &Expr, tc_type: TCTypeKey) {
+        match expr {
+            Expr::CompositeLit(clit) => self.gen_expr_composite_lit(clit, tc_type),
+            _ => self.gen_expr(expr),
+        }
+    }
+
+    fn gen_expr_composite_lit(&mut self, clit: &CompositeLit, tc_type: TCTypeKey) {
+        let meta = self
+            .t
+            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
+        //let vt = self.t.tc_type_to_value_type(tc_type);
+        let pos = Some(clit.l_brace);
+        let typ = &self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
+        let meta = meta.underlying(&self.objects.metas);
+        let mtype = &self.objects.metas[meta.key].clone();
+
+        let reg_base = expr_ctx!(self).cur_reg;
+        let count = match mtype {
+            MetadataType::Slice(_) | MetadataType::Array(_, _) => {
+                let elem_type = match typ {
+                    Type::Array(detail) => detail.elem(),
+                    Type::Slice(detail) => detail.elem(),
+                    _ => unreachable!(),
+                };
+                for expr in clit.elts.iter() {
+                    let (key, elem) = match expr {
+                        Expr::KeyValue(kv) => {
+                            // the key is a constant
+                            let key_const = self.t.try_tc_const_value(kv.key.id()).unwrap();
+                            let (key_i64, ok) = key_const.int_as_i64();
+                            debug_assert!(ok);
+                            (key_i64 as i32, &kv.val)
+                        }
+                        _ => (-1, expr),
+                    };
+                    let fctx = func_ctx!(self);
+                    let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                    let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
+                    fctx.emit_assign(key_reg, index_addr, None, pos);
+                    let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                    self.store(elem_reg, Some(elem_type), |g| {
+                        g.gen_expr_sub_composite_lit(elem, elem_type)
+                    });
+                }
+                clit.elts.len()
+            }
+            MetadataType::Map(_, _) => {
+                let map_type = typ.try_as_map().unwrap();
+                for expr in clit.elts.iter() {
+                    match expr {
+                        Expr::KeyValue(kv) => {
+                            let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                            self.store(key_reg, Some(map_type.key()), |g| {
+                                g.gen_expr_sub_composite_lit(&kv.key, map_type.key())
+                            });
+                            let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                            self.store(elem_reg, Some(map_type.elem()), |g| {
+                                g.gen_expr_sub_composite_lit(&kv.val, map_type.elem())
+                            });
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                clit.elts.len()
+            }
+            MetadataType::Struct(f, _) => {
+                let fields = typ.try_as_struct().unwrap().fields();
+                for (i, expr) in clit.elts.iter().enumerate() {
+                    let (index, expr) = match expr {
+                        Expr::KeyValue(kv) => {
+                            let ident = kv.key.try_as_ident().unwrap();
+                            let index = f.index_by_name(&self.ast_objs.idents[*ident].name);
+                            (index, &kv.val)
+                        }
+                        _ => (i, expr),
+                    };
+                    let fctx = func_ctx!(self);
+                    let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                    let index_addr = fctx.add_const(GosValue::new_uint(index));
+                    fctx.emit_assign(key_reg, index_addr, None, pos);
+                    let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
+                    let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
+                    self.store(elem_reg, Some(field_type), |g| {
+                        g.gen_expr_sub_composite_lit(expr, field_type)
+                    });
+                }
+                clit.elts.len()
+            }
+            _ => {
+                dbg!(&mtype);
+                unreachable!()
+            }
+        };
+        let meta_addr = func_ctx!(self).add_const(GosValue::new_metadata(meta));
+        self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
+            f.emit_literal(d, reg_base, count, meta_addr, p);
+        });
+    }
+
     fn gen_expr_type(&mut self, typ: &Expr) {
         let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
         let pos = Some(typ.pos(&self.ast_objs));
@@ -1542,101 +1642,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
     fn visit_expr_composit_lit(&mut self, _: &Expr, clit: &CompositeLit) {
         let tc_type = self.t.expr_tc_type(clit.typ.as_ref().unwrap());
-        let meta = self
-            .t
-            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
-        //let vt = self.t.tc_type_to_value_type(tc_type);
-        let pos = Some(clit.l_brace);
-        let typ = &self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
-        let meta = meta.underlying(&self.objects.metas);
-        let mtype = &self.objects.metas[meta.key].clone();
-
-        let ectx = expr_ctx!(self);
-        let reg_base = ectx.cur_reg;
-        let count = match mtype {
-            MetadataType::Slice(_) | MetadataType::Array(_, _) => {
-                let elem_type = match typ {
-                    Type::Array(detail) => detail.elem(),
-                    Type::Slice(detail) => detail.elem(),
-                    _ => unreachable!(),
-                };
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let (key, elem) = match expr {
-                        Expr::KeyValue(kv) => {
-                            // the key is a constant
-                            let key_const = self.t.try_tc_const_value(kv.key.id()).unwrap();
-                            let (key_i64, ok) = key_const.int_as_i64();
-                            debug_assert!(ok);
-                            (key_i64 as i32, &kv.val)
-                        }
-                        _ => (-1, expr),
-                    };
-                    let reg_key = reg_base + i * 2;
-                    let reg_elem = reg_key + 1;
-                    let fctx = func_ctx!(self);
-                    let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, None, pos);
-                    self.store(VirtualAddr::new_reg(reg_elem), Some(elem_type), |g| {
-                        g.gen_expr(elem)
-                    });
-                }
-                clit.elts.len()
-            }
-            MetadataType::Map(_, _) => {
-                let map_type = typ.try_as_map().unwrap();
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let reg_key = reg_base + i * 2;
-                    let reg_elem = reg_key + 1;
-                    match expr {
-                        Expr::KeyValue(kv) => {
-                            self.store(VirtualAddr::new_reg(reg_key), Some(map_type.key()), |g| {
-                                g.gen_expr(&kv.key)
-                            });
-                            self.store(
-                                VirtualAddr::new_reg(reg_elem),
-                                Some(map_type.elem()),
-                                |g| g.gen_expr(&kv.val),
-                            );
-                        }
-                        _ => unreachable!(),
-                    }
-                }
-                clit.elts.len()
-            }
-            MetadataType::Struct(f, _) => {
-                let fields = typ.try_as_struct().unwrap().fields();
-                for (i, expr) in clit.elts.iter().enumerate() {
-                    let (index, expr) = match expr {
-                        Expr::KeyValue(kv) => {
-                            let ident = kv.key.try_as_ident().unwrap();
-                            let index = f.index_by_name(&self.ast_objs.idents[*ident].name);
-                            (index, &kv.val)
-                        }
-                        _ => (i, expr),
-                    };
-                    let reg_key = reg_base + i * 2;
-                    let reg_elem = reg_key + 1;
-                    let fctx = func_ctx!(self);
-                    let index_addr = fctx.add_const(GosValue::new_uint(index));
-                    fctx.emit_assign(VirtualAddr::new_reg(reg_key), index_addr, None, pos);
-                    let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
-                    self.store(VirtualAddr::new_reg(reg_elem), Some(field_type), |g| {
-                        g.gen_expr(expr)
-                    });
-                }
-                clit.elts.len()
-            }
-            _ => {
-                dbg!(&mtype);
-                unreachable!()
-            }
-        };
-        let fctx = func_ctx!(self);
-        fctx.update_max_reg(reg_base + count);
-        let meta_addr = fctx.add_const(GosValue::new_metadata(meta));
-        self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
-            f.emit_literal(d, reg_base, count, meta_addr, p);
-        });
+        self.gen_expr_composite_lit(clit, tc_type);
     }
 
     fn visit_expr_paren(&mut self, _: &Expr, expr: &Expr) {
