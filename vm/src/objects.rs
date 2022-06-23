@@ -1436,9 +1436,32 @@ impl WeakUpValue {
 #[derive(Clone, Debug)]
 pub struct GosClosureObj {
     pub func: FunctionKey,
-    pub uvs: HashMap<usize, UpValue>,
+    pub uvs: Option<HashMap<usize, UpValue>>,
     pub recv: Option<GosValue>,
     pub meta: Meta,
+}
+
+impl GosClosureObj {
+    fn new(
+        func: FunctionKey,
+        up_ptrs: Option<&Vec<ValueDesc>>,
+        recv: Option<GosValue>,
+        meta: Meta,
+    ) -> GosClosureObj {
+        let uvs = up_ptrs.map(|uv| {
+            uv.iter()
+                .enumerate()
+                .filter(|(_, x)| x.is_up_value)
+                .map(|(i, x)| (i, UpValue::new(x.clone())))
+                .collect()
+        });
+        GosClosureObj {
+            func,
+            uvs,
+            recv,
+            meta,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1455,21 +1478,27 @@ pub enum ClosureObj {
 }
 
 impl ClosureObj {
-    pub fn new_gos(func: FunctionKey, fobjs: &FunctionObjs, recv: Option<GosValue>) -> ClosureObj {
+    pub fn new_gos(
+        func: FunctionKey,
+        up_ptrs: Option<&Vec<ValueDesc>>,
+        recv: Option<GosValue>,
+        meta: Meta,
+    ) -> ClosureObj {
+        ClosureObj::Gos(GosClosureObj::new(func, up_ptrs, recv, meta))
+    }
+
+    pub fn gos_from_func(
+        func: FunctionKey,
+        fobjs: &FunctionObjs,
+        recv: Option<GosValue>,
+    ) -> ClosureObj {
         let func_val = &fobjs[func];
-        let uvs = func_val
-            .up_ptrs
-            .iter()
-            .enumerate()
-            .filter(|(_, x)| x.is_up_value)
-            .map(|(i, x)| (i, UpValue::new(x.clone())))
-            .collect();
-        ClosureObj::Gos(GosClosureObj {
-            func,
-            uvs,
-            recv,
-            meta: func_val.meta,
-        })
+        let uvs = if func_val.up_ptrs.is_empty() {
+            None
+        } else {
+            Some(&func_val.up_ptrs)
+        };
+        ClosureObj::Gos(GosClosureObj::new(func, uvs, recv, func_val.meta))
     }
 
     #[inline]
@@ -1489,8 +1518,10 @@ impl ClosureObj {
     pub fn ref_sub_one(&self) {
         match self {
             Self::Gos(obj) => {
-                for (_, v) in obj.uvs.iter() {
-                    v.ref_sub_one()
+                if let Some(uvs) = &obj.uvs {
+                    for (_, v) in uvs.iter() {
+                        v.ref_sub_one()
+                    }
                 }
                 if let Some(recv) = &obj.recv {
                     recv.ref_sub_one()
@@ -1504,8 +1535,10 @@ impl ClosureObj {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         match self {
             Self::Gos(obj) => {
-                for (_, v) in obj.uvs.iter() {
-                    v.mark_dirty(queue)
+                if let Some(uvs) = &obj.uvs {
+                    for (_, v) in uvs.iter() {
+                        v.mark_dirty(queue)
+                    }
                 }
                 if let Some(recv) = &obj.recv {
                     recv.mark_dirty(queue)

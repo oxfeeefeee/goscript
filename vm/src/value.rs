@@ -1075,8 +1075,12 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_closure_static(fkey: FunctionKey, fobjs: &FunctionObjs) -> ValueData {
-        let obj = ClosureObj::new_gos(fkey, fobjs, None);
+    fn new_closure_static(
+        func: FunctionKey,
+        up_ptrs: Option<&Vec<ValueDesc>>,
+        meta: Meta,
+    ) -> ValueData {
+        let obj = ClosureObj::new_gos(func, up_ptrs, None, meta);
         ValueData::from_closure(Some(Rc::new((obj, Cell::new(0)))))
     }
 
@@ -1495,10 +1499,14 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure_static(fkey: FunctionKey, fobjs: &FunctionObjs) -> GosValue {
+    pub fn new_closure_static(
+        func: FunctionKey,
+        up_ptrs: Option<&Vec<ValueDesc>>,
+        meta: Meta,
+    ) -> GosValue {
         GosValue::new(
             ValueType::Closure,
-            ValueData::new_closure_static(fkey, fobjs),
+            ValueData::new_closure_static(func, up_ptrs, meta),
         )
     }
 

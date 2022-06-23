@@ -295,8 +295,8 @@ impl<'a> Context<'a> {
     }
 
     fn new_entry_frame(&self, entry: FunctionKey) -> CallFrame {
-        let cls = GosValue::new_closure_static(entry, &self.code.objects.functions);
-        CallFrame::with_closure(cls.as_closure().unwrap().0.clone(), 0)
+        let cls = ClosureObj::gos_from_func(entry, &self.code.objects.functions, None);
+        CallFrame::with_closure(cls, 0)
     }
 
     fn spawn_fiber(&self, stack: Stack, first_frame: CallFrame) {
@@ -958,12 +958,12 @@ impl<'a> Fiber<'a> {
                         match cls {
                             ClosureObj::Gos(gosc) => {
                                 let nfunc = &objs.functions[gosc.func];
-                                if !gosc.uvs.is_empty() {
+                                if let Some(uvs) = gosc.uvs {
                                     let mut ptrs: Vec<UpValue> =
                                         Vec::with_capacity(nfunc.up_ptrs.len());
                                     for (i, p) in nfunc.up_ptrs.iter().enumerate() {
                                         ptrs.push(if p.is_up_value {
-                                            gosc.uvs[&i].clone()
+                                            uvs[&i].clone()
                                         } else {
                                             // local pointers
                                             let uv = UpValue::new(p.clone_with_stack(
@@ -1254,7 +1254,7 @@ impl<'a> Fiber<'a> {
                         stack.set(
                             inst.d + sb,
                             GosValue::new_closure(
-                                ClosureObj::new_gos(func, &objs.functions, Some(recv)),
+                                ClosureObj::gos_from_func(func, &objs.functions, Some(recv)),
                                 gcv,
                             ),
                         );
@@ -1458,12 +1458,12 @@ impl<'a> Fiber<'a> {
                     Opcode::CLOSURE => {
                         let func = cst(consts, inst.s0);
                         let mut val =
-                            ClosureObj::new_gos(*func.as_function(), &objs.functions, None);
+                            ClosureObj::gos_from_func(*func.as_function(), &objs.functions, None);
                         match &mut val {
                             ClosureObj::Gos(gos) => {
-                                if !gos.uvs.is_empty() {
+                                if let Some(uvs) = &mut gos.uvs {
                                     drop(frame);
-                                    for (_, uv) in gos.uvs.iter_mut() {
+                                    for (_, uv) in uvs.iter_mut() {
                                         let r: &mut UpValueState = &mut uv.inner.borrow_mut();
                                         if let UpValueState::Open(d) = r {
                                             // get frame index, and add_referred_by
@@ -1939,7 +1939,7 @@ pub fn bind_iface_method(
                             .copy_semantic(gcv),
                     };
                     let obj = cast_receiver(obj, *ptr_recv, stack, objs)?;
-                    let cls = ClosureObj::new_gos(*func, &objs.functions, Some(obj));
+                    let cls = ClosureObj::gos_from_func(*func, &objs.functions, Some(obj));
                     Ok(GosValue::new_closure(cls, gcv))
                 }
                 Binding4Runtime::Iface(i, indices) => {
