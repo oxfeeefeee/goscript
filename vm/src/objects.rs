@@ -1217,7 +1217,7 @@ pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
     pub typ: ValueType,
-    pub is_up_value: bool,
+    pub is_local: bool,
     pub stack: Weak<RefCell<Stack>>,
     pub stack_base: OpIndex,
 }
@@ -1233,12 +1233,12 @@ impl PartialEq for ValueDesc {
 }
 
 impl ValueDesc {
-    pub fn new(func: FunctionKey, index: OpIndex, typ: ValueType, is_up_value: bool) -> ValueDesc {
+    pub fn new(func: FunctionKey, index: OpIndex, typ: ValueType, is_local: bool) -> ValueDesc {
         ValueDesc {
             func: func,
             index: index,
             typ: typ,
-            is_up_value: is_up_value,
+            is_local: is_local,
             stack: Weak::new(),
             stack_base: 0,
         }
@@ -1250,7 +1250,7 @@ impl ValueDesc {
             func: self.func,
             index: self.index,
             typ: self.typ,
-            is_up_value: self.is_up_value,
+            is_local: self.is_local,
             stack: stack,
             stack_base: stack_base,
         }
@@ -1288,7 +1288,7 @@ impl std::fmt::Debug for ValueDesc {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.debug_struct("ValueDesc")
             .field("type", &self.typ)
-            .field("is_up_value", &self.is_up_value)
+            .field("is_local", &self.is_local)
             .field("index", &self.abs_index())
             .field("stack", &self.stack.as_ptr())
             .finish()
@@ -1451,7 +1451,7 @@ impl GosClosureObj {
         let uvs = up_ptrs.map(|uv| {
             uv.iter()
                 .enumerate()
-                .filter(|(_, x)| x.is_up_value)
+                .filter(|(_, x)| !x.is_local)
                 .map(|(i, x)| (i, UpValue::new(x.clone())))
                 .collect()
         });

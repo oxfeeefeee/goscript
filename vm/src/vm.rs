@@ -963,9 +963,7 @@ impl<'a> Fiber<'a> {
                                     let mut ptrs: Vec<UpValue> =
                                         Vec::with_capacity(nfunc.up_ptrs.len());
                                     for (i, p) in nfunc.up_ptrs.iter().enumerate() {
-                                        ptrs.push(if p.is_up_value {
-                                            uvs[&i].clone()
-                                        } else {
+                                        ptrs.push(if p.is_local {
                                             // local pointers
                                             let uv = UpValue::new(p.clone_with_stack(
                                                 Rc::downgrade(&self.stack),
@@ -973,6 +971,8 @@ impl<'a> Fiber<'a> {
                                             ));
                                             nframe.add_referred_by(p.index, p.typ, &uv);
                                             uv
+                                        } else {
+                                            uvs[&i].clone()
                                         });
                                     }
                                     nframe.var_ptrs = Some(ptrs);
