@@ -1762,9 +1762,12 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 }
             }
             SelectionType::NonMethod => {
-                let lhs_addr = self.load(|g| g.gen_expr(lhs_expr));
+                let mut lhs_addr = self.load(|g| g.gen_expr(lhs_expr));
                 let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
                 let (op, index) = self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
+                if op == Opcode::LOAD_STRUCT && lhs_meta.ptr_depth > 0 {
+                    lhs_addr = self.gen_load_pointer(lhs_addr, pos);
+                }
                 self.cur_expr_emit_assign(expr_type, pos, |f, d, p| {
                     let inst = InterInst::with_op_index(op, d, lhs_addr, Addr::Imm(index));
                     f.emit_inst(inst, p);
