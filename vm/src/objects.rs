@@ -1490,20 +1490,6 @@ impl ClosureObj {
         }
     }
 
-    // #[inline]
-    // pub fn total_param_count(&self, metas: &MetadataObjs) -> usize {
-    //     match self {
-    //         Self::Gos(g) => {
-    //             let sig = &metas[g.meta.key].as_signature();
-    //             sig.params.len() + sig.results.len()
-    //         }
-    //         Self::Ffi(f) => {
-    //             let sig = &metas[f.meta.key].as_signature();
-    //             sig.params.len()
-    //         }
-    //     }
-    // }
-
     /// for gc
     pub fn ref_sub_one(&self) {
         match self {

@@ -102,6 +102,13 @@ impl VirtualAddr {
         self.try_as_direct_addr().unwrap()
     }
 
+    pub fn as_up_value_addr(&self) -> Addr {
+        match self {
+            Self::UpValue(a) => *a,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn is_blank(&self) -> bool {
         match self {
             Self::Blank => true,
