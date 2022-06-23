@@ -1128,7 +1128,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                                 let inst = InterInst::with_op_index(
                                     Opcode::REF_UPVALUE,
                                     d,
-                                    uv_index.as_direct_addr(),
+                                    uv_index.as_up_value_addr(),
                                     Addr::Void,
                                 );
                                 f.emit_inst(inst, p);
