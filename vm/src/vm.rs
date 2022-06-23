@@ -546,7 +546,8 @@ impl<'a> Fiber<'a> {
                                 dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize] = val;
                             }
                             _ => {
-                                let old = &dest.as_struct().0.borrow_fields()[inst.s0 as usize];
+                                let old =
+                                    &mut dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize];
                                 let val = stack.read_and_op(
                                     old.data(),
                                     inst.t0,
@@ -555,7 +556,7 @@ impl<'a> Fiber<'a> {
                                     sb,
                                     &consts,
                                 );
-                                dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize] = val;
+                                *old = val;
                             }
                         }
                     }
