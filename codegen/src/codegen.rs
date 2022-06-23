@@ -152,7 +152,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         ctx.f_key,
                         ind.as_var_index() as OpIndex,
                         self.t.obj_use_value_type(*ident),
-                        true,
+                        false,
                     );
                     Some(desc)
                 } else {
@@ -1121,7 +1121,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         let fctx = func_ctx!(self);
                         let ind = *fctx.entity_index(&entity_key).unwrap();
                         let desc =
-                            ValueDesc::new(fctx.f_key, ind.as_var_index() as OpIndex, t, false);
+                            ValueDesc::new(fctx.f_key, ind.as_var_index() as OpIndex, t, true);
                         // for package ctors, all locals are "closed"
                         if !fctx.is_ctor(&self.objects.functions) {
                             let uv_index = fctx.add_upvalue(&entity_key, desc);
