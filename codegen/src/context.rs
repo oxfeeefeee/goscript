@@ -363,7 +363,7 @@ pub struct FuncCtx<'c> {
 
     code: Vec<InterInst>,
     pos: Vec<Option<usize>>,
-    up_ptrs: Vec<ValueDesc>,
+    pub up_ptrs: Vec<ValueDesc>,
     local_zeros: Vec<GosValue>,
 
     entities: HashMap<TCObjKey, Addr>,

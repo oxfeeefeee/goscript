@@ -603,7 +603,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         f_type_key: FuncTypeKey,
         recv: Option<FieldList>,
         body: &BlockStmt,
-    ) -> FunctionKey {
+    ) -> (FunctionKey, GosValue) {
         let typ = &self.ast_objs.ftypes[f_type_key];
         let fmeta = self
             .t
@@ -635,8 +635,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         func_ctx!(self).emit_return(None, Some(body.r_brace), &self.objects.functions);
 
         let f = self.func_ctx_stack.pop().unwrap();
+        let cls = GosValue::new_closure_static(fkey, Some(&f.up_ptrs), fmeta);
         self.results.push(f);
-        fkey
+        (fkey, cls)
     }
 
     fn gen_builtin_call(
@@ -1586,7 +1587,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         // the 0th member is the constructor
         self.objects.packages[pkey].add_member(
             String::new(),
-            GosValue::new_closure_static(fkey, &self.objects.functions),
+            GosValue::new_closure_static(fkey, None, fmeta),
             ValueType::Closure,
         );
         self.pkg_key = pkey;
@@ -1653,7 +1654,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     /// Add function as a const and then generate a closure of it
     fn visit_expr_func_lit(&mut self, this: &Expr, flit: &FuncLit) {
         let tc_type = self.t.expr_tc_type(this);
-        let fkey = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
+        let (fkey, _) = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let fctx = func_ctx!(self);
         let addr = fctx.add_const(GosValue::new_function(fkey));
         let pos = Some(flit.body.l_brace);
@@ -2009,8 +2010,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         }
         let tc_type = self.t.obj_def_tc_type(decl.name);
         let stmt = decl.body.as_ref().unwrap();
-        let fkey = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
-        let cls = GosValue::new_closure_static(fkey, &self.objects.functions);
+        let (fkey, cls) = self.gen_func_def(tc_type, decl.typ, decl.recv.clone(), stmt);
         // this is a struct method
         if let Some(self_ident) = &decl.recv {
             let field = &self.ast_objs.fields[self_ident.list[0]];
