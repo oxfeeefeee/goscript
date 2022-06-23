@@ -958,12 +958,12 @@ impl<'a> Fiber<'a> {
                         match cls {
                             ClosureObj::Gos(gosc) => {
                                 let nfunc = &objs.functions[gosc.func];
-                                if let Some(uvs) = &gosc.uvs {
+                                if !gosc.uvs.is_empty() {
                                     let mut ptrs: Vec<UpValue> =
                                         Vec::with_capacity(nfunc.up_ptrs.len());
                                     for (i, p) in nfunc.up_ptrs.iter().enumerate() {
                                         ptrs.push(if p.is_up_value {
-                                            uvs[&i].clone()
+                                            gosc.uvs[&i].clone()
                                         } else {
                                             // local pointers
                                             let uv = UpValue::new(p.clone_with_stack(
@@ -1461,9 +1461,9 @@ impl<'a> Fiber<'a> {
                             ClosureObj::new_gos(*func.as_function(), &objs.functions, None);
                         match &mut val {
                             ClosureObj::Gos(gos) => {
-                                if let Some(uvs) = &mut gos.uvs {
+                                if !gos.uvs.is_empty() {
                                     drop(frame);
-                                    for (_, uv) in uvs.iter_mut() {
+                                    for (_, uv) in gos.uvs.iter_mut() {
                                         let r: &mut UpValueState = &mut uv.inner.borrow_mut();
                                         if let UpValueState::Open(d) = r {
                                             // get frame index, and add_referred_by
