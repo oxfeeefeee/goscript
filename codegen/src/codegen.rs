@@ -1841,7 +1841,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 let typ = self.t.expr_tc_type(this);
                 let addr = self.load(|g| g.gen_expr(expr));
                 self.cur_expr_emit_assign(typ, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(Opcode::REF, d, addr, Addr::Void);
+                    let inst = InterInst::with_op_index(Opcode::LOAD_POINTER, d, addr, Addr::Void);
                     f.emit_inst(inst, p);
                 });
             }
@@ -1895,8 +1895,8 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             Token::SHL => Opcode::SHL,
             Token::SHR => Opcode::SHR,
             Token::AND_NOT => Opcode::AND_NOT,
-            Token::LAND => Opcode::JUMP_IF,
-            Token::LOR => Opcode::JUMP_IF_NOT,
+            Token::LAND => Opcode::JUMP_IF_NOT,
+            Token::LOR => Opcode::JUMP_IF,
             Token::EQL => Opcode::EQL,
             Token::LSS => Opcode::LSS,
             Token::GTR => Opcode::GTR,
@@ -1909,26 +1909,35 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         // handles short circuit
         let mark = match code {
             Opcode::JUMP_IF | Opcode::JUMP_IF_NOT => {
+                let ectx_backup = expr_ctx!(self).clone();
+                self.cur_expr_emit_assign(typ, pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(Opcode::ASSIGN, d, left_addr, Addr::Void);
+                    f.emit_inst(inst, p);
+                });
+
                 let fctx = func_ctx!(self);
                 let inst = InterInst::with_op_index(code, Addr::Void, left_addr, Addr::Void);
                 fctx.emit_inst(inst, pos);
-                Some(fctx.next_code_index() - 1)
+                Some((fctx.next_code_index() - 1, ectx_backup))
             }
             _ => None,
         };
 
         let right_addr = self.load(|g| g.gen_expr(right));
 
-        if let Some(i) = mark {
+        if let Some((i, ectx_backup)) = mark {
+            // the two assignment must result in the same register allocation result,
+            // ectx_backup is used to make sure of that.
+            self.expr_ctx_stack.push(ectx_backup);
+            self.cur_expr_emit_assign(typ, pos, |f, d, p| {
+                let inst = InterInst::with_op_index(Opcode::ASSIGN, d, right_addr, Addr::Void);
+                f.emit_inst(inst, p);
+            });
+            self.pop_expr_ctx();
+
             let fctx = func_ctx!(self);
             let diff = fctx.next_code_index() - i - 1;
             fctx.inst_mut(i).d = Addr::Imm(diff as OpIndex);
-            let const_addr = match code {
-                Opcode::JUMP_IF => fctx.add_const(GosValue::new_bool(true)),
-                Opcode::JUMP_IF_NOT => fctx.add_const(GosValue::new_bool(false)),
-                _ => unreachable!(),
-            };
-            self.cur_expr_emit_direct_assign(typ, const_addr, pos);
         } else {
             let t1 = match code {
                 Opcode::SHL | Opcode::SHR | Opcode::EQL => Some(self.t.expr_value_type(right)),
