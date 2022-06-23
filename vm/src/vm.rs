@@ -444,7 +444,7 @@ impl<'a> Fiber<'a> {
                         let index = stack.read(inst.s0, sb, consts).as_index();
                         match inst.op1 {
                             Opcode::VOID => {
-                                let val = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
                                 let result = array.dispatcher_a_s().array_set(&array, &val, index);
                                 panic_if_err!(result, panic, frame, code);
                             }
@@ -842,8 +842,8 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::REF_SLICE_MEMBER => {
                         let arr_or_slice = stack.read(inst.s0, sb, consts).clone();
-                        match PointerObj::new_slice_member(arr_or_slice, inst.s1, inst.t0, inst.t1)
-                        {
+                        let index = stack.read(inst.s1, sb, consts).as_index() as OpIndex;
+                        match PointerObj::new_slice_member(arr_or_slice, index, inst.t0, inst.t1) {
                             Ok(p) => stack.set(inst.d + sb, GosValue::new_pointer(p)),
                             Err(e) => {
                                 go_panic_str!(panic, &e, frame, code)
