@@ -1659,7 +1659,7 @@ impl<'a> Fiber<'a> {
                             stack.read(inst.s1, sb, consts).clone()
                         } else {
                             // special case, appending string as bytes
-                            let s = stack.read(inst.s0, sb, consts).as_string();
+                            let s = stack.read(inst.s1, sb, consts).as_string();
                             let arr = GosValue::new_non_gc_array(
                                 ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
                                 ValueType::Uint8,
