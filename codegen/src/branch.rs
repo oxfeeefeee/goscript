@@ -293,7 +293,14 @@ impl SelectHelper {
                     Some(comm.pos),
                 ),
                 CommType::RecvNoLhs => fctx.emit_inst(
-                    InterInst::with_op_t(Opcode::VOID, Some(flag), None),
+                    InterInst::with_op_t_index(
+                        Opcode::VOID,
+                        Some(flag),
+                        None,
+                        Addr::Void,
+                        comm.chan_addr.unwrap(),
+                        Addr::Void,
+                    ),
                     Some(comm.pos),
                 ),
                 CommType::Default => comm.offset = select_offset,
