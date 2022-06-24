@@ -779,8 +779,10 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
 
             Builtin::Recover => {
-                let inst = InterInst::with_op(Opcode::RECOVER);
-                func_ctx!(self).emit_inst(inst, pos);
+                self.cur_expr_emit_assign(return_types[0], pos, |f, d, p| {
+                    let inst = InterInst::with_op_index(Opcode::RECOVER, d, Addr::Void, Addr::Void);
+                    f.emit_inst(inst, p);
+                });
             }
             _ => unimplemented!(),
         };

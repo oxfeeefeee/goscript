@@ -1705,7 +1705,9 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::RECOVER => {
                         let p = panic.take();
-                        let val = p.map_or(GosValue::new_nil(ValueType::Void), |x| x.msg);
+                        let val = p.map_or(GosValue::new_nil(ValueType::Void), |x| {
+                            GosValue::new_interface(InterfaceObj::with_value(x.msg, None))
+                        });
                         stack.set(inst.d + sb, val);
                     }
                     Opcode::ASSERT => {
