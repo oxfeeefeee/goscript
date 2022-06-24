@@ -451,9 +451,15 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     }
                     self.pop_expr_ctx();
                 } else if values.len() == lhs.len() {
+                    let rhs: Vec<(Addr, TCTypeKey)> = values
+                        .iter()
+                        .map(|v| (self.load(|g| g.gen_expr(v)), self.t.expr_tc_type(v)))
+                        .collect();
                     // define or assign with values
                     for (i, l) in lhs.iter().enumerate() {
-                        self.store(l.0.clone(), l.1, |g| g.gen_expr(&values[i]));
+                        self.store(l.0.clone(), l.1, |g| {
+                            g.cur_expr_emit_direct_assign(rhs[i].1, rhs[i].0, Some(l.2))
+                        });
                     }
                 } else if values.len() == 1 {
                     // define or assign with function call that returns multiple value on the right
