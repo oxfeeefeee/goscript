@@ -371,7 +371,7 @@ impl<'a> Fiber<'a> {
                 match inst_op {
                     // desc: local
                     // s0: local/const
-                    Opcode::ASSIGN => {
+                    Opcode::DUPLICATE => {
                         //dbg!(stack.read(inst.s0, sb, consts));
                         stack.set(
                             sb + inst.d,
