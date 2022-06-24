@@ -1920,7 +1920,8 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             Opcode::JUMP_IF | Opcode::JUMP_IF_NOT => {
                 let ectx_backup = expr_ctx!(self).clone();
                 self.cur_expr_emit_assign(typ, pos, |f, d, p| {
-                    let inst = InterInst::with_op_index(Opcode::ASSIGN, d, left_addr, Addr::Void);
+                    let inst =
+                        InterInst::with_op_index(Opcode::DUPLICATE, d, left_addr, Addr::Void);
                     f.emit_inst(inst, p);
                 });
 
@@ -1939,7 +1940,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             // ectx_backup is used to make sure of that.
             self.expr_ctx_stack.push(ectx_backup);
             self.cur_expr_emit_assign(typ, pos, |f, d, p| {
-                let inst = InterInst::with_op_index(Opcode::ASSIGN, d, right_addr, Addr::Void);
+                let inst = InterInst::with_op_index(Opcode::DUPLICATE, d, right_addr, Addr::Void);
                 f.emit_inst(inst, p);
             });
             self.pop_expr_ctx();

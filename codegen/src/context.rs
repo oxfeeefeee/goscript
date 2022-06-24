@@ -524,7 +524,7 @@ impl<'a> FuncCtx<'a> {
                         };
                         InterInst::with_op_t_index(ass_op, Some(t0), t1, l, rhs, Addr::Void)
                     }
-                    None => InterInst::with_op_index(Opcode::ASSIGN, l, rhs, Addr::Void),
+                    None => InterInst::with_op_index(Opcode::DUPLICATE, l, rhs, Addr::Void),
                 }
             }
             VirtualAddr::UpValue(l) => {
@@ -685,7 +685,7 @@ impl<'a> FuncCtx<'a> {
             InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // call init functions
             // 1. init a temp var at reg0 as 0
-            InterInst::with_op_index(Opcode::ASSIGN, Addr::Regsiter(0), zero_addr, Addr::Void),
+            InterInst::with_op_index(Opcode::DUPLICATE, Addr::Regsiter(0), zero_addr, Addr::Void),
             // 2. load function to reg1 and do reg0++
             //  or jump 3 if loading failed
             InterInst::with_op_index(

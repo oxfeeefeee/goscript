@@ -13,7 +13,7 @@ pub type OpIndex = i32;
 pub enum Opcode {
     VOID,
 
-    ASSIGN,
+    DUPLICATE,
     LOAD_SLICE,
     STORE_SLICE,
     LOAD_ARRAY,
