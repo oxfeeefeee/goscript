@@ -359,7 +359,6 @@ pub struct FuncCtx<'c> {
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
     consts: &'c Consts,
     pub max_reg_num: usize, // how many temporary spots (register) on stack needed
-    returned: bool,
 
     code: Vec<InterInst>,
     pos: Vec<Option<usize>>,
@@ -378,7 +377,6 @@ impl<'a> FuncCtx<'a> {
             tc_key,
             consts,
             max_reg_num: 0,
-            returned: false,
             code: vec![],
             pos: vec![],
             up_ptrs: vec![],
@@ -658,10 +656,6 @@ impl<'a> FuncCtx<'a> {
         pos: Option<usize>,
         fobjs: &FunctionObjs,
     ) {
-        if self.returned {
-            return;
-        }
-
         let flag = match fobjs[self.f_key].flag {
             FuncFlag::Default => ValueType::FlagA,
             FuncFlag::PkgCtor => ValueType::FlagB,
@@ -672,7 +666,6 @@ impl<'a> FuncCtx<'a> {
             inst.d = self.add_package(p);
         }
         self.emit_inst(inst, pos);
-        self.returned = true;
     }
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
