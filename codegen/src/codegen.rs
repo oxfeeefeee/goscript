@@ -1856,7 +1856,8 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
             self.gen_expr_ref(expr, typ);
             return;
         } else if op == &Token::ARROW {
-            self.gen_expr_recv(expr, typ, None, Some(this.pos(&self.ast_objs)))
+            self.gen_expr_recv(expr, typ, None, Some(this.pos(&self.ast_objs)));
+            return;
         } else if op == &Token::ADD {
             self.gen_expr(expr);
             return;
