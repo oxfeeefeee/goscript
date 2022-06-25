@@ -986,9 +986,7 @@ impl<'a> Fiber<'a> {
                                         func = nfunc;
                                         sb = frame.stack_base;
                                         code = &func.code;
-                                        //dbg!(&consts);
                                         //dbg!(&code);
-                                        //dbg!(&stack);
                                     }
                                     ValueType::FlagB => {
                                         // goroutine
@@ -1014,7 +1012,7 @@ impl<'a> Fiber<'a> {
                             }
                             ClosureObj::Ffi(ffic) => {
                                 let ptypes = &objs.metas[ffic.meta.key].as_signature().params_type;
-                                let begin = nframe.stack_base;
+                                let begin = nframe.stack_base + 1; //+1 for the receiver
                                 let end = begin + ptypes.len() as OpIndex;
                                 let params = stack.move_vec(begin, end);
                                 // release stack so that code in ffi can yield

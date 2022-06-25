@@ -928,8 +928,9 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
                 // make sure params are at the right place
                 let return_types = self.t.sig_returns_tc_types(ft);
-                let return_count = return_types.len();
-                expr_ctx!(self).cur_reg = next_sb.as_reg_index() + return_count;
+                let reg_usage =
+                    return_types.len() + if self.t.is_method(func_expr) { 1 } else { 0 };
+                expr_ctx!(self).cur_reg = next_sb.as_reg_index() + reg_usage;
                 self.gen_call_params(ft, params, ellipsis);
                 func_ctx!(self).emit_call(style, pos);
 

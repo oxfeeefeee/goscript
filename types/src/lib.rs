@@ -37,5 +37,6 @@ pub use importer::{ImportKey, Importer, SourceRead, TraceConfig};
 pub use obj::EntityType;
 pub use objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey};
 pub use operand::OperandMode;
+pub use selection::SelectionKind;
 pub use typ::{identical, identical_ignore_tags, BasicType, ChanDir, Type};
 pub use universe::{Builtin, Universe};
