@@ -3,12 +3,11 @@
 // license that can be found in the LICENSE file.
 
 use super::branch::BranchHelper;
-use super::codegen::CodeGen;
+use super::codegen::*;
 use super::consts::*;
 use super::context::*;
 use super::package::PkgHelper;
-use super::selector::*;
-use super::types::TypeCache;
+use super::types::{TypeCache, TypeLookup};
 use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
@@ -113,10 +112,18 @@ fn gen_byte_code(
         f.into_runtime_func(ast_objs, &mut objects, branch_helper.labels(), &cst_map);
     }
 
+    let dummy_ti = TypeInfo::new();
+    let mut lookup = TypeLookup::new(tc_objs, &dummy_ti, &mut type_cache);
+    let iface_binding = iface_selector
+        .result()
+        .into_iter()
+        .map(|x| lookup.iface_binding_info(x, &mut objects, &mut dummy_gcv))
+        .collect();
+
     ByteCode::new(
         objects,
         consts,
-        iface_selector.result(),
+        iface_binding,
         struct_selector.result(),
         entry_key,
     )

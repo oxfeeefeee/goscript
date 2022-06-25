@@ -7,7 +7,7 @@ mod consts;
 mod context;
 //mod emit;
 mod package;
-mod selector;
+//mod selector;
 mod types;
 
 pub mod codegen;

@@ -5,9 +5,10 @@
 use super::branch::*;
 use super::consts::*;
 use super::package::PkgHelper;
-use super::selector::*;
 use super::types::{SelectionType, TypeCache, TypeLookup};
 use crate::context::*;
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::iter::FromIterator;
 
 use goscript_vm::gc::GcoVec;
@@ -817,9 +818,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let from_addr = self.load(|g| g.gen_expr(from));
         let mut converted = false;
 
-        let tc_to = self.t.underlying_tc(self.t.expr_tc_type(to));
+        let n_tc_to = self.t.expr_tc_type(to); // possibly named type
+        let tc_to = self.t.underlying_tc(n_tc_to);
         let typ_to = self.t.tc_type_to_value_type(tc_to);
-        let tc_from = self.t.underlying_tc(self.t.expr_tc_type(from));
+        let n_tc_from = self.t.expr_tc_type(from); // possibly named type
+        let tc_from = self.t.underlying_tc(n_tc_from);
         let typ_from = self.t.tc_type_to_value_type(tc_from);
 
         if typ_from == ValueType::Void || identical_ignore_tags(tc_to, tc_from, self.tc_objs) {
@@ -830,13 +833,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             match typ_to {
                 ValueType::Interface => {
                     if typ_from != ValueType::Void {
-                        let iface_index = self.iface_selector.get_index(
-                            (tc_to, tc_from),
-                            &mut self.t,
-                            self.objects,
-                            self.dummy_gcv,
-                        );
-                        self.cur_expr_emit_assign(tc_to, pos, |f, d, p| {
+                        let iface_index = self.iface_selector.add((n_tc_to, n_tc_from));
+                        self.cur_expr_emit_assign(n_tc_to, pos, |f, d, p| {
                             f.emit_cast_iface(d, from_addr, iface_index, p);
                         });
                         converted = true;
@@ -888,7 +886,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
         }
         if !converted {
-            self.cur_expr_emit_direct_assign(tc_from, from_addr, pos);
+            self.cur_expr_emit_direct_assign(n_tc_to, from_addr, pos);
         }
     }
 
@@ -1425,7 +1423,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     Opcode::STORE_STRUCT => Opcode::STORE_EMBEDDED,
                     _ => default_op,
                 },
-                self.struct_selector.get_index(indices),
+                self.struct_selector.add(indices),
             )
         }
     }
@@ -1444,23 +1442,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         pos: Option<usize>,
     ) {
         let val_ectx = expr_ctx!(self);
-        let (val_addr, val_direct, val_cast_i) = CodeGen::get_store_addr(
-            &mut self.t,
-            self.iface_selector,
-            val_ectx,
-            self.objects,
-            self.dummy_gcv,
-            t0,
-        );
+        let (val_addr, val_direct, val_cast_i) =
+            CodeGen::get_store_addr(&mut self.t, self.iface_selector, val_ectx, t0);
         let t1 = t1.unwrap_or(self.t.bool_tc_type());
-        let (ok_addr, ok_direct, ok_cast_i) = CodeGen::get_store_addr(
-            &mut self.t,
-            self.iface_selector,
-            ectx_ex,
-            self.objects,
-            self.dummy_gcv,
-            t1,
-        );
+        let (ok_addr, ok_direct, ok_cast_i) =
+            CodeGen::get_store_addr(&mut self.t, self.iface_selector, ectx_ex, t1);
 
         let fctx = func_ctx!(self);
         if s1 != Addr::Void {
@@ -1485,8 +1471,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         t: &mut TypeLookup,
         iface_sel: &mut IfaceSelector,
         ectx: &mut ExprCtx,
-        objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
         t_rhs: TCTypeKey,
     ) -> (Addr, bool, Option<OpIndex>) {
         let (va, typ) = ectx.mode.as_store();
@@ -1496,20 +1480,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             true => va.as_direct_addr(),
             false => ectx.inc_cur_reg(),
         };
-        let cast_index =
-            need_cast.then(|| iface_sel.get_index((typ.unwrap(), t_rhs), t, objs, dummy_gcv));
+        let cast_index = need_cast.then(|| iface_sel.add((typ.unwrap(), t_rhs)));
         (addr, direct, cast_index)
     }
 
     fn cast_to_iface_index(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> Option<OpIndex> {
         match self.t.should_cast_to_iface(lhs, rhs) {
             true => {
-                let index = self.iface_selector.get_index(
-                    (lhs, rhs),
-                    &mut self.t,
-                    self.objects,
-                    self.dummy_gcv,
-                );
+                let index = self.iface_selector.add((lhs, rhs));
                 Some(index)
             }
             false => None,
@@ -2491,5 +2469,39 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
 
     fn visit_bad_decl(&mut self, _b: &BadDecl) {
         unreachable!();
+    }
+}
+
+pub type IfaceSelector = Selector<(TCTypeKey, TCTypeKey)>;
+
+pub type StructSelector = Selector<Vec<OpIndex>>;
+
+pub struct Selector<K: Eq + Hash + Clone> {
+    vec: Vec<K>,
+    mapping: HashMap<K, OpIndex>,
+}
+
+impl<K: Eq + Hash + Clone> Selector<K> {
+    pub fn new() -> Selector<K> {
+        Selector {
+            vec: vec![],
+            mapping: HashMap::new(),
+        }
+    }
+
+    pub fn result(self) -> Vec<K> {
+        self.vec
+    }
+
+    pub fn add(&mut self, key: K) -> OpIndex {
+        match self.mapping.get(&key) {
+            Some(v) => *v,
+            None => {
+                let index = self.vec.len() as OpIndex;
+                self.vec.push(key.clone());
+                self.mapping.insert(key, index);
+                index
+            }
+        }
     }
 }

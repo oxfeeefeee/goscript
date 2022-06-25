@@ -681,6 +681,27 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn iface_binding_info(
+        &mut self,
+        i_s: (TCTypeKey, TCTypeKey),
+        objs: &mut VMObjects,
+        dummy_gcv: &mut GcoVec,
+    ) -> (Meta, Vec<IfaceBinding>) {
+        let iface = self.tc_type_to_meta(i_s.0, objs, dummy_gcv);
+        let named = self.tc_type_to_meta(i_s.1, objs, dummy_gcv);
+        let fields: Vec<&String> = match &objs.metas[iface.underlying(&objs.metas).key] {
+            MetadataType::Interface(m) => m.all().iter().map(|x| &x.name).collect(),
+            _ => unreachable!(),
+        };
+        (
+            named,
+            fields
+                .iter()
+                .map(|x| named.get_iface_binding(x, &objs.metas).unwrap())
+                .collect(),
+        )
+    }
+
     fn build_fields(
         &mut self,
         fields: &Vec<TCObjKey>,
