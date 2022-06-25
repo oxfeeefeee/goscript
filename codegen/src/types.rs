@@ -627,6 +627,13 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn slice_elem_type(&self, typ: TCTypeKey) -> ValueType {
+        match &self.tc_objs.types[typ] {
+            Type::Slice(s) => self.tc_type_to_value_type(s.elem()),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn bool_tc_type(&self) -> TCTypeKey {
         self.tc_objs.universe().types()[&BasicType::Bool]
     }

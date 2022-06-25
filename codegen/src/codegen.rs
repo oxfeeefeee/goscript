@@ -1571,11 +1571,20 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let lhs = expr_ctx!(self).lhs_type();
         let index = lhs.map(|x| self.cast_to_iface_index(x, rhs_type)).flatten();
         let src = if src == Addr::UntypedNil {
-            let typ = match lhs {
-                Some(tct) => self.t.tc_type_to_value_type(tct),
-                None => ValueType::Void,
+            let nil = match lhs {
+                Some(tct) => {
+                    let typ = self.t.tc_type_to_value_type(tct);
+                    match typ {
+                        ValueType::Slice => {
+                            let t_elem = self.t.slice_elem_type(tct);
+                            GosValue::new_slice_nil(t_elem)
+                        }
+                        _ => GosValue::new_nil(typ),
+                    }
+                }
+                None => GosValue::new_nil(ValueType::Void),
             };
-            func_ctx!(self).add_const(GosValue::new_nil(typ))
+            func_ctx!(self).add_const(nil)
         } else {
             src
         };
