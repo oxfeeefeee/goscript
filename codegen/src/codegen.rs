@@ -412,47 +412,44 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             RightHandSide::Values(values) => {
                 let val0 = &values[0];
                 let val0_mode = self.t.expr_mode(val0);
-                if values.len() == 1 {
-                    if val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex {
-                        let comma_ok = lhs.len() == 2;
-                        let types = if comma_ok {
-                            self.t.expr_tuple_tc_types(val0)
-                        } else {
-                            vec![self.t.expr_tc_type(val0)]
-                        };
-
-                        let mut cur_reg = expr_ctx!(self).cur_reg;
-                        self.push_expr_ctx(ExprMode::Store(lhs[0].0.clone(), lhs[0].1), cur_reg);
-                        cur_reg += 1;
-                        let ok_ectx = comma_ok.then(|| {
-                            let mode = ExprMode::Store(lhs[1].0.clone(), None);
-                            ExprCtx::new(mode, cur_reg)
-                        });
-                        match val0 {
-                            Expr::TypeAssert(tae) => {
-                                self.gen_expr_type_assert(&tae.expr, &tae.typ, ok_ectx);
-                            }
-                            Expr::Index(ie) => {
-                                self.gen_expr_index(&ie.expr, &ie.index, types[0], ok_ectx);
-                            }
-                            Expr::Unary(recv_expr) => {
-                                assert_eq!(recv_expr.op, Token::ARROW);
-                                self.gen_expr_recv(
-                                    &recv_expr.expr,
-                                    types[0],
-                                    ok_ectx,
-                                    Some(recv_expr.op_pos),
-                                );
-                            }
-                            _ => {
-                                unreachable!()
-                            }
-                        }
-                        self.pop_expr_ctx();
+                if values.len() == 1
+                    && (val0_mode == &OperandMode::CommaOk || val0_mode == &OperandMode::MapIndex)
+                {
+                    let comma_ok = lhs.len() == 2;
+                    let types = if comma_ok {
+                        self.t.expr_tuple_tc_types(val0)
                     } else {
-                        // define or assign with 1 value
-                        self.store(lhs[0].0.clone(), lhs[0].1, |g| g.gen_expr(&values[0]));
+                        vec![self.t.expr_tc_type(val0)]
+                    };
+
+                    let mut cur_reg = expr_ctx!(self).cur_reg;
+                    self.push_expr_ctx(ExprMode::Store(lhs[0].0.clone(), lhs[0].1), cur_reg);
+                    cur_reg += 1;
+                    let ok_ectx = comma_ok.then(|| {
+                        let mode = ExprMode::Store(lhs[1].0.clone(), None);
+                        ExprCtx::new(mode, cur_reg)
+                    });
+                    match val0 {
+                        Expr::TypeAssert(tae) => {
+                            self.gen_expr_type_assert(&tae.expr, &tae.typ, ok_ectx);
+                        }
+                        Expr::Index(ie) => {
+                            self.gen_expr_index(&ie.expr, &ie.index, types[0], ok_ectx);
+                        }
+                        Expr::Unary(recv_expr) => {
+                            assert_eq!(recv_expr.op, Token::ARROW);
+                            self.gen_expr_recv(
+                                &recv_expr.expr,
+                                types[0],
+                                ok_ectx,
+                                Some(recv_expr.op_pos),
+                            );
+                        }
+                        _ => {
+                            unreachable!()
+                        }
                     }
+                    self.pop_expr_ctx();
                 } else if values.len() == lhs.len() {
                     let rhs: Vec<(Addr, TCTypeKey)> = values
                         .iter()
