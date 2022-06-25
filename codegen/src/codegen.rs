@@ -1026,7 +1026,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         val_tc_type: TCTypeKey,
         ok_lhs_ectx: Option<ExprCtx>,
     ) {
-        let container_addr = self.load(|g| g.gen_expr(container));
+        let mut container_addr = self.load(|g| g.gen_expr(container));
         let index_reg = self.load(|g| g.gen_expr(index));
         let zero = self.add_zero_val(val_tc_type);
         let pos = Some(container.pos(&self.ast_objs));
@@ -1046,7 +1046,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 );
             }
             None => {
-                let (op, t1) = match self.t.expr_value_type(container) {
+                let mut container_type = self.t.expr_value_type(container);
+                if container_type == ValueType::Pointer {
+                    container_addr = self.gen_load_pointer(container_addr, pos);
+                    container_type = ValueType::Array // has to be array
+                }
+                let (op, t1) = match container_type {
                     ValueType::Map => (Opcode::LOAD_MAP, ValueType::FlagA),
                     ValueType::Array => (Opcode::LOAD_ARRAY, ValueType::Void),
                     ValueType::Slice => (Opcode::LOAD_SLICE, ValueType::Void),
@@ -1323,6 +1328,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count, meta_addr, p);
         });
+        func_ctx!(self).update_max_reg(expr_ctx!(self).cur_reg);
+        expr_ctx!(self).cur_reg = reg_base + 1; //reset register allocation
     }
 
     fn gen_load_pointer(&mut self, ptr: Addr, pos: Option<usize>) -> Addr {
