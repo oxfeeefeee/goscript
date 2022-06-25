@@ -627,6 +627,13 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
+    pub fn pointer_point_to_type(&self, typ: TCTypeKey) -> ValueType {
+        match &self.tc_objs.types[typ] {
+            Type::Pointer(p) => self.tc_type_to_value_type(p.base()),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn slice_elem_type(&self, typ: TCTypeKey) -> ValueType {
         match &self.tc_objs.types[typ] {
             Type::Slice(s) => self.tc_type_to_value_type(s.elem()),
