@@ -1733,6 +1733,9 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
                 } else {
                     let mut struct_addr = self.load(|g| g.gen_expr(lhs_expr));
                     if lhs_has_embedded {
+                        if lhs_meta.ptr_depth > 0 {
+                            struct_addr = self.gen_load_pointer(struct_addr, pos);
+                        }
                         let rt_indices = embedded_indices.iter().map(|x| *x as OpIndex).collect();
                         let (op, index) =
                             self.get_struct_field_op_index(rt_indices, Opcode::LOAD_STRUCT);
