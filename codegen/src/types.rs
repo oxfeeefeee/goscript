@@ -8,7 +8,8 @@ use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
 use goscript_types::{
     BasicType, ChanDir, ConstValue, EntityType, ObjKey as TCObjKey, OperandMode,
-    PackageKey as TCPackageKey, TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
+    PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
+    TypeKey as TCTypeKey,
 };
 use goscript_vm::gc::GcoVec;
 use goscript_vm::instruction::ValueType;
@@ -334,6 +335,19 @@ impl<'a> TypeLookup<'a> {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         self.tuple_tc_types(sig.results())
+    }
+
+    pub fn is_method(&mut self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Selector(sel_expr) => match self.ti.selections.get(&sel_expr.id()) {
+                Some(sel) => match sel.kind() {
+                    TCSelectionKind::MethodVal => true,
+                    _ => false,
+                },
+                None => false,
+            },
+            _ => false,
+        }
     }
 
     // returns vm_type(metadata) for the tc_type
