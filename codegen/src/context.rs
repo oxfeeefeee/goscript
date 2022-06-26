@@ -687,7 +687,12 @@ impl<'a> FuncCtx<'a> {
                 pkg_addr,
                 Addr::Regsiter(0),
             ),
-            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(1), imm0, Addr::Void),
+            InterInst::with_op_index(
+                Opcode::PRE_CALL,
+                Addr::Regsiter(1),
+                Addr::Regsiter(1),
+                Addr::Void,
+            ),
             InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
             // jump back to LOAD_PKG_INIT_FUNC
             InterInst::with_op_index(Opcode::JUMP, Addr::Imm(-4), Addr::Void, Addr::Void),
