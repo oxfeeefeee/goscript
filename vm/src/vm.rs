@@ -100,10 +100,10 @@ macro_rules! shift_op {
 macro_rules! shift_op_assign {
     ($stack:ident, $op:tt, $inst:expr, $sb:expr, $consts:expr) => {{
         let right = $stack
-            .read($inst.s1, $sb, $consts)
+            .read($inst.s0, $sb, $consts)
             .data()
             .cast_copyable($inst.t1, ValueType::Uint32);
-        let d = $stack.get_data_mut($inst.s0 + $sb);
+        let d = $stack.get_data_mut($inst.d + $sb);
         *d = d.$op(right.as_uint32(), $inst.t0);
     }};
 }
