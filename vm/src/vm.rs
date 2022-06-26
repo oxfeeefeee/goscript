@@ -367,7 +367,7 @@ impl<'a> Fiber<'a> {
                 total_inst += 1;
                 //stats.entry(*inst).and_modify(|e| *e += 1).or_insert(1);
                 frame.pc += 1;
-                dbg!(inst);
+                //dbg!(inst);
                 match inst_op {
                     // desc: local
                     // s0: local/const
@@ -1016,12 +1016,10 @@ impl<'a> Fiber<'a> {
                             }
                             ClosureObj::Ffi(ffic) => {
                                 let sig = objs.metas[ffic.meta.key].as_signature();
-                                dbg!(sig.results.len(), &ffic.func_name);
                                 let result_begin = nframe.stack_base;
                                 let param_begin = result_begin + 1 + sig.results.len() as OpIndex;
                                 let end = param_begin + sig.params.len() as OpIndex;
                                 let params = stack.move_vec(param_begin, end);
-                                dbg!(param_begin, end, &params);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
                                 let returns = {
