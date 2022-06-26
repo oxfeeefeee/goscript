@@ -511,7 +511,6 @@ impl<'a> Fiber<'a> {
                                             Some(v) => v,
                                             None => stack.read(inst_ex.s0, sb, consts).clone(),
                                         };
-                                        frame.pc += 1;
                                         let val = stack.read_and_op(
                                             old.data(),
                                             inst.t0,
@@ -986,7 +985,7 @@ impl<'a> Fiber<'a> {
                                         func = nfunc;
                                         sb = frame.stack_base;
                                         code = &func.code;
-                                        //dbg!(&code);
+                                        //dbg!("default", &code);
                                     }
                                     ValueType::FlagB => {
                                         // goroutine
@@ -1085,6 +1084,7 @@ impl<'a> Fiber<'a> {
                                     func = &objs.functions[fkey];
                                     sb = frame.stack_base;
                                     code = &func.code;
+                                    //dbg!("deferred", &code);
                                     let index = new_sb + call_vec_len;
                                     stack.set_vec(index, func.local_zeros.clone());
                                     continue;
