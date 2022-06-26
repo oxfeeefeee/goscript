@@ -24,8 +24,8 @@ impl BranchBlock {
     pub fn new(label: Option<TCObjKey>, is_loop: bool) -> BranchBlock {
         BranchBlock {
             points: vec![],
-            label: label,
-            is_loop: is_loop,
+            label,
+            is_loop,
         }
     }
 }

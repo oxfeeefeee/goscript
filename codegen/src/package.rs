@@ -31,7 +31,7 @@ impl<'a> PkgHelper<'a> {
         }
     }
 
-    pub fn gen_imports(&mut self, tcpkg: TCPackageKey, fctx: &mut FuncCtx) {
+    pub fn gen_imports(&self, tcpkg: TCPackageKey, fctx: &mut FuncCtx) {
         let pkg = &self.tc_objs.pkgs[tcpkg];
         let unsafe_ = self.tc_objs.universe().unsafe_pkg();
         for tckey in pkg.imports().iter() {

@@ -37,12 +37,12 @@ impl<'a> TypeLookup<'a> {
     pub fn new(
         tc_objs: &'a TCObjects,
         ti: &'a TypeInfo,
-        cache: &'a mut TypeCache,
+        types_cache: &'a mut TypeCache,
     ) -> TypeLookup<'a> {
         TypeLookup {
-            tc_objs: tc_objs,
-            ti: ti,
-            types_cache: cache,
+            tc_objs,
+            ti,
+            types_cache,
         }
     }
 
@@ -52,13 +52,13 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn try_tc_const_value(&mut self, id: NodeId) -> Option<&ConstValue> {
+    pub fn try_tc_const_value(&self, id: NodeId) -> Option<&ConstValue> {
         let typ_val = self.ti.types.get(&id).unwrap();
         typ_val.get_const_val()
     }
 
     #[inline]
-    pub fn const_type_value(&mut self, id: NodeId) -> (TCTypeKey, GosValue) {
+    pub fn const_type_value(&self, id: NodeId) -> (TCTypeKey, GosValue) {
         let typ_val = self.ti.types.get(&id).unwrap();
         let const_val = typ_val.get_const_val().unwrap();
         let (v, _) = self.const_value_type(typ_val.typ, const_val);
@@ -66,7 +66,7 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn ident_const_value_type(&mut self, id: &IdentKey) -> (GosValue, ValueType) {
+    pub fn ident_const_value_type(&self, id: &IdentKey) -> (GosValue, ValueType) {
         let lobj_key = self.ti.defs[id].unwrap();
         let lobj = &self.tc_objs.lobjs[lobj_key];
         let tkey = lobj.typ().unwrap();
@@ -150,7 +150,7 @@ impl<'a> TypeLookup<'a> {
         }
     }
 
-    pub fn expr_value_type(&mut self, e: &Expr) -> ValueType {
+    pub fn expr_value_type(&self, e: &Expr) -> ValueType {
         let tv = self.ti.types.get(&e.id()).unwrap();
         if tv.mode == OperandMode::TypeExpr {
             ValueType::Metadata
@@ -259,19 +259,19 @@ impl<'a> TypeLookup<'a> {
     }
 
     #[inline]
-    pub fn expr_range_tc_types(&mut self, e: &Expr) -> [TCTypeKey; 3] {
+    pub fn expr_range_tc_types(&self, e: &Expr) -> [TCTypeKey; 3] {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.range_tc_types(typ)
     }
 
     #[inline]
-    pub fn expr_tuple_tc_types(&mut self, e: &Expr) -> Vec<TCTypeKey> {
+    pub fn expr_tuple_tc_types(&self, e: &Expr) -> Vec<TCTypeKey> {
         let typ = self.ti.types.get(&e.id()).unwrap().typ;
         self.tuple_tc_types(typ)
     }
 
     pub fn selection_vtypes_indices_sel_typ(
-        &mut self,
+        &self,
         id: NodeId,
     ) -> (TCTypeKey, TCTypeKey, &Vec<usize>, SelectionType) {
         let sel = &self.ti.selections[&id];
@@ -305,7 +305,7 @@ impl<'a> TypeLookup<'a> {
         self.types_cache.get(&typ).unwrap().clone()
     }
 
-    pub fn sig_params_tc_types(&mut self, func: TCTypeKey) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
+    pub fn sig_params_tc_types(&self, func: TCTypeKey) -> (Vec<TCTypeKey>, Option<TCTypeKey>) {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         let params: Vec<TCTypeKey> = self.tc_objs.types[sig.params()]
@@ -331,13 +331,13 @@ impl<'a> TypeLookup<'a> {
         (params, variadic)
     }
 
-    pub fn sig_returns_tc_types(&mut self, func: TCTypeKey) -> Vec<TCTypeKey> {
+    pub fn sig_returns_tc_types(&self, func: TCTypeKey) -> Vec<TCTypeKey> {
         let typ = &self.tc_objs.types[func].underlying_val(self.tc_objs);
         let sig = typ.try_as_signature().unwrap();
         self.tuple_tc_types(sig.results())
     }
 
-    pub fn is_method(&mut self, expr: &Expr) -> bool {
+    pub fn is_method(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Selector(sel_expr) => match self.ti.selections.get(&sel_expr.id()) {
                 Some(sel) => match sel.kind() {
@@ -645,7 +645,7 @@ impl<'a> TypeLookup<'a> {
         self.tc_objs.universe().types()[&BasicType::Bool]
     }
 
-    pub fn should_cast_to_iface(&mut self, lhs: TCTypeKey, rhs: TCTypeKey) -> bool {
+    pub fn should_cast_to_iface(&self, lhs: TCTypeKey, rhs: TCTypeKey) -> bool {
         let vt1 = self.obj_underlying_value_type(rhs);
         self.obj_underlying_value_type(lhs) == ValueType::Interface
             && vt1 != ValueType::Interface
