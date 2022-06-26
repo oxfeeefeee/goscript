@@ -1203,11 +1203,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     });
                 }
                 None => {
-                    let struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
+                    let mut struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
                     let (_, _, indices, _) = self.t.selection_vtypes_indices_sel_typ(sexpr.id());
                     let rt_indices = indices.iter().map(|x| *x as OpIndex).collect();
                     let (op, index) =
                         self.get_struct_field_op_index(rt_indices, Opcode::REF_STRUCT_FIELD);
+                    if op == Opcode::REF_STRUCT_FIELD {
+                        if self.t.expr_value_type(&sexpr.expr) == ValueType::Pointer {
+                            struct_addr = self.gen_load_pointer(struct_addr, pos);
+                        }
+                    }
                     self.cur_expr_emit_assign(ref_tc_type, pos, |f, d, p| {
                         let inst = InterInst::with_op_index(op, d, struct_addr, Addr::Imm(index));
                         f.emit_inst(inst, p);
