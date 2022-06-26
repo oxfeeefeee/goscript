@@ -998,6 +998,7 @@ impl<'a> Fiber<'a> {
                                         self.context.spawn_fiber(nstack, nframe);
                                     }
                                     ValueType::FlagC => {
+                                        // deferred
                                         let begin = nframe.stack_base;
                                         let end = begin + nfunc.param_count() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
@@ -1012,7 +1013,7 @@ impl<'a> Fiber<'a> {
                             }
                             ClosureObj::Ffi(ffic) => {
                                 let ptypes = &objs.metas[ffic.meta.key].as_signature().params_type;
-                                let begin = nframe.stack_base + 1; //+1 for the receiver
+                                let begin = nframe.stack_base + 1; //+1 for the receiver space
                                 let end = begin + ptypes.len() as OpIndex;
                                 let params = stack.move_vec(begin, end);
                                 // release stack so that code in ffi can yield
@@ -1068,8 +1069,11 @@ impl<'a> Fiber<'a> {
 
                                     let call_vec_len = call.vec.len() as OpIndex;
                                     let cur_func = frame.func_val(objs);
-                                    // dont overwrite returns of current function
-                                    let new_sb = sb + cur_func.ret_count();
+                                    // dont overwrite locals of current function
+                                    let new_sb = sb
+                                        + cur_func.ret_count()
+                                        + cur_func.param_count()
+                                        + cur_func.local_count();
                                     stack.set_vec(new_sb, call.vec);
                                     let nframe = call.frame;
 

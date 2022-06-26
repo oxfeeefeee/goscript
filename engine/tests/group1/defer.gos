@@ -5,6 +5,25 @@ import (
 	"fmt2"
 )
 
+type Mutex struct {
+    i int
+}
+
+
+func (m *Mutex) Lock() {
+    m.i += 85
+	assert(m.i == 85)
+}
+
+
+
+func test2() {
+   var m Mutex
+
+   defer m.Lock()
+ }
+
+
 func f() (result int) {
 	defer func() {
 		// result is accessed after it was set to 6 by the return statement
@@ -21,4 +40,7 @@ func main() {
 	    defer fmt2.Println(i)
     }
     
+	test2()
 } 
+
+
