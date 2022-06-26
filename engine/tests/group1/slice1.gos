@@ -87,6 +87,15 @@ func copy_slice() {
 }
 
 
+
+func copy_no_return() {
+	s := "/a"
+   	buf := make([]byte, 3)
+	copy(buf, s[:1])
+	assert(buf[0] == '/')
+ }
+
+
 func appendToNil() {
     var a []int
     b := []int{6,6,6}
@@ -115,6 +124,8 @@ func main() {
     append_slice()
 
     copy_slice()
+
+    copy_no_return()
 
     appendToNil()
 }

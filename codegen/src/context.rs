@@ -184,7 +184,11 @@ impl ExprCtx {
                     self.dec_cur_reg(); // done with the reg
                 }
             },
-            ExprMode::Discard => {}
+            ExprMode::Discard => {
+                self.load_addr = self.inc_cur_reg();
+                f(fctx, self.load_addr, pos);
+                self.dec_cur_reg(); // done with the reg
+            }
         }
     }
 
