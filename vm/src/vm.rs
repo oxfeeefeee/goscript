@@ -990,7 +990,9 @@ impl<'a> Fiber<'a> {
                                     ValueType::FlagB => {
                                         // goroutine
                                         let begin = nframe.stack_base;
-                                        let end = begin + nfunc.param_count() as OpIndex;
+                                        let end = begin
+                                            + nfunc.ret_count()
+                                            + nfunc.param_count() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let nstack = Stack::with_vec(vec);
                                         nframe.stack_base = 0;
@@ -999,7 +1001,9 @@ impl<'a> Fiber<'a> {
                                     ValueType::FlagC => {
                                         // deferred
                                         let begin = nframe.stack_base;
-                                        let end = begin + nfunc.param_count() as OpIndex;
+                                        let end = begin
+                                            + nfunc.ret_count()
+                                            + nfunc.param_count() as OpIndex;
                                         let vec = stack.move_vec(begin, end);
                                         let deferred = DeferredCall {
                                             frame: nframe,
@@ -1011,10 +1015,13 @@ impl<'a> Fiber<'a> {
                                 }
                             }
                             ClosureObj::Ffi(ffic) => {
-                                let ptypes = &objs.metas[ffic.meta.key].as_signature().params_type;
-                                let begin = nframe.stack_base + 1; //+1 for the receiver space
-                                let end = begin + ptypes.len() as OpIndex;
-                                let params = stack.move_vec(begin, end);
+                                let sig = objs.metas[ffic.meta.key].as_signature();
+                                dbg!(sig.results.len(), &ffic.func_name);
+                                let result_begin = nframe.stack_base;
+                                let param_begin = result_begin + 1 + sig.results.len() as OpIndex;
+                                let end = param_begin + sig.params.len() as OpIndex;
+                                let params = stack.move_vec(param_begin, end);
+                                dbg!(param_begin, end, &params);
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
                                 let returns = {
@@ -1030,7 +1037,7 @@ impl<'a> Fiber<'a> {
                                 };
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 match returns {
-                                    Ok(result) => stack.set_vec(begin, result),
+                                    Ok(result) => stack.set_vec(result_begin, result),
                                     Err(e) => {
                                         go_panic_str!(panic, &e, frame, code);
                                     }
