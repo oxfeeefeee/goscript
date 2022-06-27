@@ -913,26 +913,20 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             }
             // normal goscript function
             _ => {
-                let next_sb = Addr::Regsiter(expr_ctx!(self).cur_reg);
-
-                // next_sb may func_addr overlap, which is fine
-                let func_addr = self.load(|g| g.gen_expr(func_expr));
-                let inst =
-                    InterInst::with_op_index(Opcode::PRE_CALL, func_addr, next_sb, Addr::Void);
-                func_ctx!(self).emit_inst(inst, pos);
-
+                let next_sb = expr_ctx!(self).cur_reg;
                 // make sure params are at the right place
                 let return_types = self.t.sig_returns_tc_types(ft);
                 let reg_usage =
                     return_types.len() + if self.t.is_method(func_expr) { 1 } else { 0 };
-                expr_ctx!(self).cur_reg = next_sb.as_reg_index() + reg_usage;
+                expr_ctx!(self).cur_reg = next_sb + reg_usage;
                 self.gen_call_params(ft, params, ellipsis);
-                func_ctx!(self).emit_call(style, pos);
+                let func_addr = self.load(|g| g.gen_expr(func_expr));
+                func_ctx!(self).emit_call(func_addr, next_sb, style, pos);
 
                 if !return_types.is_empty() {
                     // assgin the first return value
                     // the cases of returning multiple values are handled elsewhere
-                    self.cur_expr_emit_direct_assign(return_types[0], next_sb, pos);
+                    self.cur_expr_emit_direct_assign(return_types[0], Addr::Regsiter(next_sb), pos);
                 }
             }
         }

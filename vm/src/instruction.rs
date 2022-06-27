@@ -75,7 +75,6 @@ pub enum Opcode {
     RECV, // <-
 
     // call
-    PRE_CALL,
     PACK_VARIADIC,
     CALL,
     RETURN,

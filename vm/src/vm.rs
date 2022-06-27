@@ -914,9 +914,16 @@ impl<'a> Fiber<'a> {
                             },
                         };
                     }
+                    Opcode::PACK_VARIADIC => {
+                        let v = stack.move_vec(inst.s0 + sb, inst.s1 + sb);
+                        let val = GosValue::slice_with_data(v, inst.t0, gcv);
+                        stack.set(inst.d + sb, val);
+                    }
+                    // t0: call style
                     // d: closure
                     // s0: next stack base
-                    Opcode::PRE_CALL => {
+                    Opcode::CALL => {
+                        let call_style = inst.t0;
                         let cls = stack
                             .read(inst.d, sb, consts)
                             .as_closure()
@@ -942,19 +949,8 @@ impl<'a> Fiber<'a> {
                             }
                             _ => {}
                         }
-                        let next_frame = CallFrame::with_closure(cls, next_sb);
-                        self.next_frames.push(next_frame);
-                    }
-                    Opcode::PACK_VARIADIC => {
-                        let v = stack.move_vec(inst.s0 + sb, inst.s1 + sb);
-                        let val = GosValue::slice_with_data(v, inst.t0, gcv);
-                        stack.set(inst.d + sb, val);
-                    }
-                    // t0: call style
-                    Opcode::CALL => {
-                        let mut nframe = self.next_frames.pop().unwrap();
-                        let cls = nframe.closure().clone();
-                        let call_style = inst.t0;
+                        let mut nframe = CallFrame::with_closure(cls.clone(), next_sb);
+
                         match cls {
                             ClosureObj::Gos(gosc) => {
                                 let nfunc = &objs.functions[gosc.func];
@@ -1241,7 +1237,7 @@ impl<'a> Fiber<'a> {
                             frame.pc += inst.s0;
                         }
                     }
-                    // load user defined init function or jump 3 if failed
+                    // load user defined init function or jump 2 if failed
                     Opcode::LOAD_INIT_FUNC => {
                         let src = stack.read(inst.s0, sb, consts);
                         let index = *stack.read(inst.s1, sb, consts).as_int32();
@@ -1252,7 +1248,7 @@ impl<'a> Fiber<'a> {
                                 stack.set(inst.s1 + sb, GosValue::new_int32(index + 1));
                             }
                             None => {
-                                frame.pc += 3;
+                                frame.pc += 2;
                             }
                         }
                     }

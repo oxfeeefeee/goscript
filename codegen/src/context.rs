@@ -642,15 +642,22 @@ impl<'a> FuncCtx<'a> {
         self.emit_inst(inst, pos);
     }
 
-    pub fn emit_pre_call(&mut self, cls: Addr, stack_base: OpIndex, pos: Option<usize>) {
-        let inst =
-            InterInst::with_op_index(Opcode::PRE_CALL, cls, Addr::Imm(stack_base), Addr::Void);
-        self.emit_inst(inst, pos);
-    }
-
-    pub fn emit_call(&mut self, style: CallStyle, pos: Option<usize>) {
+    pub fn emit_call(
+        &mut self,
+        cls: Addr,
+        stack_base: usize,
+        style: CallStyle,
+        pos: Option<usize>,
+    ) {
         let flag = style.into_flag();
-        let inst = InterInst::with_op_t(Opcode::CALL, Some(flag), None);
+        let inst = InterInst::with_op_t_index(
+            Opcode::CALL,
+            Some(flag),
+            None,
+            cls,
+            Addr::Regsiter(stack_base),
+            Addr::Void,
+        );
         self.emit_inst(inst, pos);
     }
 
@@ -676,30 +683,34 @@ impl<'a> FuncCtx<'a> {
         let pkg_addr = self.add_package(pkg);
         let zero_addr = Addr::Const(self.consts.add_const(GosValue::new_int32(0)));
         let imm0 = Addr::Imm(0);
+        let reg0 = Addr::Regsiter(0);
+        let reg1 = Addr::Regsiter(1);
         let cd = vec![
-            InterInst::with_op_index(Opcode::LOAD_PKG, Addr::Regsiter(0), pkg_addr, imm0),
-            InterInst::with_op_index(Opcode::PRE_CALL, Addr::Regsiter(0), imm0, Addr::Void),
-            InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
-            // call init functions
-            // 1. init a temp var at reg0 as 0
-            InterInst::with_op_index(Opcode::DUPLICATE, Addr::Regsiter(0), zero_addr, Addr::Void),
-            // 2. load function to reg1 and do reg0++
-            //  or jump 3 if loading failed
-            InterInst::with_op_index(
-                Opcode::LOAD_INIT_FUNC,
-                Addr::Regsiter(1),
-                pkg_addr,
-                Addr::Regsiter(0),
-            ),
-            InterInst::with_op_index(
-                Opcode::PRE_CALL,
-                Addr::Regsiter(1),
-                Addr::Regsiter(1),
+            InterInst::with_op_index(Opcode::LOAD_PKG, reg0, pkg_addr, imm0),
+            InterInst::with_op_t_index(
+                Opcode::CALL,
+                Some(CallStyle::Default.into_flag()),
+                None,
+                reg0,
+                reg0,
                 Addr::Void,
             ),
-            InterInst::with_op_t(Opcode::CALL, Some(CallStyle::Default.into_flag()), None),
+            // call init functions
+            // 1. init a temp var at reg0 as 0
+            InterInst::with_op_index(Opcode::DUPLICATE, reg0, zero_addr, Addr::Void),
+            // 2. load function to reg1 and do reg0++
+            //  or jump 2 if loading failed
+            InterInst::with_op_index(Opcode::LOAD_INIT_FUNC, reg1, pkg_addr, reg0),
+            InterInst::with_op_t_index(
+                Opcode::CALL,
+                Some(CallStyle::Default.into_flag()),
+                None,
+                reg1,
+                reg1,
+                Addr::Void,
+            ),
             // jump back to LOAD_PKG_INIT_FUNC
-            InterInst::with_op_index(Opcode::JUMP, Addr::Imm(-4), Addr::Void, Addr::Void),
+            InterInst::with_op_index(Opcode::JUMP, Addr::Imm(-3), Addr::Void, Addr::Void),
         ];
         let offset = Addr::Imm(cd.len() as OpIndex);
         let inst = InterInst::with_op_index(Opcode::IMPORT, offset, pkg_addr, Addr::Void);

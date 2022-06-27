@@ -147,8 +147,7 @@ fn gen_entry_func<'a, 'c>(
     let pkg_addr = fctx.add_package(pkg);
     let index = Addr::PkgMemberIndex(pkg, main_ident);
     fctx.emit_load_pkg(Addr::Regsiter(0), pkg_addr, index, None);
-    fctx.emit_pre_call(Addr::Regsiter(0), 0, None);
-    fctx.emit_call(CallStyle::Default, None);
+    fctx.emit_call(Addr::Regsiter(0), 0, CallStyle::Default, None);
     fctx.emit_return(None, None, &objects.functions);
     fctx
 }
