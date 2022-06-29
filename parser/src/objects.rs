@@ -6,13 +6,13 @@
 #![allow(unused_macros)]
 use super::ast;
 use super::scope;
-use slotmap::{new_key_type, DenseSlotMap};
+use slotmap::{new_key_type, SlotMap};
 
 const DEFAULT_CAPACITY: usize = 16;
 
 macro_rules! new_objects {
     () => {
-        DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
+        SlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
     };
 }
 
@@ -26,15 +26,15 @@ new_key_type! { pub struct FieldKey; }
 new_key_type! { pub struct EntityKey; }
 new_key_type! { pub struct ScopeKey; }
 
-pub type LabeledStmts = DenseSlotMap<LabeledStmtKey, ast::LabeledStmt>;
-pub type AssignStmts = DenseSlotMap<AssignStmtKey, ast::AssignStmt>;
-pub type Specs = DenseSlotMap<SpecKey, ast::Spec>;
-pub type FuncDecls = DenseSlotMap<FuncDeclKey, ast::FuncDecl>;
-pub type FuncTypes = DenseSlotMap<FuncTypeKey, ast::FuncType>;
-pub type Idents = DenseSlotMap<IdentKey, ast::Ident>;
-pub type Fields = DenseSlotMap<FieldKey, ast::Field>;
-pub type Entitys = DenseSlotMap<EntityKey, scope::Entity>;
-pub type Scopes = DenseSlotMap<ScopeKey, scope::Scope>;
+pub type LabeledStmts = SlotMap<LabeledStmtKey, ast::LabeledStmt>;
+pub type AssignStmts = SlotMap<AssignStmtKey, ast::AssignStmt>;
+pub type Specs = SlotMap<SpecKey, ast::Spec>;
+pub type FuncDecls = SlotMap<FuncDeclKey, ast::FuncDecl>;
+pub type FuncTypes = SlotMap<FuncTypeKey, ast::FuncType>;
+pub type Idents = SlotMap<IdentKey, ast::Ident>;
+pub type Fields = SlotMap<FieldKey, ast::Field>;
+pub type Entitys = SlotMap<EntityKey, scope::Entity>;
+pub type Scopes = SlotMap<ScopeKey, scope::Scope>;
 
 pub struct Objects {
     pub l_stmts: LabeledStmts,

@@ -11,7 +11,7 @@ use super::metadata::*;
 use super::stack::Stack;
 use super::value::*;
 use crate::value::GosElem;
-use slotmap::{new_key_type, DenseSlotMap};
+use slotmap::{new_key_type, SlotMap};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -38,9 +38,9 @@ new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }
 
-pub type MetadataObjs = DenseSlotMap<MetadataKey, MetadataType>;
-pub type FunctionObjs = DenseSlotMap<FunctionKey, FunctionVal>;
-pub type PackageObjs = DenseSlotMap<PackageKey, PackageVal>;
+pub type MetadataObjs = SlotMap<MetadataKey, MetadataType>;
+pub type FunctionObjs = SlotMap<FunctionKey, FunctionVal>;
+pub type PackageObjs = SlotMap<PackageKey, PackageVal>;
 
 pub fn key_to_u64<K>(key: K) -> u64
 where
@@ -68,12 +68,12 @@ pub struct VMObjects {
 
 impl VMObjects {
     pub fn new() -> VMObjects {
-        let mut metas = DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
+        let mut metas = SlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
         let md = StaticMeta::new(&mut metas);
         VMObjects {
             metas: metas,
-            functions: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            packages: DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            functions: SlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            packages: SlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
             s_meta: md,
         }
     }
