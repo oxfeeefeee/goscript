@@ -452,17 +452,25 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     }
                     self.pop_expr_ctx();
                 } else if values.len() == lhs.len() {
-                    let rhs: Vec<(Addr, TCTypeKey)> = values
-                        .iter()
-                        .map(|v| (self.load(|g| g.gen_expr(v)), self.t.expr_tc_type(v)))
-                        .collect();
-                    // define or assign with values
-                    for (i, l) in lhs.iter().enumerate() {
-                        self.store(l.0.clone(), l.1, |g| {
-                            g.cur_expr_emit_direct_assign(rhs[i].1, rhs[i].0, Some(l.2))
-                        });
+                    if values.len() == 1 {
+                        // define or assign with 1 value
+                        self.store(lhs[0].0.clone(), lhs[0].1, |g| g.gen_expr(&values[0]));
+                    } else {
+                        // define or assign with values
+                        // todo: we put the rhs at a temporary register to deal with cases like this: x, y = y, x+y
+                        // but there is probably a better solution to this problem.
+                        let rhs: Vec<(Addr, TCTypeKey)> = values
+                            .iter()
+                            .map(|v| (self.load(|g| g.gen_expr(v)), self.t.expr_tc_type(v)))
+                            .collect();
+                        for (i, l) in lhs.iter().enumerate() {
+                            self.store(l.0.clone(), l.1, |g| {
+                                g.cur_expr_emit_direct_assign(rhs[i].1, rhs[i].0, Some(l.2))
+                            });
+                        }
                     }
-                } else if values.len() == 1 {
+                } else {
+                    debug_assert!(values.len() == 1);
                     // define or assign with function call that returns multiple value on the right
                     self.discard(|g| g.gen_expr(&val0));
                     // now assgin the return values
@@ -477,8 +485,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                             );
                         });
                     }
-                } else {
-                    unreachable!();
                 }
                 None
             }
