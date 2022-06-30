@@ -1159,7 +1159,7 @@ impl<'a> Fiber<'a> {
                     Opcode::SELECT => {
                         let comm_count = inst.s0;
                         let has_default = inst.t0 == ValueType::FlagE;
-                        let default_offset = has_default.then(|| inst.d);
+                        let default_offset = has_default.then_some(inst.d);
                         let mut comms = Vec::with_capacity(comm_count as usize);
                         for _ in 0..comm_count {
                             let entry = &code[frame.pc as usize];
