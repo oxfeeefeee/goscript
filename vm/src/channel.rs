@@ -5,8 +5,7 @@
 use super::instruction::*;
 use super::value::*;
 use futures_lite::future;
-use rand::prelude::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -158,6 +157,8 @@ pub struct SelectComm {
 pub struct Selector {
     pub comms: Vec<SelectComm>,
     pub default_offset: Option<OpIndex>,
+    // use a fake random to avoid dependencies
+    pseudo_rand: Cell<usize>,
 }
 
 impl Selector {
@@ -165,23 +166,22 @@ impl Selector {
         Selector {
             comms,
             default_offset,
+            pseudo_rand: Cell::new(0),
         }
     }
 
     pub async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
         let count = self.comms.len();
-        let mut rng = rand::thread_rng();
+        let rand_start = self.pseudo_rand.get();
+        self.pseudo_rand.set(rand_start + 1);
         loop {
-            for (i, entry) in self
-                .comms
-                .iter()
-                .enumerate()
-                .choose_multiple(&mut rng, count)
-            {
+            for i in 0..count {
+                let index = (i + rand_start) % count;
+                let entry = &self.comms[index];
                 match &entry.typ {
                     SelectCommType::Send(val) => {
                         match entry.chan.as_some_channel()?.chan.try_send(val.clone()) {
-                            Ok(_) => return Ok((i, None)),
+                            Ok(_) => return Ok((index, None)),
                             Err(e) => match e {
                                 async_channel::TrySendError::Full(_) => {}
                                 async_channel::TrySendError::Closed(_) => {
@@ -192,10 +192,10 @@ impl Selector {
                     }
                     SelectCommType::Recv(_, _) => {
                         match entry.chan.as_some_channel()?.chan.try_recv() {
-                            Ok(v) => return Ok((i, Some(v))),
+                            Ok(v) => return Ok((index, Some(v))),
                             Err(e) => match e {
                                 async_channel::TryRecvError::Empty => {}
-                                async_channel::TryRecvError::Closed => return Ok((i, None)),
+                                async_channel::TryRecvError::Closed => return Ok((index, None)),
                             },
                         }
                     }

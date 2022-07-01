@@ -10,7 +10,6 @@ ordered-float = "3.0"
 async-channel = "1.6.1"
 async-executor = "1.4.1"
 futures-lite = "1.12.0"
-rand = "0.8.4"
 
 [dependencies.goscript-parser]
 path = "../parser"
