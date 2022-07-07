@@ -571,15 +571,27 @@ where
         if bi > this_cap {
             return Err(format!("index {} out of range", begin).to_owned());
         }
-        let this_len_p1 = this_len as isize + 1;
-        let ei = this_begin + ((this_len_p1 + end) % this_len_p1) as usize;
-        if ei < bi {
-            return Err(format!("index {} out of range", end).to_owned());
-        }
-        let cap = if max < 0 { this_cap } else { max as usize };
-        if cap > this_cap {
-            return Err(format!("index {} out of range", max).to_owned());
-        }
+
+        let cap = if max < 0 {
+            this_cap
+        } else {
+            let val = max as usize;
+            if val > this_cap {
+                return Err(format!("index {} out of range", max).to_owned());
+            }
+            val
+        };
+
+        let ei = if end < 0 {
+            this_len
+        } else {
+            let val = this_begin + end as usize;
+            if val < bi || val > cap {
+                return Err(format!("index {} out of range", end).to_owned());
+            }
+            val
+        };
+
         Ok((bi, ei, cap))
     }
 
