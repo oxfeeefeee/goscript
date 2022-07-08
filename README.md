@@ -1,8 +1,10 @@
-# Goscript   [中文版](#Goscript_Readme_中文版)
+# Goscript  
 
 An alternative implementation of Golang specs, written in Rust for embedding or wrapping.
 
-## Playground
+[中文](#Goscript_Readme_中文版)
+
+## Website
 
 <https://goscript.dev/>
 
@@ -19,13 +21,7 @@ An alternative implementation of Golang specs, written in Rust for embedding or 
 
 ## How
 
-+ There are six projects:
-  + the `parser` turns the source code into an AST, this project is a port of the official Go code.
-  + the `type checker` works out and checks the type info, this project is also a port of the official Go code.
-  + the `codegen` generates bytecode from the AST and the type info.
-  + the `vm` runs the bytecode.
-  + the `std` is a port of the official Go standard library.
-  + the `engine` contains the native part of std and also wraps everything up.
+[Goscript Internals I: Overview](https://goscript.dev/posts/goscript_internals_I_overview_en)
 
 ## When
 
@@ -89,7 +85,7 @@ An alternative implementation of Golang specs, written in Rust for embedding or 
 
 Go语言规范非的官方实现，用于Rust项目的内嵌或封装。
 
-## Playground
+## 网站
 
 <https://goscript.dev/>
 
@@ -106,13 +102,7 @@ Go语言规范非的官方实现，用于Rust项目的内嵌或封装。
 
 ## 咋？
 
-+ 有六个项目:
-  + `parser` 把源代码变成AST，移植自Go官方代码。
-  + `type checker` 基于AST做类型推倒和类型检查，也移植自Go官方代码。
-  + `codegen` 基于AST和类型信息生成字节码。
-  + `vm` 运行字节码.
-  + `std` 官方库，移植自Go官方库.
-  + `engine` 包含官方库的native部分，再加上简单封装.
+[Goscript 设计原理一: 总览](https://goscript.dev/posts/goscript_internals_I_overview_zh)
 
 ## 时？
 
