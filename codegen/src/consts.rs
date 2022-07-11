@@ -53,6 +53,7 @@ impl Consts {
         mobjs: &MetadataObjs,
         gcv: &GcoVec,
     ) -> (Vec<GosValue>, HashMap<usize, usize>) {
+        #[derive(Debug)]
         enum ConstType {
             Nil,
             Copyable,
@@ -106,7 +107,7 @@ impl Consts {
                     (
                         ConstType::Nil,
                         i,
-                        *nil_map.entry(val.typ()).or_insert({
+                        *nil_map.entry(val.typ()).or_insert_with(|| {
                             nils.push(val);
                             nils.len() - 1
                         }),
@@ -117,7 +118,7 @@ impl Consts {
                         i,
                         *copyables_map
                             .entry(CopyableVal { val: val.clone() })
-                            .or_insert({
+                            .or_insert_with(|| {
                                 copyables.push(val);
                                 copyables.len() - 1
                             }),
