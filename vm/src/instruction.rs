@@ -126,7 +126,7 @@ impl fmt::Display for Opcode {
 
 pub const COPYABLE_END: ValueType = ValueType::Package;
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
     Void,
