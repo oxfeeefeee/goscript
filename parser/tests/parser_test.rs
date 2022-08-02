@@ -44,7 +44,7 @@ fn parse_dir(s: &str, trace: bool) -> usize {
 
 #[test]
 fn test_parser_dir() {
-    let t = parse_dir("./../../go/src", false);
+    let t = parse_dir("./../../go-old/src", false);
     //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
     println!("hohohoh{}", t);
 }

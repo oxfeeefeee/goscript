@@ -53,6 +53,7 @@ pub enum Expr {
     Paren(Rc<ParenExpr>),
     Selector(Rc<SelectorExpr>),
     Index(Rc<IndexExpr>),
+    IndexList(Rc<IndexListExpr>),
     Slice(Rc<SliceExpr>),
     TypeAssert(Rc<TypeAssertExpr>),
     Call(Rc<CallExpr>),
@@ -135,6 +136,34 @@ impl Expr {
         }))
     }
 
+    pub fn new_array_type(l_brack: position::Pos, len: Option<Expr>, elt: Expr) -> Expr {
+        Expr::Array(Rc::new(ArrayType { l_brack, len, elt }))
+    }
+
+    pub fn new_index_expr(
+        expr: Expr,
+        l_brack: position::Pos,
+        indices: Vec<Expr>,
+        r_brack: position::Pos,
+    ) -> Expr {
+        let len = indices.len();
+        match len {
+            1 => Expr::Index(Rc::new(IndexExpr {
+                expr,
+                l_brack,
+                index: indices.into_iter().nth(0).unwrap(),
+                r_brack,
+            })),
+            x if x > 1 => Expr::IndexList(Rc::new(IndexListExpr {
+                expr,
+                l_brack,
+                indices,
+                r_brack,
+            })),
+            _ => unreachable!(),
+        }
+    }
+
     pub fn box_func_type(ft: FuncType, objs: &mut Objects) -> Expr {
         Expr::Func(objs.ftypes.insert(ft))
     }
@@ -193,6 +222,7 @@ impl Node for Expr {
             Expr::Paren(e) => e.l_paren,
             Expr::Selector(e) => e.expr.pos(objs),
             Expr::Index(e) => e.expr.pos(objs),
+            Expr::IndexList(e) => e.expr.pos(objs),
             Expr::Slice(e) => e.expr.pos(objs),
             Expr::TypeAssert(e) => e.expr.pos(objs),
             Expr::Call(e) => e.func.pos(objs),
@@ -223,6 +253,7 @@ impl Node for Expr {
             Expr::Paren(e) => e.r_paren + 1,
             Expr::Selector(e) => objs.idents[e.sel].end(),
             Expr::Index(e) => e.r_brack + 1,
+            Expr::IndexList(e) => e.r_brack + 1,
             Expr::Slice(e) => e.r_brack + 1,
             Expr::TypeAssert(e) => e.r_paren + 1,
             Expr::Call(e) => e.r_paren + 1,
@@ -250,6 +281,7 @@ impl Node for Expr {
             Expr::Paren(e) => NodeId::Address(&**e as *const ParenExpr as usize),
             Expr::Selector(e) => e.id(),
             Expr::Index(e) => NodeId::Address(&**e as *const IndexExpr as usize),
+            Expr::IndexList(e) => NodeId::Address(&**e as *const IndexListExpr as usize),
             Expr::Slice(e) => NodeId::Address(&**e as *const SliceExpr as usize),
             Expr::TypeAssert(e) => NodeId::Address(&**e as *const TypeAssertExpr as usize),
             Expr::Call(e) => e.id(),
@@ -670,6 +702,15 @@ pub struct IndexExpr {
     pub r_brack: position::Pos,
 }
 
+// An IndexListExpr node represents an expression followed by slice indices.
+#[derive(Debug)]
+pub struct IndexListExpr {
+    pub expr: Expr,
+    pub l_brack: position::Pos,
+    pub indices: Vec<Expr>,
+    pub r_brack: position::Pos,
+}
+
 // An SliceExpr node represents an expression followed by slice indices.
 #[derive(Debug)]
 pub struct SliceExpr {
@@ -858,6 +899,7 @@ pub struct ValueSpec {
 #[derive(Debug)]
 pub struct TypeSpec {
     pub name: IdentKey,
+    pub type_params: Option<FieldList>,
     pub assign: position::Pos,
     pub typ: Expr,
 }
@@ -1114,7 +1156,7 @@ pub struct RangeStmt {
 #[derive(Debug)]
 pub struct Field {
     pub names: Vec<IdentKey>,
-    pub typ: Expr,
+    pub typ: Option<Expr>,
     pub tag: Option<Expr>,
 }
 
@@ -1124,7 +1166,10 @@ impl Node for FieldKey {
         if self_.names.len() > 0 {
             objs.idents[self_.names[0]].pos
         } else {
-            self_.typ.pos(objs)
+            match &self_.typ {
+                Some(t) => t.pos(objs),
+                None => 0,
+            }
         }
     }
 
@@ -1132,7 +1177,10 @@ impl Node for FieldKey {
         let self_ = &objs.fields[*self];
         match &self_.tag {
             Some(t) => t.end(objs),
-            None => self_.typ.end(objs),
+            None => match &self_.typ {
+                Some(t) => t.end(objs),
+                None => 0,
+            },
         }
     }
 

@@ -87,6 +87,7 @@ pub enum Token {
     RBRACE,               // }
     SEMICOLON(TokenData), // ; true if SEMICOLON is NOT inserted by scanner
     COLON,                // :
+    TILDE,                //~
 
     // Keywords
     BREAK,
@@ -187,6 +188,7 @@ impl Token {
             Token::RBRACE => (TokenType::Operator, "}"),
             Token::SEMICOLON(_) => (TokenType::Operator, ";"),
             Token::COLON => (TokenType::Operator, ":"),
+            Token::TILDE => (TokenType::Operator, "~"),
             Token::BREAK => (TokenType::Keyword, "break"),
             Token::CASE => (TokenType::Keyword, "case"),
             Token::CHAN => (TokenType::Keyword, "chan"),

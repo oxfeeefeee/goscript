@@ -655,7 +655,7 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         let to_resolve = typ.clone_ident();
-        let field = new_field!(self, idents, typ, tag);
+        let field = new_field!(self, idents, Some(typ), tag);
         self.declare(DeclObj::Field(field), EntityData::NoData,
             EntityKind::Var, &scope);
         if let Some(ident) = to_resolve {
@@ -756,7 +756,7 @@ impl<'a> Parser<'a> {
             // IdentifierList Type
             let idents = self.make_ident_list(&mut list);
             let to_resolve = t.clone_ident();
-            let field = new_field!(self, idents, t, None);
+            let field = new_field!(self, idents, Some(t), None);
             params.push(field);
             // Go spec: The scope of an identifier denoting a function
 			// parameter or result variable is the function body.
@@ -774,7 +774,7 @@ impl<'a> Parser<'a> {
                 let idents = self.parse_ident_list();
                 let t = self.parse_var_type(ellipsis_ok);
                 let to_resolve = t.clone_ident();
-                let field = new_field!(self, idents, t, None);
+                let field = new_field!(self, idents, Some(t), None);
                 // warning: copy paste
                 params.push(field);
                 // Go spec: The scope of an identifier denoting a function
@@ -793,7 +793,7 @@ impl<'a> Parser<'a> {
             // Type { "," Type } (anonymous parameters)
             for typ in list {
                 self.resolve(&typ);
-                params.push(new_field!(self, vec![], typ, None));
+                params.push(new_field!(self, vec![], Some(typ), None));
             }
         }
         self.trace_end();
@@ -822,7 +822,7 @@ impl<'a> Parser<'a> {
             Some(self.parse_parameters(scope, false))
         } else {
             self.try_type().map(|t|{
-                let field = new_field!(self, vec![], t, None);
+                let field = new_field!(self, vec![], Some(t), None);
                 FieldList::new(None, vec![field], None)
             })
         };
@@ -869,7 +869,7 @@ impl<'a> Parser<'a> {
             self.resolve(&typ);
         }
         self.expect_semi();
-        let field = new_field!(self, idents, typ, None);
+        let field = new_field!(self, idents, Some(typ), None);
         self.declare(DeclObj::Field(field), EntityData::NoData, EntityKind::Fun, &scope);
 
         self.trace_end();
@@ -2366,7 +2366,7 @@ impl<'a> Parser<'a> {
 	    // (Global identifiers are resolved in a separate phase after parsing.)
         let placeholder = Expr::new_bad(0, 0);
         let spec_val = Spec::Type(Rc::new(TypeSpec{
-            name: ident, assign: 0, typ: placeholder
+            name: ident,type_params: None, assign: 0, typ: placeholder
         }));
         let index = specs_mut!(self).insert(spec_val);
         let scope = self.top_scope.unwrap();

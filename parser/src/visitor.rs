@@ -25,6 +25,13 @@ pub trait ExprVisitor {
 
     fn visit_expr_index(&mut self, this: &Expr, expr: &Expr, index: &Expr) -> Self::Result;
 
+    fn visit_expr_index_list(
+        &mut self,
+        this: &Expr,
+        expr: &Expr,
+        indices: &Vec<Expr>,
+    ) -> Self::Result;
+
     fn visit_expr_slice(
         &mut self,
         this: &Expr,
@@ -153,6 +160,10 @@ pub fn walk_expr<R>(v: &mut dyn ExprVisitor<Result = R>, expr: &Expr) -> R {
         Expr::Index(e) => {
             let indexp = e.as_ref();
             v.visit_expr_index(expr, &indexp.expr, &indexp.index)
+        }
+        Expr::IndexList(e) => {
+            let indexp = e.as_ref();
+            v.visit_expr_index_list(expr, &indexp.expr, &indexp.indices)
         }
         Expr::Slice(e) => {
             let slexp = e.as_ref();

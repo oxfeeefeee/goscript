@@ -34,7 +34,7 @@ impl<'a> Scanner<'a> {
     pub fn new(
         file: &'a mut position::File,
         src: &'a str,
-        err: &'a errors::ErrorList,
+        errors: &'a errors::ErrorList,
     ) -> Scanner<'a> {
         let dir = Path::new(file.name())
             .parent()
@@ -42,10 +42,10 @@ impl<'a> Scanner<'a> {
             .to_string_lossy()
             .into_owned();
         Scanner {
-            file: file,
-            dir: dir,
+            file,
+            dir,
             src: src.chars().peekable(),
-            errors: err,
+            errors,
             offset: 0,
             line_offset: 0,
             semi1: false,
@@ -66,7 +66,6 @@ impl<'a> Scanner<'a> {
     }
 
     // Read the next Unicode char
-    #[allow(dead_code)]
     pub fn scan(&mut self) -> (Token, position::Pos) {
         self.semi1 = self.semi2;
         self.semi2 = false;
@@ -209,6 +208,7 @@ impl<'a> Scanner<'a> {
             Some('|') => self
                 .scan_switch3(&Token::OR, &Token::OR_ASSIGN, '|', &Token::LOR)
                 .clone(),
+            Some('~') => self.scan_token(Token::TILDE, false),
             Some(&c) => {
                 self.semi2 = self.semi1; // preserve insert semi info
                 self.read_char();
@@ -888,6 +888,7 @@ mod test {
         'a' 'aa' '\t'
         "aaa\nbbb"
         .25
+        ~XXX
         break
         /*dff"#;
         print!("src {}\n", src);
