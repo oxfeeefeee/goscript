@@ -18,6 +18,7 @@ use super::scope::*;
 use super::token::{Token, LOWEST_PREC};
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::vec;
 
 // Parsing modes for parseSimpleStmt.
 #[derive(PartialEq, Eq)]
@@ -564,7 +565,7 @@ impl<'a> Parser<'a> {
     fn parse_type(&mut self) -> Expr {
         self.trace_begin("Type");
 
-        let typ = self.try_type();
+        let typ = self.try_ident_or_type();
         let ret = if typ.is_none() {
             let pos = self.pos;
             self.error_expected(pos, "type");
@@ -578,11 +579,23 @@ impl<'a> Parser<'a> {
         ret
     }
 
+    fn parse_qualified_ident(&mut self, ident: IdentKey) -> Expr {
+        self.trace_begin("QualifiedIdent");
+
+        let mut ret = self.parse_type_name(Some(ident));
+        if self.token == Token::LBRACK {
+            ret = self.parse_type_instance(ret);
+        }
+
+        self.trace_end();
+        ret
+    }
+
     // If the result is an identifier, it is not resolved.
-    fn parse_type_name(&mut self) -> Expr {
+    fn parse_type_name(&mut self, ident: Option<IdentKey>) -> Expr {
         self.trace_begin("TypeName");
 
-        let ident = self.parse_ident();
+        let ident = ident.unwrap_or_else(|| self.parse_ident());
         let x_ident = Expr::Ident(ident);
         // don't resolve ident yet - it may be a parameter or field name
         let ret = if let Token::PERIOD = self.token {
@@ -599,93 +612,122 @@ impl<'a> Parser<'a> {
         ret
     }
 
-    fn parse_array_type(&mut self) -> Expr {
+    fn parse_array_type(&mut self, l_brack: position::Pos, mut len: Option<Expr>) -> Expr {
         self.trace_begin("ArrayType");
 
-        let lpos = self.expect(&Token::LBRACK);
-        self.expr_level += 1;
-        let len = match self.token {
-            // always permit ellipsis for more fault-tolerant parsing
-            Token::ELLIPSIS => {
-                let ell = Expr::new_ellipsis(self.pos, None);
-                self.next();
-                Some(ell)
-            }
-            _ if self.token != Token::RBRACK => Some(self.parse_rhs()),
-            _ => None,
-        };
-        self.expr_level -= 1;
+        if len.is_none() {
+            self.expr_level += 1;
+            len = match self.token {
+                // always permit ellipsis for more fault-tolerant parsing
+                Token::ELLIPSIS => {
+                    let ell = Expr::new_ellipsis(self.pos, None);
+                    self.next();
+                    Some(ell)
+                }
+                _ if self.token != Token::RBRACK => Some(self.parse_rhs()),
+                _ => None,
+            };
+            self.expr_level -= 1;
+        }
+        if self.token == Token::COMMA {
+            // Trailing commas are accepted in type parameter
+            // lists but not in array type declarations.
+            // Accept for better error handling but complain.
+            self.error_str(self.pos, "unexpected comma; expecting ]");
+            self.next()
+        }
         self.expect(&Token::RBRACK);
         let elt = self.parse_type();
 
         self.trace_end();
-        Expr::Array(Rc::new(ArrayType {
-            l_brack: lpos,
-            len: len,
-            elt: elt,
-        }))
+        Expr::new_array_type(l_brack, len, elt)
     }
 
-    fn make_ident_list(&mut self, exprs: &mut Vec<Expr>) -> Vec<IdentKey> {
-        exprs
-            .iter()
-            .map(|x| {
-                match x {
-                    Expr::Ident(ident) => *ident,
-                    _ => {
-                        let pos = x.pos(&self.objects);
-                        if let Expr::Bad(_) = x {
-                            // only report error if it's a new one
-                            self.error_expected(pos, "identifier")
-                        }
-                        new_ident!(self, pos, "_".to_owned(), IdentEntity::NoEntity)
-                    }
+    fn parse_array_field_or_type_instance(&mut self, name: IdentKey) -> (Option<IdentKey>, Expr) {
+        self.trace_begin("ArrayFieldOrTypeInstance");
+
+        let l_brack = self.expect(&Token::LBRACK);
+        let mut args = vec![];
+        if self.token != Token::RBRACK {
+            self.expr_level += 1;
+            args.push(self.parse_rhs_or_type());
+            while self.token == Token::COMMA {
+                self.next();
+                args.push(self.parse_rhs_or_type());
+            }
+            self.expr_level -= 1;
+        }
+        let r_brack = self.expect(&Token::RBRACK);
+
+        let (id, expr) = match args.len() {
+            0 => {
+                // name []E
+                let elt = self.parse_type();
+                (Some(name), Expr::new_array_type(l_brack, None, elt))
+            }
+            1 => {
+                match self.try_ident_or_type() {
+                    // name [P]E
+                    Some(t) => (
+                        Some(name),
+                        Expr::new_array_type(l_brack, Some(args.into_iter().nth(0).unwrap()), t),
+                    ),
+                    // name [P]
+                    None => (
+                        None,
+                        Expr::new_index_expr(Expr::Ident(name), l_brack, args, r_brack),
+                    ),
                 }
-            })
-            .collect()
+            }
+            _ => (
+                None,
+                Expr::new_index_expr(Expr::Ident(name), l_brack, args, r_brack),
+            ),
+        };
+
+        self.trace_end();
+        (id, expr)
     }
 
     fn parse_field_decl(&mut self, scope: ScopeKey) -> FieldKey {
         self.trace_begin("FieldDecl");
 
-        // 1st FieldDecl
-        // A type name used as an anonymous field looks like a field identifier.
-        let mut list = vec![];
-        loop {
-            list.push(self.parse_var_type(false));
-            if self.token != Token::COMMA {
-                break;
-            }
-            self.next();
-        }
-
-        let mut idents = vec![];
-        let typ = match self.try_var_type(false) {
-            Some(t) => {
-                idents = self.make_ident_list(&mut list);
-                t
-            }
-            // ["*"] TypeName (AnonymousField)
-            None => {
-                let first = &list[0]; // we always have at least one element
-                if list.len() > 1 {
-                    self.error_expected(self.pos, "type");
-                    Expr::new_bad(self.pos, self.pos)
-                } else if !Parser::is_type_name(Parser::deref(first)) {
-                    self.error_expected(self.pos, "anonymous field");
-                    Expr::new_bad(
-                        first.pos(&self.objects),
-                        self.safe_pos(first.end(&self.objects)),
-                    )
-                } else {
-                    list.into_iter().nth(0).unwrap()
+        let (names, typ) = if let Token::IDENT(_) = self.token {
+            let name = self.parse_ident();
+            match self.token {
+                // embedded type
+                Token::PERIOD => (vec![], self.parse_qualified_ident(name)),
+                // embedded type
+                Token::STRING(_) | Token::SEMICOLON(_) | Token::RBRACE => {
+                    (vec![], Expr::Ident(name))
+                }
+                _ => {
+                    // name1, name2, ... T
+                    let mut names = vec![name];
+                    while self.token == Token::COMMA {
+                        self.next();
+                        names.push(self.parse_ident());
+                    }
+                    // We don't know if we have an embedded instantiated
+                    // type T[P1, P2, ...] or a field T of array type []E or [P]E.
+                    if names.len() == 1 && self.token == Token::LBRACK {
+                        let (name, t) = self.parse_array_field_or_type_instance(name);
+                        match name {
+                            Some(_) => (names, t),
+                            None => (vec![], t),
+                        }
+                    } else {
+                        (names, self.parse_type())
+                    }
                 }
             }
+        } else {
+            // embedded, possibly generic type
+            (vec![], self.parse_type())
         };
 
         // Tag
-        let token = self.token.clone();
-        let tag = if let Token::STRING(_) = token {
+        let tag = if let Token::STRING(_) = self.token {
             let t = Some(Expr::new_basic_lit(self.pos, self.token.clone()));
             self.next();
             t
@@ -696,7 +738,7 @@ impl<'a> Parser<'a> {
         self.expect_semi();
 
         let to_resolve = typ.clone_ident();
-        let field = new_field!(self, idents, Some(typ), tag);
+        let field = new_field!(self, names, Some(typ), tag);
         self.declare(
             DeclObj::Field(field),
             EntityData::NoData,
@@ -712,7 +754,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_struct_type(&mut self) -> Expr {
-        self.trace_begin("FieldDecl");
+        self.trace_begin("StructType");
 
         let stru = self.expect(&Token::STRUCT);
         let lbrace = self.expect(&Token::LBRACE);
@@ -751,109 +793,220 @@ impl<'a> Parser<'a> {
         }))
     }
 
-    // If the result is an identifier, it is not resolved.
-    fn try_var_type(&mut self, is_param: bool) -> Option<Expr> {
-        if is_param {
-            if let Token::ELLIPSIS = self.token {
-                let pos = self.pos;
-                self.next();
-                let typ = if let Some(t) = self.try_ident_or_type() {
-                    self.resolve(&t);
-                    t
-                } else {
-                    self.error_str(pos, "'...' parameter is missing type");
-                    Expr::new_bad(pos, self.pos)
-                };
-                return Some(Expr::new_ellipsis(pos, Some(typ)));
-            }
-        }
-        self.try_ident_or_type()
+    fn parse_dots_type(&mut self) -> Expr {
+        self.trace_begin("DotsType");
+
+        let pos = self.expect(&Token::ELLIPSIS);
+        let elt = Some(self.parse_type());
+
+        self.trace_end();
+        Expr::Ellipsis(Rc::new(Ellipsis { pos, elt }))
     }
 
-    fn parse_var_type(&mut self, is_param: bool) -> Expr {
-        match self.try_var_type(is_param) {
-            Some(typ) => typ,
-            None => {
-                let pos = self.pos;
-                self.error_expected(pos, "type");
-                self.next();
-                Expr::new_bad(pos, self.pos)
-            }
+    fn parse_param_decl(
+        &mut self,
+        name: Option<IdentKey>,
+        type_sets_ok: bool,
+    ) -> (Option<IdentKey>, Option<Expr>) {
+        self.trace_begin("ParamDeclOrNil");
+
+        if name.is_none() && type_sets_ok && self.token == Token::TILDE {
+            let typ = self.embedded_elem(None);
+            self.trace_end();
+            return (None, Some(typ));
         }
+
+        let parse_or_type = |self_: &mut Parser, typ: Expr| -> Expr {
+            if type_sets_ok && self_.token == Token::OR {
+                self_.embedded_elem(Some(typ))
+            } else {
+                typ
+            }
+        };
+
+        let mut name = name.or_else(|| match self.token {
+            Token::IDENT(_) => Some(self.parse_ident()),
+            _ => None,
+        });
+
+        let typ = match name {
+            Some(n) => match self.token {
+                Token::IDENT(_)
+                | Token::MUL
+                | Token::ARROW
+                | Token::FUNC
+                | Token::CHAN
+                | Token::MAP
+                | Token::STRUCT
+                | Token::INTERFACE
+                | Token::LPAREN => {
+                    // name type
+                    let t = self.parse_type();
+                    Some(parse_or_type(self, t))
+                }
+                Token::LBRACK => {
+                    // name "[" type1, ..., typeN "]" or name "[" n "]" type
+                    let (n, t) = self.parse_array_field_or_type_instance(n);
+                    name = n;
+                    Some(parse_or_type(self, t))
+                }
+                Token::ELLIPSIS => {
+                    // name "..." type
+                    Some(self.parse_dots_type())
+                }
+                Token::PERIOD => {
+                    // name "." ...
+                    name = None;
+                    let t = self.parse_qualified_ident(n);
+                    Some(parse_or_type(self, t))
+                }
+                Token::TILDE => match type_sets_ok {
+                    true => Some(self.embedded_elem(None)),
+                    false => None,
+                },
+                Token::OR => match type_sets_ok {
+                    true => {
+                        // name "|" typeset
+                        name = None;
+                        Some(self.embedded_elem(Some(Expr::Ident(n))))
+                    }
+                    false => None,
+                },
+                _ => None,
+            },
+            None => match self.token {
+                Token::MUL
+                | Token::ARROW
+                | Token::FUNC
+                | Token::CHAN
+                | Token::MAP
+                | Token::STRUCT
+                | Token::INTERFACE
+                | Token::LPAREN => {
+                    // type
+                    let t = self.parse_type();
+                    Some(parse_or_type(self, t))
+                }
+                Token::ELLIPSIS => {
+                    // name "..." type
+                    Some(self.parse_dots_type())
+                }
+                _ => {
+                    self.error_expected(self.pos, "')' or ']' for type parameter lists");
+                    self.advance(Token::is_expr_end);
+                    None
+                }
+            },
+        };
+
+        self.trace_end();
+        (name, typ)
     }
+
+    // // If the result is an identifier, it is not resolved.
+    // fn try_var_type(&mut self, is_param: bool) -> Option<Expr> {
+    //     if is_param {
+    //         if let Token::ELLIPSIS = self.token {
+    //             let pos = self.pos;
+    //             self.next();
+    //             let typ = if let Some(t) = self.try_ident_or_type() {
+    //                 self.resolve(&t);
+    //                 t
+    //             } else {
+    //                 self.error_str(pos, "'...' parameter is missing type");
+    //                 Expr::new_bad(pos, self.pos)
+    //             };
+    //             return Some(Expr::new_ellipsis(pos, Some(typ)));
+    //         }
+    //     }
+    //     self.try_ident_or_type()
+    // }
+
+    // fn parse_var_type(&mut self, is_param: bool) -> Expr {
+    //     match self.try_var_type(is_param) {
+    //         Some(typ) => typ,
+    //         None => {
+    //             let pos = self.pos;
+    //             self.error_expected(pos, "type");
+    //             self.next();
+    //             Expr::new_bad(pos, self.pos)
+    //         }
+    //     }
+    // }
 
     fn parse_parameter_list(&mut self, scope: ScopeKey, ellipsis_ok: bool) -> Vec<FieldKey> {
         self.trace_begin("ParameterList");
 
-        // 1st ParameterDecl
-        // A list of identifiers looks like a list of type names.
-        let mut list = vec![];
-        loop {
-            list.push(self.parse_var_type(ellipsis_ok));
-            if self.token != Token::COMMA {
-                break;
-            }
-            self.next();
-            if self.token == Token::RPAREN {
-                break;
-            }
-        }
-        let mut params = vec![];
-        let typ = self.try_var_type(ellipsis_ok);
-        if let Some(t) = typ {
-            // IdentifierList Type
-            let idents = self.make_ident_list(&mut list);
-            let to_resolve = t.clone_ident();
-            let field = new_field!(self, idents, Some(t), None);
-            params.push(field);
-            // Go spec: The scope of an identifier denoting a function
-            // parameter or result variable is the function body.
-            self.declare(
-                DeclObj::Field(field),
-                EntityData::NoData,
-                EntityKind::Var,
-                &scope,
-            );
-            if let Some(ident) = to_resolve {
-                self.resolve(&ident);
-            }
-            if !self.at_comma("parameter list", &Token::RPAREN) {
-                self.trace_end();
-                return params;
-            }
-            self.next();
-            while self.token != Token::RPAREN && self.token != Token::EOF {
-                let idents = self.parse_ident_list();
-                let t = self.parse_var_type(ellipsis_ok);
-                let to_resolve = t.clone_ident();
-                let field = new_field!(self, idents, Some(t), None);
-                // warning: copy paste
-                params.push(field);
-                // Go spec: The scope of an identifier denoting a function
-                // parameter or result variable is the function body.
-                self.declare(
-                    DeclObj::Field(field),
-                    EntityData::NoData,
-                    EntityKind::Var,
-                    &scope,
-                );
-                if let Some(ident) = to_resolve {
-                    self.resolve(&ident);
-                }
-                if !self.at_comma("parameter list", &Token::RPAREN) {
-                    break;
-                }
-                self.next();
-            }
-        } else {
-            // Type { "," Type } (anonymous parameters)
-            for typ in list {
-                self.resolve(&typ);
-                params.push(new_field!(self, vec![], Some(typ), None));
-            }
-        }
+        // // 1st ParameterDecl
+        // // A list of identifiers looks like a list of type names.
+        // let mut list = vec![];
+        // loop {
+        //     list.push(se lf.parse_var_type(ellipsis_ok));
+        //     if self.token != Token::COMMA {
+        //         break;
+        //     }
+        //     self.next();
+        //     if self.token == Token::RPAREN {
+        //         break;
+        //     }
+        // }
+        // let mut params = vec![];
+        // let typ = self.try_var_type(ellipsis_ok);
+        // if let Some(t) = typ {
+        //     // IdentifierList Type
+        //     let idents = self.make_ident_list(&mut list);
+        //     let to_resolve = t.clone_ident();
+        //     let field = new_field!(self, idents, Some(t), None);
+        //     params.push(field);
+        //     // Go spec: The scope of an identifier denoting a function
+        //     // parameter or result variable is the function body.
+        //     self.declare(
+        //         DeclObj::Field(field),
+        //         EntityData::NoData,
+        //         EntityKind::Var,
+        //         &scope,
+        //     );
+        //     if let Some(ident) = to_resolve {
+        //         self.resolve(&ident);
+        //     }
+        //     if !self.at_comma("parameter list", &Token::RPAREN) {
+        //         self.trace_end();
+        //         return params;
+        //     }
+        //     self.next();
+        //     while self.token != Token::RPAREN && self.token != Token::EOF {
+        //         let idents = self.parse_ident_list();
+        //         let t = self.parse_var_type(ellipsis_ok);
+        //         let to_resolve = t.clone_ident();
+        //         let field = new_field!(self, idents, Some(t), None);
+        //         // warning: copy paste
+        //         params.push(field);
+        //         // Go spec: The scope of an identifier denoting a function
+        //         // parameter or result variable is the function body.
+        //         self.declare(
+        //             DeclObj::Field(field),
+        //             EntityData::NoData,
+        //             EntityKind::Var,
+        //             &scope,
+        //         );
+        //         if let Some(ident) = to_resolve {
+        //             self.resolve(&ident);
+        //         }
+        //         if !self.at_comma("parameter list", &Token::RPAREN) {
+        //             break;
+        //         }
+        //         self.next();
+        //     }
+        // } else {
+        //     // Type { "," Type } (anonymous parameters)
+        //     for typ in list {
+        //         self.resolve(&typ);
+        //         params.push(new_field!(self, vec![], Some(typ), None));
+        //     }
+        // }
+
         self.trace_end();
-        params
+        vec![]
     }
 
     fn parse_parameters(&mut self, scope: ScopeKey, ellipsis_ok: bool) -> FieldList {
@@ -912,7 +1065,7 @@ impl<'a> Parser<'a> {
         self.trace_begin("MethodSpec");
 
         let mut idents = vec![];
-        let mut typ = self.parse_type_name();
+        let mut typ = self.parse_type_name(None);
         let ident = typ.try_as_ident();
         if ident.is_some() && self.token == Token::LPAREN {
             idents = vec![*ident.unwrap()];
@@ -934,6 +1087,52 @@ impl<'a> Parser<'a> {
 
         self.trace_end();
         field
+    }
+
+    fn embedded_elem(&mut self, expr: Option<Expr>) -> Expr {
+        self.trace_begin("EmbeddedElem");
+
+        let elem = match expr {
+            Some(e) => {
+                let op_pos = self.pos;
+                self.next();
+                Expr::Binary(Rc::new(BinaryExpr {
+                    expr_a: e,
+                    op: Token::OR,
+                    op_pos,
+                    expr_b: self.embedded_term(),
+                }))
+            }
+            None => self.embedded_term(),
+        };
+
+        self.trace_end();
+        elem
+    }
+
+    fn embedded_term(&mut self) -> Expr {
+        self.trace_begin("EmbeddedTerm");
+
+        let t = match self.token {
+            Token::TILDE => {
+                let pos = self.pos;
+                self.next();
+                let typ = self.parse_type();
+                Expr::new_unary_expr(pos, Token::TILDE, typ)
+            }
+            _ => match self.try_ident_or_type() {
+                Some(typ) => typ,
+                None => {
+                    let pos = self.pos;
+                    self.error_expected(pos, "~ term or type");
+                    self.advance(Token::is_expr_end);
+                    Expr::new_bad(pos, self.pos)
+                }
+            },
+        };
+
+        self.trace_end();
+        t
     }
 
     fn parse_interface_type(&mut self) -> InterfaceType {
@@ -1013,12 +1212,19 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_type_instance(&mut self, typ: Expr) -> Expr {
+        unimplemented!()
+    }
+
     // Returns a ident or a type
     // If the result is an identifier, it is not resolved.
     fn try_ident_or_type(&mut self) -> Option<Expr> {
         match self.token {
-            Token::IDENT(_) => Some(self.parse_type_name()),
-            Token::LBRACK => Some(self.parse_array_type()),
+            Token::IDENT(_) => Some(self.parse_type_name(None)),
+            Token::LBRACK => {
+                let lpos = self.expect(&Token::LBRACK);
+                Some(self.parse_array_type(lpos, None))
+            }
             Token::STRUCT => Some(self.parse_struct_type()),
             Token::MUL => Some(self.parse_pointer_type()),
             Token::FUNC => {
