@@ -35,7 +35,7 @@ func main() {
 
 
     go func() {
-		for i := 0; i < 12; i++ {
+		for i := 0; i < 3; i++ {
 			c.inc("aaa")
             for i := 0; i < 100; i++ {
             }
@@ -43,7 +43,7 @@ func main() {
 	}()
 
     go func() {
-        for i := 0; i < 1000; i++{
+        for i := 0; i < 2; i++{
             go c.read("aaa")
         }
     }()
