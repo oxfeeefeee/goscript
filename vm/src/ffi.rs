@@ -49,7 +49,7 @@ impl FfiFactory {
     pub fn new(statics: Box<dyn FfiStatics>) -> FfiFactory {
         FfiFactory {
             registry: HashMap::new(),
-            statics: statics,
+            statics,
         }
     }
 
@@ -57,16 +57,16 @@ impl FfiFactory {
         assert!(self.registry.insert(name, proto).is_none());
     }
 
-    pub fn create_by_name(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
+    /// Get a reference to the ffi factory's statics.
+    pub fn statics(&self) -> &dyn FfiStatics {
+        self.statics.as_ref()
+    }
+
+    pub(crate) fn create_by_name(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
         match self.registry.get(name) {
             Some(proto) => Ok(proto.clone()),
             None => Err(format!("FFI named {} not found", name)),
         }
-    }
-
-    /// Get a reference to the ffi factory's statics.
-    pub fn statics(&self) -> &dyn FfiStatics {
-        self.statics.as_ref()
     }
 }
 
