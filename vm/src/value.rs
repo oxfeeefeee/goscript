@@ -2041,14 +2041,6 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn try_as_struct(&self) -> Option<&(StructObj, RCount)> {
-        match &self.typ {
-            ValueType::Struct => Some(self.as_struct()),
-            _ => None,
-        }
-    }
-
-    #[inline]
     pub fn cast_copyable(&self, from: ValueType, to: ValueType) -> GosValue {
         assert!(from.copyable());
         GosValue::new(to, self.data.cast_copyable(from, to))

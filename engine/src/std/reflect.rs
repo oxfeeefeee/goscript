@@ -355,9 +355,13 @@ impl StdValue {
     }
 
     fn num_field(&self, ctx: &FfiCallCtx) -> RuntimeResult<GosValue> {
-        match self.val(ctx)?.try_as_struct() {
-            Some(s) => Ok(GosValue::new_int(s.0.borrow_fields().len() as isize)),
-            None => err_wrong_type!(),
+        let val = self.val(ctx)?;
+        if val.typ() != ValueType::Struct {
+            err_wrong_type!()
+        } else {
+            Ok(GosValue::new_int(
+                val.as_struct().0.borrow_fields().len() as isize
+            ))
         }
     }
 
