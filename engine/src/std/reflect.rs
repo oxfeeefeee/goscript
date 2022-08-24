@@ -238,8 +238,7 @@ impl ReflectFfi {
         match iface.underlying_value() {
             Some(obj) => {
                 if obj.typ() == ValueType::Slice {
-                    obj.dispatcher_a_s()
-                        .slice_swap(obj, *a as usize, *b as usize)
+                    obj.slice_swap(*a as usize, *b as usize)
                 } else {
                     Err("reflect swap: not a slice".to_owned())
                 }

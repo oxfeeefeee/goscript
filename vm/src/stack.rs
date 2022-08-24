@@ -50,7 +50,7 @@ impl Stack {
     }
 
     #[inline]
-    pub fn read_and_op(
+    pub(crate) fn read_and_op(
         &self,
         lhs: &ValueData,
         t: ValueType,

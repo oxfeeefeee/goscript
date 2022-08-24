@@ -26,7 +26,7 @@ pub type RCount = Cell<IRC>;
 pub type RCQueue = VecDeque<IRC>;
 
 #[inline]
-pub fn rcount_mark_and_queue(rc: &RCount, queue: &mut RCQueue) {
+pub(crate) fn rcount_mark_and_queue(rc: &RCount, queue: &mut RCQueue) {
     let i = rc.get();
     if i <= 0 {
         queue.push_back(i);
@@ -229,9 +229,9 @@ macro_rules! convert_to_float {
 
 pub type RuntimeResult<T> = result::Result<T, String>;
 
-pub type OptionBox<T> = Option<Box<T>>;
+pub(crate) type OptionBox<T> = Option<Box<T>>;
 
-pub type OptionRc<T> = Option<Rc<T>>;
+pub(crate) type OptionRc<T> = Option<Rc<T>>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Complex64 {
@@ -251,7 +251,7 @@ pub struct Complex128 {
 /// Nil is a virtual type representing zero value for pointer, interfaces,
 /// maps, slices, channels and function types. For nil-able types, we use
 /// null pointer to represent nil value.
-pub union ValueData {
+pub(crate) union ValueData {
     // untyped_nil is only used in ware cases, when the type of the nil value is ValueType::VOID
     untyped_nil: *const usize,
     boolean: bool,
@@ -314,199 +314,199 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn new_bool(b: bool) -> ValueData {
+    pub(crate) fn new_bool(b: bool) -> ValueData {
         ValueData { boolean: b }
     }
 
     #[inline]
-    pub fn new_int(i: isize) -> ValueData {
+    pub(crate) fn new_int(i: isize) -> ValueData {
         ValueData { int: i }
     }
 
     #[inline]
-    pub fn new_int8(i: i8) -> ValueData {
+    pub(crate) fn new_int8(i: i8) -> ValueData {
         ValueData { int8: i }
     }
 
     #[inline]
-    pub fn new_int16(i: i16) -> ValueData {
+    pub(crate) fn new_int16(i: i16) -> ValueData {
         ValueData { int16: i }
     }
 
     #[inline]
-    pub fn new_int32(i: i32) -> ValueData {
+    pub(crate) fn new_int32(i: i32) -> ValueData {
         ValueData { int32: i }
     }
 
     #[inline]
-    pub fn new_int64(i: i64) -> ValueData {
+    pub(crate) fn new_int64(i: i64) -> ValueData {
         ValueData { int64: i }
     }
 
     #[inline]
-    pub fn new_uint(u: usize) -> ValueData {
+    pub(crate) fn new_uint(u: usize) -> ValueData {
         ValueData { uint: u }
     }
 
     #[inline]
-    pub fn new_uint_ptr(u: usize) -> ValueData {
+    pub(crate) fn new_uint_ptr(u: usize) -> ValueData {
         ValueData { uint_ptr: u }
     }
 
     #[inline]
-    pub fn new_uint8(u: u8) -> ValueData {
+    pub(crate) fn new_uint8(u: u8) -> ValueData {
         ValueData { uint8: u }
     }
 
     #[inline]
-    pub fn new_uint16(u: u16) -> ValueData {
+    pub(crate) fn new_uint16(u: u16) -> ValueData {
         ValueData { uint16: u }
     }
 
     #[inline]
-    pub fn new_uint32(u: u32) -> ValueData {
+    pub(crate) fn new_uint32(u: u32) -> ValueData {
         ValueData { uint32: u }
     }
 
     #[inline]
-    pub fn new_uint64(u: u64) -> ValueData {
+    pub(crate) fn new_uint64(u: u64) -> ValueData {
         ValueData { uint64: u }
     }
 
     #[inline]
-    pub fn new_float32(f: F32) -> ValueData {
+    pub(crate) fn new_float32(f: F32) -> ValueData {
         ValueData { float32: f }
     }
 
     #[inline]
-    pub fn new_float64(f: F64) -> ValueData {
+    pub(crate) fn new_float64(f: F64) -> ValueData {
         ValueData { float64: f }
     }
 
     #[inline]
-    pub fn new_complex64(r: F32, i: F32) -> ValueData {
+    pub(crate) fn new_complex64(r: F32, i: F32) -> ValueData {
         ValueData {
             complex64: Complex64 { r: r, i: i },
         }
     }
 
     #[inline]
-    pub fn new_function(f: FunctionKey) -> ValueData {
+    pub(crate) fn new_function(f: FunctionKey) -> ValueData {
         ValueData { function: f }
     }
 
     #[inline]
-    pub fn new_package(p: PackageKey) -> ValueData {
+    pub(crate) fn new_package(p: PackageKey) -> ValueData {
         ValueData { package: p }
     }
 
     #[inline]
-    pub fn as_bool(&self) -> &bool {
+    pub(crate) fn as_bool(&self) -> &bool {
         unsafe { &self.boolean }
     }
 
     #[inline]
-    pub fn as_int(&self) -> &isize {
+    pub(crate) fn as_int(&self) -> &isize {
         unsafe { &self.int }
     }
 
     #[inline]
-    pub fn as_int8(&self) -> &i8 {
+    pub(crate) fn as_int8(&self) -> &i8 {
         unsafe { &self.int8 }
     }
 
     #[inline]
-    pub fn as_int16(&self) -> &i16 {
+    pub(crate) fn as_int16(&self) -> &i16 {
         unsafe { &self.int16 }
     }
 
     #[inline]
-    pub fn as_int32(&self) -> &i32 {
+    pub(crate) fn as_int32(&self) -> &i32 {
         unsafe { &self.int32 }
     }
 
     #[inline]
-    pub fn as_int64(&self) -> &i64 {
+    pub(crate) fn as_int64(&self) -> &i64 {
         unsafe { &self.int64 }
     }
 
     #[inline]
-    pub fn as_uint(&self) -> &usize {
+    pub(crate) fn as_uint(&self) -> &usize {
         unsafe { &self.uint }
     }
 
     #[inline]
-    pub fn as_uint_ptr(&self) -> &usize {
+    pub(crate) fn as_uint_ptr(&self) -> &usize {
         unsafe { &self.uint_ptr }
     }
 
     #[inline]
-    pub fn as_uint8(&self) -> &u8 {
+    pub(crate) fn as_uint8(&self) -> &u8 {
         unsafe { &self.uint8 }
     }
 
     #[inline]
-    pub fn as_uint16(&self) -> &u16 {
+    pub(crate) fn as_uint16(&self) -> &u16 {
         unsafe { &self.uint16 }
     }
 
     #[inline]
-    pub fn as_uint32(&self) -> &u32 {
+    pub(crate) fn as_uint32(&self) -> &u32 {
         unsafe { &self.uint32 }
     }
 
     #[inline]
-    pub fn as_uint64(&self) -> &u64 {
+    pub(crate) fn as_uint64(&self) -> &u64 {
         unsafe { &self.uint64 }
     }
 
     #[inline]
-    pub fn as_float32(&self) -> &F32 {
+    pub(crate) fn as_float32(&self) -> &F32 {
         unsafe { &self.float32 }
     }
 
     #[inline]
-    pub fn as_float64(&self) -> &F64 {
+    pub(crate) fn as_float64(&self) -> &F64 {
         unsafe { &self.float64 }
     }
 
     #[inline]
-    pub fn as_complex64(&self) -> &Complex64 {
+    pub(crate) fn as_complex64(&self) -> &Complex64 {
         unsafe { &self.complex64 }
     }
 
     #[inline]
-    pub fn as_function(&self) -> &FunctionKey {
+    pub(crate) fn as_function(&self) -> &FunctionKey {
         unsafe { &self.function }
     }
 
     #[inline]
-    pub fn as_package(&self) -> &PackageKey {
+    pub(crate) fn as_package(&self) -> &PackageKey {
         unsafe { &self.package }
     }
 
     #[inline]
-    pub fn as_metadata(&self) -> &Meta {
+    pub(crate) fn as_metadata(&self) -> &Meta {
         unsafe { self.metadata.as_ref().unwrap() }
     }
 
     #[inline]
-    pub fn as_complex128(&self) -> &Complex128 {
+    pub(crate) fn as_complex128(&self) -> &Complex128 {
         unsafe { &self.complex128.as_ref().unwrap() }
     }
 
     #[inline]
-    pub fn as_string(&self) -> &StringObj {
+    pub(crate) fn as_string(&self) -> &StringObj {
         unsafe { &self.string.as_ref().unwrap() }
     }
 
     #[inline]
-    pub fn as_gos_array(&self) -> &(GosArrayObj, RCount) {
+    pub(crate) fn as_gos_array(&self) -> &(GosArrayObj, RCount) {
         unsafe { &self.array.as_ref().unwrap() }
     }
 
     #[inline]
-    pub fn as_array<T>(&self) -> &(ArrayObj<T>, RCount) {
+    pub(crate) fn as_array<T>(&self) -> &(ArrayObj<T>, RCount) {
         unsafe {
             let p: *const (ArrayObj<T>, RCount) = std::mem::transmute(self.array);
             &p.as_ref().unwrap()
@@ -514,32 +514,27 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> &(StructObj, RCount) {
+    pub(crate) fn as_struct(&self) -> &(StructObj, RCount) {
         unsafe { &self.structure.as_ref().unwrap() }
     }
 
     #[inline]
-    pub fn as_pointer(&self) -> Option<&PointerObj> {
+    pub(crate) fn as_pointer(&self) -> Option<&PointerObj> {
         unsafe { self.pointer.as_ref() }
     }
 
     #[inline]
-    pub fn as_unsafe_ptr(&self) -> Option<&UnsafePtrObj> {
+    pub(crate) fn as_unsafe_ptr(&self) -> Option<&UnsafePtrObj> {
         unsafe { self.unsafe_ptr.as_ref() }
     }
 
     #[inline]
-    pub fn as_closure(&self) -> Option<&(ClosureObj, RCount)> {
+    pub(crate) fn as_closure(&self) -> Option<&(ClosureObj, RCount)> {
         unsafe { self.closure.as_ref() }
     }
 
     #[inline]
-    pub fn as_gos_slice(&self) -> Option<&(GosSliceObj, RCount)> {
-        unsafe { self.slice.as_ref() }
-    }
-
-    #[inline]
-    pub fn as_slice<T>(&self) -> Option<&(SliceObj<T>, RCount)> {
+    pub(crate) fn as_slice<T>(&self) -> Option<&(SliceObj<T>, RCount)> {
         unsafe {
             let p: *const (SliceObj<T>, RCount) = std::mem::transmute(self.array);
             p.as_ref()
@@ -547,32 +542,27 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_map(&self) -> Option<&(MapObj, RCount)> {
+    pub(crate) fn as_map(&self) -> Option<&(MapObj, RCount)> {
         unsafe { self.map.as_ref() }
     }
 
     #[inline]
-    pub fn as_interface(&self) -> Option<&InterfaceObj> {
+    pub(crate) fn as_interface(&self) -> Option<&InterfaceObj> {
         unsafe { self.interface.as_ref() }
     }
 
     #[inline]
-    pub fn as_channel(&self) -> Option<&ChannelObj> {
+    pub(crate) fn as_channel(&self) -> Option<&ChannelObj> {
         unsafe { self.channel.as_ref() }
     }
 
     #[inline]
-    pub fn as_addr(&self) -> *const usize {
+    pub(crate) fn as_addr(&self) -> *const usize {
         unsafe { self.untyped_nil }
     }
 
     #[inline]
-    pub fn into_value(self, t: ValueType) -> GosValue {
-        GosValue::new(t, self)
-    }
-
-    #[inline]
-    pub fn int32_as(i: i32, t: ValueType) -> ValueData {
+    pub(crate) fn int32_as(i: i32, t: ValueType) -> ValueData {
         match t {
             ValueType::Int => ValueData { int: i as isize },
             ValueType::Int8 => ValueData { int8: i as i8 },
@@ -598,7 +588,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn as_index(&self, t: ValueType) -> usize {
+    pub(crate) fn as_index(&self, t: ValueType) -> usize {
         match t {
             ValueType::Int => *self.as_int() as usize,
             ValueType::Int8 => *self.as_int8() as usize,
@@ -615,13 +605,13 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn add_str(&self, b: &ValueData) -> ValueData {
+    pub(crate) fn add_str(&self, b: &ValueData) -> ValueData {
         let s = StrUtil::add(self.as_string(), b.as_string());
         ValueData::new_string(s)
     }
 
     #[inline]
-    pub fn cast_copyable(&self, from: ValueType, to: ValueType) -> ValueData {
+    pub(crate) fn cast_copyable(&self, from: ValueType, to: ValueType) -> ValueData {
         let mut v = unsafe { self.copy_non_ptr() };
         match to {
             ValueType::Int => convert_to_int!(&mut v, from, int, isize),
@@ -643,7 +633,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn unary_negate(&self, t: ValueType) -> ValueData {
+    pub(crate) fn unary_negate(&self, t: ValueType) -> ValueData {
         let mut v = unsafe { self.copy_non_ptr() };
         match t {
             ValueType::Int => v.int = -unsafe { self.int },
@@ -664,7 +654,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn unary_xor(&self, t: ValueType) -> ValueData {
+    pub(crate) fn unary_xor(&self, t: ValueType) -> ValueData {
         let mut v = unsafe { self.copy_non_ptr() };
         match t {
             ValueType::Uint => v.uint = unsafe { (!0) ^ self.uint },
@@ -683,7 +673,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn logical_not(&self, t: ValueType) -> ValueData {
+    pub(crate) fn logical_not(&self, t: ValueType) -> ValueData {
         debug_assert!(t == ValueType::Bool);
         let mut v = unsafe { self.copy_non_ptr() };
         v.boolean = unsafe { !self.boolean };
@@ -691,7 +681,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn inc(&self, t: ValueType) -> ValueData {
+    pub(crate) fn inc(&self, t: ValueType) -> ValueData {
         let mut v = unsafe { self.copy_non_ptr() };
         match t {
             ValueType::Int => v.int = unsafe { self.int } + 1,
@@ -712,7 +702,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn dec(&self, t: ValueType) -> ValueData {
+    pub(crate) fn dec(&self, t: ValueType) -> ValueData {
         let mut v = unsafe { self.copy_non_ptr() };
         match t {
             ValueType::Int => v.int = unsafe { self.int } - 1,
@@ -733,57 +723,57 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn binary_op_add(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_add(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_float_str!(t, self, b, +) }
     }
 
     #[inline]
-    pub fn binary_op_sub(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_sub(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_float_str!(t, self, b, -) }
     }
 
     #[inline]
-    pub fn binary_op_mul(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_mul(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_float_str!(t, self, b, *) }
     }
 
     #[inline]
-    pub fn binary_op_quo(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_quo(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_float_str!(t, self, b, /) }
     }
 
     #[inline]
-    pub fn binary_op_rem(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_rem(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_no_wrap!(t, self, b, %) }
     }
 
     #[inline]
-    pub fn binary_op_and(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_and(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_no_wrap!(t, self, b, &) }
     }
 
     #[inline]
-    pub fn binary_op_or(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_or(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_no_wrap!(t, self, b, |) }
     }
 
     #[inline]
-    pub fn binary_op_xor(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_xor(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe { binary_op_int_no_wrap!(t, self, b, ^) }
     }
 
     #[inline]
-    pub fn binary_op_shl(&self, b: &u32, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_shl(&self, b: &u32, t: ValueType) -> ValueData {
         unsafe { shift_int!(t, self, b, checked_shl) }
     }
 
     #[inline]
-    pub fn binary_op_shr(&self, b: &u32, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_shr(&self, b: &u32, t: ValueType) -> ValueData {
         unsafe { shift_int!(t, self, b, checked_shr) }
     }
 
     #[inline]
-    pub fn binary_op_and_not(&self, b: &ValueData, t: ValueType) -> ValueData {
+    pub(crate) fn binary_op_and_not(&self, b: &ValueData, t: ValueType) -> ValueData {
         unsafe {
             match t {
                 ValueType::Int => ValueData {
@@ -822,37 +812,37 @@ impl ValueData {
     }
 
     #[inline]
-    pub fn compare_eql(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_eql(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_bool_int_float!(t, self, b, ==) }
     }
 
     #[inline]
-    pub fn compare_neq(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_neq(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_bool_int_float!(t, self, b, !=) }
     }
 
     #[inline]
-    pub fn compare_lss(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_lss(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, self, b, <) }
     }
 
     #[inline]
-    pub fn compare_gtr(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_gtr(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, self, b, >) }
     }
 
     #[inline]
-    pub fn compare_leq(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_leq(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, self, b, <=) }
     }
 
     #[inline]
-    pub fn compare_geq(&self, b: &ValueData, t: ValueType) -> bool {
+    pub(crate) fn compare_geq(&self, b: &ValueData, t: ValueType) -> bool {
         unsafe { cmp_int_float!(t, self, b, >=) }
     }
 
     #[inline]
-    pub fn rc(&self, t: ValueType) -> Option<&Cell<IRC>> {
+    pub(crate) fn rc(&self, t: ValueType) -> Option<&Cell<IRC>> {
         match t {
             ValueType::Array => Some(&self.as_gos_array().1),
             ValueType::Closure => self.as_closure().map(|x| &x.1),
@@ -862,7 +852,7 @@ impl ValueData {
         }
     }
 
-    pub fn fmt_debug(
+    pub(crate) fn fmt_debug(
         &self,
         t: ValueType,
         t_elem: ValueType,
@@ -921,7 +911,7 @@ impl ValueData {
     }
 
     #[inline]
-    pub unsafe fn copy_non_ptr(&self) -> ValueData {
+    pub(crate) unsafe fn copy_non_ptr(&self) -> ValueData {
         self.copy()
     }
 
@@ -1323,18 +1313,18 @@ impl GosValue {
 
     /// Get a reference to the gos value's data.
     #[inline]
-    pub fn data(&self) -> &ValueData {
+    pub(crate) fn data(&self) -> &ValueData {
         &self.data
     }
 
     /// Get a mutable reference to the gos value's data.
     #[inline]
-    pub unsafe fn data_mut(&mut self) -> &mut ValueData {
+    pub(crate) unsafe fn data_mut(&mut self) -> &mut ValueData {
         &mut self.data
     }
 
     #[inline]
-    pub fn dispatcher_a_s(&self) -> &'static Box<dyn Dispatcher> {
+    pub(crate) fn dispatcher_a_s(&self) -> &'static Box<dyn Dispatcher> {
         dispatcher_a_s_for(self.t_elem)
     }
 
@@ -2007,6 +1997,10 @@ impl GosValue {
             .get_array_equivalent(index))
     }
 
+    pub fn slice_swap(&self, i: usize, j: usize) -> RuntimeResult<()> {
+        self.dispatcher_a_s().slice_swap(self, i, j)
+    }
+
     #[inline]
     pub fn int32_as(i: i32, t: ValueType) -> GosValue {
         GosValue::new(t, ValueData::int32_as(i, t))
@@ -2623,7 +2617,7 @@ impl Element for Elem64 {
 }
 
 /// Dispatcher is used to diapatch Array/Slice calls using the vtable.
-pub trait Dispatcher {
+pub(crate) trait Dispatcher {
     fn array_with_size(&self, size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> GosValue;
 
     fn array_with_data(&self, data: Vec<GosValue>, gcv: &GcoVec) -> GosValue;
@@ -2919,7 +2913,7 @@ define_dispatcher!(DispatcherGos, GosElem);
 static mut __DISPATCHERS: Option<[Box<dyn Dispatcher>; ValueType::Channel as usize + 1]> = None;
 
 #[inline]
-pub fn dispatcher_a_s_for(t: ValueType) -> &'static Box<dyn Dispatcher> {
+pub(crate) fn dispatcher_a_s_for(t: ValueType) -> &'static Box<dyn Dispatcher> {
     unsafe {
         match &__DISPATCHERS {
             Some(d) => &d[t as usize],
