@@ -116,6 +116,26 @@ macro_rules! unary_op {
     }};
 }
 
+/// Entry point
+pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
+    // Init array/slice dispatcher
+    dispatcher_a_s_for(ValueType::Uint);
+
+    let gcv = GcoVec::new();
+    let exec = Rc::new(LocalExecutor::new());
+    let ctx = Context::new(exec.clone(), code, &gcv, ffi, fs);
+    let entry = ctx.new_entry_frame(code.entry);
+    ctx.spawn_fiber(Stack::new(), entry);
+
+    future::block_on(async {
+        loop {
+            if !exec.try_tick() {
+                break;
+            }
+        }
+    });
+}
+
 #[derive(Debug)]
 pub struct ByteCode {
     pub objects: VMObjects,
@@ -1777,42 +1797,6 @@ impl<'a> Fiber<'a> {
         } //loop
 
         gc(gcv);
-    }
-}
-
-pub struct GosVM<'a> {
-    code: ByteCode,
-    gcv: GcoVec,
-    ffi: &'a FfiFactory,
-    fs: Option<&'a FileSet>,
-}
-
-impl<'a> GosVM<'a> {
-    pub fn new(bc: ByteCode, ffi: &'a FfiFactory, fs: Option<&'a FileSet>) -> GosVM<'a> {
-        GosVM {
-            code: bc,
-            gcv: GcoVec::new(),
-            ffi: ffi,
-            fs: fs,
-        }
-    }
-
-    pub fn run(&self) {
-        // Init array/slice dispatcher
-        dispatcher_a_s_for(ValueType::Uint);
-
-        let exec = Rc::new(LocalExecutor::new());
-        let ctx = Context::new(exec.clone(), &self.code, &self.gcv, self.ffi, self.fs);
-        let entry = ctx.new_entry_frame(self.code.entry);
-        ctx.spawn_fiber(Stack::new(), entry);
-
-        future::block_on(async {
-            loop {
-                if !exec.try_tick() {
-                    break;
-                }
-            }
-        });
     }
 }
 

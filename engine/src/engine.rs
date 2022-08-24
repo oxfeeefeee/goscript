@@ -66,10 +66,7 @@ impl Engine {
     pub fn new() -> Engine {
         let statics = Statics::default();
         let ffi = vm::ffi::FfiFactory::new(Box::new(statics.clone()));
-        let mut e = Engine {
-            ffi: ffi,
-            statics: statics,
-        };
+        let mut e = Engine { ffi, statics };
         crate::std::register(&mut e);
         e
     }
@@ -98,12 +95,12 @@ impl Engine {
         path: &str,
     ) -> Result<(), fe::errors::ErrorList> {
         let cfg = types::TraceConfig {
-            trace_parser: trace_parser,
-            trace_checker: trace_checker,
+            trace_parser,
+            trace_checker,
         };
         let mut fs = fe::FileSet::new();
         let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs)?;
-        let vm = vm::vm::GosVM::new(code, &self.ffi, Some(&fs));
-        Ok(vm.run())
+        vm::vm::run(&code, &self.ffi, Some(&fs));
+        Ok(())
     }
 }
