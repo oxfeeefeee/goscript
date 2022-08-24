@@ -3,27 +3,24 @@
 // license that can be found in the LICENSE file.
 
 #![macro_use]
-use super::channel::Channel;
-use super::ffi::Ffi;
-use super::gc::GcoVec;
-use super::instruction::{Instruction, OpIndex, ValueType};
-use super::metadata::*;
-use super::stack::Stack;
-use super::value::*;
-use crate::value::GosElem;
+use crate::channel::Channel;
+use crate::ffi::Ffi;
+use crate::gc::GcoVec;
+use crate::instruction::{Instruction, OpIndex, ValueType};
+use crate::metadata::*;
+use crate::stack::Stack;
+use crate::value::*;
 use slotmap::{new_key_type, SlotMap};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::collections::HashMap;
-use std::fmt::Write;
-use std::fmt::{self, Display};
+use std::fmt::{self, Debug, Display, Write};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::Range;
-use std::ptr::{self};
 use std::rc::{Rc, Weak};
-use std::{panic, str};
+use std::{panic, ptr, str};
 
 const DEFAULT_CAPACITY: usize = 128;
 
@@ -172,6 +169,219 @@ impl Display for MapObj {
 
 // ----------------------------------------------------------------------------
 // ArrayObj
+
+/// Element is used to store GosValue in Typed containers to save memomry
+pub trait Element: Clone + Hash + Debug {
+    fn from_value(val: GosValue) -> Self;
+
+    fn into_value(self, t: ValueType) -> GosValue;
+
+    fn set_value(&self, val: &GosValue);
+
+    fn need_gc() -> bool {
+        false
+    }
+
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        dst.clone_from_slice(src)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct GosElem {
+    cell: RefCell<GosValue>,
+}
+
+impl GosElem {
+    /// for gc
+    pub fn ref_sub_one(&self) {
+        self.cell.borrow().ref_sub_one();
+    }
+
+    /// for gc
+    pub fn mark_dirty(&self, queue: &mut RCQueue) {
+        self.cell.borrow().mark_dirty(queue);
+    }
+}
+
+impl std::fmt::Display for GosElem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        std::fmt::Display::fmt(&self.cell.borrow(), f)
+    }
+}
+
+impl Hash for GosElem {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.cell.borrow().hash(state)
+    }
+}
+
+impl Element for GosElem {
+    #[inline]
+    fn from_value(val: GosValue) -> Self {
+        GosElem {
+            cell: RefCell::new(val),
+        }
+    }
+
+    #[inline]
+    fn into_value(self, _t: ValueType) -> GosValue {
+        self.cell.into_inner()
+    }
+
+    #[inline]
+    fn set_value(&self, val: &GosValue) {
+        self.cell.replace(val.clone());
+    }
+
+    #[inline]
+    fn need_gc() -> bool {
+        true
+    }
+}
+
+/// Cell is much cheaper than RefCell, used to store basic types
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CellElem<T>
+where
+    T: Copy + PartialEq,
+{
+    pub cell: Cell<T>,
+}
+
+impl<T> CellElem<T>
+where
+    T: Copy + PartialEq,
+{
+    pub fn into_inner(self) -> T {
+        self.cell.into_inner()
+    }
+
+    fn clone_slice(dst: &mut [CellElem<T>], src: &[CellElem<T>]) {
+        let d: &mut [T] = unsafe { std::mem::transmute(dst) };
+        let s: &[T] = unsafe { std::mem::transmute(src) };
+        d.copy_from_slice(s)
+    }
+}
+
+pub type Elem8 = CellElem<u8>;
+pub type Elem16 = CellElem<u16>;
+pub type Elem32 = CellElem<u32>;
+pub type Elem64 = CellElem<u64>;
+
+/// This can be used when any version of Slice/Array returns the same thing
+/// kind of unsafe
+pub type AnyElem = CellElem<u8>;
+
+impl<T> Hash for CellElem<T>
+where
+    T: Copy + PartialEq + Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let d = self.cell.get();
+        d.hash(state)
+    }
+}
+
+impl Element for CellElem<u8> {
+    #[inline]
+    fn from_value(val: GosValue) -> Self {
+        CellElem {
+            cell: Cell::new(*val.as_uint8()),
+        }
+    }
+
+    #[inline]
+    fn into_value(self, t: ValueType) -> GosValue {
+        let data = ValueData::new_uint8(self.cell.get());
+        GosValue::new(t, data)
+    }
+
+    #[inline]
+    fn set_value(&self, val: &GosValue) {
+        self.cell.set(*val.as_uint8());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u8>::clone_slice(dst, src)
+    }
+}
+
+impl Element for Elem16 {
+    #[inline]
+    fn from_value(val: GosValue) -> Self {
+        CellElem {
+            cell: Cell::new(*val.as_uint16()),
+        }
+    }
+
+    #[inline]
+    fn into_value(self, t: ValueType) -> GosValue {
+        let data = ValueData::new_uint16(self.cell.get());
+        GosValue::new(t, data)
+    }
+
+    #[inline]
+    fn set_value(&self, val: &GosValue) {
+        self.cell.set(*val.as_uint16());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u16>::clone_slice(dst, src)
+    }
+}
+
+impl Element for Elem32 {
+    #[inline]
+    fn from_value(val: GosValue) -> Self {
+        CellElem {
+            cell: Cell::new(*val.as_uint32()),
+        }
+    }
+
+    #[inline]
+    fn into_value(self, t: ValueType) -> GosValue {
+        let data = ValueData::new_uint32(self.cell.get());
+        GosValue::new(t, data)
+    }
+
+    #[inline]
+    fn set_value(&self, val: &GosValue) {
+        self.cell.set(*val.as_uint32());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u32>::clone_slice(dst, src)
+    }
+}
+
+impl Element for Elem64 {
+    #[inline]
+    fn from_value(val: GosValue) -> Self {
+        CellElem {
+            cell: Cell::new(*val.as_uint64()),
+        }
+    }
+
+    #[inline]
+    fn into_value(self, t: ValueType) -> GosValue {
+        let data = ValueData::new_uint64(self.cell.get());
+        GosValue::new(t, data)
+    }
+
+    #[inline]
+    fn set_value(&self, val: &GosValue) {
+        self.cell.set(*val.as_uint64());
+    }
+
+    #[inline]
+    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
+        CellElem::<u64>::clone_slice(dst, src)
+    }
+}
 
 pub struct ArrayObj<T> {
     vec: RefCell<Vec<T>>,
