@@ -10,11 +10,11 @@ type ffiFmt2 interface {
 }
 
 func Println(a ...interface{})  {
-    var f = ffi(ffiFmt2, "fmt2")
+    var f = ffi(ffiFmt2, "fmt666")
     f.println(a...)
 }
 
 func Printf(a ...interface{})  {
-    var f = ffi(ffiFmt2, "fmt2")
+    var f = ffi(ffiFmt2, "fmt666")
     f.printf(a...)
 }

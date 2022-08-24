@@ -4,6 +4,7 @@
 
 mod bits;
 mod fmt2;
+mod fmt666;
 mod io;
 mod os;
 mod reflect;
@@ -11,6 +12,7 @@ mod sync;
 
 pub(crate) fn register(engine: &mut crate::engine::Engine) {
     fmt2::Fmt2Ffi::register(engine);
+    fmt666::Fmt666Ffi::register(engine);
     bits::BitsFfi::register(engine);
     sync::MutexFfi::register(engine);
     sync::RWMutexFfi::register(engine);
