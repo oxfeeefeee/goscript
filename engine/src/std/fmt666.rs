@@ -17,7 +17,7 @@ pub struct Fmt666Ffi {}
 impl Fmt666Ffi {
     fn ffi_println(ctx: &mut FfiCallCtx, args: GosValue) -> RuntimeResult<[GosValue; 1]> {
         let vec = args
-            .as_some_slice::<GosElem>()?
+            .as_non_nil_slice::<GosElem>()?
             .0
             .get_vec(ValueType::Interface);
         let strs: Vec<String> = vec

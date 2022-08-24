@@ -66,9 +66,9 @@ impl FileFfi {
 
     fn ffi_read(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
-            .as_some_unsafe_ptr()?
+            .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
-        let slice = &args[1].as_some_slice::<Elem8>()?.0;
+        let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
         let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
         let r = file.read(&mut buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
@@ -78,9 +78,9 @@ impl FileFfi {
 
     fn ffi_write(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
-            .as_some_unsafe_ptr()?
+            .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
-        let slice = &args[1].as_some_slice::<Elem8>()?.0;
+        let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
         let buf = unsafe { slice.as_raw_slice::<u8>() };
         let r = file.write(&buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
@@ -90,7 +90,7 @@ impl FileFfi {
 
     fn ffi_seek(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
-            .as_some_unsafe_ptr()?
+            .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
         let offset = *args[1].as_int64();
         let whence = match *args[2].as_int() {

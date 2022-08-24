@@ -173,7 +173,7 @@ impl RangeStack {
     ) -> RuntimeResult<()> {
         match typ {
             ValueType::Map => {
-                let map = target.as_some_map()?.0.borrow_data();
+                let map = target.as_non_nil_map()?.0.borrow_data();
                 let iter = unsafe { std::mem::transmute(map.iter()) };
                 self.maps.push(iter);
             }

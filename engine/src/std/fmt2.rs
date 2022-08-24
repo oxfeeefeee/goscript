@@ -17,7 +17,7 @@ pub struct Fmt2Ffi {}
 impl Fmt2Ffi {
     fn ffi_println(&self, args: Vec<GosValue>) -> RuntimeResult<()> {
         let vec = args[0]
-            .as_some_slice::<GosElem>()?
+            .as_non_nil_slice::<GosElem>()?
             .0
             .get_vec(ValueType::Interface);
         let strs: Vec<String> = vec

@@ -180,7 +180,7 @@ impl Selector {
                 let entry = &self.comms[index];
                 match &entry.typ {
                     SelectCommType::Send(val) => {
-                        match entry.chan.as_some_channel()?.chan.try_send(val.clone()) {
+                        match entry.chan.as_non_nil_channel()?.chan.try_send(val.clone()) {
                             Ok(_) => return Ok((index, None)),
                             Err(e) => match e {
                                 async_channel::TrySendError::Full(_) => {}
@@ -191,7 +191,7 @@ impl Selector {
                         }
                     }
                     SelectCommType::Recv(_, _) => {
-                        match entry.chan.as_some_channel()?.chan.try_recv() {
+                        match entry.chan.as_non_nil_channel()?.chan.try_recv() {
                             Ok(v) => return Ok((index, Some(v))),
                             Err(e) => match e {
                                 async_channel::TryRecvError::Empty => {}

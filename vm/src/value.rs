@@ -1965,44 +1965,44 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn as_some_pointer(&self) -> RuntimeResult<&PointerObj> {
+    pub fn as_non_nil_pointer(&self) -> RuntimeResult<&PointerObj> {
         self.as_pointer().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_unsafe_ptr(&self) -> RuntimeResult<&UnsafePtrObj> {
+    pub fn as_non_nil_unsafe_ptr(&self) -> RuntimeResult<&UnsafePtrObj> {
         self.as_unsafe_ptr().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_closure(&self) -> RuntimeResult<&(ClosureObj, RCount)> {
+    pub fn as_non_nil_closure(&self) -> RuntimeResult<&(ClosureObj, RCount)> {
         self.as_closure().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_slice<T>(&self) -> RuntimeResult<&(SliceObj<T>, RCount)> {
+    pub fn as_non_nil_slice<T>(&self) -> RuntimeResult<&(SliceObj<T>, RCount)> {
         self.as_slice::<T>().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_map(&self) -> RuntimeResult<&(MapObj, RCount)> {
+    pub fn as_non_nil_map(&self) -> RuntimeResult<&(MapObj, RCount)> {
         self.as_map().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_interface(&self) -> RuntimeResult<&InterfaceObj> {
+    pub fn as_non_nil_interface(&self) -> RuntimeResult<&InterfaceObj> {
         self.as_interface().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn as_some_channel(&self) -> RuntimeResult<&ChannelObj> {
+    pub fn as_non_nil_channel(&self) -> RuntimeResult<&ChannelObj> {
         self.as_channel().ok_or(nil_err_str!())
     }
 
     #[inline]
     pub fn slice_array_equivalent(&self, index: usize) -> RuntimeResult<(&GosValue, usize)> {
         Ok(self
-            .as_some_slice::<AnyElem>()?
+            .as_non_nil_slice::<AnyElem>()?
             .0
             .get_array_equivalent(index))
     }
@@ -2067,7 +2067,7 @@ impl GosValue {
 
     #[inline]
     pub fn iface_underlying(&self) -> RuntimeResult<Option<GosValue>> {
-        let iface = self.as_some_interface()?;
+        let iface = self.as_non_nil_interface()?;
         Ok(iface.underlying_value().map(|x| x.clone()))
     }
 
@@ -2802,7 +2802,10 @@ macro_rules! define_dispatcher {
                 max: isize,
             ) -> RuntimeResult<GosValue> {
                 Ok(GosValue::new_slice(
-                    slice.as_some_slice::<$elem>()?.0.slice(begin, end, max)?,
+                    slice
+                        .as_non_nil_slice::<$elem>()?
+                        .0
+                        .slice(begin, end, max)?,
                     slice.t_elem,
                 ))
             }
@@ -2873,12 +2876,12 @@ macro_rules! define_dispatcher {
 
             #[inline]
             fn slice_get(&self, from: &GosValue, i: usize) -> RuntimeResult<GosValue> {
-                from.as_some_slice::<$elem>()?.0.get(i, self.typ)
+                from.as_non_nil_slice::<$elem>()?.0.get(i, self.typ)
             }
 
             #[inline]
             fn slice_set(&self, to: &GosValue, val: &GosValue, i: usize) -> RuntimeResult<()> {
-                to.as_some_slice::<$elem>()?.0.set(i, val)
+                to.as_non_nil_slice::<$elem>()?.0.set(i, val)
             }
 
             #[inline]
@@ -2887,7 +2890,7 @@ macro_rules! define_dispatcher {
                 val: &GosValue,
             ) -> RuntimeResult<SliceEnumIter<'static, AnyElem>> {
                 let rust_slice = match val.typ() {
-                    ValueType::Slice => val.as_some_slice::<$elem>()?.0.as_rust_slice(),
+                    ValueType::Slice => val.as_non_nil_slice::<$elem>()?.0.as_rust_slice(),
                     ValueType::Array => val.as_array::<$elem>().0.as_rust_slice(),
                     _ => unreachable!(),
                 };
@@ -2908,7 +2911,7 @@ macro_rules! define_dispatcher {
 
             #[inline]
             fn slice_swap(&self, slice: &GosValue, i: usize, j: usize) -> RuntimeResult<()> {
-                slice.as_some_slice::<$elem>()?.0.swap(i, j)
+                slice.as_non_nil_slice::<$elem>()?.0.swap(i, j)
             }
         }
     };

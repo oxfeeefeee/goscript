@@ -46,19 +46,21 @@ fn wrap_ptr_std_val(p: Box<PointerObj>, m: Option<Meta>) -> GosValue {
 #[inline]
 fn unwrap_set_args(args: &Vec<GosValue>) -> RuntimeResult<(&StdValue, GosValue)> {
     Ok((
-        args[0].as_some_unsafe_ptr()?.downcast_ref::<StdValue>()?,
+        args[0]
+            .as_non_nil_unsafe_ptr()?
+            .downcast_ref::<StdValue>()?,
         args[1].clone(),
     ))
 }
 
 #[inline]
 fn val_to_std_val(val: &GosValue) -> RuntimeResult<&StdValue> {
-    val.as_some_unsafe_ptr()?.downcast_ref::<StdValue>()
+    val.as_non_nil_unsafe_ptr()?.downcast_ref::<StdValue>()
 }
 
 #[inline]
 fn val_to_map_iter(val: &GosValue) -> RuntimeResult<&StdMapIter> {
-    val.as_some_unsafe_ptr()?.downcast_ref::<StdMapIter>()
+    val.as_non_nil_unsafe_ptr()?.downcast_ref::<StdMapIter>()
 }
 
 #[inline]
@@ -344,7 +346,7 @@ impl StdValue {
         match val.typ() {
             ValueType::Interface => StdValue::value_from_iface(&val),
             ValueType::Pointer => {
-                let p = val.as_some_pointer()?;
+                let p = val.as_non_nil_pointer()?;
                 let meta = self.meta().map(|x| x.unptr_to());
                 Ok(wrap_ptr_std_val(Box::new(p.clone()), meta))
             }

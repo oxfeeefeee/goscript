@@ -497,7 +497,7 @@ impl<'a> Fiber<'a> {
                         let inst_ex = &code[frame.pc as usize];
                         frame.pc += 1;
                         let dest = stack.read(inst.d, sb, consts);
-                        match dest.as_some_map() {
+                        match dest.as_non_nil_map() {
                             Ok(map) => {
                                 let key = stack.read(inst.s0, sb, consts);
                                 match inst.op1 {
@@ -652,7 +652,7 @@ impl<'a> Fiber<'a> {
                     // s0: pointer
                     Opcode::LOAD_POINTER => {
                         let src = stack.read(inst.s0, sb, consts);
-                        match src.as_some_pointer() {
+                        match src.as_non_nil_pointer() {
                             Ok(p) => match p.deref(stack, &objs.packages) {
                                 Ok(val) => stack.set(inst.d + sb, val),
                                 Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -664,7 +664,7 @@ impl<'a> Fiber<'a> {
                     // s0: value
                     Opcode::STORE_POINTER => {
                         let dest = stack.read(inst.d, sb, consts).clone();
-                        let result = dest.as_some_pointer().and_then(|p| {
+                        let result = dest.as_non_nil_pointer().and_then(|p| {
                             let val = match inst.op1 {
                                 Opcode::VOID => stack.read(inst.s0, sb, consts).copy_semantic(gcv),
                                 _ => {
@@ -1264,7 +1264,7 @@ impl<'a> Fiber<'a> {
                         );
                     }
                     Opcode::BIND_I_METHOD => {
-                        match stack.read(inst.s0, sb, consts).as_some_interface() {
+                        match stack.read(inst.s0, sb, consts).as_non_nil_interface() {
                             Ok(iface) => {
                                 match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcv) {
                                     Ok(cls) => stack.set(inst.d + sb, cls),
@@ -1828,7 +1828,7 @@ fn char_from_i32(i: i32) -> char {
 
 #[inline]
 fn deref_value(v: &GosValue, stack: &Stack, objs: &VMObjects) -> RuntimeResult<GosValue> {
-    v.as_some_pointer()?.deref(stack, &objs.packages)
+    v.as_non_nil_pointer()?.deref(stack, &objs.packages)
 }
 
 #[inline(always)]
@@ -1843,7 +1843,7 @@ fn type_assert(
     gcv: &GcoVec,
     metas: Option<&MetadataObjs>,
 ) -> RuntimeResult<(GosValue, bool)> {
-    match val.as_some_interface() {
+    match val.as_non_nil_interface() {
         Ok(iface) => match &iface as &InterfaceObj {
             InterfaceObj::Gos(v, b) => {
                 let meta = b.as_ref().unwrap().0;
@@ -1897,7 +1897,7 @@ pub fn get_embeded(
     let typ = val.typ();
     let mut cur_val: GosValue = val;
     if typ == ValueType::Pointer {
-        cur_val = cur_val.as_some_pointer()?.deref(stack, pkgs)?;
+        cur_val = cur_val.as_non_nil_pointer()?.deref(stack, pkgs)?;
     }
     for &i in indices.iter() {
         let s = &cur_val.as_struct().0;
