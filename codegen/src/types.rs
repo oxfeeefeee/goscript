@@ -12,8 +12,6 @@ use goscript_types::{
     TypeKey as TCTypeKey,
 };
 use goscript_vm::gc::GcoVec;
-use goscript_vm::instruction::ValueType;
-use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::vec;

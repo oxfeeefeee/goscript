@@ -5,8 +5,7 @@
 #![allow(dead_code)]
 use crate::channel;
 use crate::ffi::{FfiCallCtx, FfiFactory};
-use crate::gc::{gc, GcoVec};
-use crate::metadata::*;
+use crate::gc::{collect, GcoVec};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
@@ -1796,7 +1795,7 @@ impl<'a> Fiber<'a> {
             };
         } //loop
 
-        gc(gcv);
+        collect(gcv);
     }
 }
 
@@ -1911,7 +1910,7 @@ fn cast_receiver(
 }
 
 #[inline]
-pub fn bind_iface_method(
+fn bind_iface_method(
     iface: &InterfaceObj,
     index: usize,
     stack: &Stack,

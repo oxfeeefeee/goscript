@@ -393,7 +393,7 @@ impl<T> ArrayObj<T>
 where
     T: Element,
 {
-    pub fn with_size(size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj<T> {
+    pub(crate) fn with_size(size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj<T> {
         assert!(cap >= size);
         let mut v = Vec::with_capacity(cap);
         for _ in 0..size {

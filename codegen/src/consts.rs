@@ -3,8 +3,6 @@
 // license that can be found in the LICENSE file.
 
 use goscript_vm::gc::GcoVec;
-use goscript_vm::instruction::*;
-use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 use std::cell::RefCell;
 use std::collections::HashMap;

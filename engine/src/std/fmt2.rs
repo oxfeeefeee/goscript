@@ -4,8 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::instruction::ValueType;
-use goscript_vm::value::{GosElem, GosValue};
+use goscript_vm::value::{GosElem, GosValue, ValueType};
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;

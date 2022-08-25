@@ -5,7 +5,7 @@
 use crate::channel::Channel;
 use crate::gc::GcoVec;
 pub use crate::instruction::*;
-use crate::metadata::*;
+pub use crate::metadata::*;
 pub use crate::objects::*;
 use ordered_float;
 use std::cell::Cell;
@@ -1448,7 +1448,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_array<T>(obj: ArrayObj<T>, t_elem: ValueType, gcv: &GcoVec) -> GosValue
+    pub(crate) fn new_array<T>(obj: ArrayObj<T>, t_elem: ValueType, gcv: &GcoVec) -> GosValue
     where
         T: Element,
     {
@@ -1466,7 +1466,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_struct(obj: StructObj, gcv: &GcoVec) -> GosValue {
+    pub(crate) fn new_struct(obj: StructObj, gcv: &GcoVec) -> GosValue {
         let data = ValueData::new_struct(obj, gcv);
         GosValue::new(ValueType::Struct, data)
     }
@@ -1482,7 +1482,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> GosValue {
+    pub(crate) fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> GosValue {
         let data = ValueData::new_closure(obj, gcv);
         GosValue::new(ValueType::Closure, data)
     }
@@ -1508,7 +1508,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_map(gcv: &GcoVec) -> GosValue {
+    pub(crate) fn new_map(gcv: &GcoVec) -> GosValue {
         let data = ValueData::new_map(MapObj::new(), gcv);
         GosValue::new(ValueType::Map, data)
     }
@@ -1524,7 +1524,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn array_with_size(
+    pub(crate) fn array_with_size(
         size: usize,
         cap: usize,
         val: &GosValue,
@@ -1536,13 +1536,17 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn array_with_data(data: Vec<GosValue>, t_elem: ValueType, gcv: &GcoVec) -> GosValue {
+    pub(crate) fn array_with_data(
+        data: Vec<GosValue>,
+        t_elem: ValueType,
+        gcv: &GcoVec,
+    ) -> GosValue {
         debug_assert!(t_elem != ValueType::Void);
         dispatcher_a_s_for(t_elem).array_with_data(data, gcv)
     }
 
     #[inline]
-    pub fn slice_with_size(
+    pub(crate) fn slice_with_size(
         size: usize,
         cap: usize,
         val: &GosValue,
@@ -1557,10 +1561,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn slice_with_data(data: Vec<GosValue>, t_elem: ValueType, gcv: &GcoVec) -> GosValue {
-        if t_elem == ValueType::Void {
-            panic!("qqq");
-        }
+    pub(crate) fn slice_with_data(
+        data: Vec<GosValue>,
+        t_elem: ValueType,
+        gcv: &GcoVec,
+    ) -> GosValue {
+        assert!(t_elem != ValueType::Void);
         let len = data.len();
         let arr = GosValue::array_with_data(data, t_elem, gcv);
         GosValue::slice_array(arr, 0, len as isize, t_elem).unwrap()
@@ -2021,7 +2027,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
+    pub(crate) fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
         if self.typ.copyable() {
             GosValue::new(self.typ, self.data.copy())
         } else {

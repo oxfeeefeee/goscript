@@ -196,7 +196,7 @@ fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
     p0
 }
 
-pub fn gc(objs: &GcoVec) {
+pub(crate) fn collect(objs: &GcoVec) {
     let mut to_scan: Vec<GosValue> = objs
         .borrow_data()
         .iter()

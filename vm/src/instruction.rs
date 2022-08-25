@@ -3,8 +3,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(non_camel_case_types)]
+use std::fmt;
 use std::fmt::Debug;
-use std::fmt::{self};
 
 pub type OpIndex = i32;
 

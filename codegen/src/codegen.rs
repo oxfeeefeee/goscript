@@ -12,8 +12,6 @@ use std::hash::Hash;
 use std::iter::FromIterator;
 
 use goscript_vm::gc::GcoVec;
-use goscript_vm::instruction::*;
-use goscript_vm::metadata::*;
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;

@@ -4,10 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::instruction::ValueType;
-use goscript_vm::metadata::{Meta, MetadataType};
-use goscript_vm::objects::*;
-use goscript_vm::value::{GosValue, InterfaceObj, PointerObj, UnsafePtr};
+use goscript_vm::value::*;
 use std::any::Any;
 use std::cell::RefCell;
 use std::future::Future;
