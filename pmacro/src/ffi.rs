@@ -15,7 +15,7 @@ pub fn derive_ffi_implement(input: proc_macro::TokenStream) -> proc_macro::Token
         impl #impl_generics Ffi for #name #ty_generics #where_clause {
             fn call(
                 &self,
-                ctx: &mut FfiCallCtx,
+                ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
             ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
                 self.dispatch(ctx, args)

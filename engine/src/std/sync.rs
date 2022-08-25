@@ -42,7 +42,7 @@ pub struct MutexFfi {}
 impl MutexFfi {
     fn ffi_lock(
         &self,
-        ctx: &mut FfiCallCtx,
+        ctx: &mut FfiCtx,
         args: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
         // It'd probably be cleaner if we use interface{} instead of pointer as
@@ -59,7 +59,7 @@ impl MutexFfi {
         mutex.unlock().await
     }
 
-    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<Mutex> {
+    fn create_mutex(arg: &GosValue, ctx: &mut FfiCtx) -> RuntimeResult<Mutex> {
         create_mutex!(arg, ctx, Mutex)
     }
 }
@@ -109,7 +109,7 @@ pub struct RWMutexFfi {}
 impl RWMutexFfi {
     fn ffi_r_lock(
         &self,
-        ctx: &mut FfiCallCtx,
+        ctx: &mut FfiCtx,
         args: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
         match RWMutexFfi::create_mutex(&args[0], ctx) {
@@ -126,7 +126,7 @@ impl RWMutexFfi {
 
     fn ffi_w_lock(
         &self,
-        ctx: &mut FfiCallCtx,
+        ctx: &mut FfiCtx,
         args: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
         match RWMutexFfi::create_mutex(&args[0], ctx) {
@@ -141,7 +141,7 @@ impl RWMutexFfi {
         mutex.w_unlock().await
     }
 
-    fn create_mutex(arg: &GosValue, ctx: &mut FfiCallCtx) -> RuntimeResult<RWMutex> {
+    fn create_mutex(arg: &GosValue, ctx: &mut FfiCtx) -> RuntimeResult<RWMutex> {
         create_mutex!(arg, ctx, RWMutex)
     }
 }

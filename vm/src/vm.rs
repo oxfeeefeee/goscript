@@ -4,7 +4,7 @@
 
 #![allow(dead_code)]
 use crate::channel;
-use crate::ffi::{FfiCallCtx, FfiFactory};
+use crate::ffi::{FfiCtx, FfiFactory};
 use crate::gc::{collect, GcContainer};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
@@ -1038,7 +1038,7 @@ impl<'a> Fiber<'a> {
                                 // release stack so that code in ffi can yield
                                 drop(stack_mut_ref);
                                 let returns = {
-                                    let mut ctx = FfiCallCtx {
+                                    let mut ctx = FfiCtx {
                                         func_name: &ffic.func_name,
                                         vm_objs: objs,
                                         stack: &mut self.stack.borrow_mut(),

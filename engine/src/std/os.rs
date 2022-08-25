@@ -64,7 +64,7 @@ impl FileFfi {
         })
     }
 
-    fn ffi_read(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_read(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
@@ -76,7 +76,7 @@ impl FileFfi {
         }))
     }
 
-    fn ffi_write(&self, ctx: &FfiCallCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_write(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
@@ -128,7 +128,7 @@ pub enum StdIo {
 }
 
 impl StdIo {
-    fn read(&self, buf: &mut [u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8], ctx: &FfiCtx) -> io::Result<usize> {
         match self {
             Self::StdIn => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_in
                 as &mut Option<Box<dyn io::Read>>
@@ -147,7 +147,7 @@ impl StdIo {
         }
     }
 
-    fn write(&self, buf: &[u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+    fn write(&self, buf: &[u8], ctx: &FfiCtx) -> io::Result<usize> {
         match self {
             Self::StdOut => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_out
                 as &mut Option<Box<dyn io::Write>>
@@ -184,14 +184,14 @@ impl VirtualFile {
         VirtualFile::StdIo(io)
     }
 
-    fn read(&self, buf: &mut [u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8], ctx: &FfiCtx) -> io::Result<usize> {
         match self {
             Self::File(f) => f.borrow_mut().read(buf),
             Self::StdIo(io) => io.read(buf, ctx),
         }
     }
 
-    fn write(&self, buf: &[u8], ctx: &FfiCallCtx) -> io::Result<usize> {
+    fn write(&self, buf: &[u8], ctx: &FfiCtx) -> io::Result<usize> {
         match self {
             Self::File(f) => f.borrow_mut().write(buf),
             Self::StdIo(io) => io.write(buf, ctx),

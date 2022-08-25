@@ -79,7 +79,7 @@ fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMe
     let mut dispatch_method: ImplItemMethod = parse_quote! {
         fn dispatch(
             &self,
-            ctx: &mut FfiCallCtx,
+            ctx: &mut FfiCtx,
             args: Vec<GosValue>,
         ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
             let arg_count = args.len();
@@ -113,12 +113,12 @@ fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMe
                     .ident
                     .to_string();
                 match arg_name {
-                    "FfiCallCtx" => {
+                    "FfiCtx" => {
                         if i == 0 {
                             args.push_value(parse_quote! {ctx});
                             args.push_punct(Token![,](Span::call_site()));
                         } else {
-                            panic!("'FfiCallCtx' should be the first argument")
+                            panic!("'FfiCtx' should be the first argument")
                         }
                     }
                     "GosValue" => {

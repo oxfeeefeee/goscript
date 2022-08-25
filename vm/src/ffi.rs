@@ -17,7 +17,7 @@ pub trait FfiStatics {
     fn as_any(&self) -> &dyn Any;
 }
 
-pub struct FfiCallCtx<'a> {
+pub struct FfiCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
     pub stack: &'a mut Stack,
@@ -29,7 +29,7 @@ pub struct FfiCallCtx<'a> {
 pub trait Ffi {
     fn call(
         &self,
-        ctx: &mut FfiCallCtx,
+        ctx: &mut FfiCtx,
         params: Vec<GosValue>,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>>;
 }

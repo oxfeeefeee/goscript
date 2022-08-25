@@ -84,7 +84,7 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
     let mut method: ImplItemMethod = parse_quote! {
         fn dispatch(
             &self,
-            ctx: &mut FfiCallCtx,
+            ctx: &mut FfiCtx,
             args: Vec<GosValue>,
         ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
             match ctx.func_name {
