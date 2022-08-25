@@ -1740,37 +1740,37 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn into_some_pointer(self) -> RuntimeResult<Box<PointerObj>> {
+    pub fn into_non_nil_pointer(self) -> RuntimeResult<Box<PointerObj>> {
         self.into_pointer().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_unsafe_ptr(self) -> RuntimeResult<Box<UnsafePtrObj>> {
+    pub fn into_non_nil_unsafe_ptr(self) -> RuntimeResult<Box<UnsafePtrObj>> {
         self.into_unsafe_ptr().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_closure(self) -> RuntimeResult<Rc<(ClosureObj, RCount)>> {
+    pub fn into_non_nil_closure(self) -> RuntimeResult<Rc<(ClosureObj, RCount)>> {
         self.into_closure().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_slice<T>(self) -> RuntimeResult<Rc<(SliceObj<T>, RCount)>> {
+    pub fn into_non_nil_slice<T>(self) -> RuntimeResult<Rc<(SliceObj<T>, RCount)>> {
         self.into_slice().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_map(self) -> RuntimeResult<Rc<(MapObj, RCount)>> {
+    pub fn into_non_nil_map(self) -> RuntimeResult<Rc<(MapObj, RCount)>> {
         self.into_map().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_interface(self) -> RuntimeResult<Rc<InterfaceObj>> {
+    pub fn into_non_nil_interface(self) -> RuntimeResult<Rc<InterfaceObj>> {
         self.into_interface().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_some_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
+    pub fn into_non_nil_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
         self.into_channel().ok_or(nil_err_str!())
     }
 
