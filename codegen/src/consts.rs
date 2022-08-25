@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_vm::gc::GcoVec;
+use goscript_vm::gc::GcContainer;
 use goscript_vm::value::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -49,7 +49,7 @@ impl Consts {
     pub fn get_runtime_consts(
         &self,
         mobjs: &MetadataObjs,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> (Vec<GosValue>, HashMap<usize, usize>) {
         #[derive(Debug)]
         enum ConstType {
@@ -98,7 +98,7 @@ impl Consts {
                             .func
                             .unwrap(),
                     ),
-                    Const::ZeroValue(m) => m.zero(mobjs, gcv),
+                    Const::ZeroValue(m) => m.zero(mobjs, gcc),
                 };
 
                 if val.is_nil() {

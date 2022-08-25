@@ -23,7 +23,7 @@ macro_rules! create_mutex {
         if p.is_nil() {
             let inner = $typ::new();
             let p = GosValue::new_unsafe_ptr(inner.clone());
-            pp.set_pointee(&p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcv)?;
+            pp.set_pointee(&p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcc)?;
             Ok(inner)
         } else {
             Ok(p.as_unsafe_ptr()

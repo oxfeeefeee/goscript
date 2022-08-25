@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use super::gc::GcoVec;
+use super::gc::GcContainer;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, IfaceBinding, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
@@ -126,11 +126,11 @@ impl Meta {
     }
 
     #[inline]
-    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcv: &mut GcoVec) -> Meta {
+    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &mut GcContainer) -> Meta {
         let field_zeros: Vec<GosValue> = f
             .fields
             .iter()
-            .map(|x| x.meta.zero(&objs.metas, gcv))
+            .map(|x| x.meta.zero(&objs.metas, gcc))
             .collect();
         let struct_val = StructObj::new(field_zeros);
         let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
@@ -232,7 +232,7 @@ impl Meta {
     }
 
     #[inline]
-    pub fn zero(&self, mobjs: &MetadataObjs, gcv: &GcoVec) -> GosValue {
+    pub fn zero(&self, mobjs: &MetadataObjs, gcc: &GcContainer) -> GosValue {
         match self.ptr_depth {
             0 => match &mobjs[self.key] {
                 MetadataType::Bool => GosValue::new_bool(false),
@@ -254,17 +254,17 @@ impl Meta {
                 MetadataType::UnsafePtr => GosValue::new_nil(ValueType::UnsafePtr),
                 MetadataType::Str(s) => s.clone(),
                 MetadataType::Array(m, size) => {
-                    let val = m.zero(mobjs, gcv);
+                    let val = m.zero(mobjs, gcc);
                     let t = m.value_type(mobjs);
-                    GosValue::array_with_size(*size, *size, &val, t, gcv)
+                    GosValue::array_with_size(*size, *size, &val, t, gcc)
                 }
                 MetadataType::Slice(m) => GosValue::new_slice_nil(m.value_type(mobjs)),
-                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcv),
+                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcc),
                 MetadataType::Signature(_) => GosValue::new_nil(ValueType::Closure),
                 MetadataType::Map(_, _) => GosValue::new_nil(ValueType::Map),
                 MetadataType::Interface(_) => GosValue::new_nil(ValueType::Interface),
                 MetadataType::Channel(_, _) => GosValue::new_nil(ValueType::Channel),
-                MetadataType::Named(_, gm) => gm.zero(mobjs, gcv),
+                MetadataType::Named(_, gm) => gm.zero(mobjs, gcc),
                 MetadataType::None => unreachable!(),
             },
             _ => GosValue::new_nil(ValueType::Pointer),

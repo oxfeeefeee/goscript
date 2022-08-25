@@ -11,7 +11,7 @@ use goscript_types::{
     PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
     TypeKey as TCTypeKey,
 };
-use goscript_vm::gc::GcoVec;
+use goscript_vm::gc::GcContainer;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::vec;
@@ -162,11 +162,11 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         e: &Expr,
         vm_objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> (ValueType, TCTypeKey) {
         let tc_type = self.expr_tc_type(&e);
         let typ = self.tc_objs.types[tc_type].underlying().unwrap_or(tc_type);
-        let meta = self.tc_type_to_meta(typ, vm_objs, dummy_gcv);
+        let meta = self.tc_type_to_meta(typ, vm_objs, dummy_gcc);
         let metas = &vm_objs.metas;
         match &metas[meta.key] {
             MetadataType::Array(_, _) => (
@@ -189,10 +189,10 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         id: NodeId,
         objects: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> Meta {
         let tv = self.ti.types.get(&id).unwrap();
-        let md = self.tc_type_to_meta(tv.typ, objects, dummy_gcv);
+        let md = self.tc_type_to_meta(tv.typ, objects, dummy_gcc);
         if tv.mode == OperandMode::TypeExpr {
             md.into_type_category()
         } else {
@@ -251,9 +251,9 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         ikey: IdentKey,
         objects: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> Meta {
-        self.tc_type_to_meta(self.obj_def_tc_type(ikey), objects, dummy_gcv)
+        self.tc_type_to_meta(self.obj_def_tc_type(ikey), objects, dummy_gcc)
     }
 
     #[inline]
@@ -294,10 +294,10 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> Meta {
         if !self.types_cache.contains_key(&typ) {
-            let val = self.tc_type_to_meta_impl(typ, vm_objs, dummy_gcv);
+            let val = self.tc_type_to_meta_impl(typ, vm_objs, dummy_gcc);
             self.types_cache.insert(typ, val);
         }
         self.types_cache.get(&typ).unwrap().clone()
@@ -471,30 +471,30 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         typ: TCTypeKey,
         vm_objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> Meta {
         match &self.tc_objs.types[typ] {
             Type::Basic(_) => self.basic_type_meta(typ, vm_objs).unwrap(),
             Type::Array(detail) => {
-                let elem = self.tc_type_to_meta_impl(detail.elem(), vm_objs, dummy_gcv);
+                let elem = self.tc_type_to_meta_impl(detail.elem(), vm_objs, dummy_gcc);
                 Meta::new_array(elem, detail.len().unwrap() as usize, &mut vm_objs.metas)
             }
             Type::Slice(detail) => {
-                let el_type = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
+                let el_type = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcc);
                 Meta::new_slice(el_type, &mut vm_objs.metas)
             }
             Type::Map(detail) => {
-                let ktype = self.tc_type_to_meta(detail.key(), vm_objs, dummy_gcv);
-                let vtype = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
+                let ktype = self.tc_type_to_meta(detail.key(), vm_objs, dummy_gcc);
+                let vtype = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcc);
                 Meta::new_map(ktype, vtype, &mut vm_objs.metas)
             }
             Type::Struct(detail) => {
-                let fields = self.build_fields(detail.fields(), vm_objs, dummy_gcv);
-                Meta::new_struct(fields, vm_objs, dummy_gcv)
+                let fields = self.build_fields(detail.fields(), vm_objs, dummy_gcc);
+                Meta::new_struct(fields, vm_objs, dummy_gcc)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
-                let fields = self.build_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcv);
+                let fields = self.build_fields(methods.as_ref().unwrap(), vm_objs, dummy_gcc);
                 Meta::new_interface(fields, &mut vm_objs.metas)
             }
             Type::Chan(detail) => {
@@ -503,7 +503,7 @@ impl<'a> TypeLookup<'a> {
                     ChanDir::SendOnly => ChannelType::Send,
                     ChanDir::SendRecv => ChannelType::SendRecv,
                 };
-                let vmeta = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcv);
+                let vmeta = self.tc_type_to_meta(detail.elem(), vm_objs, dummy_gcc);
                 Meta::new_channel(typ, vmeta, &mut vm_objs.metas)
             }
             Type::Signature(detail) => {
@@ -517,7 +517,7 @@ impl<'a> TypeLookup<'a> {
                             self.tc_type_to_meta(
                                 self.tc_objs.lobjs[x].typ().unwrap(),
                                 vm_objs,
-                                dummy_gcv,
+                                dummy_gcc,
                             )
                         })
                         .collect()
@@ -529,7 +529,7 @@ impl<'a> TypeLookup<'a> {
                     let recv_tc_type = self.tc_objs.lobjs[*r].typ().unwrap();
                     // to avoid infinite recursion
                     if !self.tc_objs.types[recv_tc_type].is_interface(self.tc_objs) {
-                        recv = Some(self.tc_type_to_meta(recv_tc_type, vm_objs, dummy_gcv));
+                        recv = Some(self.tc_type_to_meta(recv_tc_type, vm_objs, dummy_gcc));
                     }
                 }
                 let variadic = if detail.variadic() {
@@ -544,7 +544,7 @@ impl<'a> TypeLookup<'a> {
                 Meta::new_sig(recv, params, results, variadic, &mut vm_objs.metas)
             }
             Type::Pointer(detail) => {
-                let inner = self.tc_type_to_meta(detail.base(), vm_objs, dummy_gcv);
+                let inner = self.tc_type_to_meta(detail.base(), vm_objs, dummy_gcc);
                 inner.ptr_to()
             }
             Type::Named(detail) => {
@@ -559,7 +559,7 @@ impl<'a> TypeLookup<'a> {
                     )
                 }
                 self.types_cache.insert(typ, md);
-                let underlying = self.tc_type_to_meta(detail.underlying(), vm_objs, dummy_gcv);
+                let underlying = self.tc_type_to_meta(detail.underlying(), vm_objs, dummy_gcc);
                 let (_, underlying_mut) = vm_objs.metas[md.key].as_named_mut();
                 *underlying_mut = underlying;
                 md
@@ -683,10 +683,10 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         i_s: (TCTypeKey, TCTypeKey),
         objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> (Meta, Vec<IfaceBinding>) {
-        let iface = self.tc_type_to_meta(i_s.0, objs, dummy_gcv);
-        let named = self.tc_type_to_meta(i_s.1, objs, dummy_gcv);
+        let iface = self.tc_type_to_meta(i_s.0, objs, dummy_gcc);
+        let named = self.tc_type_to_meta(i_s.1, objs, dummy_gcc);
         let fields: Vec<&String> = match &objs.metas[iface.underlying(&objs.metas).key] {
             MetadataType::Interface(m) => m.all().iter().map(|x| &x.name).collect(),
             _ => unreachable!(),
@@ -704,13 +704,13 @@ impl<'a> TypeLookup<'a> {
         &mut self,
         fields: &Vec<TCObjKey>,
         vm_objs: &mut VMObjects,
-        dummy_gcv: &mut GcoVec,
+        dummy_gcc: &mut GcContainer,
     ) -> Fields {
         let mut infos = Vec::new();
         let mut map = HashMap::<String, Vec<usize>>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
-            let f_type = self.tc_type_to_meta(field.typ().unwrap(), vm_objs, dummy_gcv);
+            let f_type = self.tc_type_to_meta(field.typ().unwrap(), vm_objs, dummy_gcc);
             let is_exported = field.name().chars().next().unwrap().is_uppercase();
             let is_embedded =
                 field.entity_type().is_var() && field.entity_type().var_property().embedded;

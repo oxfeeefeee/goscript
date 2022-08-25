@@ -5,7 +5,7 @@
 #![allow(dead_code)]
 use crate::channel;
 use crate::ffi::{FfiCallCtx, FfiFactory};
-use crate::gc::{collect, GcoVec};
+use crate::gc::{collect, GcContainer};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
@@ -54,10 +54,10 @@ macro_rules! panic_if_err {
 }
 
 macro_rules! unwrap_recv_val {
-    ($chan:expr, $val:expr, $gcv:expr) => {
+    ($chan:expr, $val:expr, $gcc:expr) => {
         match $val {
             Some(v) => (v, true),
-            None => ($chan.recv_zero.copy_semantic($gcv), false),
+            None => ($chan.recv_zero.copy_semantic($gcc), false),
         }
     };
 }
@@ -120,9 +120,9 @@ pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     // Init array/slice dispatcher
     dispatcher_a_s_for(ValueType::Uint);
 
-    let gcv = GcoVec::new();
+    let gcc = GcContainer::new();
     let exec = Rc::new(LocalExecutor::new());
-    let ctx = Context::new(exec.clone(), code, &gcv, ffi, fs);
+    let ctx = Context::new(exec.clone(), code, &gcc, ffi, fs);
     let entry = ctx.new_entry_frame(code.entry);
     ctx.spawn_fiber(Stack::new(), entry);
 
@@ -289,7 +289,7 @@ impl PanicData {
 struct Context<'a> {
     exec: Rc<LocalExecutor<'a>>,
     code: &'a ByteCode,
-    gcv: &'a GcoVec,
+    gcc: &'a GcContainer,
     ffi_factory: &'a FfiFactory,
     fs: Option<&'a FileSet>,
     next_id: Cell<usize>,
@@ -299,14 +299,14 @@ impl<'a> Context<'a> {
     fn new(
         exec: Rc<LocalExecutor<'a>>,
         code: &'a ByteCode,
-        gcv: &'a GcoVec,
+        gcc: &'a GcContainer,
         ffi_factory: &'a FfiFactory,
         fs: Option<&'a FileSet>,
     ) -> Context<'a> {
         Context {
             exec,
             code,
-            gcv,
+            gcc,
             ffi_factory,
             fs,
             next_id: Cell::new(0),
@@ -355,7 +355,7 @@ impl<'a> Fiber<'a> {
 
     async fn main_loop(&mut self) {
         let ctx = &self.context;
-        let gcv = ctx.gcv;
+        let gcc = ctx.gcc;
         let objs: &VMObjects = &ctx.code.objects;
         let consts = &ctx.code.consts;
         let s_meta: &StaticMeta = &objs.s_meta;
@@ -394,7 +394,7 @@ impl<'a> Fiber<'a> {
                         //dbg!(stack.read(inst.s0, sb, consts));
                         stack.set(
                             sb + inst.d,
-                            stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                            stack.read(inst.s0, sb, consts).copy_semantic(gcc),
                         )
                     }
                     // desc: local
@@ -420,7 +420,7 @@ impl<'a> Fiber<'a> {
                         match dest.slice_array_equivalent(index) {
                             Ok((array, i)) => match inst.op1 {
                                 Opcode::VOID => {
-                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                     let result = array.dispatcher_a_s().array_set(&array, &val, i);
                                     panic_if_err!(result, panic, frame, code);
                                 }
@@ -463,7 +463,7 @@ impl<'a> Fiber<'a> {
                         let index = stack.read(inst.s0, sb, consts).as_index();
                         match inst.op1 {
                             Opcode::VOID => {
-                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                 let result = array.dispatcher_a_s().array_set(&array, &val, index);
                                 panic_if_err!(result, panic, frame, code);
                             }
@@ -501,7 +501,7 @@ impl<'a> Fiber<'a> {
                         };
                         let (v, ok) = match val {
                             Some(v) => (v, true),
-                            None => (stack.read(inst_ex.s0, sb, consts).copy_semantic(gcv), false),
+                            None => (stack.read(inst_ex.s0, sb, consts).copy_semantic(gcc), false),
                         };
                         stack.set(inst.d + sb, v);
                         if inst.t1 == ValueType::FlagB {
@@ -522,7 +522,7 @@ impl<'a> Fiber<'a> {
                                 match inst.op1 {
                                     Opcode::VOID => {
                                         let val =
-                                            stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                            stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                         map.0.insert(key.clone(), val);
                                     }
                                     _ => {
@@ -560,7 +560,7 @@ impl<'a> Fiber<'a> {
                         let dest = stack.read(inst.d, sb, consts);
                         match inst.op1 {
                             Opcode::VOID => {
-                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                 dest.as_struct().0.borrow_fields_mut()[inst.s0 as usize] = val;
                             }
                             _ => {
@@ -611,7 +611,7 @@ impl<'a> Fiber<'a> {
                         match struct_ {
                             Ok(s) => match inst.op1 {
                                 Opcode::VOID => {
-                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                    let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                     s.as_struct().0.borrow_fields_mut()[index] = val;
                                 }
                                 _ => {
@@ -650,7 +650,7 @@ impl<'a> Fiber<'a> {
                         let pkg = &objs.packages[*dest.as_package()];
                         match inst.op1 {
                             Opcode::VOID => {
-                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcv);
+                                let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
                                 *pkg.member_mut(index) = val;
                             }
                             _ => {
@@ -685,7 +685,7 @@ impl<'a> Fiber<'a> {
                         let dest = stack.read(inst.d, sb, consts).clone();
                         let result = dest.as_non_nil_pointer().and_then(|p| {
                             let val = match inst.op1 {
-                                Opcode::VOID => stack.read(inst.s0, sb, consts).copy_semantic(gcv),
+                                Opcode::VOID => stack.read(inst.s0, sb, consts).copy_semantic(gcc),
                                 _ => {
                                     let old = p.deref(stack, &objs.packages)?;
                                     stack.read_and_op(
@@ -733,7 +733,7 @@ impl<'a> Fiber<'a> {
                         let uv = &uvs[inst.d as usize];
                         match inst.op1 {
                             Opcode::VOID => {
-                                let val = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                let val = stack.read(inst.s0, sb, consts).copy_semantic(gcc);
                                 uv.set_value(val, stack);
                             }
                             _ => {
@@ -922,7 +922,7 @@ impl<'a> Fiber<'a> {
                                 drop(stack_mut_ref);
                                 let val = chan.recv().await;
                                 restore_stack_ref!(self, stack, stack_mut_ref);
-                                let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcv);
+                                let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcc);
                                 stack.set(inst.d + sb, unwrapped);
                                 if inst.t1 == ValueType::FlagB {
                                     stack.set(inst.s1 + sb, GosValue::new_bool(ok));
@@ -935,7 +935,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::PACK_VARIADIC => {
                         let v = stack.move_vec(inst.s0 + sb, inst.s1 + sb);
-                        let val = GosValue::slice_with_data(v, inst.t0, gcv);
+                        let val = GosValue::slice_with_data(v, inst.t0, gcc);
                         stack.set(inst.d + sb, val);
                     }
                     // t0: call style
@@ -1042,7 +1042,7 @@ impl<'a> Fiber<'a> {
                                         func_name: &ffic.func_name,
                                         vm_objs: objs,
                                         stack: &mut self.stack.borrow_mut(),
-                                        gcv: gcv,
+                                        gcc: gcc,
                                         statics: self.context.ffi_factory.statics(),
                                     };
                                     let fut = ffic.ffi.call(&mut ctx, params);
@@ -1188,7 +1188,7 @@ impl<'a> Fiber<'a> {
                             let flag = entry.t0;
                             let typ = match &flag {
                                 ValueType::FlagA => {
-                                    let val = stack.read(entry.s1, sb, consts).copy_semantic(gcv);
+                                    let val = stack.read(entry.s1, sb, consts).copy_semantic(gcc);
                                     channel::SelectCommType::Send(val)
                                 }
                                 ValueType::FlagB | ValueType::FlagC | ValueType::FlagD => {
@@ -1216,7 +1216,7 @@ impl<'a> Fiber<'a> {
                                             let (unwrapped, ok) = unwrap_recv_val!(
                                                 comm.chan.as_channel().as_ref().unwrap(),
                                                 val,
-                                                gcv
+                                                gcc
                                             );
                                             match flag {
                                                 ValueType::FlagC => {
@@ -1272,20 +1272,20 @@ impl<'a> Fiber<'a> {
                         }
                     }
                     Opcode::BIND_METHOD => {
-                        let recv = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                        let recv = stack.read(inst.s0, sb, consts).copy_semantic(gcc);
                         let func = *stack.read(inst.s1, sb, consts).as_function();
                         stack.set(
                             inst.d + sb,
                             GosValue::new_closure(
                                 ClosureObj::gos_from_func(func, &objs.functions, Some(recv)),
-                                gcv,
+                                gcc,
                             ),
                         );
                     }
                     Opcode::BIND_I_METHOD => {
                         match stack.read(inst.s0, sb, consts).as_non_nil_interface() {
                             Ok(iface) => {
-                                match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcv) {
+                                match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcc) {
                                     Ok(cls) => stack.set(inst.d + sb, cls),
                                     Err(e) => go_panic_str!(panic, &e, frame, code),
                                 }
@@ -1314,7 +1314,7 @@ impl<'a> Fiber<'a> {
                                 .cast_copyable(from_type, to_type),
                             ValueType::Interface => {
                                 let binding = ifaces[inst.s1 as usize].clone();
-                                let under = stack.read(inst.s0, sb, consts).copy_semantic(gcv);
+                                let under = stack.read(inst.s0, sb, consts).copy_semantic(gcc);
                                 GosValue::new_interface(InterfaceObj::with_value(
                                     under,
                                     Some(binding),
@@ -1360,7 +1360,7 @@ impl<'a> Fiber<'a> {
                                             .chars()
                                             .map(|x| GosValue::new_int32(x as i32))
                                             .collect();
-                                        GosValue::slice_with_data(data, inst.op1_as_t(), gcv)
+                                        GosValue::slice_with_data(data, inst.op1_as_t(), gcc)
                                     }
                                     ValueType::Uint8 => {
                                         GosValue::new_slice(from.clone(), ValueType::Uint8)
@@ -1413,7 +1413,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE_ASSERT => {
                         let val = stack.read(inst.s0, sb, consts);
-                        match type_assert(val, cst(consts, inst.s1), gcv, Some(&objs.metas)) {
+                        match type_assert(val, cst(consts, inst.s1), gcc, Some(&objs.metas)) {
                             Ok((val, ok)) => {
                                 stack.set(inst.d + sb, val);
                                 if inst.t1 == ValueType::FlagB {
@@ -1430,7 +1430,7 @@ impl<'a> Fiber<'a> {
                         let (val, meta) = match iface_value.as_interface() {
                             Some(iface) => match &iface as &InterfaceObj {
                                 InterfaceObj::Gos(v, b) => {
-                                    (v.copy_semantic(gcv), b.as_ref().unwrap().0)
+                                    (v.copy_semantic(gcc), b.as_ref().unwrap().0)
                                 }
                                 _ => (iface_value.clone(), s_meta.none),
                             },
@@ -1508,7 +1508,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => {}
                         };
-                        stack.set(inst.d + sb, GosValue::new_closure(val, gcv));
+                        stack.set(inst.d + sb, GosValue::new_closure(val, gcc));
                     }
                     Opcode::LITERAL => {
                         let inst_ex = &code[frame.pc as usize];
@@ -1518,7 +1518,7 @@ impl<'a> Fiber<'a> {
                         let begin = inst.s0 + sb;
                         let count = inst.s1;
                         let build_val = |m: &Meta| {
-                            let zero_val = m.zero(&objs.metas, gcv);
+                            let zero_val = m.zero(&objs.metas, gcc);
                             let mut val = vec![];
                             let mut cur_index = -1;
                             for i in 0..count {
@@ -1546,14 +1546,14 @@ impl<'a> Fiber<'a> {
                         let new_val = match &objs.metas[md.key] {
                             MetadataType::Slice(m) => {
                                 let (val, typ) = build_val(m);
-                                GosValue::slice_with_data(val, typ, gcv)
+                                GosValue::slice_with_data(val, typ, gcc)
                             }
                             MetadataType::Array(m, _) => {
                                 let (val, typ) = build_val(m);
-                                GosValue::array_with_data(val, typ, gcv)
+                                GosValue::array_with_data(val, typ, gcc)
                             }
                             MetadataType::Map(_, _) => {
-                                let map_val = GosValue::new_map(gcv);
+                                let map_val = GosValue::new_map(gcc);
                                 let map = map_val.as_map().unwrap();
                                 for i in 0..count {
                                     let k = stack.get(begin + i * 2).clone();
@@ -1563,7 +1563,7 @@ impl<'a> Fiber<'a> {
                                 map_val
                             }
                             MetadataType::Struct(_, _) => {
-                                let struct_val = md.zero(&objs.metas, gcv);
+                                let struct_val = md.zero(&objs.metas, gcc);
                                 {
                                     let fields = &mut struct_val.as_struct().0.borrow_fields_mut();
                                     for i in 0..count {
@@ -1579,7 +1579,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::NEW => {
                         let md = stack.read(inst.s0, sb, consts).as_metadata();
-                        let v = md.into_value_category().zero(&objs.metas, gcv);
+                        let v = md.into_value_category().zero(&objs.metas, gcc);
                         let p = GosValue::new_pointer(PointerObj::UpVal(UpValue::new_closed(v)));
                         stack.set(inst.d + sb, p);
                     }
@@ -1605,10 +1605,10 @@ impl<'a> Fiber<'a> {
                                     }
                                     _ => unreachable!(),
                                 };
-                                let zero = vmeta.zero(&objs.metas, gcv);
-                                GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcv)
+                                let zero = vmeta.zero(&objs.metas, gcc);
+                                GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcc)
                             }
-                            MetadataType::Map(_, _) => GosValue::new_map(gcv),
+                            MetadataType::Map(_, _) => GosValue::new_map(gcc),
                             MetadataType::Channel(_, val_meta) => {
                                 let cap = match inst.t0 {
                                     // 2 args
@@ -1619,7 +1619,7 @@ impl<'a> Fiber<'a> {
                                     ValueType::FlagA => 0,
                                     _ => unreachable!(),
                                 };
-                                let zero = val_meta.zero(&objs.metas, gcv);
+                                let zero = val_meta.zero(&objs.metas, gcc);
                                 GosValue::new_channel(ChannelObj::new(cap, zero))
                             }
                             _ => unreachable!(),
@@ -1689,7 +1689,7 @@ impl<'a> Fiber<'a> {
                             GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap()
                         };
 
-                        match dispatcher_a_s_for(inst.t1).slice_append(a, b, gcv) {
+                        match dispatcher_a_s_for(inst.t1).slice_append(a, b, gcc) {
                             Ok(slice) => stack.set(inst.d + sb, slice),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         };
@@ -1795,7 +1795,7 @@ impl<'a> Fiber<'a> {
             };
         } //loop
 
-        collect(gcv);
+        collect(gcc);
     }
 }
 
@@ -1823,7 +1823,7 @@ fn cst(consts: &Vec<GosValue>, i: OpIndex) -> &GosValue {
 fn type_assert(
     val: &GosValue,
     want_meta: &GosValue,
-    gcv: &GcoVec,
+    gcc: &GcContainer,
     metas: Option<&MetadataObjs>,
 ) -> RuntimeResult<(GosValue, bool)> {
     match val.as_non_nil_interface() {
@@ -1832,10 +1832,10 @@ fn type_assert(
                 let meta = b.as_ref().unwrap().0;
                 let want_meta = want_meta.as_metadata();
                 if *want_meta == meta {
-                    Ok((v.copy_semantic(gcv), true))
+                    Ok((v.copy_semantic(gcc), true))
                 } else {
                     if let Some(mobjs) = metas {
-                        Ok((want_meta.zero(mobjs, gcv), false))
+                        Ok((want_meta.zero(mobjs, gcc), false))
                     } else {
                         Err("interface conversion: wrong type".to_owned())
                     }
@@ -1915,7 +1915,7 @@ fn bind_iface_method(
     index: usize,
     stack: &Stack,
     objs: &VMObjects,
-    gcv: &GcoVec,
+    gcc: &GcContainer,
 ) -> RuntimeResult<GosValue> {
     match iface {
         InterfaceObj::Gos(obj, b) => {
@@ -1923,17 +1923,17 @@ fn bind_iface_method(
             match binding {
                 Binding4Runtime::Struct(func, ptr_recv, indices) => {
                     let obj = match indices {
-                        None => obj.copy_semantic(gcv),
+                        None => obj.copy_semantic(gcc),
                         Some(inds) => get_embeded(obj.clone(), inds, stack, &objs.packages)?
-                            .copy_semantic(gcv),
+                            .copy_semantic(gcc),
                     };
                     let obj = cast_receiver(obj, *ptr_recv, stack, objs)?;
                     let cls = ClosureObj::gos_from_func(*func, &objs.functions, Some(obj));
-                    Ok(GosValue::new_closure(cls, gcv))
+                    Ok(GosValue::new_closure(cls, gcc))
                 }
                 Binding4Runtime::Iface(i, indices) => {
                     let bind = |obj: &GosValue| {
-                        bind_iface_method(&obj.as_interface().unwrap(), *i, stack, objs, gcv)
+                        bind_iface_method(&obj.as_interface().unwrap(), *i, stack, objs, gcc)
                     };
                     match indices {
                         None => bind(&obj),
@@ -1950,7 +1950,7 @@ fn bind_iface_method(
                 func_name: name,
                 meta: meta,
             };
-            Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcv))
+            Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcc))
         }
     }
 }

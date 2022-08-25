@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 use crate::channel::Channel;
-use crate::gc::GcoVec;
+use crate::gc::GcContainer;
 pub use crate::instruction::*;
 pub use crate::metadata::*;
 pub use crate::objects::*;
@@ -1018,13 +1018,13 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_array<T>(arr: ArrayObj<T>, gcv: &GcoVec) -> ValueData
+    fn new_array<T>(arr: ArrayObj<T>, gcc: &GcContainer) -> ValueData
     where
         T: Element,
     {
         let rc = Rc::new((arr, Cell::new(0)));
         if T::need_gc() {
-            gcv.add_array(&ValueData::from_array(rc.clone()).into_array::<GosElem>());
+            gcc.add_array(&ValueData::from_array(rc.clone()).into_array::<GosElem>());
         }
         ValueData::from_array(rc)
     }
@@ -1040,9 +1040,9 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_struct(obj: StructObj, gcv: &GcoVec) -> ValueData {
+    fn new_struct(obj: StructObj, gcc: &GcContainer) -> ValueData {
         let s = Rc::new((obj, Cell::new(0)));
-        gcv.add_struct(&s);
+        gcc.add_struct(&s);
         ValueData::from_struct(s)
     }
 
@@ -1057,9 +1057,9 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> ValueData {
+    fn new_closure(obj: ClosureObj, gcc: &GcContainer) -> ValueData {
         let cls = Rc::new((obj, Cell::new(0)));
-        gcv.add_closure(&cls);
+        gcc.add_closure(&cls);
         ValueData::from_closure(Some(cls))
     }
 
@@ -1080,9 +1080,9 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_map(obj: MapObj, gcv: &GcoVec) -> ValueData {
+    fn new_map(obj: MapObj, gcc: &GcContainer) -> ValueData {
         let m = Rc::new((obj, Cell::new(0)));
-        gcv.add_map(&m);
+        gcc.add_map(&m);
         ValueData::from_map(Some(m))
     }
 
@@ -1218,7 +1218,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn copy_semantic(&self, t: ValueType, t_elem: ValueType, gcv: &GcoVec) -> ValueData {
+    fn copy_semantic(&self, t: ValueType, t_elem: ValueType, gcc: &GcContainer) -> ValueData {
         match t {
             _ if t != ValueType::Array
                 && t != ValueType::Struct
@@ -1227,11 +1227,11 @@ impl ValueData {
             {
                 self.clone(t)
             }
-            ValueType::Array => dispatcher_a_s_for(t_elem).array_copy_semantic(self, gcv),
-            ValueType::Struct => ValueData::new_struct(StructObj::clone(&self.as_struct().0), gcv),
+            ValueType::Array => dispatcher_a_s_for(t_elem).array_copy_semantic(self, gcc),
+            ValueType::Struct => ValueData::new_struct(StructObj::clone(&self.as_struct().0), gcc),
             ValueType::Slice => dispatcher_a_s_for(t_elem).slice_copy_semantic(self),
             ValueType::Map => match self.as_map() {
-                Some(m) => ValueData::new_map(m.0.clone(), gcv),
+                Some(m) => ValueData::new_map(m.0.clone(), gcc),
                 None => ValueData::new_nil(t),
             },
             _ => unreachable!(),
@@ -1448,11 +1448,11 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_array<T>(obj: ArrayObj<T>, t_elem: ValueType, gcv: &GcoVec) -> GosValue
+    pub(crate) fn new_array<T>(obj: ArrayObj<T>, t_elem: ValueType, gcc: &GcContainer) -> GosValue
     where
         T: Element,
     {
-        let data = ValueData::new_array(obj, gcv);
+        let data = ValueData::new_array(obj, gcc);
         GosValue::with_elem_type(ValueType::Array, t_elem, data)
     }
 
@@ -1466,8 +1466,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_struct(obj: StructObj, gcv: &GcoVec) -> GosValue {
-        let data = ValueData::new_struct(obj, gcv);
+    pub(crate) fn new_struct(obj: StructObj, gcc: &GcContainer) -> GosValue {
+        let data = ValueData::new_struct(obj, gcc);
         GosValue::new(ValueType::Struct, data)
     }
 
@@ -1482,8 +1482,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_closure(obj: ClosureObj, gcv: &GcoVec) -> GosValue {
-        let data = ValueData::new_closure(obj, gcv);
+    pub(crate) fn new_closure(obj: ClosureObj, gcc: &GcContainer) -> GosValue {
+        let data = ValueData::new_closure(obj, gcc);
         GosValue::new(ValueType::Closure, data)
     }
 
@@ -1508,8 +1508,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_map(gcv: &GcoVec) -> GosValue {
-        let data = ValueData::new_map(MapObj::new(), gcv);
+    pub(crate) fn new_map(gcc: &GcContainer) -> GosValue {
+        let data = ValueData::new_map(MapObj::new(), gcc);
         GosValue::new(ValueType::Map, data)
     }
 
@@ -1529,20 +1529,20 @@ impl GosValue {
         cap: usize,
         val: &GosValue,
         t_elem: ValueType,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> GosValue {
         debug_assert!(t_elem != ValueType::Void);
-        dispatcher_a_s_for(t_elem).array_with_size(size, cap, val, gcv)
+        dispatcher_a_s_for(t_elem).array_with_size(size, cap, val, gcc)
     }
 
     #[inline]
     pub(crate) fn array_with_data(
         data: Vec<GosValue>,
         t_elem: ValueType,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> GosValue {
         debug_assert!(t_elem != ValueType::Void);
-        dispatcher_a_s_for(t_elem).array_with_data(data, gcv)
+        dispatcher_a_s_for(t_elem).array_with_data(data, gcc)
     }
 
     #[inline]
@@ -1551,12 +1551,12 @@ impl GosValue {
         cap: usize,
         val: &GosValue,
         t_elem: ValueType,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> GosValue {
         if t_elem == ValueType::Void {
             panic!("qqq");
         }
-        let arr = GosValue::array_with_size(size, cap, val, t_elem, gcv);
+        let arr = GosValue::array_with_size(size, cap, val, t_elem, gcc);
         GosValue::slice_array(arr, 0, size as isize, t_elem).unwrap()
     }
 
@@ -1564,11 +1564,11 @@ impl GosValue {
     pub(crate) fn slice_with_data(
         data: Vec<GosValue>,
         t_elem: ValueType,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> GosValue {
         assert!(t_elem != ValueType::Void);
         let len = data.len();
-        let arr = GosValue::array_with_data(data, t_elem, gcv);
+        let arr = GosValue::array_with_data(data, t_elem, gcc);
         GosValue::slice_array(arr, 0, len as isize, t_elem).unwrap()
     }
 
@@ -1587,10 +1587,10 @@ impl GosValue {
         package: PackageKey,
         meta: Meta,
         objs: &mut VMObjects,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
         flag: FuncFlag,
     ) -> GosValue {
-        let val = FunctionVal::new(package, meta, &objs.metas, gcv, flag);
+        let val = FunctionVal::new(package, meta, &objs.metas, gcc, flag);
         GosValue::new_function(objs.functions.insert(val))
     }
 
@@ -2027,14 +2027,14 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn copy_semantic(&self, gcv: &GcoVec) -> GosValue {
+    pub(crate) fn copy_semantic(&self, gcc: &GcContainer) -> GosValue {
         if self.typ.copyable() {
             GosValue::new(self.typ, self.data.copy())
         } else {
             GosValue::with_elem_type(
                 self.typ,
                 self.t_elem,
-                self.data.copy_semantic(self.typ, self.t_elem, gcv),
+                self.data.copy_semantic(self.typ, self.t_elem, gcc),
             )
         }
     }
@@ -2407,11 +2407,17 @@ impl fmt::Debug for GosValue {
 
 /// Dispatcher is used to diapatch Array/Slice calls using the vtable.
 pub(crate) trait Dispatcher {
-    fn array_with_size(&self, size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> GosValue;
+    fn array_with_size(
+        &self,
+        size: usize,
+        cap: usize,
+        val: &GosValue,
+        gcos: &GcContainer,
+    ) -> GosValue;
 
-    fn array_with_data(&self, data: Vec<GosValue>, gcv: &GcoVec) -> GosValue;
+    fn array_with_data(&self, data: Vec<GosValue>, gcc: &GcContainer) -> GosValue;
 
-    fn array_copy_semantic(&self, vdata: &ValueData, gcv: &GcoVec) -> ValueData;
+    fn array_copy_semantic(&self, vdata: &ValueData, gcc: &GcContainer) -> ValueData;
 
     fn slice_copy_semantic(&self, vdata: &ValueData) -> ValueData;
 
@@ -2448,7 +2454,7 @@ pub(crate) trait Dispatcher {
         &self,
         this: GosValue,
         other: GosValue,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> RuntimeResult<GosValue>;
 
     fn slice_copy_from(&self, this: GosValue, other: GosValue) -> usize;
@@ -2494,23 +2500,23 @@ macro_rules! define_dispatcher {
                 size: usize,
                 cap: usize,
                 val: &GosValue,
-                gcv: &GcoVec,
+                gcc: &GcContainer,
             ) -> GosValue {
                 GosValue::new_array(
-                    ArrayObj::<$elem>::with_size(size, cap, val, gcv),
+                    ArrayObj::<$elem>::with_size(size, cap, val, gcc),
                     self.typ,
-                    gcv,
+                    gcc,
                 )
             }
 
             #[inline]
-            fn array_with_data(&self, data: Vec<GosValue>, gcv: &GcoVec) -> GosValue {
-                GosValue::new_array(ArrayObj::<$elem>::with_data(data), self.typ, gcv)
+            fn array_with_data(&self, data: Vec<GosValue>, gcc: &GcContainer) -> GosValue {
+                GosValue::new_array(ArrayObj::<$elem>::with_data(data), self.typ, gcc)
             }
 
             #[inline]
-            fn array_copy_semantic(&self, vdata: &ValueData, gcv: &GcoVec) -> ValueData {
-                ValueData::new_array::<$elem>(vdata.as_array::<$elem>().0.clone(), gcv)
+            fn array_copy_semantic(&self, vdata: &ValueData, gcc: &GcContainer) -> ValueData {
+                ValueData::new_array::<$elem>(vdata.as_array::<$elem>().0.clone(), gcc)
             }
 
             #[inline]
@@ -2603,7 +2609,7 @@ macro_rules! define_dispatcher {
                 &self,
                 this: GosValue,
                 other: GosValue,
-                gcv: &GcoVec,
+                gcc: &GcContainer,
             ) -> RuntimeResult<GosValue> {
                 let a = this.as_slice::<$elem>();
                 let b = other.as_slice::<$elem>();
@@ -2618,7 +2624,7 @@ macro_rules! define_dispatcher {
                             let data = y.0.as_rust_slice().to_vec();
                             let arr = ArrayObj::<$elem>::with_raw_data(data);
                             let slice = SliceObj::<$elem>::with_array(
-                                GosValue::new_array(arr, other.t_elem(), gcv),
+                                GosValue::new_array(arr, other.t_elem(), gcc),
                                 0,
                                 -1,
                             )?;

@@ -10,13 +10,13 @@ use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::rc::{Rc, Weak};
 
-pub struct GcoVec {
+pub struct GcContainer {
     inner: Rc<RefCell<Vec<GcWeak>>>,
 }
 
-impl GcoVec {
-    pub fn new() -> GcoVec {
-        GcoVec {
+impl GcContainer {
+    pub fn new() -> GcContainer {
+        GcContainer {
             inner: Rc::new(RefCell::new(Vec::new())),
         }
     }
@@ -196,7 +196,7 @@ fn partition_to_scan(to_scan: &mut Vec<GosValue>) -> usize {
     p0
 }
 
-pub(crate) fn collect(objs: &GcoVec) {
+pub(crate) fn collect(objs: &GcContainer) {
     let mut to_scan: Vec<GosValue> = objs
         .borrow_data()
         .iter()

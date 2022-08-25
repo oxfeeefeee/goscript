@@ -5,7 +5,7 @@
 #![macro_use]
 use crate::channel::Channel;
 use crate::ffi::Ffi;
-use crate::gc::GcoVec;
+use crate::gc::GcContainer;
 use crate::instruction::{Instruction, OpIndex, ValueType};
 use crate::metadata::*;
 use crate::stack::Stack;
@@ -393,7 +393,12 @@ impl<T> ArrayObj<T>
 where
     T: Element,
 {
-    pub(crate) fn with_size(size: usize, cap: usize, val: &GosValue, gcos: &GcoVec) -> ArrayObj<T> {
+    pub(crate) fn with_size(
+        size: usize,
+        cap: usize,
+        val: &GosValue,
+        gcos: &GcContainer,
+    ) -> ArrayObj<T> {
         assert!(cap >= size);
         let mut v = Vec::with_capacity(cap);
         for _ in 0..size {
@@ -1210,22 +1215,22 @@ impl PointerObj {
         val: &GosValue,
         stack: &mut Stack,
         pkgs: &PackageObjs,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
     ) -> RuntimeResult<()> {
         match self {
-            PointerObj::UpVal(uv) => uv.set_value(val.copy_semantic(gcv), stack),
+            PointerObj::UpVal(uv) => uv.set_value(val.copy_semantic(gcc), stack),
             PointerObj::SliceMember(s, index) => {
                 s.dispatcher_a_s()
-                    .slice_set(s, &val.copy_semantic(gcv), *index as usize)?;
+                    .slice_set(s, &val.copy_semantic(gcc), *index as usize)?;
             }
             PointerObj::StructField(s, index) => {
                 let target: &mut GosValue =
                     &mut s.as_struct().0.borrow_fields_mut()[*index as usize];
-                *target = val.copy_semantic(gcv);
+                *target = val.copy_semantic(gcc);
             }
             PointerObj::PkgMember(p, index) => {
                 let target: &mut GosValue = &mut pkgs[*p].member_mut(*index);
-                *target = val.copy_semantic(gcv);
+                *target = val.copy_semantic(gcc);
             }
         }
         Ok(())
@@ -1885,11 +1890,11 @@ impl FunctionVal {
         package: PackageKey,
         meta: Meta,
         metas: &MetadataObjs,
-        gcv: &GcoVec,
+        gcc: &GcContainer,
         flag: FuncFlag,
     ) -> FunctionVal {
         let s = &metas[meta.key].as_signature();
-        let ret_zeros = s.results.iter().map(|m| m.zero(metas, gcv)).collect();
+        let ret_zeros = s.results.iter().map(|m| m.zero(metas, gcc)).collect();
         let mut param_count = s.recv.map_or(0, |_| 1);
         param_count += s.params.len() as OpIndex;
         FunctionVal {

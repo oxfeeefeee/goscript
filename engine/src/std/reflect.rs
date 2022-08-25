@@ -449,7 +449,7 @@ impl StdValue {
         }
         match self {
             Self::Pointer(p, _, _) => {
-                p.set_pointee(&val, ctx.stack, &ctx.vm_objs.packages, &ctx.gcv)
+                p.set_pointee(&val, ctx.stack, &ctx.vm_objs.packages, &ctx.gcc)
             }
             _ => unreachable!(),
         }

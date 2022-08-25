@@ -14,7 +14,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
 use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
-use goscript_vm::gc::GcoVec;
+use goscript_vm::gc::GcContainer;
 use goscript_vm::null_key;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
@@ -64,7 +64,7 @@ fn gen_byte_code(
 ) -> ByteCode {
     let mut objects = VMObjects::new();
     let consts = Consts::new();
-    let mut dummy_gcv = GcoVec::new();
+    let mut dummy_gcc = GcContainer::new();
     let mut iface_selector = IfaceSelector::new();
     let mut struct_selector = StructSelector::new();
     let mut pkg_map = HashMap::new();
@@ -80,7 +80,7 @@ fn gen_byte_code(
     let entry = gen_entry_func(
         &mut objects,
         &consts,
-        &dummy_gcv,
+        &dummy_gcc,
         pkg_map[&main_pkg],
         main_ident,
     );
@@ -94,7 +94,7 @@ fn gen_byte_code(
             &consts,
             ast_objs,
             tc_objs,
-            &mut dummy_gcv,
+            &mut dummy_gcc,
             &ti,
             &mut type_cache,
             &mut iface_selector,
@@ -107,7 +107,7 @@ fn gen_byte_code(
         result_funcs.append(&mut cgen.gen_with_files(&ti.ast_files, *tcpkg));
     }
 
-    let (consts, cst_map) = consts.get_runtime_consts(&objects.metas, &dummy_gcv);
+    let (consts, cst_map) = consts.get_runtime_consts(&objects.metas, &dummy_gcc);
     for f in result_funcs.into_iter() {
         f.into_runtime_func(ast_objs, &mut objects, branch_helper.labels(), &cst_map);
     }
@@ -117,7 +117,7 @@ fn gen_byte_code(
     let iface_binding = iface_selector
         .result()
         .into_iter()
-        .map(|x| lookup.iface_binding_info(x, &mut objects, &mut dummy_gcv))
+        .map(|x| lookup.iface_binding_info(x, &mut objects, &mut dummy_gcc))
         .collect();
 
     ByteCode::new(
@@ -133,14 +133,14 @@ fn gen_byte_code(
 fn gen_entry_func<'a, 'c>(
     objects: &'a mut VMObjects,
     consts: &'c Consts,
-    gcv: &'a GcoVec,
+    gcc: &'a GcContainer,
     pkg: PackageKey,
     main_ident: IdentKey,
 ) -> FuncCtx<'c> {
     // import the 0th pkg and call the main function of the pkg
     let fmeta = objects.s_meta.default_sig;
     let fobj =
-        GosValue::function_with_meta(null_key!(), fmeta.clone(), objects, gcv, FuncFlag::Default);
+        GosValue::function_with_meta(null_key!(), fmeta.clone(), objects, gcc, FuncFlag::Default);
     let fkey = *fobj.as_function();
     let mut fctx = FuncCtx::new(fkey, None, consts);
     fctx.emit_import(pkg, None);

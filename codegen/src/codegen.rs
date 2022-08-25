@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
-use goscript_vm::gc::GcoVec;
+use goscript_vm::gc::GcContainer;
 use goscript_vm::value::*;
 
 use goscript_parser::ast::*;
@@ -43,7 +43,7 @@ pub struct CodeGen<'a, 'c> {
     consts: &'c Consts,
     ast_objs: &'a AstObjects,
     tc_objs: &'a TCObjects,
-    dummy_gcv: &'a mut GcoVec,
+    dummy_gcc: &'a mut GcContainer,
     t: TypeLookup<'a>,
     iface_selector: &'a mut IfaceSelector,
     struct_selector: &'a mut StructSelector,
@@ -63,7 +63,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         consts: &'c Consts,
         ast_objs: &'a AstObjects,
         tc_objs: &'a TCObjects,
-        dummy_gcv: &'a mut GcoVec,
+        dummy_gcc: &'a mut GcContainer,
         ti: &'a TypeInfo,
         type_cache: &'a mut TypeCache,
         iface_selector: &'a mut IfaceSelector,
@@ -78,7 +78,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             consts,
             ast_objs,
             tc_objs,
-            dummy_gcv,
+            dummy_gcc,
             t: TypeLookup::new(tc_objs, ti, type_cache),
             iface_selector,
             struct_selector,
@@ -106,7 +106,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     None => {
                         let id = &self.ast_objs.idents[*ident];
                         if id.name == "error" {
-                            let m = self.t.tc_type_to_meta(tctype, self.objects, self.dummy_gcv);
+                            let m = self.t.tc_type_to_meta(tctype, self.objects, self.dummy_gcc);
                             VirtualAddr::Direct(func_ctx!(self).add_metadata(m))
                         } else {
                             self.resolve_var_ident(ident)
@@ -199,8 +199,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let tc_type = self.t.obj_tc_type(okey);
         let meta = self
             .t
-            .tc_type_to_meta(tc_type, self.objects, self.dummy_gcv);
-        let zero_val = meta.zero(&self.objects.metas, self.dummy_gcv);
+            .tc_type_to_meta(tc_type, self.objects, self.dummy_gcc);
+        let zero_val = meta.zero(&self.objects.metas, self.dummy_gcc);
         let ctx = func_ctx!(self);
         let index = ctx.add_local(Some(okey), Some(zero_val));
         (index, tc_type, meta)
@@ -284,7 +284,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                             let mut struct_addr = self.load(|g| g.gen_expr(&sexpr.expr));
                             let t = self
                                 .t
-                                .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcv);
+                                .node_meta(sexpr.expr.id(), self.objects, self.dummy_gcc);
                             let name = &self.ast_objs.idents[sexpr.sel].name;
                             let indices: Vec<OpIndex> = t
                                 .field_indices(name, &self.objects.metas)
@@ -618,12 +618,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let typ = &self.ast_objs.ftypes[f_type_key];
         let fmeta = self
             .t
-            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
+            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcc);
         let f = GosValue::function_with_meta(
             self.pkg_key,
             fmeta,
             self.objects,
-            self.dummy_gcv,
+            self.dummy_gcc,
             FuncFlag::Default,
         );
         let fkey = *f.as_function();
@@ -667,7 +667,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 ValueType::Slice
             };
             let (_, t_elem) =
-                g.t.sliceable_expr_value_types(&params[0], g.objects, g.dummy_gcv);
+                g.t.sliceable_expr_value_types(&params[0], g.objects, g.dummy_gcc);
             (t0, g.t.tc_type_to_value_type(t_elem))
         };
         match builtin {
@@ -1084,7 +1084,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let val_tc_type = self.t.expr_tc_type(typ.as_ref().unwrap());
         let meta = self
             .t
-            .tc_type_to_meta(val_tc_type, self.objects, self.dummy_gcv);
+            .tc_type_to_meta(val_tc_type, self.objects, self.dummy_gcc);
         let meta_addr = func_ctx!(self).add_const(GosValue::new_metadata(meta));
         let pos = Some(expr.pos(self.ast_objs));
         match ok_lhs_ectx {
@@ -1125,7 +1125,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 let va = self.resolve_any_ident(ikey, None);
                 match va {
                     VirtualAddr::Direct(_) => {
-                        let meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcv);
+                        let meta = self.t.node_meta(expr.id(), self.objects, self.dummy_gcc);
                         let t = meta.value_type(&self.objects.metas);
                         let entity_key = self.t.object_use(*ikey);
                         let fctx = func_ctx!(self);
@@ -1172,7 +1172,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             Expr::Index(iexpr) => {
                 let (t0, _) =
                     self.t
-                        .sliceable_expr_value_types(&iexpr.expr, self.objects, self.dummy_gcv);
+                        .sliceable_expr_value_types(&iexpr.expr, self.objects, self.dummy_gcc);
                 let t1 = self.t.expr_value_type(&iexpr.index);
                 let lhs_addr = self.load(|g| g.gen_expr(&iexpr.expr));
                 let index_addr = self.load(|g| g.gen_expr(&iexpr.index));
@@ -1241,7 +1241,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn gen_expr_composite_lit(&mut self, clit: &CompositeLit, tc_type: TCTypeKey) {
         let meta = self
             .t
-            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcv);
+            .tc_type_to_meta(tc_type, &mut self.objects, self.dummy_gcc);
         //let vt = self.t.tc_type_to_value_type(tc_type);
         let pos = Some(clit.l_brace);
         let typ = &self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
@@ -1341,7 +1341,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     }
 
     fn gen_expr_type(&mut self, typ: &Expr) {
-        let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcv);
+        let m = self.t.node_meta(typ.id(), self.objects, self.dummy_gcc);
         let pos = Some(typ.pos(&self.ast_objs));
         let addr = func_ctx!(self).add_const(GosValue::new_metadata(m));
         self.cur_expr_emit_direct_assign(self.t.expr_tc_type(typ), addr, pos);
@@ -1387,8 +1387,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn add_pkg_var_member(&mut self, pkey: PackageKey, names: &Vec<IdentKey>) {
         for n in names.iter() {
             let ident = &self.ast_objs.idents[*n];
-            let meta = self.t.obj_def_meta(*n, self.objects, self.dummy_gcv);
-            let val = meta.zero(&self.objects.metas, self.dummy_gcv);
+            let meta = self.t.obj_def_meta(*n, self.objects, self.dummy_gcc);
+            let val = meta.zero(&self.objects.metas, self.dummy_gcc);
             self.objects.packages[pkey].add_member(
                 ident.name.clone(),
                 val,
@@ -1400,13 +1400,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn add_zero_val(&mut self, typ: TCTypeKey) -> Addr {
         // if self.zero_types.insert(typ) {
         //     // Make sure type info is cached
-        //     self.t.tc_type_to_meta(typ, self.objects, self.dummy_gcv);
+        //     self.t.tc_type_to_meta(typ, self.objects, self.dummy_gcc);
         // }
         // Addr::ZeroValue(typ)
         let zero = self
             .t
-            .tc_type_to_meta(typ, self.objects, self.dummy_gcv)
-            .zero(&self.objects.metas, self.dummy_gcv);
+            .tc_type_to_meta(typ, self.objects, self.dummy_gcc)
+            .zero(&self.objects.metas, self.dummy_gcc);
         Addr::Const(self.consts.add_const(zero))
     }
 
@@ -1586,7 +1586,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             pkey,
             fmeta,
             self.objects,
-            self.dummy_gcv,
+            self.dummy_gcc,
             FuncFlag::PkgCtor,
         );
         let fkey = *f.as_function();
@@ -1692,7 +1692,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
         let lhs_meta = self
             .t
-            .node_meta(lhs_expr.id(), self.objects, self.dummy_gcv);
+            .node_meta(lhs_expr.id(), self.objects, self.dummy_gcc);
         //let lhs_type = lhs_meta.value_type(&self.objects.metas);
         let (recv_type, expr_type, indices, stype) =
             self.t.selection_vtypes_indices_sel_typ(this.id());
@@ -1800,7 +1800,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
     ) -> Self::Result {
         let (t0, tct_elem) = self
             .t
-            .sliceable_expr_value_types(expr, self.objects, self.dummy_gcv);
+            .sliceable_expr_value_types(expr, self.objects, self.dummy_gcc);
         let pos = Some(expr.pos(&self.ast_objs));
 
         let slice_array_addr = self.load(|g| g.gen_expr(expr));
@@ -2009,7 +2009,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                     //handled elsewhere
                 }
                 Spec::Type(ts) => {
-                    let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcv);
+                    let m = self.t.obj_def_meta(ts.name, self.objects, self.dummy_gcc);
                     self.add_const_def(&ts.name, GosValue::new_metadata(m), ValueType::Metadata);
                 }
                 Spec::Value(vs) => match &gdecl.token {
@@ -2040,7 +2040,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
             let name = &self.ast_objs.idents[decl.name].name;
             let meta = self
                 .t
-                .node_meta(field.typ.id(), self.objects, self.dummy_gcv);
+                .node_meta(field.typ.id(), self.objects, self.dummy_gcc);
             meta.set_method_code(name, fkey, &mut self.objects.metas);
         } else {
             let name = &self.ast_objs.idents[decl.name].name;
