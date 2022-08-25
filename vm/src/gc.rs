@@ -38,7 +38,7 @@ impl GcContainer {
     }
 
     #[inline]
-    pub fn add_weak(&self, w: GcWeak) {
+    pub(crate) fn add_weak(&self, w: GcWeak) {
         self.inner.borrow_mut().push(w);
     }
 
@@ -48,7 +48,7 @@ impl GcContainer {
 }
 
 #[derive(Clone)]
-pub enum GcWeak {
+pub(crate) enum GcWeak {
     Array(Weak<(GosArrayObj, RCount)>),
     Closure(Weak<(ClosureObj, RCount)>),
     Map(Weak<(MapObj, RCount)>),

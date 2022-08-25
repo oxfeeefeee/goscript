@@ -59,14 +59,13 @@ impl FfiStatics for Statics {
 
 pub struct Engine {
     ffi: vm::ffi::FfiFactory,
-    statics: Statics,
 }
 
 impl Engine {
     pub fn new() -> Engine {
         let statics = Statics::default();
         let ffi = vm::ffi::FfiFactory::new(Box::new(statics.clone()));
-        let mut e = Engine { ffi, statics };
+        let mut e = Engine { ffi };
         crate::std::register(&mut e);
         e
     }
@@ -77,7 +76,7 @@ impl Engine {
         std_out: Option<Box<dyn std::io::Write>>,
         std_err: Option<Box<dyn std::io::Write>>,
     ) {
-        let mut borrow = self.statics.borrow_data_mut();
+        let mut borrow = Statics::downcast_borrow_data_mut(self.ffi.statics());
         borrow.std_in = std_in;
         borrow.std_out = std_out;
         borrow.std_err = std_err;
