@@ -72,7 +72,7 @@ impl FileFfi {
         let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
         let r = file.read(&mut buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
-            GosValue::new_int(opt.unwrap_or(0) as isize)
+            (opt.unwrap_or(0) as isize).into()
         }))
     }
 
@@ -84,7 +84,7 @@ impl FileFfi {
         let buf = unsafe { slice.as_raw_slice::<u8>() };
         let r = file.write(&buf, ctx);
         Ok(FileFfi::result_to_go(r, |opt| {
-            GosValue::new_int(opt.unwrap_or(0) as isize)
+            (opt.unwrap_or(0) as isize).into()
         }))
     }
 
@@ -100,9 +100,7 @@ impl FileFfi {
             _ => unreachable!(),
         };
         let r = file.seek(whence);
-        Ok(FileFfi::result_to_go(r, |opt| {
-            GosValue::new_uint64(opt.unwrap_or(0))
-        }))
+        Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0).into()))
     }
 
     fn result_to_go<T, F>(result: io::Result<T>, f: F) -> Vec<GosValue>
@@ -117,7 +115,7 @@ impl FileFfi {
                 GosValue::with_str(&e.to_string()),
             ),
         };
-        vec![r.0, GosValue::new_int(r.1), r.2]
+        vec![r.0, r.1.into(), r.2]
     }
 }
 

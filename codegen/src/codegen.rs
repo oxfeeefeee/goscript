@@ -117,12 +117,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             OperandMode::Value => {
                 let id = &self.ast_objs.idents[*ident];
                 match &*id.name {
-                    "true" => {
-                        VirtualAddr::Direct(func_ctx!(self).add_const(GosValue::new_bool(true)))
-                    }
-                    "false" => {
-                        VirtualAddr::Direct(func_ctx!(self).add_const(GosValue::new_bool(false)))
-                    }
+                    "true" => VirtualAddr::Direct(func_ctx!(self).add_const(true.into())),
+                    "false" => VirtualAddr::Direct(func_ctx!(self).add_const(false.into())),
                     "nil" => VirtualAddr::Direct(Addr::UntypedNil),
                     _ => self.resolve_var_ident(ident),
                 }
@@ -1269,7 +1265,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     };
                     let fctx = func_ctx!(self);
                     let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
-                    let index_addr = fctx.add_const(GosValue::new_int32(key as i32));
+                    let index_addr = fctx.add_const((key as i32).into());
                     fctx.emit_assign(key_reg, index_addr, None, pos);
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     self.store(elem_reg, Some(elem_type), |g| {
@@ -1310,7 +1306,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     };
                     let fctx = func_ctx!(self);
                     let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
-                    let index_addr = fctx.add_const(GosValue::new_uint(index));
+                    let index_addr = fctx.add_const(index.into());
                     fctx.emit_assign(key_reg, index_addr, None, pos);
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
@@ -1805,15 +1801,15 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
         let slice_array_addr = self.load(|g| g.gen_expr(expr));
         let low_addr = match low {
-            None => func_ctx!(self).add_const(GosValue::new_int(0)),
+            None => func_ctx!(self).add_const(0isize.into()),
             Some(e) => self.load(|g| g.gen_expr(e)),
         };
         let high_addr = match high {
-            None => func_ctx!(self).add_const(GosValue::new_int(-1)),
+            None => func_ctx!(self).add_const((-1isize).into()),
             Some(e) => self.load(|g| g.gen_expr(e)),
         };
         let max_addr = match max {
-            None => func_ctx!(self).add_const(GosValue::new_int(-1)),
+            None => func_ctx!(self).add_const((-1isize).into()),
             Some(e) => self.load(|g| g.gen_expr(e)),
         };
         let t_elem = self.t.tc_type_to_value_type(tct_elem);
@@ -2207,10 +2203,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
         }
         let (addr, typ) = match &sstmt.tag {
             Some(e) => (self.load(|g| g.gen_expr(e)), self.t.expr_value_type(e)),
-            None => (
-                func_ctx!(self).add_const(GosValue::new_bool(true)),
-                ValueType::Bool,
-            ),
+            None => (func_ctx!(self).add_const(true.into()), ValueType::Bool),
         };
         self.gen_switch_body(&*sstmt.body, addr, typ);
 

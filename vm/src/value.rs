@@ -11,6 +11,7 @@ use ordered_float;
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
+use std::convert::From;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::num::Wrapping;
@@ -1343,63 +1344,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_bool(b: bool) -> GosValue {
-        GosValue::new(ValueType::Bool, ValueData::new_bool(b))
-    }
-
-    #[inline]
-    pub fn new_int(i: isize) -> GosValue {
-        GosValue::new(ValueType::Int, ValueData::new_int(i))
-    }
-
-    #[inline]
-    pub fn new_int8(i: i8) -> GosValue {
-        GosValue::new(ValueType::Int8, ValueData::new_int8(i))
-    }
-
-    #[inline]
-    pub fn new_int16(i: i16) -> GosValue {
-        GosValue::new(ValueType::Int16, ValueData::new_int16(i))
-    }
-
-    #[inline]
-    pub fn new_int32(i: i32) -> GosValue {
-        GosValue::new(ValueType::Int32, ValueData::new_int32(i))
-    }
-
-    #[inline]
-    pub fn new_int64(i: i64) -> GosValue {
-        GosValue::new(ValueType::Int64, ValueData::new_int64(i))
-    }
-
-    #[inline]
-    pub fn new_uint(u: usize) -> GosValue {
-        GosValue::new(ValueType::Uint, ValueData::new_uint(u))
-    }
-
-    #[inline]
     pub fn new_uint_ptr(u: usize) -> GosValue {
         GosValue::new(ValueType::UintPtr, ValueData::new_uint_ptr(u))
-    }
-
-    #[inline]
-    pub fn new_uint8(u: u8) -> GosValue {
-        GosValue::new(ValueType::Uint8, ValueData::new_uint8(u))
-    }
-
-    #[inline]
-    pub fn new_uint16(u: u16) -> GosValue {
-        GosValue::new(ValueType::Uint16, ValueData::new_uint16(u))
-    }
-
-    #[inline]
-    pub fn new_uint32(u: u32) -> GosValue {
-        GosValue::new(ValueType::Uint32, ValueData::new_uint32(u))
-    }
-
-    #[inline]
-    pub fn new_uint64(u: u64) -> GosValue {
-        GosValue::new(ValueType::Uint64, ValueData::new_uint64(u))
     }
 
     #[inline]
@@ -2402,6 +2348,97 @@ impl Display for GosValue {
 impl fmt::Debug for GosValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.data.fmt_debug(self.typ, self.t_elem, f)
+    }
+}
+
+impl From<bool> for GosValue {
+    #[inline]
+    fn from(b: bool) -> Self {
+        GosValue::new(ValueType::Bool, ValueData::new_bool(b))
+    }
+}
+
+impl From<isize> for GosValue {
+    #[inline]
+    fn from(i: isize) -> Self {
+        GosValue::new(ValueType::Int, ValueData::new_int(i))
+    }
+}
+
+impl From<i8> for GosValue {
+    #[inline]
+    fn from(i: i8) -> Self {
+        GosValue::new(ValueType::Int8, ValueData::new_int8(i))
+    }
+}
+
+impl From<i16> for GosValue {
+    #[inline]
+    fn from(i: i16) -> Self {
+        GosValue::new(ValueType::Int16, ValueData::new_int16(i))
+    }
+}
+
+impl From<i32> for GosValue {
+    #[inline]
+    fn from(i: i32) -> Self {
+        GosValue::new(ValueType::Int32, ValueData::new_int32(i))
+    }
+}
+
+impl From<i64> for GosValue {
+    #[inline]
+    fn from(i: i64) -> Self {
+        GosValue::new(ValueType::Int64, ValueData::new_int64(i))
+    }
+}
+
+impl From<usize> for GosValue {
+    #[inline]
+    fn from(i: usize) -> Self {
+        GosValue::new(ValueType::Uint, ValueData::new_uint(i))
+    }
+}
+
+impl From<u8> for GosValue {
+    #[inline]
+    fn from(i: u8) -> Self {
+        GosValue::new(ValueType::Uint8, ValueData::new_uint8(i))
+    }
+}
+
+impl From<u16> for GosValue {
+    #[inline]
+    fn from(i: u16) -> Self {
+        GosValue::new(ValueType::Uint16, ValueData::new_uint16(i))
+    }
+}
+
+impl From<u32> for GosValue {
+    #[inline]
+    fn from(i: u32) -> Self {
+        GosValue::new(ValueType::Uint32, ValueData::new_uint32(i))
+    }
+}
+
+impl From<u64> for GosValue {
+    #[inline]
+    fn from(i: u64) -> Self {
+        GosValue::new(ValueType::Uint64, ValueData::new_uint64(i))
+    }
+}
+
+impl From<f32> for GosValue {
+    #[inline]
+    fn from(f: f32) -> Self {
+        GosValue::new(ValueType::Float32, ValueData::new_float32(f.into()))
+    }
+}
+
+impl From<f64> for GosValue {
+    #[inline]
+    fn from(f: f64) -> Self {
+        GosValue::new(ValueType::Float64, ValueData::new_float64(f.into()))
     }
 }
 

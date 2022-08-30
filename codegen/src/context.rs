@@ -678,7 +678,7 @@ impl<'a> FuncCtx<'a> {
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
         let pkg_addr = self.add_package(pkg);
-        let zero_addr = Addr::Const(self.consts.add_const(GosValue::new_int32(0)));
+        let zero_addr = Addr::Const(self.consts.add_const(0i32.into()));
         let imm0 = Addr::Imm(0);
         let reg0 = Addr::Regsiter(0);
         let reg1 = Addr::Regsiter(1);

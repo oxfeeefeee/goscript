@@ -505,7 +505,7 @@ impl<'a> Fiber<'a> {
                         };
                         stack.set(inst.d + sb, v);
                         if inst.t1 == ValueType::FlagB {
-                            stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                            stack.set(inst_ex.d + sb, ok.into());
                         }
                     }
                     // desc: map
@@ -793,7 +793,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             a.eq(b)
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(eq));
+                        stack.set(inst.d + sb, eq.into());
                     }
                     Opcode::NEQ => {
                         let a = stack.read(inst.s0, sb, consts);
@@ -803,7 +803,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             !a.eq(b)
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(neq));
+                        stack.set(inst.d + sb, neq.into());
                     }
                     Opcode::LSS => {
                         let a = stack.read(inst.s0, sb, consts);
@@ -813,7 +813,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             a.cmp(b) == Ordering::Less
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(lss));
+                        stack.set(inst.d + sb, lss.into());
                     }
                     Opcode::GTR => {
                         let a = stack.read(inst.s0, sb, consts);
@@ -823,7 +823,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             a.cmp(b) == Ordering::Greater
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(gtr));
+                        stack.set(inst.d + sb, gtr.into());
                     }
                     Opcode::LEQ => {
                         let a = stack.read(inst.s0, sb, consts);
@@ -833,7 +833,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             a.cmp(b) != Ordering::Greater
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(leq));
+                        stack.set(inst.d + sb, leq.into());
                     }
                     Opcode::GEQ => {
                         let a = stack.read(inst.s0, sb, consts);
@@ -843,7 +843,7 @@ impl<'a> Fiber<'a> {
                         } else {
                             a.cmp(b) != Ordering::Less
                         };
-                        stack.set(inst.d + sb, GosValue::new_bool(geq));
+                        stack.set(inst.d + sb, geq.into());
                     }
                     Opcode::REF => {
                         let val = stack.read(inst.s0, sb, consts);
@@ -925,7 +925,7 @@ impl<'a> Fiber<'a> {
                                 let (unwrapped, ok) = unwrap_recv_val!(chan, val, gcc);
                                 stack.set(inst.d + sb, unwrapped);
                                 if inst.t1 == ValueType::FlagB {
-                                    stack.set(inst.s1 + sb, GosValue::new_bool(ok));
+                                    stack.set(inst.s1 + sb, ok.into());
                                 }
                             }
                             None => loop {
@@ -1224,7 +1224,7 @@ impl<'a> Fiber<'a> {
                                                 }
                                                 ValueType::FlagD => {
                                                     stack.set(dst + sb, unwrapped);
-                                                    stack.set(dst + 1 + sb, GosValue::new_bool(ok));
+                                                    stack.set(dst + 1 + sb, ok.into());
                                                 }
                                                 _ => {}
                                             }
@@ -1264,7 +1264,7 @@ impl<'a> Fiber<'a> {
                         match pkg.get_init_func(index) {
                             Some(f) => {
                                 stack.set(inst.d + sb, f.clone());
-                                stack.set(inst.s1 + sb, GosValue::new_int32(index + 1));
+                                stack.set(inst.s1 + sb, (index + 1).into());
                             }
                             None => {
                                 frame.pc += 2;
@@ -1358,7 +1358,7 @@ impl<'a> Fiber<'a> {
                                     ValueType::Int32 => {
                                         let data = StrUtil::as_str(from)
                                             .chars()
-                                            .map(|x| GosValue::new_int32(x as i32))
+                                            .map(|x| (x as i32).into())
                                             .collect();
                                         GosValue::slice_with_data(data, inst.op1_as_t(), gcc)
                                     }
@@ -1419,7 +1419,7 @@ impl<'a> Fiber<'a> {
                                 if inst.t1 == ValueType::FlagB {
                                     let inst_ex = &code[frame.pc as usize];
                                     frame.pc += 1;
-                                    stack.set(inst_ex.d + sb, GosValue::new_bool(ok));
+                                    stack.set(inst_ex.d + sb, ok.into());
                                 }
                             }
                             Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -1669,11 +1669,11 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::LEN => {
                         let l = stack.read(inst.s0, sb, consts).len();
-                        stack.set(inst.d + sb, GosValue::new_int(l as isize));
+                        stack.set(inst.d + sb, (l as isize).into());
                     }
                     Opcode::CAP => {
                         let l = stack.read(inst.s0, sb, consts).cap();
-                        stack.set(inst.d + sb, GosValue::new_int(l as isize));
+                        stack.set(inst.d + sb, (l as isize).into());
                     }
                     Opcode::APPEND => {
                         let a = stack.read(inst.s0, sb, consts).clone();
@@ -1707,7 +1707,7 @@ impl<'a> Fiber<'a> {
                             }
                             _ => dispatcher_a_s_for(inst.t1).slice_copy_from(a, b),
                         };
-                        stack.set(inst.d + sb, GosValue::new_int(count as isize));
+                        stack.set(inst.d + sb, (count as isize).into());
                     }
                     Opcode::DELETE => {
                         let map = stack.read(inst.s0, sb, consts);

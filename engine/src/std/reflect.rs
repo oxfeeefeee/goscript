@@ -147,9 +147,7 @@ impl ReflectFfi {
     }
 
     fn ffi_is_nil(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::new_bool(
-            val_to_std_val(&args[0])?.val(ctx)?.is_nil(),
-        ))
+        Ok(val_to_std_val(&args[0])?.val(ctx)?.is_nil().into())
     }
 
     fn ffi_len(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
@@ -173,11 +171,11 @@ impl ReflectFfi {
     }
 
     fn ffi_can_addr(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::new_bool(val_to_std_val(&args[0])?.can_addr()))
+        Ok(val_to_std_val(&args[0])?.can_addr().into())
     }
 
     fn ffi_can_set(&self, args: Vec<GosValue>) -> RuntimeResult<GosValue> {
-        Ok(GosValue::new_bool(val_to_std_val(&args[0])?.can_set()))
+        Ok(val_to_std_val(&args[0])?.can_set().into())
     }
 
     fn ffi_set(&self, ctx: &mut FfiCtx, args: Vec<GosValue>) -> RuntimeResult<()> {
@@ -303,7 +301,7 @@ impl StdValue {
             ValueType::Int64 => Ok(*val.as_int64()),
             _ => err_wrong_type!(),
         }
-        .map(|x| GosValue::new_int64(x))
+        .map(|x| x.into())
     }
 
     fn uint_val(&self, ctx: &FfiCtx) -> RuntimeResult<GosValue> {
@@ -316,7 +314,7 @@ impl StdValue {
             ValueType::Uint64 => Ok(*val.as_uint64()),
             _ => err_wrong_type!(),
         }
-        .map(|x| GosValue::new_uint64(x))
+        .map(|x| x.into())
     }
 
     fn float_val(&self, ctx: &FfiCtx) -> RuntimeResult<GosValue> {
@@ -355,9 +353,7 @@ impl StdValue {
         if val.typ() != ValueType::Struct {
             err_wrong_type!()
         } else {
-            Ok(GosValue::new_int(
-                val.as_struct().0.borrow_fields().len() as isize
-            ))
+            Ok((val.as_struct().0.borrow_fields().len() as isize).into())
         }
     }
 
@@ -410,7 +406,7 @@ impl StdValue {
             // specs: a[x] is the non-constant byte value at index x and the type of a[x] is byte
             ValueType::String => match container.as_string().len() > iusize {
                 true => Ok(wrap_std_val(
-                    GosValue::new_uint8(StrUtil::index_elem(container.as_string(), iusize)),
+                    StrUtil::index_elem(container.as_string(), iusize).into(),
                     Some(ctx.vm_objs.s_meta.mint8),
                 )),
                 false => err_index_oor!(),
@@ -421,7 +417,7 @@ impl StdValue {
 
     fn len(&self, ctx: &FfiCtx) -> RuntimeResult<GosValue> {
         let val = self.val(ctx)?;
-        Ok(GosValue::new_int(val.len() as isize))
+        Ok((val.len() as isize).into())
     }
 
     fn can_addr(&self) -> bool {
@@ -472,11 +468,11 @@ impl StdValue {
     fn set_int(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
         let ival = *val.as_int64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Int => Ok(GosValue::new_int(ival as isize)),
-            ValueType::Int8 => Ok(GosValue::new_int8(ival as i8)),
-            ValueType::Int16 => Ok(GosValue::new_int16(ival as i16)),
-            ValueType::Int32 => Ok(GosValue::new_int32(ival as i32)),
-            ValueType::Int64 => Ok(GosValue::new_int64(ival as i64)),
+            ValueType::Int => Ok((ival as isize).into()),
+            ValueType::Int8 => Ok((ival as i8).into()),
+            ValueType::Int16 => Ok((ival as i16).into()),
+            ValueType::Int32 => Ok((ival as i32).into()),
+            ValueType::Int64 => Ok((ival as i64).into()),
             _ => err_set_val_type!(),
         }?;
         self.set(ctx, val)
@@ -485,11 +481,11 @@ impl StdValue {
     fn set_uint(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
         let ival = *val.as_uint64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Uint => Ok(GosValue::new_uint(ival as usize)),
-            ValueType::Uint8 => Ok(GosValue::new_uint8(ival as u8)),
-            ValueType::Uint16 => Ok(GosValue::new_uint16(ival as u16)),
-            ValueType::Uint32 => Ok(GosValue::new_uint32(ival as u32)),
-            ValueType::Uint64 => Ok(GosValue::new_uint64(ival as u64)),
+            ValueType::Uint => Ok((ival as usize).into()),
+            ValueType::Uint8 => Ok((ival as u8).into()),
+            ValueType::Uint16 => Ok((ival as u16).into()),
+            ValueType::Uint32 => Ok((ival as u32).into()),
+            ValueType::Uint64 => Ok((ival as u64).into()),
             _ => err_set_val_type!(),
         }?;
         self.set(ctx, val)
@@ -607,10 +603,7 @@ impl StdType {
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };
-        (
-            GosValue::new_unsafe_ptr(typ),
-            GosValue::new_uint(kind as usize),
-        )
+        (GosValue::new_unsafe_ptr(typ), (kind as usize).into())
     }
 }
 
@@ -655,7 +648,7 @@ impl StdMapIter {
     fn next(&self) -> GosValue {
         let mut inner = self.inner.borrow_mut();
         inner.item = inner.iter.next().map(|x| (x.0.clone(), x.1.clone()));
-        GosValue::new_bool(inner.item.is_some())
+        inner.item.is_some().into()
     }
 
     fn key(&self) -> RuntimeResult<GosValue> {

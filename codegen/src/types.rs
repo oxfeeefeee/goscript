@@ -390,31 +390,31 @@ impl<'a> TypeLookup<'a> {
             .typ();
         match typ {
             BasicType::Bool | BasicType::UntypedBool => {
-                (GosValue::new_bool(val.bool_as_bool()), ValueType::Bool)
+                (val.bool_as_bool().into(), ValueType::Bool)
             }
             BasicType::Int | BasicType::UntypedInt => {
                 let (i, _) = val.to_int().int_as_i64();
-                (GosValue::new_int(i as isize), ValueType::Int)
+                ((i as isize).into(), ValueType::Int)
             }
             BasicType::Int8 => {
                 let (i, _) = val.to_int().int_as_i64();
-                (GosValue::new_int8(i as i8), ValueType::Int8)
+                ((i as i8).into(), ValueType::Int8)
             }
             BasicType::Int16 => {
                 let (i, _) = val.to_int().int_as_i64();
-                (GosValue::new_int16(i as i16), ValueType::Int16)
+                ((i as i16).into(), ValueType::Int16)
             }
             BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => {
                 let (i, _) = val.to_int().int_as_i64();
-                (GosValue::new_int32(i as i32), ValueType::Int32)
+                ((i as i32).into(), ValueType::Int32)
             }
             BasicType::Int64 => {
                 let (i, _) = val.to_int().int_as_i64();
-                (GosValue::new_int64(i), ValueType::Int64)
+                (i.into(), ValueType::Int64)
             }
             BasicType::Uint => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint(i as usize), ValueType::Uint)
+                ((i as usize).into(), ValueType::Uint)
             }
             BasicType::Uintptr => {
                 let (i, _) = val.to_int().int_as_u64();
@@ -422,19 +422,19 @@ impl<'a> TypeLookup<'a> {
             }
             BasicType::Uint8 | BasicType::Byte => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint8(i as u8), ValueType::Uint8)
+                ((i as u8).into(), ValueType::Uint8)
             }
             BasicType::Uint16 => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint16(i as u16), ValueType::Uint16)
+                ((i as u16).into(), ValueType::Uint16)
             }
             BasicType::Uint32 => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint32(i as u32), ValueType::Uint32)
+                ((i as u32).into(), ValueType::Uint32)
             }
             BasicType::Uint64 => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint64(i), ValueType::Uint64)
+                (i.into(), ValueType::Uint64)
             }
             BasicType::Float32 => {
                 let (f, _) = val.num_as_f32();

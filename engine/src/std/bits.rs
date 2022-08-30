@@ -16,7 +16,7 @@ pub struct BitsFfi {}
 impl BitsFfi {
     fn ffi_f32_to_bits(&self, args: Vec<GosValue>) -> GosValue {
         let result = u32::from_be_bytes(args[0].as_float32().to_be_bytes());
-        GosValue::new_uint32(result)
+        result.into()
     }
 
     fn ffi_f32_from_bits(&self, args: Vec<GosValue>) -> GosValue {
@@ -26,7 +26,7 @@ impl BitsFfi {
 
     fn ffi_f64_to_bits(&self, args: Vec<GosValue>) -> GosValue {
         let result = u64::from_be_bytes(args[0].as_float64().to_be_bytes());
-        GosValue::new_uint64(result)
+        result.into()
     }
 
     fn ffi_f64_from_bits(&self, args: Vec<GosValue>) -> GosValue {

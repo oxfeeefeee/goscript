@@ -472,6 +472,6 @@ fn test_std_fmt() {
 fn test_std_temp() {
     time_test!();
 
-    let result = run("./tests/std/temp.gos", true);
+    let result = run("./tests/std/temp.gos", false);
     assert!(result.is_ok());
 }

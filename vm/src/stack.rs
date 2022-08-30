@@ -215,7 +215,7 @@ impl RangeStack {
             ValueType::Array | ValueType::Slice => {
                 match dispatcher_a_s_for(t_elem).array_slice_next(self.slices.last_mut().unwrap()) {
                     Some((k, v)) => {
-                        stack.set(index_key, GosValue::new_int(k as isize));
+                        stack.set(index_key, (k as isize).into());
                         stack.set(index_val, v);
                         false
                     }
@@ -227,8 +227,8 @@ impl RangeStack {
             }
             ValueType::String => match self.strings.last_mut().unwrap().next() {
                 Some((k, v)) => {
-                    stack.set(index_key, GosValue::new_int(k as isize));
-                    stack.set(index_val, GosValue::new_int(v as isize));
+                    stack.set(index_key, (k as isize).into());
+                    stack.set(index_val, (v as isize).into());
                     false
                 }
                 None => {
