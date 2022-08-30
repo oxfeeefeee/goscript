@@ -1427,17 +1427,26 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE => {
                         let iface_value = stack.read(inst.s0, sb, consts).clone();
-                        let (val, meta) = match iface_value.as_interface() {
-                            Some(iface) => match &iface as &InterfaceObj {
-                                InterfaceObj::Gos(v, b) => {
-                                    (v.copy_semantic(gcc), b.as_ref().unwrap().0)
-                                }
-                                _ => (iface_value.clone(), s_meta.none),
-                            },
-                            _ => (iface_value, s_meta.none),
-                        };
-                        stack.set(inst.d + sb, GosValue::new_metadata(meta));
-                        if inst.s1 != OpIndex::MAX {
+                        if inst.s1 == OpIndex::MAX {
+                            let meta = match iface_value.as_interface() {
+                                Some(iface) => match &iface as &InterfaceObj {
+                                    InterfaceObj::Gos(_, b) => b.as_ref().unwrap().0,
+                                    _ => s_meta.none,
+                                },
+                                _ => s_meta.none,
+                            };
+                            stack.set(inst.d + sb, GosValue::new_metadata(meta));
+                        } else {
+                            let (val, meta) = match iface_value.as_interface() {
+                                Some(iface) => match &iface as &InterfaceObj {
+                                    InterfaceObj::Gos(v, b) => {
+                                        (v.copy_semantic(gcc), b.as_ref().unwrap().0)
+                                    }
+                                    _ => (iface_value.clone(), s_meta.none),
+                                },
+                                _ => (iface_value, s_meta.none),
+                            };
+                            stack.set(inst.d + sb, GosValue::new_metadata(meta));
                             stack.set(inst.s1 + sb, val);
                         }
                     }
