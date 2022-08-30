@@ -1427,7 +1427,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE => {
                         let iface_value = stack.read(inst.s0, sb, consts).clone();
-                        if inst.s1 == OpIndex::MAX {
+                        if inst.t0 != ValueType::FlagA {
                             let meta = match iface_value.as_interface() {
                                 Some(iface) => match &iface as &InterfaceObj {
                                     InterfaceObj::Gos(_, b) => b.as_ref().unwrap().0,

@@ -2259,7 +2259,14 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
             let s0 = self.load(|g| g.gen_expr(v));
             let fctx = func_ctx!(self);
             fctx.emit_inst(
-                InterInst::with_op_index(Opcode::TYPE, tag_dst, s0, val_dst),
+                InterInst::with_op_t_index(
+                    Opcode::TYPE,
+                    Some(ValueType::FlagA),
+                    None,
+                    tag_dst,
+                    s0,
+                    val_dst,
+                ),
                 pos,
             );
             Some((val_dst, s0, val_addrs, pos))
