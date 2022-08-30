@@ -544,7 +544,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         body: &BlockStmt,
         tag_addr: Addr,
         tag_type: ValueType,
-        type_switch_local_vars: Option<(Addr, Vec<Addr>, Option<Pos>)>,
+        type_switch_local_vars: Option<(Addr, Addr, Vec<Addr>, Option<Pos>)>,
     ) {
         let mut helper = SwitchHelper::new();
         let mut has_default = false;
@@ -588,7 +588,10 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             } else {
                 helper.tags.patch_case(fctx, i, fctx.next_code_index());
             }
-            if let Some((src, ref dsts, p)) = type_switch_local_vars {
+            if let Some((val_src, iface_src, ref dsts, p)) = type_switch_local_vars {
+                // Specs: In clauses with a case listing exactly one type, the variable has that type; otherwise,
+                // the variable has the type of the expression in the TypeSwitchGuard.
+                let src = if default { iface_src } else { val_src };
                 fctx.emit_inst(
                     InterInst::with_op_index(Opcode::DUPLICATE, dsts[i], src, Addr::Void),
                     p,
@@ -2259,7 +2262,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                 InterInst::with_op_index(Opcode::TYPE, tag_dst, s0, val_dst),
                 pos,
             );
-            Some((val_dst, val_addrs, pos))
+            Some((val_dst, s0, val_addrs, pos))
         } else {
             let s0 = self.load(|g| g.gen_expr(v));
             func_ctx!(self).emit_inst(

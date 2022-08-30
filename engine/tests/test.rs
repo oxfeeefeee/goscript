@@ -290,7 +290,7 @@ fn test_switch() {
 
 #[test]
 fn test_typeswitch() {
-    let result = run("./tests/group1/typeswitch.gos", true);
+    let result = run("./tests/group1/typeswitch.gos", false);
     assert!(result.is_ok());
 }
 

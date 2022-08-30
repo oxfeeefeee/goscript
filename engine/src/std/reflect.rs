@@ -255,6 +255,9 @@ impl StdValue {
     }
 
     fn value_from_iface(v: &GosValue) -> RuntimeResult<GosValue> {
+        if v.typ() != ValueType::Interface {
+            return Err("reflect: not an interface".to_owned());
+        }
         let iface = v.as_interface().unwrap();
         match &iface as &InterfaceObj {
             InterfaceObj::Gos(v, m) => Ok(wrap_std_val(v.clone(), m.as_ref().map(|x| x.0))),

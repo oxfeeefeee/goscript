@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt2"
+	"fmt"
 )
 
 
@@ -45,6 +45,12 @@ func typeName2(v interface{}) string {
 	return "int"
 }
 
+
+func test_ts_in_fmt() {
+ 	var nums = []int{2, 5, 1, 3, 4, 7}
+ 	fmt.Println(nums)
+}
+
 func main() {
    var s *S1;
    re := typeName(s)
@@ -54,9 +60,10 @@ func main() {
    re3 := typeName2(map[string]int{"a":666})
    re4 := typeName2(map[string][]int{"a":{1}})
    re5 := typeName2([]float32{1.2})
-   fmt2.Println("typeswitch", re, re2, re3, re4, re5)
+   fmt.Println("typeswitch", re, re2, re3, re4, re5)
    assert(re == "int")
    assert(re5 == "unknown")
    
+	test_ts_in_fmt()
 
 }
