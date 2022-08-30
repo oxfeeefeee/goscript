@@ -35,6 +35,7 @@ func typeName2(v interface{}) string {
 	case []int:
 		return "[]int"
 	case map[string]int:
+		assert(i["a"] == 666)
 		return "map[string]int"
 	case map[string][]int:
 		return "map[string][]int"	
@@ -50,10 +51,12 @@ func main() {
    assert(re == "S1")
    re = typeName2(888)
    re2 := typeName2([]int{1})
-   re3 := typeName2(map[string]int{"a":1})
+   re3 := typeName2(map[string]int{"a":666})
    re4 := typeName2(map[string][]int{"a":{1}})
-   fmt2.Println("typeswitch", re, re2, re3, re4)
+   re5 := typeName2([]float32{1.2})
+   fmt2.Println("typeswitch", re, re2, re3, re4, re5)
    assert(re == "int")
+   assert(re5 == "unknown")
    
 
 }

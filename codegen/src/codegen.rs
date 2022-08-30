@@ -539,7 +539,13 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn gen_switch_body(&mut self, body: &BlockStmt, tag_addr: Addr, tag_type: ValueType) {
+    fn gen_switch_body(
+        &mut self,
+        body: &BlockStmt,
+        tag_addr: Addr,
+        tag_type: ValueType,
+        type_switch_local_vars: Option<(Addr, Vec<Addr>, Option<Pos>)>,
+    ) {
         let mut helper = SwitchHelper::new();
         let mut has_default = false;
         for (i, stmt) in body.list.iter().enumerate() {
@@ -581,6 +587,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 helper.tags.patch_default(fctx, fctx.next_code_index());
             } else {
                 helper.tags.patch_case(fctx, i, fctx.next_code_index());
+            }
+            if let Some((src, ref dsts, p)) = type_switch_local_vars {
+                fctx.emit_inst(
+                    InterInst::with_op_index(Opcode::DUPLICATE, dsts[i], src, Addr::Void),
+                    p,
+                );
             }
             for s in cc.body.iter() {
                 self.visit_stmt(s);
@@ -2205,7 +2217,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
             Some(e) => (self.load(|g| g.gen_expr(e)), self.t.expr_value_type(e)),
             None => (func_ctx!(self).add_const(true.into()), ValueType::Bool),
         };
-        self.gen_switch_body(&*sstmt.body, addr, typ);
+        self.gen_switch_body(&*sstmt.body, addr, typ, None);
 
         self.branch_helper.leave_block(func_ctx!(self), None);
     }
@@ -2228,42 +2240,36 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
             _ => unreachable!(),
         };
 
-        let dst = expr_ctx!(self).inc_cur_reg();
-        if let Some(_) = ident_expr {
-            let inst_data: Vec<(ValueType, Addr)> = tstmt
+        let tag_dst = expr_ctx!(self).inc_cur_reg();
+        let val_dst = expr_ctx!(self).inc_cur_reg();
+        let local_var_info = if let Some(_) = ident_expr {
+            let val_addrs: Vec<Addr> = tstmt
                 .body
                 .list
                 .iter()
                 .map(|stmt| {
                     let tc_obj = self.t.object_implicit(&stmt.id());
-                    let (addr, _, meta) = self.add_local_var(tc_obj);
-                    (meta.value_type(&self.objects.metas), addr)
+                    let (addr, _, _) = self.add_local_var(tc_obj);
+                    addr
                 })
                 .collect();
             let s0 = self.load(|g| g.gen_expr(v));
-            let count = Addr::Imm(inst_data.len() as OpIndex);
             let fctx = func_ctx!(self);
-            fctx.emit_inst(InterInst::with_op_index(Opcode::TYPE, dst, s0, count), pos);
-            for (t, addr) in inst_data.into_iter() {
-                fctx.emit_inst(
-                    InterInst::with_op_t_index(
-                        Opcode::VOID,
-                        Some(t),
-                        None,
-                        addr,
-                        Addr::Void,
-                        Addr::Void,
-                    ),
-                    pos,
-                );
-            }
+            fctx.emit_inst(
+                InterInst::with_op_index(Opcode::TYPE, tag_dst, s0, val_dst),
+                pos,
+            );
+            Some((val_dst, val_addrs, pos))
         } else {
             let s0 = self.load(|g| g.gen_expr(v));
-            let count = Addr::Imm(0);
-            func_ctx!(self).emit_inst(InterInst::with_op_index(Opcode::TYPE, dst, s0, count), pos);
-        }
+            func_ctx!(self).emit_inst(
+                InterInst::with_op_index(Opcode::TYPE, tag_dst, s0, Addr::Void),
+                pos,
+            );
+            None
+        };
 
-        self.gen_switch_body(&*tstmt.body, dst, ValueType::Metadata);
+        self.gen_switch_body(&*tstmt.body, tag_dst, ValueType::Metadata, local_var_info);
     }
 
     fn visit_stmt_comm(&mut self, _cclause: &CommClause) {

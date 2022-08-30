@@ -1436,19 +1436,9 @@ impl<'a> Fiber<'a> {
                             },
                             _ => (iface_value, s_meta.none),
                         };
-                        let typ = meta.value_type(&objs.metas);
                         stack.set(inst.d + sb, GosValue::new_metadata(meta));
-                        let option_count = inst.s1;
-                        if option_count > 0 {
-                            let mut index = None;
-                            for i in 0..option_count {
-                                let inst_data = &code[(frame.pc + i) as usize];
-                                if inst_data.t0 == typ {
-                                    index = Some(inst_data.d);
-                                }
-                            }
-                            stack.set(index.unwrap() + sb, val);
-                            frame.pc += option_count;
+                        if inst.s1 != OpIndex::MAX {
+                            stack.set(inst.s1 + sb, val);
                         }
                     }
                     Opcode::IMPORT => {
