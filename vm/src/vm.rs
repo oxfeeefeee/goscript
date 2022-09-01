@@ -1042,8 +1042,7 @@ impl<'a> Fiber<'a> {
                                         func_name: &ffic.func_name,
                                         vm_objs: objs,
                                         stack: &mut self.stack.borrow_mut(),
-                                        gcc: gcc,
-                                        statics: self.context.ffi_factory.statics(),
+                                        gcc,
                                     };
                                     let fut = ffic.ffi.call(&mut ctx, params);
                                     fut.await
@@ -1742,7 +1741,7 @@ impl<'a> Fiber<'a> {
                             let itype = stack.read(inst.s0, sb, consts);
                             let name = stack.read(inst.s1, sb, consts);
                             let name_str = StrUtil::as_str(name.as_string());
-                            match self.context.ffi_factory.create_by_name(&name_str) {
+                            match self.context.ffi_factory.create(&name_str) {
                                 Ok(v) => {
                                     let meta = itype.as_metadata().underlying(&objs.metas).clone();
                                     GosValue::new_interface(InterfaceObj::Ffi(UnderlyingFfi::new(

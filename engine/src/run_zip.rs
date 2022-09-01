@@ -25,11 +25,11 @@ pub struct Config<'a> {
     /// print debug info in checker
     pub trace_checker: bool,
     /// custom std in
-    pub std_in: Option<Box<dyn std::io::Read>>,
+    pub std_in: Option<Box<dyn std::io::Read + Sync + Send>>,
     /// custom std out
-    pub std_out: Option<Box<dyn std::io::Write>>,
+    pub std_out: Option<Box<dyn std::io::Write + Sync + Send>>,
     /// custom std err
-    pub std_err: Option<Box<dyn std::io::Write>>,
+    pub std_err: Option<Box<dyn std::io::Write + Sync + Send>>,
 }
 
 pub fn run(archive: &[u8], config: Config, path: &str) -> Result<(), ErrorList> {

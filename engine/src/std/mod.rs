@@ -6,7 +6,7 @@ mod bits;
 mod fmt2;
 mod fmt666;
 mod io;
-mod os;
+pub(crate) mod os;
 mod reflect;
 mod sync;
 

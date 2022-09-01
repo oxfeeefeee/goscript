@@ -6,23 +6,16 @@ use super::gc::GcContainer;
 use super::objects::VMObjects;
 use super::stack::Stack;
 use super::value::{GosValue, RuntimeResult};
-use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-
-/// For user to store statics used by FFI
-pub trait FfiStatics {
-    fn as_any(&self) -> &dyn Any;
-}
 
 pub struct FfiCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
     pub stack: &'a mut Stack,
     pub gcc: &'a GcContainer,
-    pub statics: &'a dyn FfiStatics,
 }
 
 /// A FFI Object implemented in Rust for Goscript to call
@@ -42,14 +35,12 @@ impl std::fmt::Debug for dyn Ffi {
 
 pub struct FfiFactory {
     registry: HashMap<&'static str, Rc<dyn Ffi>>,
-    statics: Box<dyn FfiStatics>,
 }
 
 impl FfiFactory {
-    pub fn new(statics: Box<dyn FfiStatics>) -> FfiFactory {
+    pub fn new() -> FfiFactory {
         FfiFactory {
             registry: HashMap::new(),
-            statics,
         }
     }
 
@@ -57,12 +48,7 @@ impl FfiFactory {
         assert!(self.registry.insert(name, proto).is_none());
     }
 
-    /// Get a reference to the ffi factory's statics.
-    pub fn statics(&self) -> &dyn FfiStatics {
-        self.statics.as_ref()
-    }
-
-    pub(crate) fn create_by_name(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
+    pub(crate) fn create(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
         match self.registry.get(name) {
             Some(proto) => Ok(proto.clone()),
             None => Err(format!("FFI named {} not found", name)),

@@ -12,5 +12,8 @@ mod std;
 #[macro_use]
 mod ffi;
 
+#[macro_use]
+extern crate lazy_static;
+
 pub use engine::*;
 pub use goscript_parser::errors::ErrorList;

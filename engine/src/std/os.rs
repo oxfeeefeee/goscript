@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 extern crate self as goscript_engine;
-use crate::engine::Statics;
 use crate::ffi::*;
 use goscript_vm::value::*;
 use std::any::Any;
@@ -11,11 +10,11 @@ use std::cell::RefCell;
 use std::fs;
 use std::future::Future;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
-use std::io::Write;
+use std::io::prelude::*;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 // Flags to OpenFile
 const O_RDONLY: usize = 0x00000;
@@ -25,6 +24,28 @@ const O_APPEND: usize = 0x00400;
 const O_CREATE: usize = 0x00040;
 const O_EXCL: usize = 0x00080;
 const O_TRUNC: usize = 0x00200;
+
+lazy_static! {
+    static ref STD_IO_API: Arc<Mutex<StdIoApi>> = Arc::new(Mutex::new(StdIoApi::default()));
+}
+
+pub fn set_std_io(
+    std_in: Option<Box<dyn std::io::Read + Sync + Send>>,
+    std_out: Option<Box<dyn std::io::Write + Sync + Send>>,
+    std_err: Option<Box<dyn std::io::Write + Sync + Send>>,
+) {
+    let mut api = STD_IO_API.lock().unwrap();
+    api.std_in = std_in;
+    api.std_out = std_out;
+    api.std_err = std_err;
+}
+
+#[derive(Default)]
+pub struct StdIoApi {
+    pub(crate) std_in: Option<Box<dyn io::Read + Sync + Send>>,
+    pub(crate) std_out: Option<Box<dyn io::Write + Sync + Send>>,
+    pub(crate) std_err: Option<Box<dyn io::Write + Sync + Send>>,
+}
 
 #[derive(Ffi)]
 pub struct FileFfi {}
@@ -64,25 +85,25 @@ impl FileFfi {
         })
     }
 
-    fn ffi_read(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_read(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
         let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
         let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
-        let r = file.read(&mut buf, ctx);
+        let r = file.read(&mut buf);
         Ok(FileFfi::result_to_go(r, |opt| {
             (opt.unwrap_or(0) as isize).into()
         }))
     }
 
-    fn ffi_write(&self, ctx: &FfiCtx, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
+    fn ffi_write(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
         let file = args[0]
             .as_non_nil_unsafe_ptr()?
             .downcast_ref::<VirtualFile>()?;
         let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
         let buf = unsafe { slice.as_raw_slice::<u8>() };
-        let r = file.write(&buf, ctx);
+        let r = file.write(&buf);
         Ok(FileFfi::result_to_go(r, |opt| {
             (opt.unwrap_or(0) as isize).into()
         }))
@@ -126,11 +147,10 @@ pub enum StdIo {
 }
 
 impl StdIo {
-    fn read(&self, buf: &mut [u8], ctx: &FfiCtx) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
+        let mut api = STD_IO_API.lock().unwrap();
         match self {
-            Self::StdIn => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_in
-                as &mut Option<Box<dyn io::Read>>
-            {
+            Self::StdIn => match &mut api.std_in {
                 Some(r) => r.read(buf),
                 None => io::stdin().lock().read(buf),
             },
@@ -145,17 +165,14 @@ impl StdIo {
         }
     }
 
-    fn write(&self, buf: &[u8], ctx: &FfiCtx) -> io::Result<usize> {
+    fn write(&self, buf: &[u8]) -> io::Result<usize> {
+        let mut api = STD_IO_API.lock().unwrap();
         match self {
-            Self::StdOut => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_out
-                as &mut Option<Box<dyn io::Write>>
-            {
+            Self::StdOut => match &mut api.std_out {
                 Some(r) => r.write(buf),
                 None => io::stdout().lock().write(buf),
             },
-            Self::StdErr => match &mut Statics::downcast_borrow_data_mut(ctx.statics).std_err
-                as &mut Option<Box<dyn io::Write>>
-            {
+            Self::StdErr => match &mut api.std_err {
                 Some(r) => r.write(buf),
                 None => io::stderr().lock().write(buf),
             },
@@ -182,17 +199,17 @@ impl VirtualFile {
         VirtualFile::StdIo(io)
     }
 
-    fn read(&self, buf: &mut [u8], ctx: &FfiCtx) -> io::Result<usize> {
+    fn read(&self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             Self::File(f) => f.borrow_mut().read(buf),
-            Self::StdIo(io) => io.read(buf, ctx),
+            Self::StdIo(io) => io.read(buf),
         }
     }
 
-    fn write(&self, buf: &[u8], ctx: &FfiCtx) -> io::Result<usize> {
+    fn write(&self, buf: &[u8]) -> io::Result<usize> {
         match self {
             Self::File(f) => f.borrow_mut().write(buf),
-            Self::StdIo(io) => io.write(buf, ctx),
+            Self::StdIo(io) => io.write(buf),
         }
     }
 
