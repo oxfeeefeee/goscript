@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(dead_code)]
 use crate::channel;
 use crate::ffi::{FfiCtx, FfiFactory};
 use crate::gc::{collect, GcContainer};
@@ -230,11 +229,6 @@ impl CallFrame {
     }
 
     #[inline]
-    fn closure(&self) -> &ClosureObj {
-        &self.closure
-    }
-
-    #[inline]
     fn func_val<'a>(&self, objs: &'a VMObjects) -> &'a FunctionVal {
         let fkey = self.func();
         &objs.functions[fkey]
@@ -334,12 +328,15 @@ pub struct Fiber<'a> {
     stack: Rc<RefCell<Stack>>,
     rstack: RangeStack,
     frames: Vec<CallFrame>,
-    next_frames: Vec<CallFrame>,
     context: Context<'a>,
     id: usize,
 }
 
 impl<'a> Fiber<'a> {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
     fn new(c: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
         let id = c.next_id.get();
         c.next_id.set(id + 1);
@@ -347,7 +344,6 @@ impl<'a> Fiber<'a> {
             stack: Rc::new(RefCell::new(stack)),
             rstack: RangeStack::new(),
             frames: vec![first_frame],
-            next_frames: Vec::new(),
             context: c,
             id: id,
         }

@@ -81,7 +81,7 @@ impl FileFfi {
         let r = options.open(&*path);
         FileFfi::result_to_go(r, |opt| match opt {
             Some(f) => VirtualFile::with_sys_file(f).into_val(),
-            None => GosValue::new_nil(ValueType::UnsafePtr),
+            None => FfiCtx::new_nil(ValueType::UnsafePtr),
         })
     }
 
@@ -129,11 +129,11 @@ impl FileFfi {
         F: Fn(Option<T>) -> GosValue,
     {
         let r = match result {
-            Ok(i) => (f(Some(i)), 0, GosValue::with_str("")),
+            Ok(i) => (f(Some(i)), 0, FfiCtx::new_string("")),
             Err(e) => (
                 f(None),
                 e.kind() as isize,
-                GosValue::with_str(&e.to_string()),
+                FfiCtx::new_string(&e.to_string()),
             ),
         };
         vec![r.0, r.1.into(), r.2]
@@ -224,6 +224,6 @@ impl VirtualFile {
     }
 
     fn into_val(self) -> GosValue {
-        GosValue::new_unsafe_ptr(self)
+        FfiCtx::new_unsafe_ptr(self)
     }
 }

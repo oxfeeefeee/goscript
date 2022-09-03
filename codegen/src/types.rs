@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(dead_code)]
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
@@ -11,7 +10,7 @@ use goscript_types::{
     PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
     TypeKey as TCTypeKey,
 };
-use goscript_vm::ffi::CodeGenVMCtx;
+use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::vec;
@@ -400,7 +399,7 @@ impl<'a> TypeLookup<'a> {
             }
             BasicType::Uintptr => {
                 let (i, _) = val.to_int().int_as_u64();
-                (GosValue::new_uint_ptr(i as usize), ValueType::UintPtr)
+                (FfiCtx::new_uint_ptr(i as usize), ValueType::UintPtr)
             }
             BasicType::Uint8 | BasicType::Byte => {
                 let (i, _) = val.to_int().int_as_u64();
@@ -420,27 +419,26 @@ impl<'a> TypeLookup<'a> {
             }
             BasicType::Float32 => {
                 let (f, _) = val.num_as_f32();
-                (GosValue::new_float32(f.into()), ValueType::Float32)
+                (f.into_inner().into(), ValueType::Float32)
             }
             BasicType::Float64 | BasicType::UntypedFloat => {
                 let (f, _) = val.num_as_f64();
-                (GosValue::new_float64(f.into()), ValueType::Float64)
+                (f.into_inner().into(), ValueType::Float64)
             }
             BasicType::Complex64 => {
                 let (cr, ci, _) = val.to_complex().complex_as_complex64();
-                (GosValue::new_complex64(cr, ci), ValueType::Complex64)
+                (FfiCtx::new_complex64(cr.0, ci.0), ValueType::Complex64)
             }
             BasicType::Complex128 => {
                 let (cr, ci, _) = val.to_complex().complex_as_complex128();
-                (GosValue::new_complex128(cr, ci), ValueType::Complex128)
+                (FfiCtx::new_complex128(cr.0, ci.0), ValueType::Complex128)
             }
             BasicType::Str | BasicType::UntypedString => {
-                (GosValue::with_str(&val.str_as_string()), ValueType::String)
+                (FfiCtx::new_string(&val.str_as_string()), ValueType::String)
             }
-            BasicType::UnsafePointer => (
-                GosValue::new_nil(ValueType::UnsafePtr),
-                ValueType::UnsafePtr,
-            ),
+            BasicType::UnsafePointer => {
+                (FfiCtx::new_nil(ValueType::UnsafePtr), ValueType::UnsafePtr)
+            }
             _ => {
                 dbg!(typ);
                 unreachable!();

@@ -32,12 +32,12 @@ macro_rules! err_set_val_type {
 
 #[inline]
 fn wrap_std_val(v: GosValue, m: Option<Meta>) -> GosValue {
-    GosValue::new_unsafe_ptr(StdValue::new(v, m))
+    FfiCtx::new_unsafe_ptr(StdValue::new(v, m))
 }
 
 #[inline]
 fn wrap_ptr_std_val(p: Box<PointerObj>, m: Option<Meta>) -> GosValue {
-    GosValue::new_unsafe_ptr(StdValue::Pointer(p, m, None))
+    FfiCtx::new_unsafe_ptr(StdValue::Pointer(p, m, None))
 }
 
 #[inline]
@@ -327,7 +327,7 @@ impl StdValue {
             ValueType::Float64 => Ok(*val.as_float64()),
             _ => err_wrong_type!(),
         }
-        .map(|x| GosValue::new_float64(x))
+        .map(|x| x.into_inner().into())
     }
 
     fn bytes_val(&self, ctx: &FfiCtx) -> RuntimeResult<GosValue> {
@@ -375,7 +375,7 @@ impl StdValue {
                         .as_struct()
                         .0
                         .all();
-                    Ok(GosValue::new_unsafe_ptr(StdValue::Pointer(
+                    Ok(FfiCtx::new_unsafe_ptr(StdValue::Pointer(
                         p,
                         Some(fields[i].meta),
                         Some(fields[i].exported),
@@ -497,8 +497,8 @@ impl StdValue {
     fn set_float(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
         let fval = *val.as_float64();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Float32 => Ok(GosValue::new_float32((fval.into_inner() as f32).into())),
-            ValueType::Float64 => Ok(GosValue::new_float64(fval.into())),
+            ValueType::Float32 => Ok((fval.into_inner() as f32).into()),
+            ValueType::Float64 => Ok(fval.into_inner().into()),
             _ => err_set_val_type!(),
         }?;
         self.set(ctx, val)
@@ -507,11 +507,11 @@ impl StdValue {
     fn set_complex(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
         let c = val.as_complex128();
         let val = match self.settable_meta()?.value_type(&ctx.vm_objs.metas) {
-            ValueType::Complex64 => Ok(GosValue::new_complex64(
-                (Into::<f64>::into(c.r) as f32).into(),
-                (Into::<f64>::into(c.i) as f32).into(),
+            ValueType::Complex64 => Ok(FfiCtx::new_complex64(
+                c.r.into_inner() as f32,
+                c.i.into_inner() as f32,
             )),
-            ValueType::Complex128 => Ok(GosValue::new_complex128(c.r, c.i)),
+            ValueType::Complex128 => Ok(FfiCtx::new_complex128(c.r.into_inner(), c.i.into_inner())),
             _ => err_set_val_type!(),
         }?;
         self.set(ctx, val)
@@ -606,7 +606,7 @@ impl StdType {
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };
-        (GosValue::new_unsafe_ptr(typ), (kind as usize).into())
+        (FfiCtx::new_unsafe_ptr(typ), (kind as usize).into())
     }
 }
 
@@ -645,7 +645,7 @@ impl StdMapIter {
             key_meta: k,
             //val_meta: v,
         };
-        Ok(GosValue::new_unsafe_ptr(smi))
+        Ok(FfiCtx::new_unsafe_ptr(smi))
     }
 
     fn next(&self) -> GosValue {

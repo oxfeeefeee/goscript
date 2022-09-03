@@ -8,6 +8,7 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::token::Token;
 use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_vm::ffi::FfiCtx;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -54,7 +55,7 @@ impl<'a> PkgHelper<'a> {
     ) -> VirtualAddr {
         let tc_pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
         let pkg = self.get_runtime_key(tc_pkg);
-        let pkg_addr = fctx.add_const(GosValue::new_package(pkg));
+        let pkg_addr = fctx.add_const(FfiCtx::new_package(pkg));
         let index_addr = Addr::PkgMemberIndex(pkg, ident);
         VirtualAddr::PackageMember(pkg_addr, index_addr)
     }

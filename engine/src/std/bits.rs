@@ -21,7 +21,7 @@ impl BitsFfi {
 
     fn ffi_f32_from_bits(&self, args: Vec<GosValue>) -> GosValue {
         let result = f32::from_be_bytes(args[0].as_uint32().to_be_bytes());
-        GosValue::new_float32(result.into())
+        result.into()
     }
 
     fn ffi_f64_to_bits(&self, args: Vec<GosValue>) -> GosValue {
@@ -31,6 +31,6 @@ impl BitsFfi {
 
     fn ffi_f64_from_bits(&self, args: Vec<GosValue>) -> GosValue {
         let result = f64::from_be_bytes(args[0].as_uint64().to_be_bytes());
-        GosValue::new_float64(result.into())
+        result.into()
     }
 }

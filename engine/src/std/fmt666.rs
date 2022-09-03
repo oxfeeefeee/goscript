@@ -36,6 +36,6 @@ impl Fmt666Ffi {
             .map(|x: RuntimeResult<String>| x.unwrap())
             .collect();
         println!("{}~~~~~", strs.join(", "));
-        Ok([GosValue::new_nil(ValueType::Void)])
+        Ok([FfiCtx::new_nil(ValueType::Void)])
     }
 }

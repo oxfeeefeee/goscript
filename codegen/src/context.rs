@@ -8,7 +8,7 @@ use goscript_parser::ast::*;
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::Pos;
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
-use goscript_vm::ffi::CodeGenVMCtx;
+use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -423,11 +423,11 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn add_metadata(&mut self, meta: Meta) -> Addr {
-        self.add_const(GosValue::new_metadata(meta))
+        self.add_const(FfiCtx::new_metadata(meta))
     }
 
     pub fn add_package(&mut self, pkg: PackageKey) -> Addr {
-        self.add_const(GosValue::new_package(pkg))
+        self.add_const(FfiCtx::new_package(pkg))
     }
 
     pub fn add_const_var(&mut self, entity: TCObjKey, cst: GosValue) -> Addr {

@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#![allow(dead_code)]
 use crate::channel::Channel;
 use crate::gc::GcContainer;
 pub use crate::instruction::*;
@@ -1010,7 +1011,7 @@ impl ValueData {
 
     #[inline]
     fn new_complex128(r: F64, i: F64) -> ValueData {
-        ValueData::from_complex128(Box::new(Complex128 { r: r, i: i }))
+        ValueData::from_complex128(Box::new(Complex128 { r, i }))
     }
 
     #[inline]
@@ -1329,13 +1330,13 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_nil(t: ValueType) -> GosValue {
+    pub(crate) fn new_nil(t: ValueType) -> GosValue {
         debug_assert!(t != ValueType::Slice);
         GosValue::new(t, ValueData::new_nil(t))
     }
 
     #[inline]
-    pub fn new_slice_nil(t_elem: ValueType) -> GosValue {
+    pub(crate) fn new_nil_slice(t_elem: ValueType) -> GosValue {
         GosValue::with_elem_type(
             ValueType::Slice,
             t_elem,
@@ -1344,52 +1345,52 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_uint_ptr(u: usize) -> GosValue {
+    pub(crate) fn new_uint_ptr(u: usize) -> GosValue {
         GosValue::new(ValueType::UintPtr, ValueData::new_uint_ptr(u))
     }
 
     #[inline]
-    pub fn new_float32(f: F32) -> GosValue {
+    pub(crate) fn new_float32(f: F32) -> GosValue {
         GosValue::new(ValueType::Float32, ValueData::new_float32(f))
     }
 
     #[inline]
-    pub fn new_float64(f: F64) -> GosValue {
+    pub(crate) fn new_float64(f: F64) -> GosValue {
         GosValue::new(ValueType::Float64, ValueData::new_float64(f))
     }
 
     #[inline]
-    pub fn new_complex64(r: F32, i: F32) -> GosValue {
+    pub(crate) fn new_complex64(r: F32, i: F32) -> GosValue {
         GosValue::new(ValueType::Complex64, ValueData::new_complex64(r, i))
     }
 
     #[inline]
-    pub fn new_function(f: FunctionKey) -> GosValue {
+    pub(crate) fn new_function(f: FunctionKey) -> GosValue {
         GosValue::new(ValueType::Function, ValueData::new_function(f))
     }
 
     #[inline]
-    pub fn new_package(p: PackageKey) -> GosValue {
+    pub(crate) fn new_package(p: PackageKey) -> GosValue {
         GosValue::new(ValueType::Package, ValueData::new_package(p))
     }
 
     #[inline]
-    pub fn new_metadata(m: Meta) -> GosValue {
+    pub(crate) fn new_metadata(m: Meta) -> GosValue {
         GosValue::new(ValueType::Metadata, ValueData::new_metadata(m))
     }
 
     #[inline]
-    pub fn new_complex128(r: F64, i: F64) -> GosValue {
+    pub(crate) fn new_complex128(r: F64, i: F64) -> GosValue {
         GosValue::new(ValueType::Complex128, ValueData::new_complex128(r, i))
     }
 
     #[inline]
-    pub fn new_string(s: StringObj) -> GosValue {
+    pub(crate) fn new_string(s: StringObj) -> GosValue {
         GosValue::new(ValueType::String, ValueData::new_string(s))
     }
 
     #[inline]
-    pub fn with_str(s: &str) -> GosValue {
+    pub(crate) fn with_str(s: &str) -> GosValue {
         GosValue::new_string(StrUtil::with_str(s))
     }
 
@@ -1403,7 +1404,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_non_gc_array<T>(obj: ArrayObj<T>, t_elem: ValueType) -> GosValue
+    pub(crate) fn new_non_gc_array<T>(obj: ArrayObj<T>, t_elem: ValueType) -> GosValue
     where
         T: Element,
     {
@@ -1418,12 +1419,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_pointer(obj: PointerObj) -> GosValue {
+    pub(crate) fn new_pointer(obj: PointerObj) -> GosValue {
         GosValue::new(ValueType::Pointer, ValueData::new_pointer(obj))
     }
 
     #[inline]
-    pub fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
+    pub(crate) fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
         GosValue::new(ValueType::UnsafePtr, ValueData::new_unsafe_ptr(p))
     }
 
@@ -1434,7 +1435,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_closure_static(
+    pub(crate) fn new_closure_static(
         func: FunctionKey,
         up_ptrs: Option<&Vec<ValueDesc>>,
         meta: Meta,
@@ -1460,12 +1461,12 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn new_interface(obj: InterfaceObj) -> GosValue {
+    pub(crate) fn new_interface(obj: InterfaceObj) -> GosValue {
         GosValue::new(ValueType::Interface, ValueData::new_interface(obj))
     }
 
     #[inline]
-    pub fn new_channel(obj: ChannelObj) -> GosValue {
+    pub(crate) fn new_channel(obj: ChannelObj) -> GosValue {
         GosValue::new(ValueType::Channel, ValueData::new_channel(obj))
     }
 
@@ -1499,9 +1500,6 @@ impl GosValue {
         t_elem: ValueType,
         gcc: &GcContainer,
     ) -> GosValue {
-        if t_elem == ValueType::Void {
-            panic!("qqq");
-        }
         let arr = GosValue::array_with_size(size, cap, val, t_elem, gcc);
         GosValue::slice_array(arr, 0, size as isize, t_elem).unwrap()
     }
@@ -1519,7 +1517,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn slice_array(
+    pub(crate) fn slice_array(
         arr: GosValue,
         begin: isize,
         end: isize,
@@ -1529,34 +1527,22 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn function_with_meta(
-        package: PackageKey,
-        meta: Meta,
-        objs: &mut VMObjects,
-        gcc: &GcContainer,
-        flag: FuncFlag,
-    ) -> GosValue {
-        let val = FunctionVal::new(package, meta, &objs.metas, gcc, flag);
-        GosValue::new_function(objs.functions.insert(val))
-    }
-
-    #[inline]
-    pub fn empty_iface_with_val(val: GosValue) -> GosValue {
+    pub(crate) fn empty_iface_with_val(val: GosValue) -> GosValue {
         GosValue::new_interface(InterfaceObj::with_value(val, None))
     }
 
     #[inline]
-    pub fn channel_with_chan(chan: Channel, recv_zero: GosValue) -> GosValue {
+    pub(crate) fn channel_with_chan(chan: Channel, recv_zero: GosValue) -> GosValue {
         GosValue::new_channel(ChannelObj::with_chan(chan, recv_zero))
     }
 
     #[inline]
-    pub fn from_string(s: Rc<StringObj>) -> GosValue {
+    pub(crate) fn from_string(s: Rc<StringObj>) -> GosValue {
         GosValue::new(ValueType::String, ValueData::from_string(s))
     }
 
     #[inline]
-    pub fn from_gos_array(arr: Rc<(GosArrayObj, RCount)>) -> GosValue {
+    pub(crate) fn from_gos_array(arr: Rc<(GosArrayObj, RCount)>) -> GosValue {
         GosValue::with_elem_type(
             ValueType::Array,
             ValueType::Void,
@@ -1565,158 +1551,158 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn from_struct(s: Rc<(StructObj, RCount)>) -> GosValue {
+    pub(crate) fn from_struct(s: Rc<(StructObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Struct, ValueData::from_struct(s))
     }
 
     #[inline]
-    pub fn from_closure(cls: OptionRc<(ClosureObj, RCount)>) -> GosValue {
+    pub(crate) fn from_closure(cls: OptionRc<(ClosureObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Closure, ValueData::from_closure(cls))
     }
 
     #[inline]
-    pub fn from_slice<T>(s: OptionRc<(SliceObj<T>, RCount)>) -> GosValue {
+    pub(crate) fn from_slice<T>(s: OptionRc<(SliceObj<T>, RCount)>) -> GosValue {
         GosValue::new(ValueType::Slice, ValueData::from_slice(s))
     }
 
     #[inline]
-    pub fn from_map(m: OptionRc<(MapObj, RCount)>) -> GosValue {
+    pub(crate) fn from_map(m: OptionRc<(MapObj, RCount)>) -> GosValue {
         GosValue::new(ValueType::Map, ValueData::from_map(m))
     }
 
     #[inline]
-    pub fn from_interface(i: OptionRc<InterfaceObj>) -> GosValue {
+    pub(crate) fn from_interface(i: OptionRc<InterfaceObj>) -> GosValue {
         GosValue::new(ValueType::Interface, ValueData::from_interface(i))
     }
 
     #[inline]
-    pub fn from_channel(c: OptionRc<ChannelObj>) -> GosValue {
+    pub(crate) fn from_channel(c: OptionRc<ChannelObj>) -> GosValue {
         GosValue::new(ValueType::Channel, ValueData::from_channel(c))
     }
 
     #[inline]
-    pub fn into_metadata(mut self) -> Box<Meta> {
+    pub(crate) fn into_metadata(mut self) -> Box<Meta> {
         debug_assert!(self.typ == ValueType::Metadata);
         self.typ = ValueType::Void;
         self.data.copy().into_metadata()
     }
 
     #[inline]
-    pub fn into_complex128(mut self) -> Box<Complex128> {
+    pub(crate) fn into_complex128(mut self) -> Box<Complex128> {
         debug_assert!(self.typ == ValueType::Complex128);
         self.typ = ValueType::Void;
         self.data.copy().into_complex128()
     }
 
     #[inline]
-    pub fn into_string(mut self) -> Rc<StringObj> {
+    pub(crate) fn into_string(mut self) -> Rc<StringObj> {
         debug_assert!(self.typ == ValueType::String);
         self.typ = ValueType::Void;
         self.data.copy().into_string()
     }
 
     #[inline]
-    pub fn into_array<T>(mut self) -> Rc<(ArrayObj<T>, RCount)> {
+    pub(crate) fn into_array<T>(mut self) -> Rc<(ArrayObj<T>, RCount)> {
         debug_assert!(self.typ == ValueType::Array);
         self.typ = ValueType::Void;
         self.data.copy().into_array()
     }
 
     #[inline]
-    pub fn into_gos_array(mut self) -> Rc<(GosArrayObj, RCount)> {
+    pub(crate) fn into_gos_array(mut self) -> Rc<(GosArrayObj, RCount)> {
         debug_assert!(self.typ == ValueType::Array);
         self.typ = ValueType::Void;
         self.data.copy().into_array()
     }
 
     #[inline]
-    pub fn into_struct(mut self) -> Rc<(StructObj, RCount)> {
+    pub(crate) fn into_struct(mut self) -> Rc<(StructObj, RCount)> {
         debug_assert!(self.typ == ValueType::Struct);
         self.typ = ValueType::Void;
         self.data.copy().into_struct()
     }
 
     #[inline]
-    pub fn into_pointer(mut self) -> OptionBox<PointerObj> {
+    pub(crate) fn into_pointer(mut self) -> OptionBox<PointerObj> {
         debug_assert!(self.typ == ValueType::Pointer);
         self.typ = ValueType::Void;
         self.data.copy().into_pointer()
     }
 
     #[inline]
-    pub fn into_unsafe_ptr(mut self) -> OptionBox<UnsafePtrObj> {
+    pub(crate) fn into_unsafe_ptr(mut self) -> OptionBox<UnsafePtrObj> {
         debug_assert!(self.typ == ValueType::UnsafePtr);
         self.typ = ValueType::Void;
         self.data.copy().into_unsafe_ptr()
     }
 
     #[inline]
-    pub fn into_closure(mut self) -> OptionRc<(ClosureObj, RCount)> {
+    pub(crate) fn into_closure(mut self) -> OptionRc<(ClosureObj, RCount)> {
         debug_assert!(self.typ == ValueType::Closure);
         self.typ = ValueType::Void;
         self.data.copy().into_closure()
     }
 
     #[inline]
-    pub fn into_slice<T>(mut self) -> OptionRc<(SliceObj<T>, RCount)> {
+    pub(crate) fn into_slice<T>(mut self) -> OptionRc<(SliceObj<T>, RCount)> {
         debug_assert!(self.typ == ValueType::Slice);
         self.typ = ValueType::Void;
         self.data.copy().into_slice()
     }
 
     #[inline]
-    pub fn into_map(mut self) -> OptionRc<(MapObj, RCount)> {
+    pub(crate) fn into_map(mut self) -> OptionRc<(MapObj, RCount)> {
         debug_assert!(self.typ == ValueType::Map);
         self.typ = ValueType::Void;
         self.data.copy().into_map()
     }
 
     #[inline]
-    pub fn into_interface(mut self) -> OptionRc<InterfaceObj> {
+    pub(crate) fn into_interface(mut self) -> OptionRc<InterfaceObj> {
         debug_assert!(self.typ == ValueType::Interface);
         self.typ = ValueType::Void;
         self.data.copy().into_interface()
     }
 
     #[inline]
-    pub fn into_channel(mut self) -> OptionRc<ChannelObj> {
+    pub(crate) fn into_channel(mut self) -> OptionRc<ChannelObj> {
         debug_assert!(self.typ == ValueType::Channel);
         self.typ = ValueType::Void;
         self.data.copy().into_channel()
     }
 
     #[inline]
-    pub fn into_non_nil_pointer(self) -> RuntimeResult<Box<PointerObj>> {
+    pub(crate) fn into_non_nil_pointer(self) -> RuntimeResult<Box<PointerObj>> {
         self.into_pointer().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_unsafe_ptr(self) -> RuntimeResult<Box<UnsafePtrObj>> {
+    pub(crate) fn into_non_nil_unsafe_ptr(self) -> RuntimeResult<Box<UnsafePtrObj>> {
         self.into_unsafe_ptr().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_closure(self) -> RuntimeResult<Rc<(ClosureObj, RCount)>> {
+    pub(crate) fn into_non_nil_closure(self) -> RuntimeResult<Rc<(ClosureObj, RCount)>> {
         self.into_closure().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_slice<T>(self) -> RuntimeResult<Rc<(SliceObj<T>, RCount)>> {
+    pub(crate) fn into_non_nil_slice<T>(self) -> RuntimeResult<Rc<(SliceObj<T>, RCount)>> {
         self.into_slice().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_map(self) -> RuntimeResult<Rc<(MapObj, RCount)>> {
+    pub(crate) fn into_non_nil_map(self) -> RuntimeResult<Rc<(MapObj, RCount)>> {
         self.into_map().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_interface(self) -> RuntimeResult<Rc<InterfaceObj>> {
+    pub(crate) fn into_non_nil_interface(self) -> RuntimeResult<Rc<InterfaceObj>> {
         self.into_interface().ok_or(nil_err_str!())
     }
 
     #[inline]
-    pub fn into_non_nil_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
+    pub(crate) fn into_non_nil_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
         self.into_channel().ok_or(nil_err_str!())
     }
 
@@ -1941,7 +1927,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn slice_array_equivalent(&self, index: usize) -> RuntimeResult<(&GosValue, usize)> {
+    pub(crate) fn slice_array_equivalent(&self, index: usize) -> RuntimeResult<(&GosValue, usize)> {
         Ok(self
             .as_non_nil_slice::<AnyElem>()?
             .0
@@ -1953,7 +1939,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn int32_as(i: i32, t: ValueType) -> GosValue {
+    pub(crate) fn int32_as(i: i32, t: ValueType) -> GosValue {
         GosValue::new(t, ValueData::int32_as(i, t))
     }
 
@@ -1988,6 +1974,7 @@ impl GosValue {
     #[inline]
     pub fn cast_copyable(&self, from: ValueType, to: ValueType) -> GosValue {
         assert!(from.copyable());
+        assert!(to.copyable());
         GosValue::new(to, self.data.cast_copyable(from, to))
     }
 
@@ -2078,7 +2065,7 @@ impl GosValue {
     }
 
     /// for gc
-    pub fn mark_dirty(&self, queue: &mut RCQueue) {
+    pub(crate) fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self.typ {
             ValueType::Array => rcount_mark_and_queue(&self.as_gos_array().1, queue),
             ValueType::Pointer => {
@@ -2106,17 +2093,17 @@ impl GosValue {
     }
 
     #[inline]
-    pub fn rc(&self) -> IRC {
+    pub(crate) fn rc(&self) -> IRC {
         self.data.rc(self.typ).unwrap().get()
     }
 
     #[inline]
-    pub fn set_rc(&self, rc: IRC) {
+    pub(crate) fn set_rc(&self, rc: IRC) {
         self.data.rc(self.typ).unwrap().set(rc)
     }
 
     #[inline]
-    pub fn drop_as_copyable(self) {
+    pub(crate) fn drop_as_copyable(self) {
         debug_assert!(self.typ.copyable());
         drop(self);
     }
@@ -2130,19 +2117,15 @@ impl GosValue {
     pub(crate) fn new(typ: ValueType, data: ValueData) -> GosValue {
         debug_assert!(typ != ValueType::Slice && typ != ValueType::Array);
         GosValue {
-            typ: typ,
+            typ,
             t_elem: ValueType::Void,
-            data: data,
+            data,
         }
     }
 
     #[inline]
     fn with_elem_type(typ: ValueType, t_elem: ValueType, data: ValueData) -> GosValue {
-        GosValue {
-            typ: typ,
-            t_elem: t_elem,
-            data: data,
-        }
+        GosValue { typ, t_elem, data }
     }
 }
 

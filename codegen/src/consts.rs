@@ -91,7 +91,7 @@ impl Consts {
             .map(|(i, c)| {
                 let val = match c {
                     Const::Var(v) => v.clone(),
-                    Const::Method(m, index) => GosValue::new_function(
+                    Const::Method(m, index) => FfiCtx::new_function(
                         m.get_method(*index as OpIndex, vmctx.metas())
                             .borrow()
                             .func

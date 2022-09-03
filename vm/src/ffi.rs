@@ -20,6 +20,55 @@ pub struct FfiCtx<'a> {
 }
 
 impl<'a> FfiCtx<'a> {
+    #[inline]
+    pub fn new_nil(t: ValueType) -> GosValue {
+        GosValue::new_nil(t)
+    }
+
+    #[inline]
+    pub fn new_nil_slice(t_elem: ValueType) -> GosValue {
+        GosValue::new_nil_slice(t_elem)
+    }
+
+    #[inline]
+    pub fn new_uint_ptr(u: usize) -> GosValue {
+        GosValue::new_uint_ptr(u)
+    }
+
+    #[inline]
+    pub fn new_complex64(r: f32, i: f32) -> GosValue {
+        GosValue::new_complex64(r.into(), i.into())
+    }
+
+    #[inline]
+    pub fn new_function(f: FunctionKey) -> GosValue {
+        GosValue::new_function(f)
+    }
+
+    #[inline]
+    pub fn new_package(p: PackageKey) -> GosValue {
+        GosValue::new_package(p)
+    }
+
+    #[inline]
+    pub fn new_metadata(m: Meta) -> GosValue {
+        GosValue::new_metadata(m)
+    }
+
+    #[inline]
+    pub fn new_complex128(r: f64, i: f64) -> GosValue {
+        GosValue::new_complex128(r.into(), i.into())
+    }
+
+    #[inline]
+    pub fn new_string(s: &str) -> GosValue {
+        GosValue::with_str(s)
+    }
+
+    pub fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
+        GosValue::new_unsafe_ptr(p)
+    }
+
     pub fn zero_val(&self, m: &Meta) -> GosValue {
         m.zero(&self.vm_objs.metas, self.gcc)
     }
@@ -153,5 +202,14 @@ impl CodeGenVMCtx {
 
     pub fn new_struct_meta(&mut self, fields: Fields) -> Meta {
         Meta::new_struct(fields, &mut self.vm_objs, &self.dummy_gcc)
+    }
+
+    #[inline]
+    pub fn new_closure_static(
+        func: FunctionKey,
+        up_ptrs: Option<&Vec<ValueDesc>>,
+        meta: Meta,
+    ) -> GosValue {
+        GosValue::new_closure_static(func, up_ptrs, meta)
     }
 }

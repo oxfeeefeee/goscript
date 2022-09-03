@@ -17,7 +17,7 @@ use goscript_types::{
     identical_ignore_tags, Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey,
     TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
-use goscript_vm::ffi::CodeGenVMCtx;
+use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -265,7 +265,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     match self.t.try_pkg_key(&sexpr.expr) {
                         Some(key) => {
                             let pkg = self.pkg_helper.get_runtime_key(key);
-                            let pkg_addr = func_ctx!(self).add_const(GosValue::new_package(pkg));
+                            let pkg_addr = func_ctx!(self).add_const(FfiCtx::new_package(pkg));
                             let index_addr = Addr::PkgMemberIndex(pkg, sexpr.sel);
                             (VirtualAddr::PackageMember(pkg_addr, index_addr), typ, pos)
                         }
@@ -642,7 +642,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         func_ctx!(self).emit_return(None, Some(body.r_brace), self.vmctx.functions());
 
         let f = self.func_ctx_stack.pop().unwrap();
-        let cls = GosValue::new_closure_static(fkey, Some(&f.up_ptrs), fmeta);
+        let cls = CodeGenVMCtx::new_closure_static(fkey, Some(&f.up_ptrs), fmeta);
         self.results.push(f);
         (fkey, cls)
     }
@@ -1078,7 +1078,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let val_addr = self.load(|g| g.gen_expr(expr));
         let val_tc_type = self.t.expr_tc_type(typ.as_ref().unwrap());
         let meta = self.t.tc_type_to_meta(val_tc_type, self.vmctx);
-        let meta_addr = func_ctx!(self).add_const(GosValue::new_metadata(meta));
+        let meta_addr = func_ctx!(self).add_const(FfiCtx::new_metadata(meta));
         let pos = Some(expr.pos(self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
@@ -1314,7 +1314,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 unreachable!()
             }
         };
-        let meta_addr = func_ctx!(self).add_const(GosValue::new_metadata(meta));
+        let meta_addr = func_ctx!(self).add_const(FfiCtx::new_metadata(meta));
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count, meta_addr, p);
         });
@@ -1332,7 +1332,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn gen_expr_type(&mut self, typ: &Expr) {
         let m = self.t.node_meta(typ.id(), self.vmctx);
         let pos = Some(typ.pos(&self.ast_objs));
-        let addr = func_ctx!(self).add_const(GosValue::new_metadata(m));
+        let addr = func_ctx!(self).add_const(FfiCtx::new_metadata(m));
         self.cur_expr_emit_direct_assign(self.t.expr_tc_type(typ), addr, pos);
     }
 
@@ -1544,12 +1544,12 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     match typ {
                         ValueType::Slice => {
                             let t_elem = self.t.slice_elem_type(tct);
-                            GosValue::new_slice_nil(t_elem)
+                            FfiCtx::new_nil_slice(t_elem)
                         }
-                        _ => GosValue::new_nil(typ),
+                        _ => FfiCtx::new_nil(typ),
                     }
                 }
-                None => GosValue::new_nil(ValueType::Void),
+                None => FfiCtx::new_nil(ValueType::Void),
             };
             func_ctx!(self).add_const(nil)
         } else {
@@ -1568,7 +1568,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         // the 0th member is the constructor
         self.vmctx.packages_mut()[pkey].add_member(
             String::new(),
-            GosValue::new_closure_static(fkey, None, fmeta),
+            CodeGenVMCtx::new_closure_static(fkey, None, fmeta),
             ValueType::Closure,
         );
         self.pkg_key = pkey;
@@ -1637,7 +1637,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         let tc_type = self.t.expr_tc_type(this);
         let (fkey, _) = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let fctx = func_ctx!(self);
-        let addr = fctx.add_const(GosValue::new_function(fkey));
+        let addr = fctx.add_const(FfiCtx::new_function(fkey));
         let pos = Some(flit.body.l_brace);
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| f.emit_closure(d, addr, p));
     }
@@ -1981,7 +1981,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                 }
                 Spec::Type(ts) => {
                     let m = self.t.obj_def_meta(ts.name, self.vmctx);
-                    self.add_const_def(&ts.name, GosValue::new_metadata(m), ValueType::Metadata);
+                    self.add_const_def(&ts.name, FfiCtx::new_metadata(m), ValueType::Metadata);
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {

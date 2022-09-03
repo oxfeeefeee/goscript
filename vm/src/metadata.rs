@@ -126,7 +126,7 @@ impl Meta {
     }
 
     #[inline]
-    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &GcContainer) -> Meta {
+    pub(crate) fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &GcContainer) -> Meta {
         let field_zeros: Vec<GosValue> = f
             .fields
             .iter()
@@ -144,13 +144,13 @@ impl Meta {
         variadic: Option<(Meta, Meta)>,
         metas: &mut MetadataObjs,
     ) -> Meta {
-        let ptypes = params.iter().map(|x| x.value_type(metas)).collect();
+        let params_type = params.iter().map(|x| x.value_type(metas)).collect();
         let t = MetadataType::Signature(SigMetadata {
-            recv: recv,
-            params: params,
-            results: results,
-            variadic: variadic,
-            params_type: ptypes,
+            recv,
+            params,
+            results,
+            variadic,
+            params_type,
         });
         Meta::with_type(t, metas)
     }
@@ -258,7 +258,7 @@ impl Meta {
                     let t = m.value_type(mobjs);
                     GosValue::array_with_size(*size, *size, &val, t, gcc)
                 }
-                MetadataType::Slice(m) => GosValue::new_slice_nil(m.value_type(mobjs)),
+                MetadataType::Slice(m) => GosValue::new_nil_slice(m.value_type(mobjs)),
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcc),
                 MetadataType::Signature(_) => GosValue::new_nil(ValueType::Closure),
                 MetadataType::Map(_, _) => GosValue::new_nil(ValueType::Map),
