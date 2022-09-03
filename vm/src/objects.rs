@@ -24,13 +24,6 @@ use std::{panic, ptr, str};
 
 const DEFAULT_CAPACITY: usize = 128;
 
-#[macro_export]
-macro_rules! null_key {
-    () => {
-        slotmap::Key::null()
-    };
-}
-
 new_key_type! { pub struct MetadataKey; }
 new_key_type! { pub struct FunctionKey; }
 new_key_type! { pub struct PackageKey; }

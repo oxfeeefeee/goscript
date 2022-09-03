@@ -8,6 +8,7 @@ use goscript_parser::ast::*;
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::Pos;
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
+use goscript_vm::ffi::CodeGenVMCtx;
 use goscript_vm::value::*;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -722,23 +723,24 @@ impl<'a> FuncCtx<'a> {
     pub fn into_runtime_func(
         self,
         asto: &AstObjects,
-        vmo: &mut VMObjects,
+        vmctx: &mut CodeGenVMCtx,
         labels: &HashMap<TCObjKey, usize>,
         cst_map: &HashMap<usize, usize>,
     ) {
-        let func = &mut vmo.functions[self.f_key];
-        func.pos = self.pos;
-        func.up_ptrs = self.up_ptrs;
-        func.reg_count = self.max_reg_num as OpIndex;
-        func.local_zeros = self.local_zeros;
-        func.code = self
+        let code = self
             .code
             .into_iter()
             .enumerate()
             .map(|(i, x)| {
-                x.into_runtime_inst(self.local_alloc, asto, &vmo.packages, i, labels, cst_map)
+                x.into_runtime_inst(self.local_alloc, asto, vmctx.packages(), i, labels, cst_map)
             })
             .collect();
+        let func = &mut vmctx.functions_mut()[self.f_key];
+        func.pos = self.pos;
+        func.up_ptrs = self.up_ptrs;
+        func.reg_count = self.max_reg_num as OpIndex;
+        func.local_zeros = self.local_zeros;
+        func.code = code;
     }
 
     pub fn emit_inst(&mut self, i: InterInst, pos: Option<usize>) {

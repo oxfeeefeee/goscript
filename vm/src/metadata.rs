@@ -126,7 +126,7 @@ impl Meta {
     }
 
     #[inline]
-    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &mut GcContainer) -> Meta {
+    pub fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &GcContainer) -> Meta {
         let field_zeros: Vec<GosValue> = f
             .fields
             .iter()

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_vm::gc::GcContainer;
+use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -48,8 +48,7 @@ impl Consts {
 
     pub fn get_runtime_consts(
         &self,
-        mobjs: &MetadataObjs,
-        gcc: &GcContainer,
+        vmctx: &mut CodeGenVMCtx,
     ) -> (Vec<GosValue>, HashMap<usize, usize>) {
         #[derive(Debug)]
         enum ConstType {
@@ -93,12 +92,12 @@ impl Consts {
                 let val = match c {
                     Const::Var(v) => v.clone(),
                     Const::Method(m, index) => GosValue::new_function(
-                        m.get_method(*index as OpIndex, mobjs)
+                        m.get_method(*index as OpIndex, vmctx.metas())
                             .borrow()
                             .func
                             .unwrap(),
                     ),
-                    Const::ZeroValue(m) => m.zero(mobjs, gcc),
+                    Const::ZeroValue(m) => vmctx.ffi_ctx().zero_val(m),
                 };
 
                 if val.is_nil() {

@@ -25,12 +25,6 @@ use slotmap::{new_key_type, DenseSlotMap};
 
 const DEFAULT_CAPACITY: usize = 16;
 
-macro_rules! null_key {
-    () => {
-        slotmap::Key::null()
-    };
-}
-
 macro_rules! new_objects {
     () => {
         DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
