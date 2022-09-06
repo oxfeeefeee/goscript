@@ -4,7 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::value::{GosElem, GosValue, ValueType};
+use goscript_vm::value::*;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -14,9 +14,10 @@ pub struct Fmt666Ffi {}
 
 #[ffi_impl666]
 impl Fmt666Ffi {
-    fn ffi_println(ctx: &mut FfiCtx, args: GosValue) -> RuntimeResult<[GosValue; 1]> {
+    fn ffi_println(ctx: &mut FfiCtx, test: i32, args: GosValue) -> (GosValue, bool) {
         let vec = args
-            .as_non_nil_slice::<GosElem>()?
+            .as_non_nil_slice::<GosElem>()
+            .unwrap()
             .0
             .get_vec(ValueType::Interface);
         let strs: Vec<String> = vec
@@ -35,7 +36,7 @@ impl Fmt666Ffi {
             })
             .map(|x: RuntimeResult<String>| x.unwrap())
             .collect();
-        println!("{}~~~~~", strs.join(", "));
-        Ok([FfiCtx::new_nil(ValueType::Void)])
+        println!("{}~~~~~{}", strs.join(", "), test);
+        (FfiCtx::new_string("xxxxx"), true)
     }
 }

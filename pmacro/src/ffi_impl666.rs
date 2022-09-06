@@ -3,11 +3,12 @@
 // license that can be found in the LICENSE file.
 
 use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::ToTokens;
+use proc_macro2::{Literal, TokenStream};
+use quote::{quote, ToTokens};
 use syn::LitInt;
 use syn::NestedMeta;
 use syn::Token;
+use syn::TypeTuple;
 use syn::{
     parse_macro_input, parse_quote, punctuated::Punctuated, Arm, AttributeArgs, Block, Expr, FnArg,
     GenericArgument, Ident, ImplItem, ImplItemMethod, ItemImpl, Lit, Meta, PatType, PathArguments,
@@ -26,8 +27,9 @@ macro_rules! return_type_panic {
 #[derive(PartialEq)]
 enum FfiReturnType {
     ZeroVal,
-    OneVal,
-    MultipleVal,
+    OneVal(bool),
+    MultipleVal(Vec<bool>),
+    Vec,
     AlreadyBoxed,
 }
 
@@ -126,7 +128,12 @@ fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMe
                         args.push_punct(Token![,](Span::call_site()));
                         param_count += 1;
                     }
-                    _ => panic!("Unexpected FFI argument type"),
+                    _ if is_primitive(arg_name) => {
+                        args.push_value(parse_quote! {arg_iter.next().unwrap().as_()});
+                        args.push_punct(Token![,](Span::call_site()));
+                        param_count += 1;
+                    }
+                    _ => panic!("Unexpected FFI argument type, only primitive types and GosValue are supported"),
                 }
             }
             let count_lit = LitInt::new(&param_count.to_string(), Span::call_site());
@@ -223,16 +230,18 @@ fn gen_wrapper_block(
                 Box::pin(async move { re })
             }}
         }
-        (false, true, FfiReturnType::OneVal) => {
+        (false, true, FfiReturnType::OneVal(primitive)) => {
+            let ret = one_return_value(primitive);
             parse_quote! {{
-                let re = #self_ty::#callee(#args).map(|x| vec![x]);
+                let re = #self_ty::#callee(#args).map(|input| vec![#ret]);
                 Box::pin(async move { re })
             }}
         }
-        (false, true, FfiReturnType::MultipleVal) => {
+        (false, true, FfiReturnType::MultipleVal(types)) => {
+            let ret = multiple_return_values(types);
             parse_quote! {{
                 let re: goscript_vm::value::RuntimeResult<Vec<GosValue>>
-                    = #self_ty::#callee(#args).map(|x| x.try_into().unwrap());
+                    = #self_ty::#callee(#args).map(|input| vec![#ret] );
                 Box::pin(async move { re })
             }}
         }
@@ -242,19 +251,22 @@ fn gen_wrapper_block(
                 Box::pin(async move { Ok(vec![]) })
             }}
         }
-        (false, false, FfiReturnType::OneVal) => {
+        (false, false, FfiReturnType::OneVal(primitive)) => {
+            let ret = one_return_value(primitive);
             parse_quote! {{
-                let re = #self_ty::#callee(#args);
-                Box::pin(async move { Ok(vec![re]) })
+                let input = #self_ty::#callee(#args);
+                Box::pin(async move { Ok(vec![#ret]) })
             }}
         }
-        (false, false, FfiReturnType::MultipleVal) => {
+        (false, false, FfiReturnType::MultipleVal(types)) => {
+            let ret = multiple_return_values(types);
             parse_quote! {{
-                let re: Vec<GosValue> = #self_ty::#callee(#args).try_into().unwrap();
-                Box::pin(async move { Ok( re ) })
+                let input = #self_ty::#callee(#args);
+                Box::pin(async move { Ok(vec![#ret]) })
             }}
         }
-        (true, true, FfiReturnType::MultipleVal) => {
+        (false, _, FfiReturnType::Vec) => panic!("non-async func cannot return a vec"),
+        (true, true, FfiReturnType::Vec) => {
             parse_quote! {{
                 let re = #self_ty::#callee(#args);
                 Box::pin( re )
@@ -275,33 +287,28 @@ fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
         ReturnType::Type(_, t) => match &**t {
             Type::Path(tp) => {
                 let seg = tp.path.segments.last().unwrap();
-                match seg.ident.to_string().as_str() {
-                    "GosValue" => (false, FfiReturnType::OneVal), // todo: futher validation
+                let type_name = seg.ident.to_string();
+                match type_name.as_str() {
+                    "GosValue" => (false, FfiReturnType::OneVal(false)), // todo: futher validation
+                    _ if is_primitive(&type_name) => (false, FfiReturnType::OneVal(true)),
                     "Pin" => (false, FfiReturnType::AlreadyBoxed), // todo: futher validation
                     "RuntimeResult" => {
                         let inner_type = get_type_arg_type(&seg.arguments);
                         match &inner_type {
                             Type::Path(itp) => {
                                 let name = itp.path.segments.last().unwrap().ident.to_string();
-                                if name == "GosValue" {
-                                    (true, FfiReturnType::OneVal)
-                                } else {
-                                    return_type_panic!()
-                                }
-                            }
-                            Type::Array(ta) => {
-                                let name = get_last_segment(&ta.elem).unwrap().ident.to_string();
-                                if name == "GosValue" {
-                                    (true, FfiReturnType::MultipleVal)
-                                } else {
-                                    return_type_panic!()
+                                match name.as_str() {
+                                    "GosValue" => (true, FfiReturnType::OneVal(false)),
+                                    _ if is_primitive(&name) => (true, FfiReturnType::OneVal(true)),
+                                    "Vec" => (true, FfiReturnType::Vec), // todo: futher validation
+                                    _ => return_type_panic!(),
                                 }
                             }
                             Type::Tuple(tt) => {
                                 if tt.elems.is_empty() {
                                     (true, FfiReturnType::ZeroVal)
                                 } else {
-                                    return_type_panic!()
+                                    (true, FfiReturnType::MultipleVal(are_primitives(tt)))
                                 }
                             }
                             _ => return_type_panic!(),
@@ -310,7 +317,13 @@ fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
                     _ => return_type_panic!(),
                 }
             }
-            Type::Array(_) => (false, FfiReturnType::MultipleVal), // todo: futher validation
+            Type::Tuple(tt) => {
+                if tt.elems.is_empty() {
+                    (false, FfiReturnType::ZeroVal)
+                } else {
+                    (false, FfiReturnType::MultipleVal(are_primitives(tt)))
+                }
+            }
             _ => return_type_panic!(),
         },
     }
@@ -349,4 +362,49 @@ fn get_type_arg_type(args: &PathArguments) -> Type {
         }
         _ => return_type_panic!(),
     }
+}
+
+fn is_primitive(name: &str) -> bool {
+    match name {
+        "bool" | "isize" | "i8" | "i16" | "i32" | "i64" | "usize" | "u8" | "u16" | "u32"
+        | "u64" => true,
+        _ => false,
+    }
+}
+
+fn are_primitives(tuple: &TypeTuple) -> Vec<bool> {
+    tuple
+        .elems
+        .iter()
+        .map(|x| {
+            let name = get_last_segment(x).unwrap().ident.to_string();
+            let p = is_primitive(&name);
+            if !p && name != "GosValue" {
+                return_type_panic!()
+            }
+            p
+        })
+        .collect()
+}
+
+fn one_return_value(is_primitive: bool) -> TokenStream {
+    if is_primitive {
+        quote!(input)
+    } else {
+        quote!(input.into())
+    }
+}
+
+fn multiple_return_values(types: Vec<bool>) -> Punctuated<Expr, Token![,]> {
+    let mut values: Punctuated<Expr, Token![,]> = Punctuated::new();
+    for (i, t) in types.into_iter().enumerate() {
+        let i_lit = Literal::usize_unsuffixed(i);
+        if t {
+            values.push_value(parse_quote! {input.#i_lit.into()});
+        } else {
+            values.push_value(parse_quote! {input.#i_lit});
+        }
+        values.push_punct(Token![,](Span::call_site()));
+    }
+    values
 }

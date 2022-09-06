@@ -13,7 +13,9 @@ use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::FileSet;
-use goscript_types::{PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo};
+use goscript_types::{
+    ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo,
+};
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
@@ -27,15 +29,15 @@ pub fn parse_check_gen<S: SourceRead>(
     fset: &mut FileSet,
 ) -> Result<ByteCode, ErrorList> {
     let ast_objs = &mut AstObjects::new();
-    let tc_objs = &mut goscript_types::TCObjects::new();
+    let tc_objs = &mut TCObjects::new();
     let results = &mut HashMap::new();
     let pkgs = &mut HashMap::new();
     let el = ErrorList::new();
 
-    let importer = &mut goscript_types::Importer::new(
+    let importer = &mut Importer::new(
         &tconfig, reader, fset, pkgs, results, ast_objs, tc_objs, &el, 0,
     );
-    let key = goscript_types::ImportKey::new(path, "./");
+    let key = ImportKey::new(path, "./");
     let main_pkg = importer.import(&key);
     if el.len() > 0 {
         Err(el)

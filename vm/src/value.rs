@@ -246,6 +246,14 @@ pub struct Complex128 {
     pub i: F64,
 }
 
+pub trait AsPrimitive<T>
+where
+    T: 'static + Copy,
+{
+    /// Convert a value to another, using the `as` operator.
+    fn as_(&self) -> T;
+}
+
 // ----------------------------------------------------------------------------
 // GosValue
 
@@ -2341,10 +2349,25 @@ impl From<bool> for GosValue {
     }
 }
 
+impl AsPrimitive<bool> for GosValue {
+    #[inline]
+    fn as_(&self) -> bool {
+        debug_assert!(self.typ.copyable());
+        *self.data.as_bool()
+    }
+}
+
 impl From<isize> for GosValue {
     #[inline]
     fn from(i: isize) -> Self {
         GosValue::new(ValueType::Int, ValueData::new_int(i))
+    }
+}
+
+impl AsPrimitive<isize> for GosValue {
+    #[inline]
+    fn as_(&self) -> isize {
+        *self.as_int()
     }
 }
 
@@ -2355,10 +2378,24 @@ impl From<i8> for GosValue {
     }
 }
 
+impl AsPrimitive<i8> for GosValue {
+    #[inline]
+    fn as_(&self) -> i8 {
+        *self.as_int8()
+    }
+}
+
 impl From<i16> for GosValue {
     #[inline]
     fn from(i: i16) -> Self {
         GosValue::new(ValueType::Int16, ValueData::new_int16(i))
+    }
+}
+
+impl AsPrimitive<i16> for GosValue {
+    #[inline]
+    fn as_(&self) -> i16 {
+        *self.as_int16()
     }
 }
 
@@ -2369,10 +2406,24 @@ impl From<i32> for GosValue {
     }
 }
 
+impl AsPrimitive<i32> for GosValue {
+    #[inline]
+    fn as_(&self) -> i32 {
+        *self.as_int32()
+    }
+}
+
 impl From<i64> for GosValue {
     #[inline]
     fn from(i: i64) -> Self {
         GosValue::new(ValueType::Int64, ValueData::new_int64(i))
+    }
+}
+
+impl AsPrimitive<i64> for GosValue {
+    #[inline]
+    fn as_(&self) -> i64 {
+        *self.as_int64()
     }
 }
 
@@ -2383,10 +2434,24 @@ impl From<usize> for GosValue {
     }
 }
 
+impl AsPrimitive<usize> for GosValue {
+    #[inline]
+    fn as_(&self) -> usize {
+        *self.as_uint()
+    }
+}
+
 impl From<u8> for GosValue {
     #[inline]
     fn from(i: u8) -> Self {
         GosValue::new(ValueType::Uint8, ValueData::new_uint8(i))
+    }
+}
+
+impl AsPrimitive<u8> for GosValue {
+    #[inline]
+    fn as_(&self) -> u8 {
+        *self.as_uint8()
     }
 }
 
@@ -2397,10 +2462,24 @@ impl From<u16> for GosValue {
     }
 }
 
+impl AsPrimitive<u16> for GosValue {
+    #[inline]
+    fn as_(&self) -> u16 {
+        *self.as_uint16()
+    }
+}
+
 impl From<u32> for GosValue {
     #[inline]
     fn from(i: u32) -> Self {
         GosValue::new(ValueType::Uint32, ValueData::new_uint32(i))
+    }
+}
+
+impl AsPrimitive<u32> for GosValue {
+    #[inline]
+    fn as_(&self) -> u32 {
+        *self.as_uint32()
     }
 }
 
@@ -2411,6 +2490,13 @@ impl From<u64> for GosValue {
     }
 }
 
+impl AsPrimitive<u64> for GosValue {
+    #[inline]
+    fn as_(&self) -> u64 {
+        *self.as_uint64()
+    }
+}
+
 impl From<f32> for GosValue {
     #[inline]
     fn from(f: f32) -> Self {
@@ -2418,10 +2504,24 @@ impl From<f32> for GosValue {
     }
 }
 
+impl AsPrimitive<f32> for GosValue {
+    #[inline]
+    fn as_(&self) -> f32 {
+        self.as_float32().into_inner()
+    }
+}
+
 impl From<f64> for GosValue {
     #[inline]
     fn from(f: f64) -> Self {
         GosValue::new(ValueType::Float64, ValueData::new_float64(f.into()))
+    }
+}
+
+impl AsPrimitive<f64> for GosValue {
+    #[inline]
+    fn as_(&self) -> f64 {
+        self.as_float64().into_inner()
     }
 }
 
