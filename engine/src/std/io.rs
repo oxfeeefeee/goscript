@@ -5,9 +5,6 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::value::GosValue;
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
 
 #[derive(Ffi)]
 pub struct IoFfi {}

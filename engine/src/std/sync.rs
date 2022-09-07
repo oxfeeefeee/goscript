@@ -8,10 +8,10 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use futures_lite::future;
+use futures_lite::future::Future;
 use goscript_vm::value::{GosValue, RuntimeResult, UnsafePtr};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
-use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::vec;
@@ -41,20 +41,19 @@ pub struct MutexFfi {}
 #[ffi_impl(rename = "sync.mutex")]
 impl MutexFfi {
     fn ffi_lock(
-        &self,
         ctx: &mut FfiCtx,
-        args: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
+        lock: GosValue,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
         // It'd probably be cleaner if we use interface{} instead of pointer as
         // the argument, but let's leave it like this to serve as an example.
-        match MutexFfi::create_mutex(&args[0], ctx) {
+        match MutexFfi::create_mutex(&lock, ctx) {
             Ok(mutex) => Box::pin((|| async move { mutex.lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
     }
 
-    async fn ffi_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_unsafe_ptr();
+    async fn ffi_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+        let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<Mutex>().unwrap().clone();
         mutex.unlock().await
     }
@@ -108,35 +107,33 @@ pub struct RWMutexFfi {}
 #[ffi_impl(rename = "sync.rw_mutex")]
 impl RWMutexFfi {
     fn ffi_r_lock(
-        &self,
         ctx: &mut FfiCtx,
-        args: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
-        match RWMutexFfi::create_mutex(&args[0], ctx) {
+        lock: GosValue,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
+        match RWMutexFfi::create_mutex(&lock, ctx) {
             Ok(m) => Box::pin((|| async move { m.r_lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
     }
 
-    async fn ffi_r_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_unsafe_ptr();
+    async fn ffi_r_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+        let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.r_unlock().await
     }
 
     fn ffi_w_lock(
-        &self,
         ctx: &mut FfiCtx,
-        args: Vec<GosValue>,
-    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>> + '_>> {
-        match RWMutexFfi::create_mutex(&args[0], ctx) {
+        lock: GosValue,
+    ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
+        match RWMutexFfi::create_mutex(&lock, ctx) {
             Ok(m) => Box::pin((|| async move { m.w_lock().await })()),
             Err(e) => Box::pin(async move { Err(e) }),
         }
     }
 
-    async fn ffi_w_unlock(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let ud = args[0].as_unsafe_ptr();
+    async fn ffi_w_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+        let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.w_unlock().await
     }

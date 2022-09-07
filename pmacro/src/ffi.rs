@@ -17,7 +17,7 @@ pub fn derive_ffi_implement(input: proc_macro::TokenStream) -> proc_macro::Token
                 &self,
                 ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
-            ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
+            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
                 self.dispatch(ctx, args)
             }
         }

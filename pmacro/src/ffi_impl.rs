@@ -3,21 +3,22 @@
 // license that can be found in the LICENSE file.
 
 use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::ToTokens;
+use proc_macro2::{Literal, TokenStream};
+use quote::{quote, ToTokens};
+use syn::LitInt;
 use syn::NestedMeta;
 use syn::Token;
+use syn::TypeTuple;
 use syn::{
-    parse_macro_input, parse_quote, punctuated::Punctuated, Arm, AttributeArgs, Expr, FnArg,
-    GenericArgument, Ident, ImplItem, ImplItemMethod, ItemImpl, Lit, Meta, Pat, PatType,
-    PathArguments, PathSegment, ReturnType, Signature, Stmt, Type,
+    parse_macro_input, parse_quote, punctuated::Punctuated, Arm, AttributeArgs, Block, Expr, FnArg,
+    GenericArgument, Ident, ImplItem, ImplItemMethod, ItemImpl, Lit, Meta, PatType, PathArguments,
+    PathSegment, ReturnType, Stmt, Type,
 };
 
 const TYPE_ERR_MSG: &str = "unexpected return type";
 const FFI_FUNC_PREFIX: &str = "ffi_";
-const WRAPPER_FUNC_PREFIX: &str = "wrapper_ffi_";
 
-macro_rules! type_panic {
+macro_rules! return_type_panic {
     () => {
         panic!("{}", TYPE_ERR_MSG)
     };
@@ -26,8 +27,9 @@ macro_rules! type_panic {
 #[derive(PartialEq)]
 enum FfiReturnType {
     ZeroVal,
-    OneVal,
-    MultipleVal,
+    OneVal(bool),
+    MultipleVal(Vec<bool>),
+    Vec,
     AlreadyBoxed,
 }
 
@@ -42,7 +44,7 @@ pub fn ffi_impl_implement(
     let mut output_block = impl_block.clone();
     let mut output = TokenStream::new();
     let mut new_method: Option<ImplItemMethod> = None;
-    let func_name_args: Vec<(String, Vec<Box<Type>>)> = impl_block
+    let ffi_methods: Vec<&ImplItemMethod> = impl_block
         .items
         .iter()
         .filter_map(|x| match x {
@@ -52,21 +54,16 @@ pub fn ffi_impl_implement(
                     new_method = Some(method.clone());
                     None
                 } else {
-                    ffi_name.strip_prefix(FFI_FUNC_PREFIX).map(|x| {
-                        let wrapper_name = format!("{}{}", WRAPPER_FUNC_PREFIX, x);
-                        let m = gen_wrapper_method(&method, &wrapper_name);
-                        output_block.items.push(ImplItem::Method(m));
-                        (wrapper_name, get_arg_types(&method.sig))
-                    })
+                    ffi_name.strip_prefix(FFI_FUNC_PREFIX).map(|_| method)
                 }
             }
             _ => None,
         })
         .collect();
-    let type_name = get_type_name(&impl_block.self_ty).unwrap().ident;
+    let type_name = get_last_segment(&impl_block.self_ty).unwrap().ident;
 
     let mut methods: Vec<ImplItem> = vec![
-        gen_dispatch_method(&func_name_args),
+        gen_dispatch_method(&impl_block.self_ty, ffi_methods),
         gen_new_method(&type_name, &new_method),
         gen_id_method(&type_name, &args),
         gen_register_method(),
@@ -80,20 +77,21 @@ pub fn ffi_impl_implement(
     output.into()
 }
 
-fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMethod {
-    let mut method: ImplItemMethod = parse_quote! {
+fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMethod {
+    let mut dispatch_method: ImplItemMethod = parse_quote! {
         fn dispatch(
             &self,
             ctx: &mut FfiCtx,
             args: Vec<GosValue>,
-        ) -> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
+        ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
+            let arg_count = args.len();
+            let mut arg_iter = args.into_iter();
             match ctx.func_name {
-                "dummy" => self.dummy(ctx, args),
                 _ => unreachable!(),
             }
         }
     };
-    let exp = match method.block.stmts.last_mut().unwrap() {
+    let exp = match dispatch_method.block.stmts.last_mut().unwrap() {
         Stmt::Expr(e) => e,
         _ => unreachable!(),
     };
@@ -101,47 +99,78 @@ fn gen_dispatch_method(name_args: &Vec<(String, Vec<Box<Type>>)>) -> ImplItemMet
         Expr::Match(me) => me,
         _ => unreachable!(),
     };
-    let mut arms: Vec<Arm> = name_args
+
+    let mut arms: Vec<Arm> = ffis
         .iter()
-        .map(|x| {
-            let name = &x.0;
-            let short_name = name.strip_prefix(WRAPPER_FUNC_PREFIX).unwrap();
-            let ident = Ident::new(&name, Span::call_site());
-            let arg_types = &x.1;
-            let mut args: Punctuated<Box<Pat>, Token![,]> = Punctuated::new();
-            args = arg_types.iter().fold(args, |mut acc, x| {
-                let x_type_name = get_type_name(x).unwrap().ident;
-                let arg = method.sig.inputs.iter().skip(1).find(|fnarg| {
-                    get_type_name(&fn_arg_as_pat_type(fnarg).ty).unwrap().ident == x_type_name
-                });
-                acc.push_value(fn_arg_as_pat_type(arg.unwrap()).pat.clone());
-                acc.push_punct(Token![,](Span::call_site()));
-                acc
-            });
+        .map(|method| {
+            let sig = &method.sig;
+            if sig.receiver().is_some() {
+                panic!("FFI must be an associated function not method, i.e. without 'self'");
+            }
+            let mut args: Punctuated<Expr, Token![,]> = Punctuated::new();
+            let mut param_count = 0;
+            for (i, farg) in method.sig.inputs.iter().enumerate() {
+                let arg_name: &str = &get_last_segment(&fn_arg_as_pat_type(farg).ty)
+                    .unwrap()
+                    .ident
+                    .to_string();
+                match arg_name {
+                    "FfiCtx" => {
+                        if i == 0 {
+                            args.push_value(parse_quote! {ctx});
+                            args.push_punct(Token![,](Span::call_site()));
+                        } else {
+                            panic!("'FfiCtx' should be the first argument")
+                        }
+                    }
+                    "GosValue" => {
+                        args.push_value(parse_quote! {arg_iter.next().unwrap()});
+                        args.push_punct(Token![,](Span::call_site()));
+                        param_count += 1;
+                    }
+                    _ if is_primitive(arg_name) => {
+                        args.push_value(parse_quote! {arg_iter.next().unwrap().as_()});
+                        args.push_punct(Token![,](Span::call_site()));
+                        param_count += 1;
+                    }
+                    _ => panic!("Unexpected FFI parameter type, only primitive types and GosValue are supported"),
+                }
+            }
+            let count_lit = LitInt::new(&param_count.to_string(), Span::call_site());
+
+            let name = method.sig.ident.to_string();
+            let short_name = name.strip_prefix(FFI_FUNC_PREFIX).unwrap();
+            let wrapper = gen_wrapper_block(self_ty, &method, &args);
             parse_quote! {
-                #short_name => self.#ident(#args),
+                #short_name => {
+                    if arg_count != #count_lit {
+                        Box::pin(async move { Err("FFI: bad argument count".to_owned()) })
+                    } else {
+                        #wrapper
+                    }
+                },
             }
         })
         .collect();
     arms.push(match_exp.arms.pop().unwrap());
     match_exp.arms = arms;
 
-    method
+    dispatch_method
 }
 
 fn gen_new_method(type_name: &Ident, new_method: &Option<ImplItemMethod>) -> ImplItemMethod {
-    let new_ident = Ident::new("ffi__new", Span::call_site());
+    let new_ident = Ident::new("auto_gen_ffi_new", Span::call_site());
 
     if new_method.is_some() {
         parse_quote! {
-            pub fn #new_ident() -> Rc<dyn Ffi> {
-                Rc::new(#type_name::new())
+            pub fn #new_ident() -> std::rc::Rc<dyn Ffi> {
+                std::rc::Rc::new(#type_name::new())
             }
         }
     } else {
         parse_quote! {
-            pub fn #new_ident() -> Rc<dyn Ffi> {
-                Rc::new(#type_name {})
+            pub fn #new_ident() -> std::rc::Rc<dyn Ffi> {
+                std::rc::Rc::new(#type_name {})
             }
         }
     }
@@ -150,7 +179,7 @@ fn gen_new_method(type_name: &Ident, new_method: &Option<ImplItemMethod>) -> Imp
 fn gen_register_method() -> ImplItemMethod {
     parse_quote! {
         pub fn register(engine: &mut goscript_engine::Engine) {
-            engine.register_extension(Self::ffi__id(), Self::ffi__new());
+            engine.register_extension(Self::auto_gen_ffi_id(), Self::auto_gen_ffi_new());
         }
     }
 }
@@ -180,100 +209,122 @@ fn gen_id_method(type_name: &Ident, meta: &Vec<NestedMeta>) -> ImplItemMethod {
             name.strip_suffix("ffi").unwrap_or(&name).to_string()
         });
     parse_quote! {
-        pub fn ffi__id() -> &'static str {
+        pub fn auto_gen_ffi_id() -> &'static str {
             #rname
         }
     }
 }
 
-fn gen_wrapper_method(m: &ImplItemMethod, name: &str) -> ImplItemMethod {
-    let mut wrapper = m.clone();
-    wrapper.sig.ident = Ident::new(name, Span::call_site());
+fn gen_wrapper_block(
+    self_ty: &Type,
+    m: &ImplItemMethod,
+    args: &Punctuated<Expr, Token![,]>,
+) -> Block {
     let callee = &m.sig.ident;
-    let args = get_args(&m.sig);
     let is_async = m.sig.asyncness.is_some();
-    let (is_result, rcount) = get_return_type_attributes(&m.sig.output, "GosValue");
-    wrapper.block = match (is_async, is_result, rcount) {
+    let (is_result, r_type) = get_return_type_attributes(&m.sig.output);
+    match (is_async, is_result, r_type) {
         (false, true, FfiReturnType::ZeroVal) => {
             parse_quote! {{
-                let re = self.#callee(#args).map(|x| vec![]);
+                let re = #self_ty::#callee(#args).map(|x| vec![]);
                 Box::pin(async move { re })
             }}
         }
-        (false, true, FfiReturnType::OneVal) => {
+        (false, true, FfiReturnType::OneVal(primitive)) => {
+            let ret = one_return_value(primitive);
             parse_quote! {{
-                let re = self.#callee(#args).map(|x| vec![x]);
+                let re = #self_ty::#callee(#args).map(|input| vec![#ret]);
                 Box::pin(async move { re })
             }}
         }
-        (false, true, FfiReturnType::MultipleVal) => {
+        (false, true, FfiReturnType::MultipleVal(types)) => {
+            let ret = multiple_return_values(types);
             parse_quote! {{
-                let re = self.#callee(#args);
+                let re: goscript_vm::value::RuntimeResult<Vec<GosValue>>
+                    = #self_ty::#callee(#args).map(|input| vec![#ret] );
                 Box::pin(async move { re })
             }}
         }
         (false, false, FfiReturnType::ZeroVal) => {
             parse_quote! {{
-                self.#callee(#args);
+                #self_ty::#callee(#args);
                 Box::pin(async move { Ok(vec![]) })
             }}
         }
-        (false, false, FfiReturnType::OneVal) => {
+        (false, false, FfiReturnType::OneVal(primitive)) => {
+            let ret = one_return_value(primitive);
             parse_quote! {{
-                let re = self.#callee(#args);
-                Box::pin(async move { Ok(vec![re]) })
+                let input = #self_ty::#callee(#args);
+                Box::pin(async move { Ok(vec![#ret]) })
             }}
         }
-        (false, false, FfiReturnType::MultipleVal) => {
+        (false, false, FfiReturnType::MultipleVal(types)) => {
+            let ret = multiple_return_values(types);
             parse_quote! {{
-                let re = self.#callee(#args);
-                Box::pin(async move { Ok( re ) })
+                let input = #self_ty::#callee(#args);
+                Box::pin(async move { Ok(vec![#ret]) })
             }}
         }
-        (true, true, FfiReturnType::MultipleVal) => {
+        (false, _, FfiReturnType::Vec) => panic!("non-async func cannot return a vec"),
+        (true, true, FfiReturnType::Vec) => {
             parse_quote! {{
-                let re = self.#callee(#args);
+                let re = #self_ty::#callee(#args);
                 Box::pin( re )
             }}
         }
         (_, _, FfiReturnType::AlreadyBoxed) => {
             parse_quote! {{
-                self.#callee(#args)
+                #self_ty::#callee(#args)
             }}
         }
         (true, _, _) => panic!("async func can only return RuntimeResult<Vec<GosValue>>>"),
-    };
-
-    wrapper.sig.output = parse_quote! {-> Pin<Box<dyn Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>>};
-    wrapper.sig.asyncness = None;
-    wrapper
+    }
 }
 
-fn get_return_type_attributes(rt: &ReturnType, return_elem_name: &str) -> (bool, FfiReturnType) {
+fn get_return_type_attributes(rt: &ReturnType) -> (bool, FfiReturnType) {
     match rt {
         ReturnType::Default => (false, FfiReturnType::ZeroVal),
-        ReturnType::Type(_, t) => match get_type_name(t) {
-            Some(seg) => {
-                let typ_name: &str = &seg.ident.to_string();
-                match typ_name {
-                    "RuntimeResult" => match get_type_name(&get_type_arg_type(&seg.arguments)) {
-                        Some(seg) => {
-                            let typ_name: &str = &seg.ident.to_string();
-                            match typ_name {
-                                "Vec" => (true, FfiReturnType::MultipleVal), // todo: futher validation
-                                _ if typ_name == return_elem_name => (true, FfiReturnType::OneVal),
-                                _ => type_panic!(),
-                            }
-                        }
-                        None => (true, FfiReturnType::ZeroVal), // todo: futher validation
-                    },
-                    "Vec" => (false, FfiReturnType::MultipleVal), // todo: futher validation
-                    _ if typ_name == return_elem_name => (false, FfiReturnType::OneVal), // todo: futher validation
+        ReturnType::Type(_, t) => match &**t {
+            Type::Path(tp) => {
+                let seg = tp.path.segments.last().unwrap();
+                let type_name = seg.ident.to_string();
+                match type_name.as_str() {
+                    "GosValue" => (false, FfiReturnType::OneVal(false)), // todo: futher validation
+                    _ if is_primitive(&type_name) => (false, FfiReturnType::OneVal(true)),
                     "Pin" => (false, FfiReturnType::AlreadyBoxed), // todo: futher validation
-                    _ => type_panic!(),
+                    "RuntimeResult" => {
+                        let inner_type = get_type_arg_type(&seg.arguments);
+                        match &inner_type {
+                            Type::Path(itp) => {
+                                let name = itp.path.segments.last().unwrap().ident.to_string();
+                                match name.as_str() {
+                                    "GosValue" => (true, FfiReturnType::OneVal(false)),
+                                    _ if is_primitive(&name) => (true, FfiReturnType::OneVal(true)),
+                                    "Vec" => (true, FfiReturnType::Vec), // todo: futher validation
+                                    _ => return_type_panic!(),
+                                }
+                            }
+                            Type::Tuple(tt) => {
+                                if tt.elems.is_empty() {
+                                    (true, FfiReturnType::ZeroVal)
+                                } else {
+                                    (true, FfiReturnType::MultipleVal(are_primitives(tt)))
+                                }
+                            }
+                            _ => return_type_panic!(),
+                        }
+                    }
+                    _ => return_type_panic!(),
                 }
             }
-            None => type_panic!(),
+            Type::Tuple(tt) => {
+                if tt.elems.is_empty() {
+                    (false, FfiReturnType::ZeroVal)
+                } else {
+                    (false, FfiReturnType::MultipleVal(are_primitives(tt)))
+                }
+            }
+            _ => return_type_panic!(),
         },
     }
 }
@@ -285,7 +336,7 @@ fn fn_arg_as_pat_type(arg: &FnArg) -> &PatType {
     }
 }
 
-fn get_type_name(t: &Type) -> Option<PathSegment> {
+fn get_last_segment(t: &Type) -> Option<PathSegment> {
     match t {
         Type::Path(tp) => Some(tp),
         Type::Reference(tr) => {
@@ -306,31 +357,54 @@ fn get_type_arg_type(args: &PathArguments) -> Type {
             let gargs = aargs.args.last().expect(TYPE_ERR_MSG);
             match gargs {
                 GenericArgument::Type(t) => t.clone(),
-                _ => type_panic!(),
+                _ => return_type_panic!(),
             }
         }
-        _ => type_panic!(),
+        _ => return_type_panic!(),
     }
 }
 
-fn get_args(sig: &Signature) -> Punctuated<Box<Pat>, Token![,]> {
-    let init: Punctuated<Box<Pat>, Token![,]> = Punctuated::new();
-    sig.inputs.iter().fold(init, |mut acc, x| match x {
-        FnArg::Typed(pt) => {
-            acc.push_value(pt.pat.clone());
-            acc.push_punct(Token![,](Span::call_site()));
-            acc
-        }
-        _ => acc,
-    })
+fn is_primitive(name: &str) -> bool {
+    match name {
+        "bool" | "isize" | "i8" | "i16" | "i32" | "i64" | "usize" | "u8" | "u16" | "u32"
+        | "u64" | "f32" | "f64" => true,
+        _ => false,
+    }
 }
 
-fn get_arg_types(sig: &Signature) -> Vec<Box<Type>> {
-    sig.inputs
+fn are_primitives(tuple: &TypeTuple) -> Vec<bool> {
+    tuple
+        .elems
         .iter()
-        .filter_map(|x| match x {
-            FnArg::Typed(pt) => Some(pt.ty.clone()),
-            _ => None,
+        .map(|x| {
+            let name = get_last_segment(x).unwrap().ident.to_string();
+            let p = is_primitive(&name);
+            if !p && name != "GosValue" {
+                return_type_panic!()
+            }
+            p
         })
         .collect()
+}
+
+fn one_return_value(is_primitive: bool) -> TokenStream {
+    if is_primitive {
+        quote!(input.into())
+    } else {
+        quote!(input)
+    }
+}
+
+fn multiple_return_values(types: Vec<bool>) -> Punctuated<Expr, Token![,]> {
+    let mut values: Punctuated<Expr, Token![,]> = Punctuated::new();
+    for (i, t) in types.into_iter().enumerate() {
+        let i_lit = Literal::usize_unsuffixed(i);
+        if t {
+            values.push_value(parse_quote! {input.#i_lit.into()});
+        } else {
+            values.push_value(parse_quote! {input.#i_lit});
+        }
+        values.push_punct(Token![,](Span::call_site()));
+    }
+    values
 }

@@ -5,17 +5,16 @@
 package fmt2
 
 type ffiFmt2 interface {
-    println(t int32, a ...interface{}) (string, bool)
+    println(a ...interface{})
     printf(a ...interface{})
 }
 
 func Println(a ...interface{})  {
-    var f = ffi(ffiFmt2, "fmt666")
-    var x, y = f.println(-12345, a...)
-    f.println(-34567, x, y)
+    var f = ffi(ffiFmt2, "fmt2")
+    f.println(a...)
 }
 
 func Printf(a ...interface{})  {
-    var f = ffi(ffiFmt2, "fmt666")
+    var f = ffi(ffiFmt2, "fmt2")
     f.printf(a...)
 }

@@ -5,17 +5,14 @@
 extern crate self as goscript_engine;
 use crate::ffi::*;
 use goscript_vm::value::{GosElem, GosValue, ValueType};
-use std::future::Future;
-use std::pin::Pin;
-use std::rc::Rc;
 
 #[derive(Ffi)]
 pub struct Fmt2Ffi {}
 
 #[ffi_impl]
 impl Fmt2Ffi {
-    fn ffi_println(&self, args: Vec<GosValue>) -> RuntimeResult<()> {
-        let vec = args[0]
+    fn ffi_println(args: GosValue) -> RuntimeResult<()> {
+        let vec = args
             .as_non_nil_slice::<GosElem>()?
             .0
             .get_vec(ValueType::Interface);
@@ -39,7 +36,7 @@ impl Fmt2Ffi {
         Ok(())
     }
 
-    fn ffi_printf(&self, _args: Vec<GosValue>) {
+    fn ffi_printf(_args: GosValue) {
         unimplemented!();
     }
 }

@@ -4,7 +4,6 @@
 
 mod ffi;
 mod ffi_impl;
-mod ffi_impl666;
 mod unsafe_ptr;
 
 #[proc_macro_derive(Ffi)]
@@ -18,14 +17,6 @@ pub fn ffi_impl(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     ffi_impl::ffi_impl_implement(args, input)
-}
-
-#[proc_macro_attribute]
-pub fn ffi_impl666(
-    args: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    ffi_impl666::ffi_impl_implement(args, input)
 }
 
 #[proc_macro_derive(UnsafePtr)]

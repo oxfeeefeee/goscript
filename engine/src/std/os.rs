@@ -8,10 +8,8 @@ use goscript_vm::value::*;
 use std::any::Any;
 use std::cell::RefCell;
 use std::fs;
-use std::future::Future;
 use std::io;
 use std::io::prelude::*;
-use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -52,8 +50,8 @@ pub struct FileFfi {}
 
 #[ffi_impl(rename = "os.file")]
 impl FileFfi {
-    fn ffi_get_std_io(&self, args: Vec<GosValue>) -> GosValue {
-        match *args[0].as_int() {
+    fn ffi_get_std_io(i: isize) -> GosValue {
+        match i {
             0 => VirtualFile::with_std_io(StdIo::StdIn).into_val(),
             1 => VirtualFile::with_std_io(StdIo::StdOut).into_val(),
             2 => VirtualFile::with_std_io(StdIo::StdErr).into_val(),
@@ -61,9 +59,9 @@ impl FileFfi {
         }
     }
 
-    fn ffi_open(&self, args: Vec<GosValue>) -> Vec<GosValue> {
-        let path = StrUtil::as_str(args[0].as_string());
-        let flags = *args[1].as_int() as usize;
+    fn ffi_open(path: GosValue, flags: isize) -> (GosValue, isize, GosValue) {
+        let path = StrUtil::as_str(path.as_string());
+        let flags = flags as usize;
         let mut options = fs::OpenOptions::new();
         match flags & O_RDWR {
             O_RDONLY => options.read(true),
@@ -85,58 +83,46 @@ impl FileFfi {
         })
     }
 
-    fn ffi_read(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let file = args[0]
-            .as_non_nil_unsafe_ptr()?
-            .downcast_ref::<VirtualFile>()?;
-        let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
+    fn ffi_read(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
+        let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
+        let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
         let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
         let r = file.read(&mut buf);
-        Ok(FileFfi::result_to_go(r, |opt| {
-            (opt.unwrap_or(0) as isize).into()
-        }))
+        Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }
 
-    fn ffi_write(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let file = args[0]
-            .as_non_nil_unsafe_ptr()?
-            .downcast_ref::<VirtualFile>()?;
-        let slice = &args[1].as_non_nil_slice::<Elem8>()?.0;
+    fn ffi_write(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
+        let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
+        let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
         let buf = unsafe { slice.as_raw_slice::<u8>() };
         let r = file.write(&buf);
-        Ok(FileFfi::result_to_go(r, |opt| {
-            (opt.unwrap_or(0) as isize).into()
-        }))
+        Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }
 
-    fn ffi_seek(&self, args: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>> {
-        let file = args[0]
-            .as_non_nil_unsafe_ptr()?
-            .downcast_ref::<VirtualFile>()?;
-        let offset = *args[1].as_int64();
-        let whence = match *args[2].as_int() {
+    fn ffi_seek(fp: GosValue, offset: i64, whence: isize) -> RuntimeResult<(i64, isize, GosValue)> {
+        let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
+        let whence = match whence {
             0 => io::SeekFrom::Start(offset as u64),
             1 => io::SeekFrom::Current(offset),
             2 => io::SeekFrom::End(offset),
             _ => unreachable!(),
         };
         let r = file.seek(whence);
-        Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0).into()))
+        Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as i64))
     }
 
-    fn result_to_go<T, F>(result: io::Result<T>, f: F) -> Vec<GosValue>
+    fn result_to_go<IN, OUT, F>(result: io::Result<IN>, f: F) -> (OUT, isize, GosValue)
     where
-        F: Fn(Option<T>) -> GosValue,
+        F: Fn(Option<IN>) -> OUT,
     {
-        let r = match result {
+        match result {
             Ok(i) => (f(Some(i)), 0, FfiCtx::new_string("")),
             Err(e) => (
                 f(None),
                 e.kind() as isize,
                 FfiCtx::new_string(&e.to_string()),
             ),
-        };
-        vec![r.0, r.1.into(), r.2]
+        }
     }
 }
 

@@ -7,8 +7,8 @@ use crate::objects::VMObjects;
 use crate::stack::Stack;
 use crate::value::*;
 use crate::value::{GosValue, RuntimeResult};
+use futures_lite::future::Future;
 use std::collections::HashMap;
-use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 
