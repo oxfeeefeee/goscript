@@ -5,7 +5,7 @@
 use super::instruction::*;
 use super::value::*;
 use futures_lite::future;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Clone, Debug)]
@@ -157,8 +157,6 @@ pub struct SelectComm {
 pub struct Selector {
     pub comms: Vec<SelectComm>,
     pub default_offset: Option<OpIndex>,
-    // use a fake random to avoid dependencies
-    pseudo_rand: Cell<usize>,
 }
 
 impl Selector {
@@ -166,14 +164,12 @@ impl Selector {
         Selector {
             comms,
             default_offset,
-            pseudo_rand: Cell::new(0),
         }
     }
 
     pub async fn select(&self) -> RuntimeResult<(usize, Option<GosValue>)> {
         let count = self.comms.len();
-        let rand_start = self.pseudo_rand.get();
-        self.pseudo_rand.set(rand_start + 1);
+        let rand_start = fastrand::usize(0..count);
         loop {
             for i in 0..count {
                 let index = (i + rand_start) % count;
