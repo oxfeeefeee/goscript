@@ -31,7 +31,7 @@ impl FilePos {
 
     pub fn null() -> FilePos {
         FilePos {
-            filename: Rc::new("non_file_name".to_owned()),
+            filename: Rc::new("[null_file]".to_owned()),
             line: 0,
             offset: 0,
             column: 0,
