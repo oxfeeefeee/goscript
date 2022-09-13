@@ -956,9 +956,7 @@ impl<'a> Fiber<'a> {
                                     returns_recv.push(r.clone());
                                 }
                                 stack.set_min_size(
-                                    next_sb as usize
-                                        + returns_recv.len()
-                                        + (next_func.param_count() + next_func.reg_count) as usize,
+                                    (next_sb + next_func.max_write_index + 1) as usize,
                                 );
                                 stack.set_vec(next_sb, returns_recv);
                             }

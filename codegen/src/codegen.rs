@@ -1318,7 +1318,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count, meta_addr, p);
         });
-        func_ctx!(self).update_max_reg(expr_ctx!(self).cur_reg);
         expr_ctx!(self).cur_reg = reg_base + 1; //reset register allocation
     }
 
@@ -1520,9 +1519,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     }
 
     fn pop_expr_ctx(&mut self) -> ExprCtx {
-        let ctx = self.expr_ctx_stack.pop().unwrap();
-        func_ctx!(self).update_max_reg(ctx.cur_reg);
-        ctx
+        self.expr_ctx_stack.pop().unwrap()
     }
 
     fn cur_expr_emit_assign<F>(&mut self, rhs_type: TCTypeKey, pos: Option<Pos>, f: F)

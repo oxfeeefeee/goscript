@@ -360,7 +360,6 @@ pub struct FuncCtx<'c> {
     pub f_key: FunctionKey,
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
     consts: &'c Consts,
-    pub max_reg_num: usize, // how many temporary spots (register) on stack needed
 
     code: Vec<InterInst>,
     pos: Vec<Option<usize>>,
@@ -378,7 +377,6 @@ impl<'a> FuncCtx<'a> {
             f_key,
             tc_key,
             consts,
-            max_reg_num: 0,
             code: vec![],
             pos: vec![],
             up_ptrs: vec![],
@@ -716,8 +714,6 @@ impl<'a> FuncCtx<'a> {
         for i in cd.into_iter() {
             self.emit_inst(i, pos);
         }
-
-        self.update_max_reg(2);
     }
 
     pub fn into_runtime_func(
@@ -727,7 +723,7 @@ impl<'a> FuncCtx<'a> {
         labels: &HashMap<TCObjKey, usize>,
         cst_map: &HashMap<usize, usize>,
     ) {
-        let code = self
+        let code: Vec<Instruction> = self
             .code
             .into_iter()
             .enumerate()
@@ -738,7 +734,7 @@ impl<'a> FuncCtx<'a> {
         let func = &mut vmctx.functions_mut()[self.f_key];
         func.pos = self.pos;
         func.up_ptrs = self.up_ptrs;
-        func.reg_count = self.max_reg_num as OpIndex;
+        func.max_write_index = Instruction::max_write_index(&code);
         func.local_zeros = self.local_zeros;
         func.code = code;
     }
@@ -746,11 +742,5 @@ impl<'a> FuncCtx<'a> {
     pub fn emit_inst(&mut self, i: InterInst, pos: Option<usize>) {
         self.code.push(i);
         self.pos.push(pos);
-    }
-
-    pub fn update_max_reg(&mut self, max: usize) {
-        if self.max_reg_num < max {
-            self.max_reg_num = max
-        }
     }
 }

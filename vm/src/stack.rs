@@ -4,7 +4,7 @@
 
 use crate::value::*;
 
-const DEFAULT_CAPACITY: usize = 4096;
+const DEFAULT_CAPACITY: usize = 256;
 
 pub struct Stack {
     vec: Vec<GosValue>,

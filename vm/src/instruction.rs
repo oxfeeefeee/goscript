@@ -109,13 +109,13 @@ pub enum Opcode {
     LEN,     // for built-in function len
     CAP,     // for built-in function cap
     APPEND,  // for built-in function append
-    DELETE,  // for built-in function delete
     COPY,    // for built-in function copy
+    DELETE,  // for built-in function delete
     CLOSE,   // for built-in function close
     PANIC,   // for built-in function panic
     RECOVER, // for built-in function recover
     ASSERT,  // for built-in function assert
-    FFI,     // for built-in function native
+    FFI,     // for FFI
 }
 
 impl fmt::Display for Opcode {
@@ -188,6 +188,163 @@ pub struct Instruction {
 impl Instruction {
     pub fn op1_as_t(&self) -> ValueType {
         unsafe { std::mem::transmute(self.op1) }
+    }
+
+    // Get the max register index 'instructions' write to
+    pub fn max_write_index(instructions: &[Instruction]) -> OpIndex {
+        let mut i = 0;
+        let mut result = 0;
+        loop {
+            let cur = &instructions[i];
+            let index = match cur.op0 {
+                Opcode::VOID => 0,
+                Opcode::DUPLICATE => cur.d,
+                Opcode::LOAD_SLICE => cur.d,
+                Opcode::STORE_SLICE => 0,
+                Opcode::LOAD_ARRAY => cur.d,
+                Opcode::STORE_ARRAY => 0,
+                Opcode::LOAD_MAP => {
+                    i += 1;
+                    match cur.t1 {
+                        ValueType::FlagB => instructions[i].d,
+                        _ => cur.d,
+                    }
+                }
+                Opcode::STORE_MAP => {
+                    i += 1;
+                    0
+                }
+                Opcode::LOAD_STRUCT => cur.d,
+                Opcode::STORE_STRUCT => 0,
+                Opcode::LOAD_EMBEDDED => cur.d,
+                Opcode::STORE_EMBEDDED => 0,
+                Opcode::LOAD_PKG => cur.d,
+                Opcode::STORE_PKG => 0,
+                Opcode::LOAD_POINTER => cur.d,
+                Opcode::STORE_POINTER => 0,
+                Opcode::LOAD_UP_VALUE => cur.d,
+                Opcode::STORE_UP_VALUE => 0,
+                Opcode::ADD => cur.d,
+                Opcode::SUB => cur.d,
+                Opcode::MUL => cur.d,
+                Opcode::QUO => cur.d,
+                Opcode::REM => cur.d,
+                Opcode::AND => cur.d,
+                Opcode::OR => cur.d,
+                Opcode::XOR => cur.d,
+                Opcode::AND_NOT => cur.d,
+                Opcode::SHL => cur.d,
+                Opcode::SHR => cur.d,
+                Opcode::ADD_ASSIGN => 0,
+                Opcode::SUB_ASSIGN => 0,
+                Opcode::MUL_ASSIGN => 0,
+                Opcode::QUO_ASSIGN => 0,
+                Opcode::REM_ASSIGN => 0,
+                Opcode::AND_ASSIGN => 0,
+                Opcode::OR_ASSIGN => 0,
+                Opcode::XOR_ASSIGN => 0,
+                Opcode::AND_NOT_ASSIGN => 0,
+                Opcode::SHL_ASSIGN => 0,
+                Opcode::SHR_ASSIGN => 0,
+                Opcode::INC => 0,
+                Opcode::DEC => 0,
+                Opcode::UNARY_SUB => cur.d,
+                Opcode::UNARY_XOR => cur.d,
+                Opcode::NOT => cur.d,
+                Opcode::EQL => cur.d,
+                Opcode::NEQ => cur.d,
+                Opcode::LSS => cur.d,
+                Opcode::GTR => cur.d,
+                Opcode::LEQ => cur.d,
+                Opcode::GEQ => cur.d,
+                Opcode::REF => cur.d,
+                Opcode::REF_UPVALUE => cur.d,
+                Opcode::REF_SLICE_MEMBER => cur.d,
+                Opcode::REF_STRUCT_FIELD => cur.d,
+                Opcode::REF_EMBEDDED => cur.d,
+                Opcode::REF_PKG_MEMBER => cur.d,
+                Opcode::SEND => 0,
+                Opcode::RECV => match cur.t1 {
+                    ValueType::FlagB => std::cmp::max(cur.d, cur.s1),
+                    _ => cur.d,
+                },
+                Opcode::PACK_VARIADIC => cur.d,
+                Opcode::CALL => 0,
+                Opcode::RETURN => 0,
+                Opcode::JUMP => 0,
+                Opcode::JUMP_IF => 0,
+                Opcode::JUMP_IF_NOT => 0,
+                Opcode::SWITCH => 0,
+                Opcode::SELECT => {
+                    let begin = i + 1;
+                    i += cur.s0 as usize;
+                    instructions[begin..i].iter().fold(0, |acc, x| {
+                        let val = match x.t0 {
+                            ValueType::FlagC => x.s1,
+                            ValueType::FlagD => x.s1 + 1,
+                            _ => 0,
+                        };
+                        std::cmp::max(acc, val)
+                    })
+                }
+                Opcode::RANGE_INIT => 0,
+                Opcode::RANGE => 0,
+                Opcode::LOAD_INIT_FUNC => {
+                    i += 2;
+                    std::cmp::max(cur.d, cur.s1)
+                }
+                Opcode::BIND_METHOD => cur.d,
+                Opcode::BIND_I_METHOD => cur.d,
+                Opcode::CAST => cur.d,
+                Opcode::TYPE_ASSERT => match cur.t1 {
+                    ValueType::FlagB => {
+                        i += 1;
+                        instructions[i].d
+                    }
+                    _ => cur.d,
+                },
+                Opcode::TYPE => match cur.t0 {
+                    ValueType::FlagA => std::cmp::max(cur.d, cur.s1),
+                    _ => cur.d,
+                },
+                Opcode::IMPORT => 0,
+                Opcode::SLICE => {
+                    i += 1;
+                    cur.d
+                }
+                Opcode::CLOSURE => cur.d,
+                Opcode::LITERAL => {
+                    i += 1 + cur.s1 as usize;
+                    cur.d
+                }
+                Opcode::NEW => cur.d,
+                Opcode::MAKE => {
+                    if cur.t0 == ValueType::FlagC {
+                        i += 1;
+                    }
+                    cur.d
+                }
+                Opcode::COMPLEX => cur.d,
+                Opcode::REAL => cur.d,
+                Opcode::IMAG => cur.d,
+                Opcode::LEN => cur.d,
+                Opcode::CAP => cur.d,
+                Opcode::APPEND => cur.d,
+                Opcode::COPY => cur.d,
+                Opcode::DELETE => 0,
+                Opcode::CLOSE => 0,
+                Opcode::PANIC => 0,
+                Opcode::RECOVER => cur.d,
+                Opcode::ASSERT => 0,
+                Opcode::FFI => cur.d,
+            };
+            result = std::cmp::max(result, index);
+            i += 1;
+            if i >= instructions.len() {
+                break;
+            }
+        }
+        result
     }
 }
 

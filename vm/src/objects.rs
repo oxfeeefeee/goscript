@@ -1869,7 +1869,7 @@ pub struct FunctionVal {
     pub meta: Meta,
     pub flag: FuncFlag,
     pub param_count: OpIndex,
-    pub reg_count: OpIndex,
+    pub max_write_index: OpIndex,
     pub ret_zeros: Vec<GosValue>,
 
     pub code: Vec<Instruction>,
@@ -1895,7 +1895,7 @@ impl FunctionVal {
             meta,
             flag,
             param_count,
-            reg_count: 0,
+            max_write_index: 0,
             ret_zeros,
             code: Vec::new(),
             pos: Vec::new(),
