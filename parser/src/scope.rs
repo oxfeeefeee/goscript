@@ -70,10 +70,10 @@ pub struct Entity {
 impl Entity {
     pub fn new(kind: EntityKind, name: String, decl: DeclObj, data: EntityData) -> Entity {
         Entity {
-            kind: kind,
-            name: name,
-            decl: decl,
-            data: data,
+            kind,
+            name,
+            decl,
+            data,
         }
     }
 

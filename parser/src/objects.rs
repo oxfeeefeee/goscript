@@ -2,19 +2,74 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![macro_use]
-#![allow(unused_macros)]
 use super::ast;
 use super::scope;
 use slotmap::{new_key_type, SlotMap};
+// use std::marker::PhantomData;
+// use std::ops::Index;
 
-const DEFAULT_CAPACITY: usize = 16;
+// pub trait PiggyVecKey {
+//     fn as_usize(&self) -> usize;
+// }
 
-macro_rules! new_objects {
-    () => {
-        SlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
-    };
-}
+// /// A vec that you can only insert into
+// pub struct PiggyVec<K, V>
+// where
+//     K: PiggyVecKey + From<usize>,
+// {
+//     vec: Vec<V>,
+//     phantom: PhantomData<K>,
+// }
+
+// impl<K, V> PiggyVec<K, V>
+// where
+//     K: PiggyVecKey + From<usize>,
+// {
+//     #[inline]
+//     pub fn insert(&mut self, v: V) -> K {
+//         self.vec.push(v);
+//         (self.vec.len() - 1).into()
+//     }
+// }
+
+// impl<K, V> Index<K> for PiggyVec<K, V>
+// where
+//     K: PiggyVecKey + From<usize>,
+// {
+//     type Output = V;
+
+//     #[inline]
+//     fn index(&self, i: K) -> &Self::Output {
+//         &self.vec[i.as_usize()]
+//     }
+// }
+
+// macro_rules! piggy_key_type {
+//     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $($rest:tt)* ) => {
+//         $(#[$outer])*
+//         #[derive(Copy, Clone, Default,
+//                  Eq, PartialEq, Ord, PartialOrd,
+//                  Hash, Debug)]
+//         #[repr(transparent)]
+//         $vis struct $name(usize);
+
+//         impl From<usize> for $name {
+//             fn from(k: usize) -> Self {
+//                 $name(k)
+//             }
+//         }
+
+//         impl $crate::PiggyVecKey for $name {
+//             fn as_usize(&self) -> usize {
+//                 self.0
+//             }
+//         }
+
+//         $crate::new_key_type!($($rest)*);
+//     };
+
+//     () => {}
+// }
 
 new_key_type! { pub struct LabeledStmtKey; }
 new_key_type! { pub struct AssignStmtKey; }
@@ -50,203 +105,17 @@ pub struct Objects {
 
 impl Objects {
     pub fn new() -> Objects {
+        const CAP: usize = 16;
         Objects {
-            l_stmts: new_objects!(),
-            a_stmts: new_objects!(),
-            specs: new_objects!(),
-            fdecls: new_objects!(),
-            ftypes: new_objects!(),
-            idents: new_objects!(),
-            fields: new_objects!(),
-            entities: new_objects!(),
-            scopes: new_objects!(),
+            l_stmts: SlotMap::with_capacity_and_key(CAP),
+            a_stmts: SlotMap::with_capacity_and_key(CAP),
+            specs: SlotMap::with_capacity_and_key(CAP),
+            fdecls: SlotMap::with_capacity_and_key(CAP),
+            ftypes: SlotMap::with_capacity_and_key(CAP),
+            idents: SlotMap::with_capacity_and_key(CAP),
+            fields: SlotMap::with_capacity_and_key(CAP),
+            entities: SlotMap::with_capacity_and_key(CAP),
+            scopes: SlotMap::with_capacity_and_key(CAP),
         }
     }
-}
-
-macro_rules! lab_stmts {
-    ($owner:ident) => {
-        &$owner.objects.l_stmts
-    };
-}
-macro_rules! lab_stmts_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.l_stmts
-    };
-}
-macro_rules! lab_stmt {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.l_stmts[$idx]
-    };
-}
-macro_rules! lab_stmt_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.l_stmts[$idx]
-    };
-}
-
-macro_rules! ass_stmts {
-    ($owner:ident) => {
-        &$owner.objects.a_stmts
-    };
-}
-macro_rules! ass_stmts_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.a_stmts
-    };
-}
-macro_rules! ass_stmt {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.a_stmts[$idx]
-    };
-}
-macro_rules! ass_stmt_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.a_stmts[$idx]
-    };
-}
-
-macro_rules! specs {
-    ($owner:ident) => {
-        &$owner.objects.specs
-    };
-}
-macro_rules! specs_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.specs
-    };
-}
-macro_rules! spec {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.specs[$idx]
-    };
-}
-macro_rules! spec_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.specs[$idx]
-    };
-}
-
-macro_rules! fn_decls {
-    ($owner:ident) => {
-        &$owner.objects.fdecls
-    };
-}
-macro_rules! fn_decls_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.fdecls
-    };
-}
-macro_rules! fn_decl {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.fdecls[$idx]
-    };
-}
-macro_rules! fn_decl_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.fdecls[$idx]
-    };
-}
-
-macro_rules! entities {
-    ($owner:ident) => {
-        &$owner.objects.entities
-    };
-}
-macro_rules! entities_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.entities
-    };
-}
-macro_rules! entity {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.entities[$idx]
-    };
-}
-macro_rules! entity_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.entities[$idx]
-    };
-}
-macro_rules! new_entity {
-    ($owner:ident, $kind:expr, $name:expr, $decl:expr, $data:expr) => {
-        $owner
-            .objects
-            .entities
-            .insert(Entity::new($kind, $name, $decl, $data))
-    };
-}
-
-macro_rules! scopes {
-    ($owner:ident) => {
-        &$owner.objects.scopes
-    };
-}
-macro_rules! scopes_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.scopes
-    };
-}
-macro_rules! scope {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.scopes[$idx]
-    };
-}
-macro_rules! scope_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.scopes[$idx]
-    };
-}
-macro_rules! new_scope {
-    ($owner:ident, $outer:expr) => {
-        $owner.objects.scopes.insert(Scope {
-            outer: $outer,
-            entities: HashMap::new(),
-        })
-    };
-}
-
-macro_rules! idents {
-    ($owner:ident) => {
-        &$owner.objects.idents
-    };
-}
-macro_rules! idents_mut {
-    ($owner:ident) => {
-        &mut $owner.objects.idents
-    };
-}
-macro_rules! ident {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.idents[$idx]
-    };
-}
-macro_rules! ident_mut {
-    ($owner:ident, $idx:expr) => {
-        &mut $owner.objects.idents[$idx]
-    };
-}
-macro_rules! new_ident {
-    ($owner:ident, $pos:expr, $name:expr, $entity:expr) => {
-        $owner.objects.idents.insert(Ident {
-            pos: $pos,
-            name: $name,
-            entity: $entity,
-        })
-    };
-}
-
-macro_rules! field {
-    ($owner:ident, $idx:expr) => {
-        &$owner.objects.fields[$idx]
-    };
-}
-macro_rules! new_field {
-    ($owner:ident, $names:expr, $typ:expr, $tag:expr) => {
-        $owner.objects.fields.insert(Field {
-            names: $names,
-            typ: $typ,
-            tag: $tag,
-        })
-    };
 }
