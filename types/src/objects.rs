@@ -9,8 +9,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(unused_macros)]
-#![allow(dead_code)]
 use super::check::DeclInfo;
 use super::constant;
 use super::obj::LangObj;
@@ -18,30 +16,23 @@ use super::package::Package;
 use super::scope::Scope;
 use super::typ::*;
 use super::universe::Universe;
-use goscript_parser::position;
+use goscript_parser::objects::*;
+use goscript_parser::{piggy_key_type, position};
 use std::borrow::Cow;
 
-use slotmap::{new_key_type, DenseSlotMap};
-
-const DEFAULT_CAPACITY: usize = 16;
-
-macro_rules! new_objects {
-    () => {
-        DenseSlotMap::with_capacity_and_key(DEFAULT_CAPACITY)
-    };
+piggy_key_type! {
+    pub struct ObjKey;
+    pub struct TypeKey;
+    pub struct PackageKey;
+    pub struct DeclInfoKey;
+    pub struct ScopeKey;
 }
 
-new_key_type! { pub struct ObjKey; }
-new_key_type! { pub struct TypeKey; }
-new_key_type! { pub struct PackageKey; }
-new_key_type! { pub struct DeclInfoKey; }
-new_key_type! { pub struct ScopeKey; }
-
-pub type LangObjs = DenseSlotMap<ObjKey, LangObj>;
-pub type Types = DenseSlotMap<TypeKey, Type>;
-pub type Packages = DenseSlotMap<PackageKey, Package>;
-pub type Decls = DenseSlotMap<DeclInfoKey, DeclInfo>;
-pub type Scopes = DenseSlotMap<ScopeKey, Scope>;
+pub type LangObjs = PiggyVec<ObjKey, LangObj>;
+pub type Types = PiggyVec<TypeKey, Type>;
+pub type Packages = PiggyVec<PackageKey, Package>;
+pub type Decls = PiggyVec<DeclInfoKey, DeclInfo>;
+pub type Scopes = PiggyVec<ScopeKey, Scope>;
 
 /// The container of all "managed" objects
 /// also works as a "global" variable holder
@@ -63,12 +54,13 @@ fn default_fmt_qualifier(p: &Package) -> Cow<str> {
 impl TCObjects {
     pub fn new() -> TCObjects {
         let fmtq = Box::new(default_fmt_qualifier);
+        const CAP: usize = 16;
         let mut objs = TCObjects {
-            lobjs: new_objects!(),
-            types: new_objects!(),
-            pkgs: new_objects!(),
-            decls: new_objects!(),
-            scopes: new_objects!(),
+            lobjs: PiggyVec::with_capacity(CAP),
+            types: PiggyVec::with_capacity(CAP),
+            pkgs: PiggyVec::with_capacity(CAP),
+            decls: PiggyVec::with_capacity(CAP),
+            scopes: PiggyVec::with_capacity(CAP),
             universe: None,
             fmt_qualifier: fmtq,
         };

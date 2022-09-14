@@ -10,7 +10,8 @@ use crate::instruction::{Instruction, OpIndex, ValueType};
 use crate::metadata::*;
 use crate::stack::Stack;
 use crate::value::*;
-use slotmap::{new_key_type, SlotMap};
+use goscript_parser::objects::*;
+use goscript_parser::piggy_key_type;
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -22,31 +23,15 @@ use std::ops::Range;
 use std::rc::{Rc, Weak};
 use std::{panic, ptr, str};
 
-const DEFAULT_CAPACITY: usize = 128;
-
-new_key_type! { pub struct MetadataKey; }
-new_key_type! { pub struct FunctionKey; }
-new_key_type! { pub struct PackageKey; }
-
-pub type MetadataObjs = SlotMap<MetadataKey, MetadataType>;
-pub type FunctionObjs = SlotMap<FunctionKey, FunctionVal>;
-pub type PackageObjs = SlotMap<PackageKey, PackageVal>;
-
-pub fn key_to_u64<K>(key: K) -> u64
-where
-    K: slotmap::Key,
-{
-    let data: slotmap::KeyData = key.data();
-    data.as_ffi()
+piggy_key_type! {
+    pub struct MetadataKey;
+    pub struct FunctionKey;
+    pub struct PackageKey;
 }
 
-pub fn u64_to_key<K>(u: u64) -> K
-where
-    K: slotmap::Key,
-{
-    let data = slotmap::KeyData::from_ffi(u);
-    data.into()
-}
+pub type MetadataObjs = PiggyVec<MetadataKey, MetadataType>;
+pub type FunctionObjs = PiggyVec<FunctionKey, FunctionVal>;
+pub type PackageObjs = PiggyVec<PackageKey, PackageVal>;
 
 #[derive(Debug)]
 pub struct VMObjects {
@@ -58,12 +43,13 @@ pub struct VMObjects {
 
 impl VMObjects {
     pub fn new() -> VMObjects {
-        let mut metas = SlotMap::with_capacity_and_key(DEFAULT_CAPACITY);
+        const CAP: usize = 16;
+        let mut metas = PiggyVec::with_capacity(CAP);
         let md = StaticMeta::new(&mut metas);
         VMObjects {
-            metas: metas,
-            functions: SlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
-            packages: SlotMap::with_capacity_and_key(DEFAULT_CAPACITY),
+            metas,
+            functions: PiggyVec::with_capacity(CAP),
+            packages: PiggyVec::with_capacity(CAP),
             s_meta: md,
         }
     }
@@ -1303,7 +1289,7 @@ impl Display for PointerObj {
             Self::UpVal(uv) => write!(f, "{:p}", Rc::as_ptr(&uv.inner)),
             Self::SliceMember(s, i) => write!(f, "{:p}i{}", s.as_addr(), i),
             Self::StructField(s, i) => write!(f, "{:p}i{}", s.as_addr(), i),
-            Self::PkgMember(p, i) => write!(f, "{:x}i{}", key_to_u64(*p), i),
+            Self::PkgMember(p, i) => write!(f, "{:x}i{}", p.as_usize(), i),
         }
     }
 }

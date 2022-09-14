@@ -4,92 +4,123 @@
 
 use super::ast;
 use super::scope;
-use slotmap::{new_key_type, SlotMap};
-// use std::marker::PhantomData;
-// use std::ops::Index;
+use std::marker::PhantomData;
+use std::ops::Index;
+use std::ops::IndexMut;
 
-// pub trait PiggyVecKey {
-//     fn as_usize(&self) -> usize;
-// }
+pub trait PiggyVecKey {
+    fn as_usize(&self) -> usize;
+}
 
-// /// A vec that you can only insert into
-// pub struct PiggyVec<K, V>
-// where
-//     K: PiggyVecKey + From<usize>,
-// {
-//     vec: Vec<V>,
-//     phantom: PhantomData<K>,
-// }
+/// A vec that you can only insert into, so that the index can be used as a key
+///
+#[derive(Debug)]
+pub struct PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    vec: Vec<V>,
+    phantom: PhantomData<K>,
+}
 
-// impl<K, V> PiggyVec<K, V>
-// where
-//     K: PiggyVecKey + From<usize>,
-// {
-//     #[inline]
-//     pub fn insert(&mut self, v: V) -> K {
-//         self.vec.push(v);
-//         (self.vec.len() - 1).into()
-//     }
-// }
+impl<K, V> PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            vec: Vec::with_capacity(capacity),
+            phantom: PhantomData {},
+        }
+    }
 
-// impl<K, V> Index<K> for PiggyVec<K, V>
-// where
-//     K: PiggyVecKey + From<usize>,
-// {
-//     type Output = V;
+    #[inline]
+    pub fn insert(&mut self, v: V) -> K {
+        self.vec.push(v);
+        (self.vec.len() - 1).into()
+    }
+}
 
-//     #[inline]
-//     fn index(&self, i: K) -> &Self::Output {
-//         &self.vec[i.as_usize()]
-//     }
-// }
+impl<K, V> Index<K> for PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    type Output = V;
 
-// macro_rules! piggy_key_type {
-//     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $($rest:tt)* ) => {
-//         $(#[$outer])*
-//         #[derive(Copy, Clone, Default,
-//                  Eq, PartialEq, Ord, PartialOrd,
-//                  Hash, Debug)]
-//         #[repr(transparent)]
-//         $vis struct $name(usize);
+    #[inline]
+    fn index(&self, index: K) -> &Self::Output {
+        &self.vec[index.as_usize()]
+    }
+}
 
-//         impl From<usize> for $name {
-//             fn from(k: usize) -> Self {
-//                 $name(k)
-//             }
-//         }
+impl<K, V> IndexMut<K> for PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    #[inline]
+    fn index_mut(&mut self, index: K) -> &mut Self::Output {
+        &mut self.vec[index.as_usize()]
+    }
+}
 
-//         impl $crate::PiggyVecKey for $name {
-//             fn as_usize(&self) -> usize {
-//                 self.0
-//             }
-//         }
+#[macro_export]
+macro_rules! piggy_key_type {
+    ( $(#[$outer:meta])* $vis:vis struct $name:ident; $($rest:tt)* ) => {
+        $(#[$outer])*
+        #[derive(Copy, Clone, Default,
+                 Eq, PartialEq, Ord, PartialOrd,
+                 Hash, Debug)]
+        #[repr(transparent)]
+        $vis struct $name(usize);
 
-//         $crate::new_key_type!($($rest)*);
-//     };
+        impl $name {
+            #[inline]
+            pub fn null() -> Self {
+                $name(std::usize::MAX)
+            }
+        }
 
-//     () => {}
-// }
+        impl From<usize> for $name {
+            #[inline]
+            fn from(k: usize) -> Self {
+                $name(k)
+            }
+        }
 
-new_key_type! { pub struct LabeledStmtKey; }
-new_key_type! { pub struct AssignStmtKey; }
-new_key_type! { pub struct SpecKey; }
-new_key_type! { pub struct FuncDeclKey; }
-new_key_type! { pub struct FuncTypeKey; }
-new_key_type! { pub struct IdentKey; }
-new_key_type! { pub struct FieldKey; }
-new_key_type! { pub struct EntityKey; }
-new_key_type! { pub struct ScopeKey; }
+        impl $crate::objects::PiggyVecKey for $name {
+            #[inline]
+            fn as_usize(&self) -> usize {
+                self.0
+            }
+        }
 
-pub type LabeledStmts = SlotMap<LabeledStmtKey, ast::LabeledStmt>;
-pub type AssignStmts = SlotMap<AssignStmtKey, ast::AssignStmt>;
-pub type Specs = SlotMap<SpecKey, ast::Spec>;
-pub type FuncDecls = SlotMap<FuncDeclKey, ast::FuncDecl>;
-pub type FuncTypes = SlotMap<FuncTypeKey, ast::FuncType>;
-pub type Idents = SlotMap<IdentKey, ast::Ident>;
-pub type Fields = SlotMap<FieldKey, ast::Field>;
-pub type Entitys = SlotMap<EntityKey, scope::Entity>;
-pub type Scopes = SlotMap<ScopeKey, scope::Scope>;
+        piggy_key_type!($($rest)*);
+    };
+
+    () => {}
+}
+
+piggy_key_type! {
+    pub struct LabeledStmtKey;
+    pub struct AssignStmtKey;
+    pub struct SpecKey;
+    pub struct FuncDeclKey;
+    pub struct FuncTypeKey;
+    pub struct IdentKey;
+    pub struct FieldKey;
+    pub struct EntityKey;
+    pub struct ScopeKey;
+}
+
+pub type LabeledStmts = PiggyVec<LabeledStmtKey, ast::LabeledStmt>;
+pub type AssignStmts = PiggyVec<AssignStmtKey, ast::AssignStmt>;
+pub type Specs = PiggyVec<SpecKey, ast::Spec>;
+pub type FuncDecls = PiggyVec<FuncDeclKey, ast::FuncDecl>;
+pub type FuncTypes = PiggyVec<FuncTypeKey, ast::FuncType>;
+pub type Idents = PiggyVec<IdentKey, ast::Ident>;
+pub type Fields = PiggyVec<FieldKey, ast::Field>;
+pub type Entitys = PiggyVec<EntityKey, scope::Entity>;
+pub type Scopes = PiggyVec<ScopeKey, scope::Scope>;
 
 pub struct Objects {
     pub l_stmts: LabeledStmts,
@@ -107,15 +138,15 @@ impl Objects {
     pub fn new() -> Objects {
         const CAP: usize = 16;
         Objects {
-            l_stmts: SlotMap::with_capacity_and_key(CAP),
-            a_stmts: SlotMap::with_capacity_and_key(CAP),
-            specs: SlotMap::with_capacity_and_key(CAP),
-            fdecls: SlotMap::with_capacity_and_key(CAP),
-            ftypes: SlotMap::with_capacity_and_key(CAP),
-            idents: SlotMap::with_capacity_and_key(CAP),
-            fields: SlotMap::with_capacity_and_key(CAP),
-            entities: SlotMap::with_capacity_and_key(CAP),
-            scopes: SlotMap::with_capacity_and_key(CAP),
+            l_stmts: PiggyVec::with_capacity(CAP),
+            a_stmts: PiggyVec::with_capacity(CAP),
+            specs: PiggyVec::with_capacity(CAP),
+            fdecls: PiggyVec::with_capacity(CAP),
+            ftypes: PiggyVec::with_capacity(CAP),
+            idents: PiggyVec::with_capacity(CAP),
+            fields: PiggyVec::with_capacity(CAP),
+            entities: PiggyVec::with_capacity(CAP),
+            scopes: PiggyVec::with_capacity(CAP),
         }
     }
 }

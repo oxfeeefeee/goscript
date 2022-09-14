@@ -5,7 +5,6 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [dependencies]
-slotmap = "1.0"
 num-bigint = "0.4"
 num-rational = "0.4"
 num-traits = "0.2"

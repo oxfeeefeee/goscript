@@ -2362,32 +2362,30 @@ impl<'a> Parser<'a> {
 
         let ret = if is_range {
             if let Stmt::Assign(idx) = s2.unwrap() {
-                // move AssignStmt out of objs
-                // and tear it apart for the components
-                let mut ass = self.objects.a_stmts.remove(idx).unwrap();
+                let ass = &self.objects.a_stmts[idx];
                 let (key, val) = match ass.lhs.len() {
                     0 => (None, None),
-                    1 => (Some(ass.lhs.remove(0)), None),
+                    1 => (Some(ass.lhs[0].clone()), None),
                     2 => {
-                        let lhs1 = ass.lhs.remove(1);
-                        let lhs0 = ass.lhs.remove(0);
+                        let lhs0 = ass.lhs[0].clone();
+                        let lhs1 = ass.lhs[1].clone();
                         (Some(lhs0), Some(lhs1))
                     }
                     _ => {
-                        let pos = ass.lhs.remove(0).pos(&self.objects);
+                        let pos = ass.lhs[0].pos(&self.objects);
                         self.error_expected(pos, "at most 2 expressions");
                         (None, None)
                     }
                 };
                 // parseSimpleStmt returned a right-hand side that
                 // is a single unary expression of the form "range x"
-                if let Expr::Unary(unary) = ass.rhs.remove(0) {
+                if let Expr::Unary(unary) = ass.rhs[0].clone() {
                     Stmt::Range(Rc::new(RangeStmt {
                         for_pos: pos,
                         key: key,
                         val: val,
                         token_pos: ass.token_pos,
-                        token: ass.token,
+                        token: ass.token.clone(),
                         expr: unary.expr.clone(),
                         body: Rc::new(body),
                     }))

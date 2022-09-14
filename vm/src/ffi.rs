@@ -195,7 +195,7 @@ impl CodeGenVMCtx {
         meta: Meta,
         flag: FuncFlag,
     ) -> GosValue {
-        let package = package.unwrap_or_else(|| slotmap::Key::null());
+        let package = package.unwrap_or_else(|| PackageKey::null());
         let val = FunctionVal::new(package, meta, &self.vm_objs.metas, &self.dummy_gcc, flag);
         GosValue::new_function(self.vm_objs.functions.insert(val))
     }

@@ -9,9 +9,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use slotmap::Key;
-use slotmap::KeyData;
-
 use super::objects::*;
 use super::position;
 use super::scope;
@@ -547,13 +544,6 @@ impl IdentEntity {
             _ => false,
         }
     }
-
-    pub fn into_key_data(self) -> Option<KeyData> {
-        match self {
-            IdentEntity::Entity(key) => Some(key.data()),
-            _ => None,
-        }
-    }
 }
 
 pub fn is_exported(s: &str) -> bool {
@@ -587,10 +577,6 @@ impl Ident {
 
     pub fn end(&self) -> position::Pos {
         self.pos + self.name.len()
-    }
-
-    pub fn entity_key_data(&self) -> Option<KeyData> {
-        self.entity.clone().into_key_data()
     }
 
     pub fn entity_obj<'a>(&self, objs: &'a Objects) -> Option<&'a scope::Entity> {
