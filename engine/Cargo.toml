@@ -5,9 +5,9 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [features] 
-default = ["run_fs"]
-run_fs = []
-run_zip = ["dep:zip"]   
+default = ["read_fs"]
+read_fs = []
+read_zip = ["dep:zip"]   
   
 [dependencies]  
 futures-lite = "1.12.0"

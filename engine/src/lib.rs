@@ -3,9 +3,9 @@
 // license that can be found in the LICENSE file.
 
 mod engine;
-#[cfg(feature = "run_fs")]
+#[cfg(feature = "read_fs")]
 pub mod run_fs;
-#[cfg(feature = "run_zip")]
+#[cfg(feature = "read_zip")]
 pub mod run_zip;
 mod std;
 

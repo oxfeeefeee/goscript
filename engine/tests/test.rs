@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-#[cfg(feature = "run_zip")]
+#[cfg(feature = "read_zip")]
 use std::fs;
 use std::io;
 use std::io::Write;
-#[cfg(feature = "run_zip")]
+#[cfg(feature = "read_zip")]
 use std::path::Path;
 
 #[macro_use]
@@ -66,7 +66,7 @@ fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     result
 }
 
-#[cfg(feature = "run_zip")]
+#[cfg(feature = "read_zip")]
 fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_zip::Config::default();
     cfg.base_dir = Some("std/");
@@ -97,7 +97,7 @@ fn test_source() {
 }
 
 #[test]
-#[cfg(feature = "run_zip")]
+#[cfg(feature = "read_zip")]
 fn test_zip() {
     let source = r#"
     package main
