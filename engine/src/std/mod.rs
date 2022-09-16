@@ -7,12 +7,15 @@ mod fmt2;
 mod io;
 pub(crate) mod os;
 mod reflect;
+#[cfg(feature = "async")]
 mod sync;
 
 pub(crate) fn register(engine: &mut crate::engine::Engine) {
     fmt2::Fmt2Ffi::register(engine);
     bits::BitsFfi::register(engine);
+    #[cfg(feature = "async")]
     sync::MutexFfi::register(engine);
+    #[cfg(feature = "async")]
     sync::RWMutexFfi::register(engine);
     reflect::ReflectFfi::register(engine);
     io::IoFfi::register(engine);

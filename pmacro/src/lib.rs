@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+mod async_fn;
 mod ffi;
 mod ffi_impl;
 mod unsafe_ptr;
@@ -22,4 +23,12 @@ pub fn ffi_impl(
 #[proc_macro_derive(UnsafePtr)]
 pub fn derive_unsafe_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     unsafe_ptr::derive_unsafe_ptr_implement(input)
+}
+
+#[proc_macro_attribute]
+pub fn async_fn(
+    _: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    async_fn::async_fn_implement(input)
 }

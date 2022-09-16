@@ -83,7 +83,7 @@ enum GosKind {
 }
 
 #[derive(Ffi)]
-pub struct ReflectFfi {}
+pub struct ReflectFfi;
 
 #[ffi_impl]
 impl ReflectFfi {

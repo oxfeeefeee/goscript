@@ -4,15 +4,24 @@ version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
+[features] 
+default = ["async"]
+async = ["dep:async-channel", "dep:async-executor", "dep:futures-lite", "dep:fastrand"]  
+
 [dependencies]
 ordered-float = "3.0"
-async-channel = "1.6.1"
-async-executor = "1.4.1"
-futures-lite = "1.12.0"
-fastrand = "1.8.0"
+async-channel = { version = "1.6.1", optional = true }
+async-executor = { version ="1.4.1", optional = true }
+futures-lite = { version ="1.12.0", optional = true }
+fastrand = { version ="1.8.0", optional = true }
 
 [dependencies.goscript-parser]
 path = "../parser"
+version = "0.1.0"
+
+
+[dependencies.goscript-pmacro]
+path = "../pmacro"
 version = "0.1.0"
 
 [dev-dependencies]

@@ -7,7 +7,7 @@ use crate::ffi::*;
 use goscript_vm::value::*;
 
 #[derive(Ffi)]
-pub struct BitsFfi {}
+pub struct BitsFfi;
 
 #[ffi_impl]
 impl BitsFfi {

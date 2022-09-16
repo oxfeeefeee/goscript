@@ -7,6 +7,7 @@ mod instruction;
 #[macro_use]
 mod metadata;
 
+#[cfg(feature = "async")]
 mod channel;
 
 mod objects;

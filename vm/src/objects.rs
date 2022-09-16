@@ -3,7 +3,10 @@
 // license that can be found in the LICENSE file.
 
 #![macro_use]
+
+#[cfg(feature = "async")]
 use crate::channel::Channel;
+
 use crate::ffi::Ffi;
 use crate::gc::GcContainer;
 use crate::instruction::{Instruction, OpIndex, ValueType};
@@ -1063,13 +1066,14 @@ impl Display for InterfaceObj {
 
 // ----------------------------------------------------------------------------
 // ChannelObj
-
+#[cfg(feature = "async")]
 #[derive(Clone, Debug)]
 pub struct ChannelObj {
     pub recv_zero: GosValue,
     pub chan: Channel,
 }
 
+#[cfg(feature = "async")]
 impl ChannelObj {
     pub fn new(cap: usize, recv_zero: GosValue) -> ChannelObj {
         ChannelObj {
@@ -1674,6 +1678,7 @@ impl GosClosureObj {
 pub struct FfiClosureObj {
     pub ffi: Rc<dyn Ffi>,
     pub func_name: String,
+    pub is_async: bool,
     pub meta: Meta,
 }
 

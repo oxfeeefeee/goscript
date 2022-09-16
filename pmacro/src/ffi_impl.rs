@@ -17,6 +17,7 @@ use syn::{
 
 const TYPE_ERR_MSG: &str = "unexpected return type";
 const FFI_FUNC_PREFIX: &str = "ffi_";
+const FFI_ASYNC_FUNC_PREFIX: &str = "ffi_async_";
 
 macro_rules! return_type_panic {
     () => {
@@ -44,26 +45,30 @@ pub fn ffi_impl_implement(
     let mut output_block = impl_block.clone();
     let mut output = TokenStream::new();
     let mut new_method: Option<ImplItemMethod> = None;
-    let ffi_methods: Vec<&ImplItemMethod> = impl_block
-        .items
-        .iter()
-        .filter_map(|x| match x {
+    let mut ffi_methods: Vec<&ImplItemMethod> = vec![];
+    let mut async_ffi_methods: Vec<&ImplItemMethod> = vec![];
+    for item in impl_block.items.iter() {
+        match item {
             ImplItem::Method(method) => {
                 let ffi_name = method.sig.ident.to_string();
                 if ffi_name == "new" {
                     new_method = Some(method.clone());
-                    None
-                } else {
-                    ffi_name.strip_prefix(FFI_FUNC_PREFIX).map(|_| method)
+                } else if ffi_name.starts_with(FFI_FUNC_PREFIX) {
+                    if ffi_name.starts_with(FFI_ASYNC_FUNC_PREFIX) {
+                        async_ffi_methods.push(method);
+                    } else {
+                        ffi_methods.push(method);
+                    }
                 }
             }
-            _ => None,
-        })
-        .collect();
+            _ => {}
+        }
+    }
     let type_name = get_last_segment(&impl_block.self_ty).unwrap().ident;
 
     let mut methods: Vec<ImplItem> = vec![
-        gen_dispatch_method(&impl_block.self_ty, ffi_methods),
+        gen_dispatch_method(&impl_block.self_ty, ffi_methods, false),
+        gen_dispatch_method(&impl_block.self_ty, async_ffi_methods, true),
         gen_new_method(&type_name, &new_method),
         gen_id_method(&type_name, &args),
         gen_register_method(),
@@ -77,17 +82,41 @@ pub fn ffi_impl_implement(
     output.into()
 }
 
-fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMethod {
-    let mut dispatch_method: ImplItemMethod = parse_quote! {
-        fn dispatch(
-            &self,
-            ctx: &mut FfiCtx,
-            args: Vec<GosValue>,
-        ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
-            let arg_count = args.len();
-            let mut arg_iter = args.into_iter();
-            match ctx.func_name {
-                _ => unreachable!(),
+fn gen_dispatch_method(
+    self_ty: &Type,
+    ffis: Vec<&ImplItemMethod>,
+    is_async: bool,
+) -> ImplItemMethod {
+    let mut dispatch_method: ImplItemMethod = if is_async {
+        parse_quote! {
+            #[cfg(feature = "async")]
+            fn async_dispatch(
+                &self,
+                ctx: &mut FfiCtx,
+                args: Vec<GosValue>,
+            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
+                let arg_count = args.len();
+                let mut arg_iter = args.into_iter();
+                match ctx.func_name {
+                    _ => {
+                        let err = Err(format!("ffi function '{}' not found!", ctx.func_name));
+                        Box::pin(async move { err })
+                    },
+                }
+            }
+        }
+    } else {
+        parse_quote! {
+            fn dispatch(
+                &self,
+                ctx: &mut FfiCtx,
+                args: Vec<GosValue>,
+            ) -> goscript_vm::value::RuntimeResult<Vec<GosValue>> {
+                let arg_count = args.len();
+                let mut arg_iter = args.into_iter();
+                match ctx.func_name {
+                    _ => Err(format!("ffi function '{}' not found!", ctx.func_name)),
+                }
             }
         }
     };
@@ -140,15 +169,27 @@ fn gen_dispatch_method(self_ty: &Type, ffis: Vec<&ImplItemMethod>) -> ImplItemMe
 
             let name = method.sig.ident.to_string();
             let short_name = name.strip_prefix(FFI_FUNC_PREFIX).unwrap();
-            let wrapper = gen_wrapper_block(self_ty, &method, &args);
-            parse_quote! {
-                #short_name => {
-                    if arg_count != #count_lit {
-                        Box::pin(async move { Err("FFI: bad argument count".to_owned()) })
-                    } else {
-                        #wrapper
-                    }
-                },
+            let wrapper = gen_wrapper_block(self_ty, &method, &args, is_async);
+            if is_async {
+                parse_quote! {
+                    #short_name => {
+                        if arg_count != #count_lit {
+                            Box::pin(async move { Err("FFI: bad argument count".to_owned()) })
+                        } else {
+                            #wrapper
+                        }
+                    },
+                }
+            } else {
+                parse_quote! {
+                    #short_name => {
+                        if arg_count != #count_lit {
+                            Err("FFI: bad argument count".to_owned())
+                        } else {
+                            #wrapper
+                        }
+                    },
+                }
             }
         })
         .collect();
@@ -219,65 +260,70 @@ fn gen_wrapper_block(
     self_ty: &Type,
     m: &ImplItemMethod,
     args: &Punctuated<Expr, Token![,]>,
+    is_async_call: bool,
 ) -> Block {
     let callee = &m.sig.ident;
     let is_async = m.sig.asyncness.is_some();
     let (is_result, r_type) = get_return_type_attributes(&m.sig.output);
-    match (is_async, is_result, r_type) {
-        (false, true, FfiReturnType::ZeroVal) => {
-            parse_quote! {{
-                let re = #self_ty::#callee(#args).map(|x| vec![]);
-                Box::pin(async move { re })
-            }}
+    if is_async_call {
+        match (is_async, is_result, r_type) {
+            (true, true, FfiReturnType::Vec) => {
+                parse_quote! {{
+                    let re = #self_ty::#callee(#args);
+                    Box::pin( re )
+                }}
+            }
+            (_, _, FfiReturnType::AlreadyBoxed) => {
+                parse_quote! {{
+                    #self_ty::#callee(#args)
+                }}
+            }
+            (false, _, _) => unreachable!(),
+            (true, _, _) => panic!("async func can only return RuntimeResult<Vec<GosValue>>>"),
         }
-        (false, true, FfiReturnType::OneVal(primitive)) => {
-            let ret = one_return_value(primitive);
-            parse_quote! {{
-                let re = #self_ty::#callee(#args).map(|input| vec![#ret]);
-                Box::pin(async move { re })
-            }}
+    } else {
+        match (is_async, is_result, r_type) {
+            (false, true, FfiReturnType::ZeroVal) => {
+                parse_quote! {{
+                    #self_ty::#callee(#args).map(|x| vec![])
+                }}
+            }
+            (false, true, FfiReturnType::OneVal(primitive)) => {
+                let ret = one_return_value(primitive);
+                parse_quote! {{
+                    #self_ty::#callee(#args).map(|input| vec![#ret])
+                }}
+            }
+            (false, true, FfiReturnType::MultipleVal(types)) => {
+                let ret = multiple_return_values(types);
+                parse_quote! {{
+                    #self_ty::#callee(#args).map(|input| vec![#ret] )
+                }}
+            }
+            (false, false, FfiReturnType::ZeroVal) => {
+                parse_quote! {{
+                    #self_ty::#callee(#args);
+                    Ok(vec![])
+                }}
+            }
+            (false, false, FfiReturnType::OneVal(primitive)) => {
+                let ret = one_return_value(primitive);
+                parse_quote! {{
+                    let input = #self_ty::#callee(#args);
+                    Ok(vec![#ret])
+                }}
+            }
+            (false, false, FfiReturnType::MultipleVal(types)) => {
+                let ret = multiple_return_values(types);
+                parse_quote! {{
+                    let input = #self_ty::#callee(#args);
+                    Ok(vec![#ret])
+                }}
+            }
+            (false, _, FfiReturnType::Vec) => panic!("non-async func cannot return a vec"),
+            (false, _, _) => panic!("unsupported return type"),
+            (true, _, _) => unreachable!(),
         }
-        (false, true, FfiReturnType::MultipleVal(types)) => {
-            let ret = multiple_return_values(types);
-            parse_quote! {{
-                let re: goscript_vm::value::RuntimeResult<Vec<GosValue>>
-                    = #self_ty::#callee(#args).map(|input| vec![#ret] );
-                Box::pin(async move { re })
-            }}
-        }
-        (false, false, FfiReturnType::ZeroVal) => {
-            parse_quote! {{
-                #self_ty::#callee(#args);
-                Box::pin(async move { Ok(vec![]) })
-            }}
-        }
-        (false, false, FfiReturnType::OneVal(primitive)) => {
-            let ret = one_return_value(primitive);
-            parse_quote! {{
-                let input = #self_ty::#callee(#args);
-                Box::pin(async move { Ok(vec![#ret]) })
-            }}
-        }
-        (false, false, FfiReturnType::MultipleVal(types)) => {
-            let ret = multiple_return_values(types);
-            parse_quote! {{
-                let input = #self_ty::#callee(#args);
-                Box::pin(async move { Ok(vec![#ret]) })
-            }}
-        }
-        (false, _, FfiReturnType::Vec) => panic!("non-async func cannot return a vec"),
-        (true, true, FfiReturnType::Vec) => {
-            parse_quote! {{
-                let re = #self_ty::#callee(#args);
-                Box::pin( re )
-            }}
-        }
-        (_, _, FfiReturnType::AlreadyBoxed) => {
-            parse_quote! {{
-                #self_ty::#callee(#args)
-            }}
-        }
-        (true, _, _) => panic!("async func can only return RuntimeResult<Vec<GosValue>>>"),
     }
 }
 

@@ -7,8 +7,10 @@ use crate::objects::VMObjects;
 use crate::stack::Stack;
 use crate::value::*;
 use crate::value::{GosValue, RuntimeResult};
+#[cfg(feature = "async")]
 use futures_lite::future::Future;
 use std::collections::HashMap;
+#[cfg(feature = "async")]
 use std::pin::Pin;
 use std::rc::Rc;
 
@@ -76,7 +78,10 @@ impl<'a> FfiCtx<'a> {
 
 /// A FFI Object implemented in Rust for Goscript to call
 pub trait Ffi {
-    fn call(
+    fn call(&self, ctx: &mut FfiCtx, params: Vec<GosValue>) -> RuntimeResult<Vec<GosValue>>;
+
+    #[cfg(feature = "async")]
+    fn async_call(
         &self,
         ctx: &mut FfiCtx,
         params: Vec<GosValue>,

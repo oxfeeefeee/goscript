@@ -11,15 +11,15 @@ func init() {
 }
 
 type ffiMutex interface {
-    lock(*unsafe.Pointer)
-    unlock(unsafe.Pointer)
+    async_lock(*unsafe.Pointer)
+    async_unlock(unsafe.Pointer)
 }
 
 type ffiRWMutex interface {
-    r_lock(*unsafe.Pointer)
-    r_unlock(unsafe.Pointer)
-    w_lock(*unsafe.Pointer)
-    w_unlock(unsafe.Pointer)
+    async_r_lock(*unsafe.Pointer)
+    async_r_unlock(unsafe.Pointer)
+    async_w_lock(*unsafe.Pointer)
+    async_w_unlock(unsafe.Pointer)
 }
 
 // A Locker represents an object that can be locked and unlocked.
@@ -40,7 +40,7 @@ type Mutex struct {
 // If the lock is already in use, the calling goroutine
 // blocks until the mutex is available.
 func (m *Mutex) Lock() {
-    nativeMutex.lock(&m.handle)
+    nativeMutex.async_lock(&m.handle)
 }
 
 
@@ -51,7 +51,7 @@ func (m *Mutex) Lock() {
 // It is allowed for one goroutine to lock a Mutex and then
 // arrange for another goroutine to unlock it.
 func (m *Mutex) Unlock() {
-   nativeMutex.unlock(m.handle)
+   nativeMutex.async_unlock(m.handle)
 }
 
 
@@ -65,17 +65,17 @@ type RWMutex struct {
 }
 
 func (rw *RWMutex) RLock() {
-    nativeRWMutex.r_lock(&rw.handle)
+    nativeRWMutex.async_r_lock(&rw.handle)
 }
 
 func (rw *RWMutex) RUnlock() {
-    nativeRWMutex.r_unlock(rw.handle)
+    nativeRWMutex.async_r_unlock(rw.handle)
 }
 
 func (rw *RWMutex) Lock() {
-    nativeRWMutex.w_lock(&rw.handle)
+    nativeRWMutex.async_w_lock(&rw.handle)
 }
 
 func (rw *RWMutex) Unlock() {
-    nativeRWMutex.w_unlock(rw.handle)
+    nativeRWMutex.async_w_unlock(rw.handle)
 }

@@ -46,7 +46,7 @@ pub struct StdIoApi {
 }
 
 #[derive(Ffi)]
-pub struct FileFfi {}
+pub struct FileFfi;
 
 #[ffi_impl(rename = "os.file")]
 impl FileFfi {

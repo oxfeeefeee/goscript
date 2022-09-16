@@ -7,7 +7,7 @@ use crate::ffi::*;
 use goscript_vm::value::{GosElem, GosValue, ValueType};
 
 #[derive(Ffi)]
-pub struct Fmt2Ffi {}
+pub struct Fmt2Ffi;
 
 #[ffi_impl]
 impl Fmt2Ffi {

@@ -2,19 +2,23 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use crate::channel;
 use crate::ffi::{FfiCtx, FfiFactory};
 use crate::gc::{collect, GcContainer};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
-use async_executor::LocalExecutor;
-use futures_lite::future;
 use goscript_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+#[cfg(feature = "async")]
+use crate::channel;
+#[cfg(feature = "async")]
+use async_executor::LocalExecutor;
+#[cfg(feature = "async")]
+use futures_lite::future;
 
 // restore stack_ref after drop to allow code in block call yield
 macro_rules! restore_stack_ref {
@@ -37,10 +41,14 @@ macro_rules! go_panic_str {
     ($panic:ident, $msg:expr, $frame:ident, $code:ident) => {{
         let str_val = GosValue::with_str($msg);
         let iface = GosValue::empty_iface_with_val(str_val);
-        let mut data = PanicData::new(iface);
-        data.call_stack.push(($frame.func(), $frame.pc - 1));
-        $panic = Some(data);
-        $frame.pc = $code.len() as OpIndex - 1;
+        go_panic!($panic, iface, $frame, $code);
+    }};
+}
+
+#[cfg(not(feature = "async"))]
+macro_rules! go_panic_no_async {
+    ($panic:ident, $frame:ident, $code:ident) => {{
+        go_panic_str!($panic, "Async features disabled", $frame, $code)
     }};
 }
 
@@ -52,6 +60,7 @@ macro_rules! panic_if_err {
     }};
 }
 
+#[cfg(feature = "async")]
 macro_rules! unwrap_recv_val {
     ($chan:expr, $val:expr, $gcc:expr) => {
         match $val {
@@ -120,18 +129,27 @@ pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     dispatcher_a_s_for(ValueType::Uint);
 
     let gcc = GcContainer::new();
-    let exec = Rc::new(LocalExecutor::new());
-    let ctx = Context::new(exec.clone(), code, &gcc, ffi, fs);
-    let entry = ctx.new_entry_frame(code.entry);
-    ctx.spawn_fiber(Stack::new(), entry);
 
-    future::block_on(async {
-        loop {
-            if !exec.try_tick() {
-                break;
+    #[cfg(not(feature = "async"))]
+    {
+        let ctx = Context::new(code, &gcc, ffi, fs);
+        let first_frame = ctx.new_entry_frame(code.entry);
+        Fiber::new(ctx, Stack::new(), first_frame).main_loop();
+    }
+    #[cfg(feature = "async")]
+    {
+        let exec = Rc::new(LocalExecutor::new());
+        let ctx = Context::new(exec.clone(), code, &gcc, ffi, fs);
+        let entry = ctx.new_entry_frame(code.entry);
+        ctx.spawn_fiber(Stack::new(), entry);
+        future::block_on(async {
+            loop {
+                if !exec.try_tick() {
+                    break;
+                }
             }
-        }
-    });
+        });
+    }
 }
 
 #[derive(Debug)]
@@ -281,6 +299,7 @@ impl PanicData {
 
 #[derive(Clone)]
 struct Context<'a> {
+    #[cfg(feature = "async")]
     exec: Rc<LocalExecutor<'a>>,
     code: &'a ByteCode,
     gcc: &'a GcContainer,
@@ -291,13 +310,14 @@ struct Context<'a> {
 
 impl<'a> Context<'a> {
     fn new(
-        exec: Rc<LocalExecutor<'a>>,
+        #[cfg(feature = "async")] exec: Rc<LocalExecutor<'a>>,
         code: &'a ByteCode,
         gcc: &'a GcContainer,
         ffi_factory: &'a FfiFactory,
         fs: Option<&'a FileSet>,
     ) -> Context<'a> {
         Context {
+            #[cfg(feature = "async")]
             exec,
             code,
             gcc,
@@ -312,6 +332,7 @@ impl<'a> Context<'a> {
         CallFrame::with_closure(cls, 0)
     }
 
+    #[cfg(feature = "async")]
     fn spawn_fiber(&self, stack: Stack, first_frame: CallFrame) {
         let mut f = Fiber::new(self.clone(), stack, first_frame);
         self.exec
@@ -337,19 +358,20 @@ impl<'a> Fiber<'a> {
         self.id
     }
 
-    fn new(c: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
-        let id = c.next_id.get();
-        c.next_id.set(id + 1);
+    fn new(context: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
+        let id = context.next_id.get();
+        context.next_id.set(id + 1);
         Fiber {
             stack: Rc::new(RefCell::new(stack)),
             rstack: RangeStack::new(),
             frames: vec![first_frame],
-            context: c,
-            id: id,
+            context,
+            id,
         }
     }
 
-    async fn main_loop(&mut self) {
+    #[cfg_attr(feature = "async", goscript_pmacro::async_fn)]
+    fn main_loop(&mut self) {
         let ctx = &self.context;
         let gcc = ctx.gcc;
         let objs: &VMObjects = &ctx.code.objects;
@@ -899,6 +921,9 @@ impl<'a> Fiber<'a> {
                             GosValue::new_pointer(PointerObj::PkgMember(pkg, inst.s1)),
                         );
                     }
+                    #[cfg(not(feature = "async"))]
+                    Opcode::SEND => go_panic_no_async!(panic, frame, code),
+                    #[cfg(feature = "async")]
                     Opcode::SEND => {
                         let chan = stack.read(inst.s0, sb, consts).as_channel().cloned();
                         let val = stack.read(inst.s1, sb, consts).clone();
@@ -912,6 +937,9 @@ impl<'a> Fiber<'a> {
                         restore_stack_ref!(self, stack, stack_mut_ref);
                         panic_if_err!(re, panic, frame, code);
                     }
+                    #[cfg(not(feature = "async"))]
+                    Opcode::RECV => go_panic_no_async!(panic, frame, code),
+                    #[cfg(feature = "async")]
                     Opcode::RECV => {
                         match stack.read(inst.s0, sb, consts).as_channel().cloned() {
                             Some(chan) => {
@@ -996,6 +1024,9 @@ impl<'a> Fiber<'a> {
                                         code = &func.code;
                                         //dbg!("default", &code);
                                     }
+                                    #[cfg(not(feature = "async"))]
+                                    ValueType::FlagB => go_panic_no_async!(panic, frame, code),
+                                    #[cfg(feature = "async")]
                                     ValueType::FlagB => {
                                         // goroutine
                                         let begin = nframe.stack_base;
@@ -1038,8 +1069,16 @@ impl<'a> Fiber<'a> {
                                         stack: &mut self.stack.borrow_mut(),
                                         gcc,
                                     };
-                                    let fut = ffic.ffi.call(&mut ctx, params);
-                                    fut.await
+                                    if !ffic.is_async {
+                                        ffic.ffi.call(&mut ctx, params)
+                                    } else {
+                                        #[cfg(not(feature = "async"))]
+                                        {
+                                            Err("Async features disabled".to_owned())
+                                        }
+                                        #[cfg(feature = "async")]
+                                        ffic.ffi.async_call(&mut ctx, params).await
+                                    }
                                 };
                                 restore_stack_ref!(self, stack, stack_mut_ref);
                                 match returns {
@@ -1168,6 +1207,9 @@ impl<'a> Fiber<'a> {
                             frame.pc += inst.d;
                         }
                     }
+                    #[cfg(not(feature = "async"))]
+                    Opcode::SELECT => go_panic_no_async!(panic, frame, code),
+                    #[cfg(feature = "async")]
                     Opcode::SELECT => {
                         let comm_count = inst.s0;
                         let has_default = inst.t0 == ValueType::FlagE;
@@ -1601,6 +1643,12 @@ impl<'a> Fiber<'a> {
                                 GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcc)
                             }
                             MetadataType::Map(_, _) => GosValue::new_map(gcc),
+                            #[cfg(not(feature = "async"))]
+                            MetadataType::Channel(_, _) => {
+                                go_panic_no_async!(panic, frame, code);
+                                GosValue::new_nil(ValueType::Void)
+                            }
+                            #[cfg(feature = "async")]
                             MetadataType::Channel(_, val_meta) => {
                                 let cap = match inst.t0 {
                                     // 2 args
@@ -1709,6 +1757,9 @@ impl<'a> Fiber<'a> {
                             None => {}
                         }
                     }
+                    #[cfg(not(feature = "async"))]
+                    Opcode::CLOSE => go_panic_no_async!(panic, frame, code),
+                    #[cfg(feature = "async")]
                     Opcode::CLOSE => match stack.read(inst.s0, sb, consts).as_channel() {
                         Some(c) => c.close(),
                         None => {}
@@ -1781,6 +1832,7 @@ impl<'a> Fiber<'a> {
                 }
                 Result::Continue => {
                     drop(stack_mut_ref);
+                    #[cfg(feature = "async")]
                     future::yield_now().await;
                     restore_stack_ref!(self, stack, stack_mut_ref);
                 }
@@ -1936,11 +1988,12 @@ fn bind_iface_method(
         }
         InterfaceObj::Ffi(ffi) => {
             let methods = objs.metas[ffi.meta.key].as_interface().iface_methods_info();
-            let (name, meta) = methods[index].clone();
+            let (func_name, meta) = methods[index].clone();
             let cls = FfiClosureObj {
                 ffi: ffi.ffi_obj.clone(),
-                func_name: name,
-                meta: meta,
+                is_async: func_name.starts_with("async"),
+                func_name,
+                meta,
             };
             Ok(GosValue::new_closure(ClosureObj::new_ffi(cls), gcc))
         }

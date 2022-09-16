@@ -36,11 +36,11 @@ macro_rules! create_mutex {
 }
 
 #[derive(Ffi)]
-pub struct MutexFfi {}
+pub struct MutexFfi;
 
 #[ffi_impl(rename = "sync.mutex")]
 impl MutexFfi {
-    fn ffi_lock(
+    fn ffi_async_lock(
         ctx: &mut FfiCtx,
         lock: GosValue,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
@@ -52,7 +52,7 @@ impl MutexFfi {
         }
     }
 
-    async fn ffi_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+    async fn ffi_async_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
         let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<Mutex>().unwrap().clone();
         mutex.unlock().await
@@ -102,11 +102,11 @@ impl Mutex {
 }
 
 #[derive(Ffi)]
-pub struct RWMutexFfi {}
+pub struct RWMutexFfi;
 
 #[ffi_impl(rename = "sync.rw_mutex")]
 impl RWMutexFfi {
-    fn ffi_r_lock(
+    fn ffi_async_r_lock(
         ctx: &mut FfiCtx,
         lock: GosValue,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
@@ -116,13 +116,13 @@ impl RWMutexFfi {
         }
     }
 
-    async fn ffi_r_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+    async fn ffi_async_r_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
         let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.r_unlock().await
     }
 
-    fn ffi_w_lock(
+    fn ffi_async_w_lock(
         ctx: &mut FfiCtx,
         lock: GosValue,
     ) -> Pin<Box<dyn Future<Output = RuntimeResult<Vec<GosValue>>>>> {
@@ -132,7 +132,7 @@ impl RWMutexFfi {
         }
     }
 
-    async fn ffi_w_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
+    async fn ffi_async_w_unlock(lock: GosValue) -> RuntimeResult<Vec<GosValue>> {
         let ud = lock.as_unsafe_ptr();
         let mutex = ud.unwrap().downcast_ref::<RWMutex>().unwrap().clone();
         mutex.w_unlock().await

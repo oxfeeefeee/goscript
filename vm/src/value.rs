@@ -3,7 +3,10 @@
 // license that can be found in the LICENSE file.
 
 #![allow(dead_code)]
+
+#[cfg(feature = "async")]
 use crate::channel::Channel;
+
 use crate::gc::GcContainer;
 pub use crate::instruction::*;
 pub use crate::metadata::*;
@@ -291,6 +294,7 @@ pub(crate) union ValueData {
     slice: *const (GosSliceObj, RCount),
     map: *const (MapObj, RCount),
     interface: *const InterfaceObj,
+    #[cfg(feature = "async")]
     channel: *const ChannelObj,
 }
 
@@ -312,6 +316,7 @@ impl ValueData {
             ValueType::Interface => ValueData {
                 interface: ptr::null(),
             },
+            #[cfg(feature = "async")]
             ValueType::Channel => ValueData {
                 channel: ptr::null(),
             },
@@ -560,6 +565,7 @@ impl ValueData {
         unsafe { self.interface.as_ref() }
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn as_channel(&self) -> Option<&ChannelObj> {
         unsafe { self.channel.as_ref() }
@@ -907,6 +913,7 @@ impl ValueData {
             },
             ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
             ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
+            #[cfg(feature = "async")]
             ValueType::Channel => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_channel()),
             ValueType::Void => write!(
                 f,
@@ -1005,6 +1012,7 @@ impl ValueData {
         }
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     fn from_channel(c: OptionRc<ChannelObj>) -> ValueData {
         ValueData {
@@ -1101,6 +1109,7 @@ impl ValueData {
         ValueData::from_interface(Some(Rc::new(obj)))
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     fn new_channel(obj: ChannelObj) -> ValueData {
         ValueData::from_channel(Some(Rc::new(obj)))
@@ -1163,6 +1172,7 @@ impl ValueData {
         unsafe { (!self.interface.is_null()).then(|| Rc::from_raw(self.interface)) }
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     fn into_channel(self) -> OptionRc<ChannelObj> {
         unsafe { (!self.channel.is_null()).then(|| Rc::from_raw(self.channel)) }
@@ -1217,6 +1227,7 @@ impl ValueData {
                 }
                 self.copy()
             },
+            #[cfg(feature = "async")]
             ValueType::Channel => unsafe {
                 if !self.channel.is_null() {
                     Rc::increment_strong_count(self.pointer);
@@ -1289,6 +1300,7 @@ impl ValueData {
             ValueType::Struct => {
                 self.copy().into_struct();
             }
+            #[cfg(feature = "async")]
             ValueType::Channel => {
                 self.copy().into_channel();
             }
@@ -1473,6 +1485,7 @@ impl GosValue {
         GosValue::new(ValueType::Interface, ValueData::new_interface(obj))
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn new_channel(obj: ChannelObj) -> GosValue {
         GosValue::new(ValueType::Channel, ValueData::new_channel(obj))
@@ -1539,6 +1552,7 @@ impl GosValue {
         GosValue::new_interface(InterfaceObj::with_value(val, None))
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn channel_with_chan(chan: Channel, recv_zero: GosValue) -> GosValue {
         GosValue::new_channel(ChannelObj::with_chan(chan, recv_zero))
@@ -1583,6 +1597,7 @@ impl GosValue {
         GosValue::new(ValueType::Interface, ValueData::from_interface(i))
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn from_channel(c: OptionRc<ChannelObj>) -> GosValue {
         GosValue::new(ValueType::Channel, ValueData::from_channel(c))
@@ -1672,6 +1687,7 @@ impl GosValue {
         self.data.copy().into_interface()
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn into_channel(mut self) -> OptionRc<ChannelObj> {
         debug_assert!(self.typ == ValueType::Channel);
@@ -1709,6 +1725,7 @@ impl GosValue {
         self.into_interface().ok_or(nil_err_str!())
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub(crate) fn into_non_nil_channel(self) -> RuntimeResult<Rc<ChannelObj>> {
         self.into_channel().ok_or(nil_err_str!())
@@ -1893,6 +1910,7 @@ impl GosValue {
         self.data.as_interface()
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub fn as_channel(&self) -> Option<&ChannelObj> {
         debug_assert!(self.typ == ValueType::Channel);
@@ -1929,6 +1947,7 @@ impl GosValue {
         self.as_interface().ok_or(nil_err_str!())
     }
 
+    #[cfg(feature = "async")]
     #[inline]
     pub fn as_non_nil_channel(&self) -> RuntimeResult<&ChannelObj> {
         self.as_channel().ok_or(nil_err_str!())
@@ -1960,6 +1979,7 @@ impl GosValue {
             ValueType::Slice => self.as_gos_slice().is_none(),
             ValueType::Map => self.as_map().is_none(),
             ValueType::Interface => self.as_interface().is_none(),
+            #[cfg(feature = "async")]
             ValueType::Channel => self.as_channel().is_none(),
             ValueType::Void => true,
             _ => false,
@@ -2028,6 +2048,7 @@ impl GosValue {
             },
             ValueType::Map => self.as_map().map_or(0, |x| x.0.len()),
             ValueType::String => self.as_string().len(),
+            #[cfg(feature = "async")]
             ValueType::Channel => self.as_channel().map_or(0, |x| x.len()),
             _ => unreachable!(),
         }
@@ -2040,6 +2061,7 @@ impl GosValue {
                 Some(s) => s.0.cap(),
                 None => 0,
             },
+            #[cfg(feature = "async")]
             ValueType::Channel => self.as_channel().map_or(0, |x| x.cap()),
             _ => unreachable!(),
         }
@@ -2186,6 +2208,7 @@ impl PartialEq for GosValue {
             (ValueType::Closure, ValueType::Closure) => {
                 ref_ptr_eq(self.as_closure(), b.as_closure())
             }
+            #[cfg(feature = "async")]
             (ValueType::Channel, ValueType::Channel) => {
                 ref_ptr_eq(self.as_channel(), b.as_channel())
             }
@@ -2326,6 +2349,7 @@ impl Display for GosValue {
                 Some(i) => write!(f, "{}", i),
                 None => f.write_str("<nil(interface)>"),
             },
+            #[cfg(feature = "async")]
             ValueType::Channel => match self.as_channel() {
                 Some(_) => f.write_str("<channel>"),
                 None => f.write_str("<nil(channel)>"),
