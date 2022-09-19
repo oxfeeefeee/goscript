@@ -3,15 +3,18 @@
 // license that can be found in the LICENSE file.
 
 mod engine;
-#[cfg(feature = "read_fs")]
+#[cfg(all(feature = "read_fs", feature = "go_std"))]
 pub mod run_fs;
 #[cfg(feature = "read_zip")]
 pub mod run_zip;
+
+#[cfg(feature = "go_std")]
 mod std;
 
 #[macro_use]
 mod ffi;
 
+#[cfg(feature = "go_std")]
 #[macro_use]
 extern crate lazy_static;
 

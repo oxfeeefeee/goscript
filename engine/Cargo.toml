@@ -5,10 +5,11 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [features] 
-default = ["read_fs", "async"]
+default = ["read_fs", "async", "go_std"]
 read_fs = []
 read_zip = ["dep:zip"] 
-async = ["goscript-vm/async"]  
+async = ["goscript-codegen/async", "goscript-vm/async"]  
+go_std = []
   
 [dependencies]  
 futures-lite = "1.12.0"

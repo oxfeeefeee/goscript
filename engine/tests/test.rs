@@ -38,6 +38,7 @@ impl Write for WriteBuf {
     }
 }
 
+#[cfg(feature = "go_std")]
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_fs::Config::default();
     cfg.working_dir = Some("./");
@@ -52,6 +53,12 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     result
 }
 
+#[cfg(not(feature = "go_std"))]
+fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
+    unimplemented!()
+}
+
+#[cfg(feature = "go_std")]
 fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_fs::Config::default();
     cfg.working_dir = Some("./");
@@ -64,6 +71,11 @@ fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
         eprint!("{}", el);
     }
     result
+}
+
+#[cfg(not(feature = "go_std"))]
+fn run_string(_source: &str, _trace: bool) -> Result<(), engine::ErrorList> {
+    unimplemented!()
 }
 
 #[cfg(feature = "read_zip")]

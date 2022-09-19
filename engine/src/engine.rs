@@ -5,6 +5,7 @@
 pub use cg::SourceRead;
 
 use crate::ffi::Ffi;
+#[cfg(feature = "go_std")]
 use crate::std::os;
 use std::rc::Rc;
 extern crate goscript_codegen as cg;
@@ -19,11 +20,17 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Engine {
         let ffi = vm::ffi::FfiFactory::new();
-        let mut e = Engine { ffi };
-        crate::std::register(&mut e);
-        e
+        #[cfg(feature = "go_std")]
+        {
+            let mut e = Engine { ffi };
+            crate::std::register(&mut e);
+            e
+        }
+        #[cfg(not(feature = "go_std"))]
+        Engine { ffi }
     }
 
+    #[cfg(feature = "go_std")]
     pub fn set_std_io(
         &self,
         std_in: Option<Box<dyn std::io::Read + Sync + Send>>,

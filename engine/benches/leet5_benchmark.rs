@@ -6,6 +6,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 extern crate goscript_engine as engine;
 
+#[cfg(feature = "go_std")]
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_fs::Config::default();
     cfg.working_dir = Some("./");
@@ -13,6 +14,11 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     engine::run_fs::run(cfg, path)
+}
+
+#[cfg(not(feature = "go_std"))]
+fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
+    unimplemented!()
 }
 
 fn leetcode5() {
