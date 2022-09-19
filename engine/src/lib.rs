@@ -5,6 +5,8 @@
 mod engine;
 #[cfg(all(feature = "read_fs", feature = "go_std"))]
 pub mod run_fs;
+#[cfg(feature = "read_map")]
+pub mod run_map;
 #[cfg(feature = "read_zip")]
 pub mod run_zip;
 
@@ -12,7 +14,7 @@ pub mod run_zip;
 mod std;
 
 #[macro_use]
-mod ffi;
+pub mod ffi;
 
 #[cfg(feature = "go_std")]
 #[macro_use]

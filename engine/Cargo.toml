@@ -8,6 +8,7 @@ edition = "2021"
 default = ["read_fs", "async", "go_std"]
 read_fs = []
 read_zip = ["dep:zip"] 
+read_map = []
 async = ["goscript-codegen/async", "goscript-vm/async"]  
 go_std = []
   

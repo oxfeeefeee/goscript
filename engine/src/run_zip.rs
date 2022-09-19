@@ -83,7 +83,7 @@ impl<'a> ZipReader<'a> {
     }
 
     fn temp_file_path() -> &'static str {
-        &"temp_file_in_memory_for_testing_and_you_can_only_have_one_ZipReader.gos"
+        &"temp_file_in_memory_for_testing_and_you_can_only_have_one____from_ZipReader.gos"
     }
 
     fn is_temp_file(p: &Path) -> bool {

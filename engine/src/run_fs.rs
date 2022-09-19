@@ -63,7 +63,7 @@ impl<'a> FsReader<'a> {
     }
 
     pub fn temp_file_path() -> &'static str {
-        &"./temp_file_in_memory_for_testing_and_you_can_only_have_one.gos"
+        &"./temp_file_in_memory_for_testing_and_you_can_only_have_one____from_FsReader.gos"
     }
 }
 
