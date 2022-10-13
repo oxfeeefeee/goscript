@@ -2199,9 +2199,13 @@ impl PartialEq for GosValue {
             (ValueType::Uint64, ValueType::Uint64) => self.as_uint64().eq(b.as_uint64()),
             (ValueType::Float32, ValueType::Float32) => self.as_float32().eq(b.as_float32()),
             (ValueType::Float64, ValueType::Float64) => self.as_float64().eq(b.as_float64()),
-            (ValueType::Complex64, ValueType::Complex64) => self.as_uint64().eq(b.as_uint64()),
-            (ValueType::Function, ValueType::Function) => self.as_uint64().eq(b.as_uint64()),
-            (ValueType::Package, ValueType::Package) => self.as_uint64().eq(b.as_uint64()),
+            (ValueType::Complex64, ValueType::Complex64) => {
+                let x = self.as_complex64();
+                let y = b.as_complex64();
+                x.r == y.r && x.i == y.i
+            }
+            (ValueType::Function, ValueType::Function) => self.as_function().eq(b.as_function()),
+            (ValueType::Package, ValueType::Package) => self.as_package().eq(b.as_package()),
             (ValueType::Metadata, ValueType::Metadata) => self.as_metadata().eq(b.as_metadata()),
             (ValueType::Complex128, ValueType::Complex128) => {
                 let x = self.as_complex128();
