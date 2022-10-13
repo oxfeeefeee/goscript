@@ -17,7 +17,8 @@ use super::obj;
 use super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::selection::*;
 use super::typ;
-use std::collections::{HashMap, HashSet};
+use goscript_parser::Map;
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
 
@@ -55,7 +56,7 @@ pub struct MethodSet {
 impl MethodSet {
     pub fn new(t: &TypeKey, objs: &mut TCObjects) -> MethodSet {
         // method set up to the current depth
-        let mut mset_base: HashMap<String, MethodCollision> = HashMap::new();
+        let mut mset_base: Map<String, MethodCollision> = Map::new();
         let (tkey, is_ptr) = try_deref(*t, objs);
         // *typ where typ is an interface has no methods.
         if is_ptr && objs.types[tkey].try_as_interface().is_some() {
@@ -78,8 +79,8 @@ impl MethodSet {
             // embedded types found at current depth
             let mut next = vec![];
             // field and method sets at current depth
-            let mut fset: HashMap<String, FieldCollision> = HashMap::new();
-            let mut mset: HashMap<String, MethodCollision> = HashMap::new();
+            let mut fset: Map<String, FieldCollision> = Map::new();
+            let mut mset: Map<String, MethodCollision> = Map::new();
             for et in current.iter() {
                 let mut tobj = &objs.types[et.typ];
                 if let typ::Type::Named(detail) = tobj {
@@ -585,8 +586,8 @@ fn consolidate_multiples(list: Vec<EmbeddedType>, objs: &TCObjects) -> Vec<Embed
     if list.len() == 0 {
         return result;
     }
-    // lookup finds the identical 'typ' in 'map', returns the value in HashMap
-    let lookup = |map: &HashMap<TypeKey, usize>, typ: TypeKey| {
+    // lookup finds the identical 'typ' in 'map', returns the value in Map
+    let lookup = |map: &Map<TypeKey, usize>, typ: TypeKey| {
         if let Some(i) = map.get(&typ) {
             Some(*i)
         } else {
@@ -595,7 +596,7 @@ fn consolidate_multiples(list: Vec<EmbeddedType>, objs: &TCObjects) -> Vec<Embed
                 .map(|(_k, i)| *i)
         }
     };
-    let mut map = HashMap::new();
+    let mut map = Map::new();
     for et in list.into_iter() {
         if let Some(i) = lookup(&map, et.typ) {
             result[i].multiples = true;
@@ -618,7 +619,7 @@ enum FieldCollision {
 /// If multiples is set, f appears multiple times
 /// and is treated as a collision.
 fn add_to_field_set(
-    set: &mut HashMap<String, FieldCollision>,
+    set: &mut Map<String, FieldCollision>,
     f: &ObjKey,
     multiples: bool,
     objs: &TCObjects,
@@ -647,7 +648,7 @@ enum MethodCollision {
 // If multiples is set, every function in list appears multiple times
 // and is treated as a collision.
 fn add_to_method_set(
-    set: &mut HashMap<String, MethodCollision>,
+    set: &mut Map<String, MethodCollision>,
     list: &Vec<ObjKey>,
     indices: &Vec<usize>,
     indirect: bool,

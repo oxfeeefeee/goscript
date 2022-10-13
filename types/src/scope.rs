@@ -11,8 +11,7 @@
 
 #![allow(dead_code)]
 use super::objects::{ObjKey, ScopeKey, TCObjects};
-use goscript_parser::position;
-use std::collections::HashMap;
+use goscript_parser::{Map, Pos};
 use std::fmt;
 
 /// A Scope maintains a set of objects and links to its containing
@@ -21,9 +20,9 @@ use std::fmt;
 pub struct Scope {
     parent: Option<ScopeKey>,
     children: Vec<ScopeKey>,
-    elems: HashMap<String, ObjKey>,
-    pos: position::Pos, // scope pos; may be invalid
-    end: position::Pos,
+    elems: Map<String, ObjKey>,
+    pos: Pos, // scope pos; may be invalid
+    end: Pos,
     comment: String, // for debugging only
     is_func: bool,   // set if this is a function scope (internal use only)
 }
@@ -31,15 +30,15 @@ pub struct Scope {
 impl Scope {
     pub fn new(
         parent: Option<ScopeKey>,
-        pos: position::Pos,
-        end: position::Pos,
+        pos: Pos,
+        end: Pos,
         comment: String,
         is_func: bool,
     ) -> Scope {
         Scope {
             parent: parent,
             children: Vec::new(),
-            elems: HashMap::new(),
+            elems: Map::new(),
             pos: pos,
             end: end,
             comment: comment,
@@ -59,7 +58,7 @@ impl Scope {
         &self.children
     }
 
-    pub fn elems(&self) -> &HashMap<String, ObjKey> {
+    pub fn elems(&self) -> &Map<String, ObjKey> {
         &self.elems
     }
 
@@ -68,19 +67,19 @@ impl Scope {
         self.elems.len()
     }
 
-    pub fn pos(&self) -> position::Pos {
+    pub fn pos(&self) -> Pos {
         self.pos
     }
 
-    pub fn set_pos(&mut self, p: position::Pos) {
+    pub fn set_pos(&mut self, p: Pos) {
         self.pos = p;
     }
 
-    pub fn end(&self) -> position::Pos {
+    pub fn end(&self) -> Pos {
         self.end
     }
 
-    pub fn set_end(&mut self, e: position::Pos) {
+    pub fn set_end(&mut self, e: Pos) {
         self.end = e;
     }
 
@@ -88,7 +87,7 @@ impl Scope {
         self.is_func
     }
 
-    pub fn contains(&self, pos: position::Pos) -> bool {
+    pub fn contains(&self, pos: Pos) -> bool {
         self.pos <= pos && pos <= self.end
     }
 
@@ -99,7 +98,7 @@ impl Scope {
         keys
     }
 
-    pub fn innermost(&self, _pos: position::Pos) -> Option<ScopeKey> {
+    pub fn innermost(&self, _pos: Pos) -> Option<ScopeKey> {
         unimplemented!() // used by Eval() which is not used?
     }
 
@@ -120,7 +119,7 @@ impl Scope {
     pub fn lookup_parent(
         self_key: &ScopeKey,
         name: &str,
-        pos: Option<position::Pos>,
+        pos: Option<Pos>,
         objs: &TCObjects,
     ) -> Option<(ScopeKey, ObjKey)> {
         let mut scope_key = *self_key;

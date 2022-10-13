@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 pub mod ast;
 pub mod errors;
+mod map;
 pub mod objects;
 mod parser;
 pub mod position;
@@ -14,6 +15,7 @@ pub mod token;
 pub mod visitor;
 
 pub use ast::Expr;
+pub use map::{Map, MapIter};
 pub use parser::Parser;
 pub use position::{FilePos, FileSet, Pos};
 pub use token::Token;

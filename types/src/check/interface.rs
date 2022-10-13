@@ -35,10 +35,10 @@ use super::super::typ;
 use super::check::{Checker, FilesContext, RcIfaceInfo};
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::{FieldKey, IdentKey, Objects as AstObjects};
-use goscript_parser::Pos;
+use goscript_parser::{Map, Pos};
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
 use std::rc::Rc;
@@ -257,7 +257,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         let iinfo = if iface.methods.list.len() == 0 {
             Rc::new(IfaceInfo::new_empty())
         } else {
-            let mut mset = HashMap::new();
+            let mut mset = Map::new();
             let mut methods = vec![];
             let mut embeddeds = vec![];
             let mut positions = vec![];
@@ -439,7 +439,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
     /// like Checker::declare_in_set but for method infos.
     fn declare_in_method_set(
         &self,
-        set: &mut HashMap<String, MethodInfo>,
+        set: &mut Map<String, MethodInfo>,
         mi: MethodInfo,
         pos: Pos,
     ) -> bool {

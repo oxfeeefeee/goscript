@@ -309,7 +309,7 @@ impl Type {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BasicType {
     Invalid,
     // predeclared types

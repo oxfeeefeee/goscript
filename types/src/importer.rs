@@ -15,8 +15,7 @@ use goscript_parser::ast;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::position;
-use goscript_parser::{FileSet, Parser};
-use std::collections::HashMap;
+use goscript_parser::{FileSet, Map, Parser};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -49,7 +48,7 @@ pub trait SourceRead {
 /// importer must always return the same package (but given two different import paths,
 /// an importer may still return the same package by mapping them to the same package
 /// paths).
-#[derive(PartialEq, Eq, Hash, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct ImportKey {
     pub path: String,
     pub dir: String, // makes a difference only when importing local files
@@ -68,8 +67,8 @@ pub struct Importer<'a, S: SourceRead> {
     trace_config: &'a TraceConfig,
     reader: &'a S,
     fset: &'a mut FileSet,
-    pkgs: &'a mut HashMap<String, PackageKey>,
-    all_results: &'a mut HashMap<PackageKey, TypeInfo>,
+    pkgs: &'a mut Map<String, PackageKey>,
+    all_results: &'a mut Map<PackageKey, TypeInfo>,
     ast_objs: &'a mut AstObjects,
     tc_objs: &'a mut TCObjects,
     errors: &'a ErrorList,
@@ -81,8 +80,8 @@ impl<'a, S: SourceRead> Importer<'a, S> {
         config: &'a TraceConfig,
         reader: &'a S,
         fset: &'a mut FileSet,
-        pkgs: &'a mut HashMap<String, PackageKey>,
-        all_results: &'a mut HashMap<PackageKey, TypeInfo>,
+        pkgs: &'a mut Map<String, PackageKey>,
+        all_results: &'a mut Map<PackageKey, TypeInfo>,
         ast_objs: &'a mut AstObjects,
         tc_objs: &'a mut TCObjects,
         errors: &'a ErrorList,

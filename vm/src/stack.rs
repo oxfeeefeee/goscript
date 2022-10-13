@@ -144,7 +144,7 @@ impl std::fmt::Debug for Stack {
 
 /// store iterators for Opcode::RANGE
 pub struct RangeStack {
-    maps: Vec<GosHashMapIter<'static>>,
+    maps: Vec<GosMapIter<'static>>,
     slices: Vec<SliceEnumIter<'static, AnyElem>>,
     strings: Vec<StringEnumIter<'static>>,
 }

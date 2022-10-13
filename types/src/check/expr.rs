@@ -20,8 +20,8 @@ use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext};
 use super::stmt::BodyContainer;
 use goscript_parser::ast::Node;
-use goscript_parser::{Expr, Pos, Token};
-use std::collections::{HashMap, HashSet};
+use goscript_parser::{Expr, Map, Pos, Token};
+use std::collections::HashSet;
 
 ///Basic algorithm:
 ///
@@ -1217,7 +1217,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
                             .try_as_interface()
                             .is_some();
                         let (t_key, t_elem) = (detail.key(), detail.elem());
-                        let mut visited = HashMap::with_capacity(cl.elts.len());
+                        let mut visited = Map::new();
                         for e in cl.elts.iter() {
                             let kv = match e {
                                 Expr::KeyValue(kv) => kv,

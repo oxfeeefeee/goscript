@@ -22,9 +22,8 @@ use super::interface::MethodInfo;
 use crate::SourceRead;
 use goscript_parser::ast::{self, Expr, FieldList, Node};
 use goscript_parser::objects::{FuncTypeKey, IdentKey};
-use goscript_parser::{Pos, Token};
+use goscript_parser::{Map, Pos, Token};
 use std::borrow::Borrow;
-use std::collections::HashMap;
 
 impl<'a, S: SourceRead> Checker<'a, S> {
     /// ident type-checks identifier ikey and initializes x with the value or type of ikey.
@@ -778,7 +777,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         None
     }
 
-    fn declare_in_set(&self, set: &mut HashMap<String, ObjKey>, fld: ObjKey, pos: Pos) -> bool {
+    fn declare_in_set(&self, set: &mut Map<String, ObjKey>, fld: ObjKey, pos: Pos) -> bool {
         if let Some(okey) = self.insert_obj_to_set(set, fld) {
             self.error(pos, format!("{} redeclared", self.lobj(fld).name()));
             self.report_alt_decl(okey);
@@ -792,7 +791,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         &mut self,
         fields: &mut Vec<ObjKey>,
         tags: &mut Option<Vec<Option<String>>>,
-        oset: &mut HashMap<String, ObjKey>,
+        oset: &mut Map<String, ObjKey>,
         ty: TypeKey,
         tag: Option<String>,
         ikey: IdentKey,
@@ -836,7 +835,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
 
         let mut field_objs: Vec<ObjKey> = vec![];
         let mut tags: Option<Vec<Option<String>>> = None;
-        let mut oset: HashMap<String, ObjKey> = HashMap::new();
+        let mut oset: Map<String, ObjKey> = Map::new();
         for f in fields {
             let field = &self.ast_objs.fields[*f];
             let fnames = field.names.clone();

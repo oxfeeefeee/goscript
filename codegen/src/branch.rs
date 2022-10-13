@@ -8,10 +8,9 @@
 use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::objects::AssignStmtKey;
-use goscript_parser::token::Token;
+use goscript_parser::{Map, Token};
 use goscript_types::ObjKey as TCObjKey;
 use goscript_vm::value::*;
-use std::collections::HashMap;
 
 /// branch points of break and continue
 pub struct BranchBlock {
@@ -34,7 +33,7 @@ impl BranchBlock {
 pub struct BranchHelper {
     block_stack: Vec<BranchBlock>,
     next_block_label: Option<TCObjKey>,
-    labels: HashMap<TCObjKey, usize>,
+    labels: Map<TCObjKey, usize>,
 }
 
 impl BranchHelper {
@@ -42,11 +41,11 @@ impl BranchHelper {
         BranchHelper {
             block_stack: vec![],
             next_block_label: None,
-            labels: HashMap::new(),
+            labels: Map::new(),
         }
     }
 
-    pub fn labels(&self) -> &HashMap<TCObjKey, usize> {
+    pub fn labels(&self) -> &Map<TCObjKey, usize> {
         &self.labels
     }
 

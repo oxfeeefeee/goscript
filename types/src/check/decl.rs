@@ -22,9 +22,7 @@ use super::check::{Checker, FilesContext, ObjContext};
 use super::stmt::BodyContainer;
 use goscript_parser::ast::{self, Expr, Node};
 use goscript_parser::objects::IdentKey;
-use goscript_parser::position::Pos;
-use goscript_parser::Token;
-use std::collections::HashMap;
+use goscript_parser::{Map, Pos, Token};
 
 impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn report_alt_decl(&self, okey: ObjKey) {
@@ -500,7 +498,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         // don't use TypeName.is_alias (requires fully set up object)
         debug_assert!(!self.decl_info(self.obj_map[&okey]).as_type().alias);
 
-        let mut mset: HashMap<String, ObjKey> = HashMap::new();
+        let mut mset: Map<String, ObjKey> = Map::new();
         let type_key = self.lobj(okey).typ().unwrap();
         // type could be invalid
         if let Some(named) = self.otype(type_key).try_as_named() {

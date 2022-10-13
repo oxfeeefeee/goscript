@@ -579,7 +579,7 @@ impl StdType {
 
 #[derive(Clone, Debug)]
 struct StdMapIterInner {
-    iter: GosHashMapIter<'static>,
+    iter: GosMapIter<'static>,
     item: Option<(GosValue, GosValue)>,
 }
 
@@ -600,7 +600,7 @@ impl StdMapIter {
     fn map_range(ctx: &FfiCtx, v: &StdValue) -> RuntimeResult<GosValue> {
         let val = v.val(ctx)?;
         let mref = val.as_map().unwrap().0.borrow_data();
-        let iter: GosHashMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
+        let iter: GosMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
         let metas = &ctx.vm_objs.metas;
         let map_meta = metas[v.meta().unwrap().underlying(metas).key].as_map();
         let (k, _) = (map_meta.0.clone(), map_meta.1.clone());

@@ -6,11 +6,10 @@ use super::consts::Consts;
 use super::types::TypeLookup;
 use goscript_parser::ast::*;
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
-use goscript_parser::Pos;
+use goscript_parser::{Map, Pos};
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use std::collections::HashMap;
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,8 +45,8 @@ impl Addr {
         ast_objs: &AstObjects,
         packages: &PackageObjs,
         inst_index: usize,
-        labels: &HashMap<TCObjKey, usize>,
-        cst_map: &HashMap<usize, usize>,
+        labels: &Map<TCObjKey, usize>,
+        cst_map: &Map<usize, usize>,
     ) -> OpIndex {
         // Zero values are the first batch of consts
         match self {
@@ -311,8 +310,8 @@ impl InterInst {
         ast_objs: &AstObjects,
         packages: &PackageObjs,
         inst_index: usize,
-        labels: &HashMap<TCObjKey, usize>,
-        cst_map: &HashMap<usize, usize>,
+        labels: &Map<TCObjKey, usize>,
+        cst_map: &Map<usize, usize>,
     ) -> Instruction {
         Instruction {
             op0: self.op0,
@@ -366,8 +365,8 @@ pub struct FuncCtx<'c> {
     pub up_ptrs: Vec<ValueDesc>,
     local_zeros: Vec<GosValue>,
 
-    entities: HashMap<TCObjKey, Addr>,
-    uv_entities: HashMap<TCObjKey, Addr>,
+    entities: Map<TCObjKey, Addr>,
+    uv_entities: Map<TCObjKey, Addr>,
     local_alloc: usize,
 }
 
@@ -381,8 +380,8 @@ impl<'a> FuncCtx<'a> {
             pos: vec![],
             up_ptrs: vec![],
             local_zeros: vec![],
-            entities: HashMap::new(),
-            uv_entities: HashMap::new(),
+            entities: Map::new(),
+            uv_entities: Map::new(),
             local_alloc: 0,
         }
     }
@@ -720,8 +719,8 @@ impl<'a> FuncCtx<'a> {
         self,
         asto: &AstObjects,
         vmctx: &mut CodeGenVMCtx,
-        labels: &HashMap<TCObjKey, usize>,
-        cst_map: &HashMap<usize, usize>,
+        labels: &Map<TCObjKey, usize>,
+        cst_map: &Map<usize, usize>,
     ) {
         let code: Vec<Instruction> = self
             .code

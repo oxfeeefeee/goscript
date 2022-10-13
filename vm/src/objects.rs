@@ -15,10 +15,10 @@ use crate::stack::Stack;
 use crate::value::*;
 use goscript_parser::objects::*;
 use goscript_parser::piggy_key_type;
+use goscript_parser::{Map, MapIter};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
-use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Write};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -61,19 +61,19 @@ impl VMObjects {
 // ----------------------------------------------------------------------------
 // MapObj
 
-pub type GosHashMap = HashMap<GosValue, GosValue>;
+pub type GosMap = Map<GosValue, GosValue>;
 
-pub type GosHashMapIter<'a> = std::collections::hash_map::Iter<'a, GosValue, GosValue>;
+pub type GosMapIter<'a> = MapIter<'a, GosValue, GosValue>;
 
 #[derive(Debug)]
 pub struct MapObj {
-    map: RefCell<GosHashMap>,
+    map: RefCell<GosMap>,
 }
 
 impl MapObj {
     pub fn new() -> MapObj {
         MapObj {
-            map: RefCell::new(HashMap::new()),
+            map: RefCell::new(Map::new()),
         }
     }
 
@@ -104,17 +104,17 @@ impl MapObj {
     }
 
     #[inline]
-    pub fn borrow_data_mut(&self) -> RefMut<GosHashMap> {
+    pub fn borrow_data_mut(&self) -> RefMut<GosMap> {
         self.map.borrow_mut()
     }
 
     #[inline]
-    pub fn borrow_data(&self) -> Ref<GosHashMap> {
+    pub fn borrow_data(&self) -> Ref<GosMap> {
         self.map.borrow()
     }
 
     #[inline]
-    pub fn clone_inner(&self) -> RefCell<GosHashMap> {
+    pub fn clone_inner(&self) -> RefCell<GosMap> {
         self.map.clone()
     }
 }
@@ -918,6 +918,27 @@ impl PartialEq for StructObj {
     }
 }
 
+impl PartialOrd for StructObj {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// For when used as a BTreeMap key
+impl Ord for StructObj {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let other_fields = other.borrow_fields();
+        for (i, f) in self.borrow_fields().iter().enumerate() {
+            let order = f.cmp(&other_fields[i]);
+            if order != std::cmp::Ordering::Equal {
+                return order;
+            }
+        }
+        std::cmp::Ordering::Equal
+    }
+}
+
 impl Hash for StructObj {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -1036,11 +1057,30 @@ impl Eq for InterfaceObj {}
 
 impl PartialEq for InterfaceObj {
     #[inline]
-    fn eq(&self, other: &InterfaceObj) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Gos(x, _), Self::Gos(y, _)) => x == y,
             (Self::Ffi(x), Self::Ffi(y)) => Rc::ptr_eq(&x.ffi_obj, &y.ffi_obj),
             _ => false,
+        }
+    }
+}
+
+impl PartialOrd for InterfaceObj {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// For when used as a BTreeMap key
+impl Ord for InterfaceObj {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Gos(x, _), Self::Gos(y, _)) => x.cmp(y),
+            (Self::Ffi(x), Self::Ffi(y)) => Rc::as_ptr(&x.ffi_obj).cmp(&Rc::as_ptr(&y.ffi_obj)),
+            (Self::Gos(_, _), Self::Ffi(_)) => std::cmp::Ordering::Greater,
+            (Self::Ffi(_), Self::Gos(_, _)) => std::cmp::Ordering::Less,
         }
     }
 }
@@ -1646,7 +1686,7 @@ impl WeakUpValue {
 #[derive(Clone, Debug)]
 pub struct GosClosureObj {
     pub func: FunctionKey,
-    pub uvs: Option<HashMap<usize, UpValue>>,
+    pub uvs: Option<Map<usize, UpValue>>,
     pub recv: Option<GosValue>,
     pub meta: Meta,
 }
@@ -1769,10 +1809,10 @@ impl ClosureObj {
 pub struct PackageVal {
     members: Vec<RefCell<GosValue>>, // imports, const, var, func are all stored here
     member_types: Vec<ValueType>,
-    member_indices: HashMap<String, OpIndex>,
+    member_indices: Map<String, OpIndex>,
     init_funcs: Vec<GosValue>,
     // maps func_member_index of the constructor to pkg_member_index
-    var_mapping: RefCell<Option<HashMap<OpIndex, OpIndex>>>,
+    var_mapping: RefCell<Option<Map<OpIndex, OpIndex>>>,
 }
 
 impl PackageVal {
@@ -1780,9 +1820,9 @@ impl PackageVal {
         PackageVal {
             members: vec![],
             member_types: vec![],
-            member_indices: HashMap::new(),
+            member_indices: Map::new(),
             init_funcs: vec![],
-            var_mapping: RefCell::new(Some(HashMap::new())),
+            var_mapping: RefCell::new(Some(Map::new())),
         }
     }
 

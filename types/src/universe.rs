@@ -17,7 +17,7 @@ use super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey, Types};
 use super::package::*;
 use super::scope::*;
 use super::typ::*;
-use std::collections::HashMap;
+use goscript_parser::Map;
 
 /// ExprKind describes the kind of an expression; the kind
 /// determines if an expression is valid in 'statement context'.
@@ -29,7 +29,7 @@ pub enum ExprKind {
 }
 
 /// A Builtin is the id of a builtin function.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Builtin {
     Append,
     Cap,
@@ -83,8 +83,8 @@ pub struct Universe {
     indir: ObjKey,
     // guard_sig is a empty signature type used to guard against func cycles
     guard_sig: TypeKey,
-    types: HashMap<BasicType, TypeKey>,
-    builtins: HashMap<Builtin, BuiltinInfo>,
+    types: Map<BasicType, TypeKey>,
+    builtins: Map<Builtin, BuiltinInfo>,
 }
 
 impl Universe {
@@ -137,11 +137,11 @@ impl Universe {
         &self.unsafe_
     }
 
-    pub fn types(&self) -> &HashMap<BasicType, TypeKey> {
+    pub fn types(&self) -> &Map<BasicType, TypeKey> {
         &self.types
     }
 
-    pub fn builtins(&self) -> &HashMap<Builtin, BuiltinInfo> {
+    pub fn builtins(&self) -> &Map<Builtin, BuiltinInfo> {
         &self.builtins
     }
 
@@ -194,7 +194,7 @@ impl Universe {
     ///    Error() string
     ///}
     fn def_error_type(
-        types: &HashMap<BasicType, TypeKey>,
+        types: &Map<BasicType, TypeKey>,
         universe: &ScopeKey,
         unsafe_: &PackageKey,
         objs: &mut TCObjects,
@@ -232,7 +232,7 @@ impl Universe {
     }
 
     fn def_basic_types(
-        types: &HashMap<BasicType, TypeKey>,
+        types: &Map<BasicType, TypeKey>,
         universe: &ScopeKey,
         unsafe_: &PackageKey,
         objs: &mut TCObjects,
@@ -246,7 +246,7 @@ impl Universe {
         }
     }
 
-    fn basic_types(tobjs: &mut Types) -> HashMap<BasicType, TypeKey> {
+    fn basic_types(tobjs: &mut Types) -> Map<BasicType, TypeKey> {
         vec![
             // use vec becasue array doesn't have into_iter()!
             // may be more expensive, but looks better this way.
@@ -287,21 +287,21 @@ impl Universe {
         ]
         .into_iter()
         .map(|(t, i, n)| (t, tobjs.insert(Type::Basic(BasicDetail::new(t, i, n)))))
-        .collect::<HashMap<_, _>>()
+        .collect::<Map<_, _>>()
     }
 
-    fn alias_types(tobjs: &mut Types) -> HashMap<BasicType, TypeKey> {
+    fn alias_types(tobjs: &mut Types) -> Map<BasicType, TypeKey> {
         [
             (BasicType::Byte, BasicInfo::IsInteger, "byte"),
             (BasicType::Rune, BasicInfo::IsInteger, "rune"),
         ]
         .iter()
         .map(|(t, i, n)| (*t, tobjs.insert(Type::Basic(BasicDetail::new(*t, *i, n)))))
-        .collect::<HashMap<_, _>>()
+        .collect::<Map<_, _>>()
     }
 
     fn def_consts(
-        types: &HashMap<BasicType, TypeKey>,
+        types: &Map<BasicType, TypeKey>,
         universe: &ScopeKey,
         unsafe_: &PackageKey,
         objs: &mut TCObjects,
@@ -328,7 +328,7 @@ impl Universe {
     }
 
     fn def_nil(
-        types: &HashMap<BasicType, TypeKey>,
+        types: &Map<BasicType, TypeKey>,
         universe: &ScopeKey,
         unsafe_: &PackageKey,
         objs: &mut TCObjects,
@@ -337,7 +337,7 @@ impl Universe {
         Universe::def(objs.lobjs.insert(nil), universe, unsafe_, objs);
     }
 
-    fn builtin_funcs() -> HashMap<Builtin, BuiltinInfo> {
+    fn builtin_funcs() -> Map<Builtin, BuiltinInfo> {
         vec![
             // use vec becasue array doesn't have into_iter()!
             (Builtin::Append, "append", 1, true, ExprKind::Expression),
@@ -380,11 +380,11 @@ impl Universe {
                 },
             )
         })
-        .collect::<HashMap<_, _>>()
+        .collect::<Map<_, _>>()
     }
 
     fn def_builtins(
-        builtins: &HashMap<Builtin, BuiltinInfo>,
+        builtins: &Map<Builtin, BuiltinInfo>,
         typ: TypeKey,
         universe: &ScopeKey,
         unsafe_: &PackageKey,

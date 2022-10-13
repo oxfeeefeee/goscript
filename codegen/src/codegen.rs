@@ -10,16 +10,14 @@ use crate::types::{SelectionType, TypeCache, TypeLookup};
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
-use goscript_parser::position::Pos;
-use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
+use goscript_parser::{Map, Pos, Token};
 use goscript_types::{
     identical_ignore_tags, Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey,
     TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
 };
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::FromIterator;
 
@@ -2443,16 +2441,16 @@ pub type IfaceSelector = Selector<(TCTypeKey, TCTypeKey)>;
 
 pub type StructSelector = Selector<Vec<OpIndex>>;
 
-pub struct Selector<K: Eq + Hash + Clone> {
+pub struct Selector<K: Eq + Hash + Ord + Clone> {
     vec: Vec<K>,
-    mapping: HashMap<K, OpIndex>,
+    mapping: Map<K, OpIndex>,
 }
 
-impl<K: Eq + Hash + Clone> Selector<K> {
+impl<K: Eq + Hash + Ord + Clone> Selector<K> {
     pub fn new() -> Selector<K> {
         Selector {
             vec: vec![],
-            mapping: HashMap::new(),
+            mapping: Map::new(),
         }
     }
 

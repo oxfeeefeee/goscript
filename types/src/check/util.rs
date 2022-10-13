@@ -24,8 +24,7 @@ use super::resolver::DeclInfo;
 use std::cmp::Ordering;
 
 use goscript_parser::objects::IdentKey;
-use goscript_parser::{ast, ast::Expr, position::FilePos, position::Pos};
-use std::collections::HashMap;
+use goscript_parser::{ast, ast::Expr, FilePos, Map, Pos};
 
 macro_rules! error_operand {
     ($x:ident, $fmt:expr, $checker:ident) => {
@@ -384,11 +383,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         self.tc_objs.decls[self.octx.decl.unwrap()].add_dep(to);
     }
 
-    pub fn insert_obj_to_set(
-        &self,
-        set: &mut HashMap<String, ObjKey>,
-        okey: ObjKey,
-    ) -> Option<ObjKey> {
+    pub fn insert_obj_to_set(&self, set: &mut Map<String, ObjKey>, okey: ObjKey) -> Option<ObjKey> {
         let obj_val = self.lobj(okey);
         let id = obj_val.id(self.tc_objs).to_string();
         set.insert(id, okey)

@@ -18,16 +18,15 @@ use super::check::Checker;
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{BlockStmt, BranchStmt, Decl, Stmt};
 use goscript_parser::objects::{LabeledStmtKey, Objects as AstObjects};
-use goscript_parser::{Pos, Token};
+use goscript_parser::{Map, Pos, Token};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug)]
 struct Block {
     parent: Option<Rc<RefCell<Block>>>, // enclosing block
     lstmt: Option<LabeledStmtKey>,      // labeled statement to which this block belongs
-    labels: HashMap<String, LabeledStmtKey>,
+    labels: Map<String, LabeledStmtKey>,
 }
 
 impl Block {
@@ -35,7 +34,7 @@ impl Block {
         Block {
             parent: parent,
             lstmt: stmt,
-            labels: HashMap::new(),
+            labels: Map::new(),
         }
     }
 

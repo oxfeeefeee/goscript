@@ -16,10 +16,8 @@ use super::package::Package;
 use super::typ;
 use super::universe;
 use super::universe::Universe;
-use goscript_parser::ast;
-use goscript_parser::position;
+use goscript_parser::{ast, Map, Pos};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Write;
 
@@ -205,18 +203,18 @@ impl fmt::Display for ObjColor {
 pub struct LangObj {
     entity_type: EntityType,
     parent: Option<ScopeKey>,
-    pos: position::Pos,
+    pos: Pos,
     pkg: Option<PackageKey>,
     name: String,
     typ: Option<TypeKey>,
     order: u32,
     color: ObjColor,
-    scope_pos: position::Pos,
+    scope_pos: Pos,
 }
 
 impl LangObj {
     pub fn new_pkg_name(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         imported: PackageKey,
@@ -233,7 +231,7 @@ impl LangObj {
     }
 
     pub fn new_const(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -243,7 +241,7 @@ impl LangObj {
     }
 
     pub fn new_type_name(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -252,7 +250,7 @@ impl LangObj {
     }
 
     pub fn new_var(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -267,7 +265,7 @@ impl LangObj {
     }
 
     pub fn new_param_var(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -282,7 +280,7 @@ impl LangObj {
     }
 
     pub fn new_field(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -298,7 +296,7 @@ impl LangObj {
     }
 
     pub fn new_func(
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -306,12 +304,7 @@ impl LangObj {
         LangObj::new(EntityType::Func(false), pos, pkg, name, typ)
     }
 
-    pub fn new_label(
-        pos: position::Pos,
-        pkg: Option<PackageKey>,
-        name: String,
-        univ: &Universe,
-    ) -> LangObj {
+    pub fn new_label(pos: Pos, pkg: Option<PackageKey>, name: String, univ: &Universe) -> LangObj {
         let t = univ.types()[&typ::BasicType::Invalid];
         LangObj::new(EntityType::Label(false), pos, pkg, name, Some(t))
     }
@@ -336,7 +329,7 @@ impl LangObj {
         self.parent
     }
 
-    pub fn pos(&self) -> position::Pos {
+    pub fn pos(&self) -> Pos {
         self.pos
     }
 
@@ -381,7 +374,7 @@ impl LangObj {
         self.parent = parent
     }
 
-    pub fn scope_pos(&self) -> &position::Pos {
+    pub fn scope_pos(&self) -> &Pos {
         &self.scope_pos
     }
 
@@ -395,7 +388,7 @@ impl LangObj {
         self.color = color
     }
 
-    pub fn set_scope_pos(&mut self, pos: position::Pos) {
+    pub fn set_scope_pos(&mut self, pos: Pos) {
         self.scope_pos = pos
     }
 
@@ -465,7 +458,7 @@ impl LangObj {
 
     fn new(
         entity_type: EntityType,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -523,11 +516,11 @@ pub fn type_name_is_alias(okey: ObjKey, objs: &TCObjects) -> bool {
 // ObjSet
 //
 /// An ObjSet is a set of objects identified by their unique id.
-pub struct ObjSet(HashMap<String, ObjKey>);
+pub struct ObjSet(Map<String, ObjKey>);
 
 impl ObjSet {
     pub fn new() -> ObjSet {
-        ObjSet(HashMap::new())
+        ObjSet(Map::new())
     }
 
     pub fn insert(&self, okey: ObjKey, objs: &TCObjects) -> Option<&ObjKey> {

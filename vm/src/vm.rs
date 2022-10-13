@@ -7,10 +7,10 @@ use crate::gc::{collect, GcContainer};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
+use goscript_parser::Map;
 use goscript_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[cfg(feature = "async")]
@@ -201,7 +201,7 @@ struct CallFrame {
     stack_base: OpIndex,
     var_ptrs: Option<Vec<UpValue>>,
     // closures that have upvalues pointing to this frame
-    referred_by: Option<HashMap<OpIndex, Referers>>,
+    referred_by: Option<Map<OpIndex, Referers>>,
 
     defer_stack: Option<Vec<DeferredCall>>,
 }
@@ -220,7 +220,7 @@ impl CallFrame {
 
     fn add_referred_by(&mut self, index: OpIndex, typ: ValueType, uv: &UpValue) {
         if self.referred_by.is_none() {
-            self.referred_by = Some(HashMap::new());
+            self.referred_by = Some(Map::new());
         }
         let map = self.referred_by.as_mut().unwrap();
         let weak = uv.downgrade();
@@ -392,7 +392,7 @@ impl<'a> Fiber<'a> {
         let mut code = &func.code;
 
         let mut total_inst = 0;
-        //let mut stats: HashMap<Opcode, usize> = HashMap::new();
+        //let mut stats: Map<Opcode, usize> = Map::new();
         loop {
             let mut frame = self.frames.last_mut().unwrap();
             let mut result: Result = Result::Continue;

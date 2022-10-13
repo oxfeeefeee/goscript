@@ -9,7 +9,7 @@ use crate::value::*;
 use crate::value::{GosValue, RuntimeResult};
 #[cfg(feature = "async")]
 use futures_lite::future::Future;
-use std::collections::HashMap;
+use goscript_parser::Map;
 #[cfg(feature = "async")]
 use std::pin::Pin;
 use std::rc::Rc;
@@ -95,13 +95,13 @@ impl std::fmt::Debug for dyn Ffi {
 }
 
 pub struct FfiFactory {
-    registry: HashMap<&'static str, Rc<dyn Ffi>>,
+    registry: Map<&'static str, Rc<dyn Ffi>>,
 }
 
 impl FfiFactory {
     pub fn new() -> FfiFactory {
         FfiFactory {
-            registry: HashMap::new(),
+            registry: Map::new(),
         }
     }
 

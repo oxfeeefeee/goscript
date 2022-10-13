@@ -2232,13 +2232,6 @@ impl PartialEq for GosValue {
     }
 }
 
-impl PartialOrd for GosValue {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self.typ {
@@ -2270,6 +2263,13 @@ impl Hash for GosValue {
     }
 }
 
+impl PartialOrd for GosValue {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Ord for GosValue {
     fn cmp(&self, b: &Self) -> Ordering {
         match (self.typ, b.typ) {
@@ -2290,7 +2290,21 @@ impl Ord for GosValue {
             (ValueType::String, ValueType::String) => {
                 StrUtil::as_str(self.as_string()).cmp(&StrUtil::as_str(b.as_string()))
             }
+            // The following are only used when it's a BTreeMap key
+            (ValueType::Complex64, ValueType::Complex64) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Function, ValueType::Function) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Package, ValueType::Package) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Struct, ValueType::Struct) => self.as_struct().0.cmp(&b.as_struct().0),
+            (ValueType::Interface, ValueType::Interface) => {
+                match (self.as_interface(), b.as_interface()) {
+                    (Some(a), Some(b)) => a.cmp(b),
+                    (None, None) => Ordering::Equal,
+                    (Some(_), None) => Ordering::Greater,
+                    (None, Some(_)) => Ordering::Less,
+                }
+            }
             _ => {
+                dbg!(self.typ, b.typ);
                 unreachable!()
             }
         }

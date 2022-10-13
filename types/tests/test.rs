@@ -4,8 +4,8 @@
 
 extern crate goscript_parser as fe;
 extern crate goscript_types as types;
+use goscript_parser::Map;
 use regex::Regex;
-use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::fs::File;
@@ -151,7 +151,7 @@ fn parse_error(s: &str, line: usize) -> io::Result<Vec<ErrInfo>> {
 
 fn test_file(path: &str, trace: bool) {
     dbg!(path);
-    let pkgs = &mut HashMap::new();
+    let pkgs = &mut Map::new();
     let config = types::TraceConfig {
         trace_parser: trace,
         trace_checker: trace,
@@ -161,7 +161,7 @@ fn test_file(path: &str, trace: bool) {
     let asto = &mut fe::objects::Objects::new();
     let el = &mut fe::errors::ErrorList::new();
     let tco = &mut types::TCObjects::new();
-    let results = &mut HashMap::new();
+    let results = &mut Map::new();
 
     let importer = &mut types::Importer::new(&config, &reader, fs, pkgs, results, asto, tco, el, 0);
     let key = types::ImportKey::new(path, "./");
@@ -210,11 +210,11 @@ fn test_file(path: &str, trace: bool) {
     }
 }
 
-fn parse_comment_errors<P>(path: P) -> io::Result<HashMap<usize, Vec<ErrInfo>>>
+fn parse_comment_errors<P>(path: P) -> io::Result<Map<usize, Vec<ErrInfo>>>
 where
     P: AsRef<Path>,
 {
-    let mut result = HashMap::new();
+    let mut result = Map::new();
     let mut parse_file = |lines: io::Lines<io::BufReader<File>>| -> io::Result<()> {
         for (i, x) in lines.enumerate() {
             let t = x?;

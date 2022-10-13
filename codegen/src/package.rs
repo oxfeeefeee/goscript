@@ -6,24 +6,23 @@ use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
-use goscript_parser::token::Token;
+use goscript_parser::{Map, Token};
 use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
 use goscript_vm::ffi::FfiCtx;
 use goscript_vm::value::*;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct PkgHelper<'a> {
     tc_objs: &'a TCObjects,
     ast_objs: &'a AstObjects,
-    pkg_map: &'a HashMap<TCPackageKey, PackageKey>,
+    pkg_map: &'a Map<TCPackageKey, PackageKey>,
 }
 
 impl<'a> PkgHelper<'a> {
     pub fn new(
         ast_objs: &'a AstObjects,
         tc_objs: &'a TCObjects,
-        pkg_map: &'a HashMap<TCPackageKey, PackageKey>,
+        pkg_map: &'a Map<TCPackageKey, PackageKey>,
     ) -> PkgHelper<'a> {
         PkgHelper {
             tc_objs,
@@ -66,7 +65,7 @@ impl<'a> PkgHelper<'a> {
         files: &Vec<File>,
         ti: &TypeInfo,
     ) -> (Vec<IdentKey>, Vec<Rc<ValueSpec>>) {
-        let mut orders = HashMap::new();
+        let mut orders = Map::new();
         for (i, init) in ti.init_order.iter().enumerate() {
             for okey in init.lhs.iter() {
                 let name = self.tc_objs.lobjs[*okey].name();

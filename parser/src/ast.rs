@@ -9,16 +9,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use super::map::Map;
 use super::objects::*;
 use super::position;
 use super::scope;
 use super::token;
-use std::collections::HashMap;
 use std::hash::Hash;
 use std::rc::Rc;
 
 /// NodeId can be used as key of HashMaps
-#[derive(PartialEq, Eq, Hash, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Debug)]
 pub enum NodeId {
     Address(usize),
     IdentExpr(IdentKey),
@@ -517,8 +517,8 @@ impl Node for File {
 pub struct Package {
     name: String,
     scope: ScopeKey,
-    imports: HashMap<String, EntityKey>,
-    files: HashMap<String, Box<File>>,
+    imports: Map<String, EntityKey>,
+    files: Map<String, Box<File>>,
 }
 
 // A BadExpr node is a placeholder for expressions containing

@@ -17,14 +17,12 @@ use super::super::operand::OperandMode;
 use super::super::selection::Selection;
 use super::interface::IfaceInfo;
 use goscript_parser::ast;
-use goscript_parser::ast::Node;
-use goscript_parser::ast::{Expr, NodeId};
+use goscript_parser::ast::{Expr, Node, NodeId};
 use goscript_parser::errors::{ErrorList, FilePosErrors};
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
-use goscript_parser::position::Pos;
-use goscript_parser::FileSet;
+use goscript_parser::{FileSet, Map, Pos};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 /// TypeAndValue reports the type and value (for constants, stored in 'mode')
@@ -73,7 +71,7 @@ pub struct TypeInfo {
     /// identifier z in a variable declaration 'var z int' is found
     /// only in the Defs map, and identifiers denoting packages in
     /// qualified identifiers are collected in the Uses map.
-    pub types: HashMap<NodeId, TypeAndValue>,
+    pub types: Map<NodeId, TypeAndValue>,
     /// 'defs' maps identifiers to the objects they define (including
     /// package names, dots "." of dot-imports, and blank "_" identifiers).
     /// For identifiers that do not denote objects (e.g., the package name
@@ -83,23 +81,23 @@ pub struct TypeInfo {
     /// For an embedded field, Defs returns the field it defines.
     ///
     /// Invariant: defs[id] == None || defs[id].pos() == id.pos()
-    pub defs: HashMap<IdentKey, Option<ObjKey>>,
+    pub defs: Map<IdentKey, Option<ObjKey>>,
     /// 'uses' maps identifiers to the objects they denote.
     ///
     /// For an embedded field, 'uses' returns the TypeName it denotes.
     ///
     /// Invariant: uses[id].pos() != id.pos()
-    pub uses: HashMap<IdentKey, ObjKey>,
+    pub uses: Map<IdentKey, ObjKey>,
     /// 'implicits' maps nodes to their implicitly declared objects, if any.
     /// The following node and object types may appear:
     ///     node               declared object
     ///     ImportSpec    PkgName for imports without renames
     ///     CaseClause    type-specific Object::Var for each type switch case clause (incl. default)
     ///     Field         anonymous parameter Object::Var
-    pub implicits: HashMap<NodeId, ObjKey>,
+    pub implicits: Map<NodeId, ObjKey>,
     /// 'selections' maps selector expressions (excluding qualified identifiers)
     /// to their corresponding selections.
-    pub selections: HashMap<NodeId, Selection>,
+    pub selections: Map<NodeId, Selection>,
     /// 'scopes' maps ast::Nodes to the scopes they define. Package scopes are not
     /// associated with a specific node but with all files belonging to a package.
     /// Thus, the package scope can be found in the type-checked Package object.
@@ -121,7 +119,7 @@ pub struct TypeInfo {
     ///     CommClause
     ///     ForStmt
     ///     RangeStmt
-    pub scopes: HashMap<NodeId, ScopeKey>,
+    pub scopes: Map<NodeId, ScopeKey>,
     /// 'init_order' is the list of package-level initializers in the order in which
     /// they must be executed. Initializers referring to variables related by an
     /// initialization dependency appear in topological order, the others appear
@@ -135,12 +133,12 @@ pub struct TypeInfo {
 impl TypeInfo {
     pub fn new() -> TypeInfo {
         TypeInfo {
-            types: HashMap::new(),
-            defs: HashMap::new(),
-            uses: HashMap::new(),
-            implicits: HashMap::new(),
-            selections: HashMap::new(),
-            scopes: HashMap::new(),
+            types: Map::new(),
+            defs: Map::new(),
+            uses: Map::new(),
+            implicits: Map::new(),
+            selections: Map::new(),
+            scopes: Map::new(),
             init_order: Vec::new(),
             ast_files: Vec::new(),
         }
@@ -187,15 +185,15 @@ pub struct FilesContext<'a, S: SourceRead> {
     // package files
     pub files: &'a Vec<ast::File>,
     // positions of unused dot-imported packages for each file scope
-    pub unused_dot_imports: HashMap<ScopeKey, HashMap<PackageKey, Pos>>,
+    pub unused_dot_imports: Map<ScopeKey, Map<PackageKey, Pos>>,
     // maps package scope type names(LangObj::TypeName) to associated
     // non-blank, non-interface methods(LangObj::Func)
-    pub methods: HashMap<ObjKey, Vec<ObjKey>>,
+    pub methods: Map<ObjKey, Vec<ObjKey>>,
     // maps interface(LangObj::TypeName) type names to corresponding
     // interface infos
-    pub ifaces: HashMap<ObjKey, Option<RcIfaceInfo>>,
+    pub ifaces: Map<ObjKey, Option<RcIfaceInfo>>,
     // map of expressions(ast::Expr) without final type
-    pub untyped: HashMap<NodeId, ExprInfo>,
+    pub untyped: Map<NodeId, ExprInfo>,
     // stack of delayed actions
     pub delayed: Vec<DelayedAction<S>>,
     // path of object dependencies during type inference (for cycle reporting)
@@ -212,16 +210,16 @@ pub struct Checker<'a, S: SourceRead> {
     // files in this package
     pub fset: &'a mut FileSet,
     // all packages checked so far
-    pub all_pkgs: &'a mut HashMap<String, PackageKey>,
+    pub all_pkgs: &'a mut Map<String, PackageKey>,
     // all results, i.e. including results collected from
     // previously created Checker instances
-    all_results: &'a mut HashMap<PackageKey, TypeInfo>,
+    all_results: &'a mut Map<PackageKey, TypeInfo>,
     // this package
     pub pkg: PackageKey,
     // maps package-level objects and (non-interface) methods to declaration info
-    pub obj_map: HashMap<ObjKey, DeclInfoKey>,
+    pub obj_map: Map<ObjKey, DeclInfoKey>,
     // maps (import path, source directory) to (complete or fake) package
-    pub imp_map: HashMap<ImportKey, PackageKey>,
+    pub imp_map: Map<ImportKey, PackageKey>,
     // object context
     pub octx: ObjContext,
 
@@ -253,10 +251,10 @@ impl<S: SourceRead> FilesContext<'_, S> {
     pub fn new(files: &Vec<ast::File>) -> FilesContext<'_, S> {
         FilesContext {
             files: files,
-            unused_dot_imports: HashMap::new(),
-            methods: HashMap::new(),
-            ifaces: HashMap::new(),
-            untyped: HashMap::new(),
+            unused_dot_imports: Map::new(),
+            methods: Map::new(),
+            ifaces: Map::new(),
+            untyped: Map::new(),
             delayed: Vec::new(),
             obj_path: Vec::new(),
         }
@@ -275,7 +273,7 @@ impl<S: SourceRead> FilesContext<'_, S> {
 
     pub fn add_unused_dot_import(&mut self, scope: &ScopeKey, pkg: &PackageKey, pos: Pos) {
         if !self.unused_dot_imports.contains_key(scope) {
-            self.unused_dot_imports.insert(*scope, HashMap::new());
+            self.unused_dot_imports.insert(*scope, Map::new());
         }
         self.unused_dot_imports
             .get_mut(scope)
@@ -406,8 +404,8 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         ast_objs: &'a mut AstObjects,
         fset: &'a mut FileSet,
         errors: &'a ErrorList,
-        pkgs: &'a mut HashMap<String, PackageKey>,
-        all_results: &'a mut HashMap<PackageKey, TypeInfo>,
+        pkgs: &'a mut Map<String, PackageKey>,
+        all_results: &'a mut Map<PackageKey, TypeInfo>,
         pkg: PackageKey,
         cfg: &'a TraceConfig,
         reader: &'a S,
@@ -420,8 +418,8 @@ impl<'a, S: SourceRead> Checker<'a, S> {
             all_pkgs: pkgs,
             all_results: all_results,
             pkg: pkg,
-            obj_map: HashMap::new(),
-            imp_map: HashMap::new(),
+            obj_map: Map::new(),
+            imp_map: Map::new(),
             octx: ObjContext::new(),
             trace_config: cfg,
             reader: reader,
@@ -446,10 +444,13 @@ impl<'a, S: SourceRead> Checker<'a, S> {
     }
 
     fn record_untyped(&mut self, fctx: &mut FilesContext<S>) {
-        for (id, info) in fctx.untyped.drain().into_iter() {
+        for (id, info) in fctx.untyped.iter() {
             if info.mode != OperandMode::Invalid {
-                self.result
-                    .record_type_and_value_with_id(id.clone(), info.mode, info.typ.unwrap());
+                self.result.record_type_and_value_with_id(
+                    id.clone(),
+                    info.mode.clone(),
+                    info.typ.unwrap(),
+                );
             }
         }
     }

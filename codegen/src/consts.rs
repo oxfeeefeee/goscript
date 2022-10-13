@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use goscript_parser::Map;
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::hash::Hash;
+#[cfg(not(feature = "no_hash"))]
 use std::hash::Hasher;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -49,7 +50,7 @@ impl Consts {
     pub fn get_runtime_consts(
         &self,
         vmctx: &mut CodeGenVMCtx,
-    ) -> (Vec<GosValue>, HashMap<usize, usize>) {
+    ) -> (Vec<GosValue>, Map<usize, usize>) {
         #[derive(Debug)]
         enum ConstType {
             Nil,
@@ -58,7 +59,7 @@ impl Consts {
         }
 
         // Runtime never compare two GosValues with different types,
-        // so GosValue::Eq and GosValue::Hash cannot be used here.
+        // so GosValue::Eq, GosValue::Hash and GosValue::Ord cannot be used here.
         struct CopyableVal {
             val: GosValue,
         }
@@ -71,6 +72,7 @@ impl Consts {
             }
         }
 
+        #[cfg(not(feature = "no_hash"))]
         impl Hash for CopyableVal {
             fn hash<H: Hasher>(&self, state: &mut H) {
                 self.val.typ().hash(state);
@@ -78,10 +80,29 @@ impl Consts {
             }
         }
 
+        #[cfg(feature = "no_hash")]
+        impl PartialOrd for CopyableVal {
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                Some(self.cmp(other))
+            }
+        }
+
+        #[cfg(feature = "no_hash")]
+        impl Ord for CopyableVal {
+            fn cmp(&self, b: &Self) -> std::cmp::Ordering {
+                if self.val.typ() == b.val.typ() {
+                    self.val.cmp(&b.val)
+                } else {
+                    self.val.typ().cmp(&b.val.typ())
+                }
+            }
+        }
+
         let mut nils = vec![];
-        let mut nil_map = HashMap::new();
+        let mut nil_map = Map::new();
         let mut copyables = vec![];
-        let mut copyables_map = HashMap::new();
+        let mut copyables_map = Map::new();
         let mut others = vec![];
         let consts_indices: Vec<(ConstType, usize, usize)> = self
             .consts
@@ -127,7 +148,7 @@ impl Consts {
             })
             .collect();
 
-        let mut map = HashMap::new();
+        let mut map = Map::new();
         for (t, i, j) in consts_indices {
             let offset = match t {
                 ConstType::Nil => 0,

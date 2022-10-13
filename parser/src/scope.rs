@@ -10,9 +10,9 @@
 // license that can be found in the LICENSE file.
 
 use super::ast::Node;
+use super::map::Map;
 use super::objects::*;
 use super::position;
-use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -95,14 +95,14 @@ impl Entity {
 
 pub struct Scope {
     pub outer: Option<ScopeKey>,
-    pub entities: HashMap<String, EntityKey>,
+    pub entities: Map<String, EntityKey>,
 }
 
 impl Scope {
     pub fn new(outer: Option<ScopeKey>) -> Scope {
         Scope {
             outer: outer,
-            entities: HashMap::new(),
+            entities: Map::new(),
         }
     }
 

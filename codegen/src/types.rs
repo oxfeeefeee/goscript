@@ -5,6 +5,7 @@
 use goscript_parser::ast::Node;
 use goscript_parser::ast::{Expr, NodeId};
 use goscript_parser::objects::IdentKey;
+use goscript_parser::Map;
 use goscript_types::{
     BasicType, ChanDir, ConstValue, EntityType, ObjKey as TCObjKey, OperandMode,
     PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
@@ -12,10 +13,9 @@ use goscript_types::{
 };
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use std::collections::HashMap;
 use std::vec;
 
-pub type TypeCache = HashMap<TCTypeKey, Meta>;
+pub type TypeCache = Map<TCTypeKey, Meta>;
 
 #[derive(PartialEq)]
 pub enum SelectionType {
@@ -671,7 +671,7 @@ impl<'a> TypeLookup<'a> {
 
     fn build_fields(&mut self, fields: &Vec<TCObjKey>, vmctx: &mut CodeGenVMCtx) -> Fields {
         let mut infos = Vec::new();
-        let mut map = HashMap::<String, Vec<usize>>::new();
+        let mut map = Map::<String, Vec<usize>>::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
             let f_type = self.tc_type_to_meta(field.typ().unwrap(), vmctx);

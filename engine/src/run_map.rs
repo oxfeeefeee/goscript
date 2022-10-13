@@ -2,10 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-/// run_map runs an engine with a HashMap containning code.
+/// run_map runs an engine with a Map containning code.
 use crate::engine::{Engine, SourceRead};
 use crate::ErrorList;
-use std::collections::HashMap;
+use goscript_parser::Map;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -23,20 +23,16 @@ pub struct Config<'a> {
     pub extensions: Option<Vec<Box<dyn FnOnce(&mut Engine)>>>,
 }
 
-pub fn run(map: &HashMap<&Path, String>, config: Config, path: &str) -> Result<(), ErrorList> {
+pub fn run(map: &Map<&Path, String>, config: Config, path: &str) -> Result<(), ErrorList> {
     run_zip_impl(map, config, None, path)
 }
 
-pub fn run_string(
-    map: &HashMap<&Path, String>,
-    config: Config,
-    source: &str,
-) -> Result<(), ErrorList> {
+pub fn run_string(map: &Map<&Path, String>, config: Config, source: &str) -> Result<(), ErrorList> {
     run_zip_impl(map, config, Some(source), MapReader::temp_file_path())
 }
 
 fn run_zip_impl(
-    map: &HashMap<&Path, String>,
+    map: &Map<&Path, String>,
     config: Config,
     temp_source: Option<&str>,
     path: &str,
@@ -52,7 +48,7 @@ fn run_zip_impl(
 }
 
 pub struct MapReader<'a> {
-    map: &'a HashMap<&'a Path, String>,
+    map: &'a Map<&'a Path, String>,
     working_dir: Option<&'a str>,
     base_dir: Option<&'a str>,
     temp_file: Option<&'a str>,
@@ -60,7 +56,7 @@ pub struct MapReader<'a> {
 
 impl<'a> MapReader<'a> {
     fn new(
-        map: &'a HashMap<&'a Path, String>,
+        map: &'a Map<&'a Path, String>,
         working_dir: Option<&'a str>,
         base_dir: Option<&'a str>,
         temp_file: Option<&'a str>,

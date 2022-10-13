@@ -39,7 +39,7 @@ type F64 = ordered_float::OrderedFloat<f64>;
 /// todo: This is against the Go specs.
 
 /// All the values involved in the evaluation
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Value {
     Unknown,
     Bool(bool),

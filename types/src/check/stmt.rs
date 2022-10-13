@@ -24,9 +24,8 @@ use goscript_parser::ast::{
     BasicLit, BlockStmt, CaseClause, CommClause, Expr, Ident, Node, Stmt, TypeAssertExpr,
 };
 use goscript_parser::objects::{FuncDeclKey, IdentKey, Objects as AstObjects};
-use goscript_parser::{Pos, Token};
+use goscript_parser::{Map, Pos, Token};
 use ordered_float;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 type F64 = ordered_float::OrderedFloat<f64>;
@@ -50,7 +49,7 @@ impl StmtContext {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 enum GoVal {
     Int64(i64),
     Uint64(u64),
@@ -84,7 +83,7 @@ struct PosType {
     typ: TypeKey,
 }
 
-type ValueMap = HashMap<GoVal, Vec<PosType>>;
+type ValueMap = Map<GoVal, Vec<PosType>>;
 
 pub enum BodyContainer {
     FuncLitExpr(Expr),
@@ -346,7 +345,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
         x: &mut Operand,
         xtype: TypeKey,
         types: &Option<Vec<Expr>>,
-        seen: &mut HashMap<Option<TypeKey>, Pos>,
+        seen: &mut Map<Option<TypeKey>, Pos>,
         fctx: &mut FilesContext<S>,
     ) -> Option<TypeKey> {
         if types.is_none() {
@@ -673,7 +672,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
 
                 self.multiple_defaults(&ss.body.list);
 
-                let mut seen: ValueMap = HashMap::new();
+                let mut seen: ValueMap = Map::new();
                 for (i, c) in ss.body.list.iter().enumerate() {
                     if let Stmt::Case(cc) = c {
                         self.case_values(x, &cc.list, &mut seen, fctx);
@@ -768,7 +767,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
 
                 self.multiple_defaults(&tss.body.list);
 
-                let mut seen = HashMap::new();
+                let mut seen = Map::new();
                 let mut lhs_vars = Vec::new();
                 for s in tss.body.list.iter() {
                     let clause: &CaseClause = match s {

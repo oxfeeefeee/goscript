@@ -12,14 +12,13 @@ use goscript_parser::ast::Ident;
 use goscript_parser::errors::ErrorList;
 use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
-use goscript_parser::FileSet;
+use goscript_parser::{FileSet, Map};
 use goscript_types::{
     ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo,
 };
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use goscript_vm::vm::ByteCode;
-use std::collections::HashMap;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(
@@ -30,8 +29,8 @@ pub fn parse_check_gen<S: SourceRead>(
 ) -> Result<ByteCode, ErrorList> {
     let ast_objs = &mut AstObjects::new();
     let tc_objs = &mut TCObjects::new();
-    let results = &mut HashMap::new();
-    let pkgs = &mut HashMap::new();
+    let results = &mut Map::new();
+    let pkgs = &mut Map::new();
     let el = ErrorList::new();
 
     let importer = &mut Importer::new(
@@ -58,7 +57,7 @@ pub fn parse_check_gen<S: SourceRead>(
 fn gen_byte_code(
     ast_objs: &AstObjects,
     tc_objs: &TCObjects,
-    checker_result: &HashMap<TCPackageKey, TypeInfo>,
+    checker_result: &Map<TCPackageKey, TypeInfo>,
     main_pkg: TCPackageKey,
     main_ident: IdentKey,
     blank_ident: IdentKey,
@@ -68,8 +67,8 @@ fn gen_byte_code(
     let consts = Consts::new();
     let mut iface_selector = IfaceSelector::new();
     let mut struct_selector = StructSelector::new();
-    let mut pkg_map = HashMap::new();
-    let mut type_cache: TypeCache = HashMap::new();
+    let mut pkg_map = Map::new();
+    let mut type_cache: TypeCache = Map::new();
     let mut branch_helper = BranchHelper::new();
     let mut result_funcs = vec![];
 

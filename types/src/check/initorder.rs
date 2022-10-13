@@ -15,8 +15,9 @@ use crate::SourceRead;
 use super::super::objects::{DeclInfoKey, ObjKey, TCObjects};
 use super::check::{Checker, Initializer};
 use super::resolver::DeclInfo;
+use goscript_parser::Map;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -85,10 +86,10 @@ impl<'a, S: SourceRead> Checker<'a, S> {
             order.append(&mut indep);
 
             // reduce dependency count of all dependent nodes
-            let to_sub: HashMap<ObjKey, usize> =
+            let to_sub: Map<ObjKey, usize> =
                 nodes[0..first_dependant]
                     .iter()
-                    .fold(HashMap::new(), |mut init, x| {
+                    .fold(Map::new(), |mut init, x| {
                         for p in edges[&x.obj].pred.borrow().iter() {
                             *init.entry(*p).or_insert(0) += 1;
                         }
@@ -137,11 +138,11 @@ impl<'a, S: SourceRead> Checker<'a, S> {
     /// dependency_graph returns the object dependency graph from the given obj_map,
     /// with any function nodes removed. The resulting graph contains only constants
     /// and variables.
-    fn dependency_graph(&self) -> (Vec<GraphNode>, HashMap<ObjKey, GraphEdges>) {
+    fn dependency_graph(&self) -> (Vec<GraphNode>, Map<ObjKey, GraphEdges>) {
         // map is the dependency (Object) -> graphNode mapping
-        let map: HashMap<ObjKey, GraphEdges> = self.obj_map.iter().fold(
-            HashMap::new(),
-            |mut init: HashMap<ObjKey, GraphEdges>, (&x, &decl_key)| {
+        let map: Map<ObjKey, GraphEdges> = self.obj_map.iter().fold(
+            Map::new(),
+            |mut init: Map<ObjKey, GraphEdges>, (&x, &decl_key)| {
                 if self.lobj(x).entity_type().is_dependency() {
                     let decl = &self.tc_objs.decls[decl_key];
                     let deps: HashSet<ObjKey> = decl.deps().iter().map(|z| *z).collect();
@@ -211,7 +212,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
 /// such that there is a path of object dependencies from 'from' to 'to'.
 /// If there is no such path, the result is None.
 fn find_path(
-    map: &HashMap<ObjKey, DeclInfoKey>,
+    map: &Map<ObjKey, DeclInfoKey>,
     from: ObjKey,
     to: ObjKey,
     visited: &mut HashSet<ObjKey>,

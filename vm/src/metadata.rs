@@ -6,8 +6,8 @@ use super::gc::GcContainer;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, IfaceBinding, MetadataKey, MetadataObjs, StructObj, VMObjects};
 use super::value::GosValue;
+use goscript_parser::Map;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -65,7 +65,7 @@ impl StaticMeta {
             unsafe_ptr: Meta::with_type(MetadataType::UnsafePtr, objs),
             default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
             empty_iface: Meta::with_type(
-                MetadataType::Interface(Fields::new(vec![], HashMap::new())),
+                MetadataType::Interface(Fields::new(vec![], Map::new())),
                 objs,
             ),
             none: Meta::with_type(MetadataType::None, objs),
@@ -378,16 +378,13 @@ pub struct FieldInfo {
 #[derive(Debug, Clone)]
 pub struct Fields {
     fields: Vec<FieldInfo>,
-    mapping: HashMap<String, Vec<usize>>,
+    mapping: Map<String, Vec<usize>>,
 }
 
 impl Fields {
     #[inline]
-    pub fn new(fields: Vec<FieldInfo>, mapping: HashMap<String, Vec<usize>>) -> Fields {
-        Fields {
-            fields: fields,
-            mapping: mapping,
-        }
+    pub fn new(fields: Vec<FieldInfo>, mapping: Map<String, Vec<usize>>) -> Fields {
+        Fields { fields, mapping }
     }
 
     #[inline]
@@ -396,7 +393,7 @@ impl Fields {
     }
 
     #[inline]
-    pub fn mapping(&self) -> &HashMap<String, Vec<usize>> {
+    pub fn mapping(&self) -> &Map<String, Vec<usize>> {
         &self.mapping
     }
 
@@ -464,14 +461,14 @@ pub struct MethodDesc {
 #[derive(Debug, Clone)]
 pub struct Methods {
     pub members: Vec<Rc<RefCell<MethodDesc>>>,
-    pub mapping: HashMap<String, OpIndex>,
+    pub mapping: Map<String, OpIndex>,
 }
 
 impl Methods {
     pub fn new() -> Methods {
         Methods {
             members: vec![],
-            mapping: HashMap::new(),
+            mapping: Map::new(),
         }
     }
 }
