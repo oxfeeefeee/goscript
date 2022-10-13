@@ -2185,8 +2185,24 @@ impl PartialEq for GosValue {
     #[inline]
     fn eq(&self, b: &GosValue) -> bool {
         match (self.typ, b.typ) {
-            _ if self.typ.copyable() => self.as_uint() == b.as_uint(), //todo: does this work ok with float?
-            (ValueType::Metadata, ValueType::Metadata) => self.as_metadata() == b.as_metadata(),
+            (ValueType::Bool, ValueType::Bool) => self.as_bool().eq(b.as_bool()),
+            (ValueType::Int, ValueType::Int) => self.as_int().eq(b.as_int()),
+            (ValueType::Int8, ValueType::Int8) => self.as_int8().eq(b.as_int8()),
+            (ValueType::Int16, ValueType::Int16) => self.as_int16().eq(b.as_int16()),
+            (ValueType::Int32, ValueType::Int32) => self.as_int32().eq(b.as_int32()),
+            (ValueType::Int64, ValueType::Int64) => self.as_int64().eq(b.as_int64()),
+            (ValueType::Uint, ValueType::Uint) => self.as_uint().eq(b.as_uint()),
+            (ValueType::UintPtr, ValueType::UintPtr) => self.as_uint_ptr().eq(b.as_uint_ptr()),
+            (ValueType::Uint8, ValueType::Uint8) => self.as_uint8().eq(b.as_uint8()),
+            (ValueType::Uint16, ValueType::Uint16) => self.as_uint16().eq(b.as_uint16()),
+            (ValueType::Uint32, ValueType::Uint32) => self.as_uint32().eq(b.as_uint32()),
+            (ValueType::Uint64, ValueType::Uint64) => self.as_uint64().eq(b.as_uint64()),
+            (ValueType::Float32, ValueType::Float32) => self.as_float32().eq(b.as_float32()),
+            (ValueType::Float64, ValueType::Float64) => self.as_float64().eq(b.as_float64()),
+            (ValueType::Complex64, ValueType::Complex64) => self.as_uint64().eq(b.as_uint64()),
+            (ValueType::Function, ValueType::Function) => self.as_uint64().eq(b.as_uint64()),
+            (ValueType::Package, ValueType::Package) => self.as_uint64().eq(b.as_uint64()),
+            (ValueType::Metadata, ValueType::Metadata) => self.as_metadata().eq(b.as_metadata()),
             (ValueType::Complex128, ValueType::Complex128) => {
                 let x = self.as_complex128();
                 let y = b.as_complex128();
@@ -2235,7 +2251,24 @@ impl PartialEq for GosValue {
 impl Hash for GosValue {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self.typ {
-            _ if self.typ.copyable() => self.as_uint().hash(state),
+            ValueType::Bool => self.as_bool().hash(state),
+            ValueType::Int => self.as_int().hash(state),
+            ValueType::Int8 => self.as_int8().hash(state),
+            ValueType::Int16 => self.as_int16().hash(state),
+            ValueType::Int32 => self.as_int32().hash(state),
+            ValueType::Int64 => self.as_int64().hash(state),
+            ValueType::Uint => self.as_uint().hash(state),
+            ValueType::UintPtr => self.as_uint_ptr().hash(state),
+            ValueType::Uint8 => self.as_uint8().hash(state),
+            ValueType::Uint16 => self.as_uint16().hash(state),
+            ValueType::Uint32 => self.as_uint32().hash(state),
+            ValueType::Uint64 => self.as_uint64().hash(state),
+            ValueType::Float32 => self.as_float32().hash(state),
+            ValueType::Float64 => self.as_float64().hash(state),
+            ValueType::Complex64 => self.as_uint64().hash(state),
+            ValueType::Function => self.as_function().hash(state),
+            ValueType::Package => self.as_package().hash(state),
+            ValueType::Metadata => self.as_metadata().hash(state),
             ValueType::String => StrUtil::as_str(self.as_string()).hash(state),
             ValueType::Array => self.dispatcher_a_s().array_hash(self, state),
             ValueType::Complex128 => {
@@ -2254,7 +2287,6 @@ impl Hash for GosValue {
                 Some(p) => PointerObj::hash(&p, state),
                 None => 0.hash(state),
             },
-            ValueType::Metadata => self.as_metadata().hash(state),
             _ => {
                 dbg!(self.typ);
                 unreachable!();
@@ -2304,7 +2336,6 @@ impl Ord for GosValue {
                 }
             }
             _ => {
-                dbg!(self.typ, b.typ);
                 unreachable!()
             }
         }
