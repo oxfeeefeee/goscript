@@ -6,7 +6,6 @@
 
 #[cfg(feature = "async")]
 use crate::channel::Channel;
-
 use crate::gc::GcContainer;
 pub use crate::instruction::*;
 pub use crate::metadata::*;
@@ -901,7 +900,7 @@ impl ValueData {
             ),
             ValueType::Array => match t_elem {
                 ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
-                _ => dispatcher_a_s_for(t_elem).array_debug_fmt(self, f),
+                _ => ArrCaller::get_slow(t_elem).array_debug_fmt(self, f),
             },
             ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
             ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
@@ -909,7 +908,7 @@ impl ValueData {
             ValueType::Closure => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_closure()),
             ValueType::Slice => match t_elem {
                 ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
-                _ => dispatcher_a_s_for(t_elem).slice_debug_fmt(self, f),
+                _ => ArrCaller::get_slow(t_elem).slice_debug_fmt(self, f),
             },
             ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
             ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
@@ -1239,7 +1238,12 @@ impl ValueData {
     }
 
     #[inline]
-    fn copy_semantic(&self, t: ValueType, t_elem: ValueType, gcc: &GcContainer) -> ValueData {
+    fn copy_semantic(
+        &self,
+        t: ValueType,
+        caller: &Box<dyn Dispatcher>,
+        gcc: &GcContainer,
+    ) -> ValueData {
         match t {
             _ if t != ValueType::Array
                 && t != ValueType::Struct
@@ -1248,9 +1252,9 @@ impl ValueData {
             {
                 self.clone(t)
             }
-            ValueType::Array => dispatcher_a_s_for(t_elem).array_copy_semantic(self, gcc),
+            ValueType::Array => caller.array_copy_semantic(self, gcc),
             ValueType::Struct => ValueData::new_struct(StructObj::clone(&self.as_struct().0), gcc),
-            ValueType::Slice => dispatcher_a_s_for(t_elem).slice_copy_semantic(self),
+            ValueType::Slice => caller.slice_copy_semantic(self),
             ValueType::Map => match self.as_map() {
                 Some(m) => ValueData::new_map(m.0.clone(), gcc),
                 None => ValueData::new_nil(t),
@@ -1277,7 +1281,7 @@ impl ValueData {
                 self.copy().into_string();
             }
             ValueType::Array => {
-                dispatcher_a_s_for(t_elem).array_drop_data(self);
+                ArrCaller::get_slow(t_elem).array_drop_data(self);
             }
             ValueType::Pointer => {
                 self.copy().into_pointer();
@@ -1289,7 +1293,7 @@ impl ValueData {
                 self.copy().into_closure();
             }
             ValueType::Slice => {
-                dispatcher_a_s_for(t_elem).slice_drop_data(self);
+                ArrCaller::get_slow(t_elem).slice_drop_data(self);
             }
             ValueType::Map => {
                 self.copy().into_map();
@@ -1345,8 +1349,13 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn dispatcher_a_s(&self) -> &'static Box<dyn Dispatcher> {
-        dispatcher_a_s_for(self.t_elem)
+    pub(crate) fn caller<'a>(&self, c: &'a ArrCaller) -> &'a Box<dyn Dispatcher> {
+        c.get(self.t_elem)
+    }
+
+    #[inline]
+    pub(crate) fn caller_slow(&self) -> Box<dyn Dispatcher> {
+        ArrCaller::get_slow(self.t_elem)
     }
 
     #[inline]
@@ -1496,21 +1505,21 @@ impl GosValue {
         size: usize,
         cap: usize,
         val: &GosValue,
-        t_elem: ValueType,
+        caller: &Box<dyn Dispatcher>,
         gcc: &GcContainer,
     ) -> GosValue {
-        debug_assert!(t_elem != ValueType::Void);
-        dispatcher_a_s_for(t_elem).array_with_size(size, cap, val, gcc)
+        debug_assert!(caller.typ() != ValueType::Void);
+        caller.array_with_size(size, cap, val, gcc)
     }
 
     #[inline]
     pub(crate) fn array_with_data(
         data: Vec<GosValue>,
-        t_elem: ValueType,
+        caller: &Box<dyn Dispatcher>,
         gcc: &GcContainer,
     ) -> GosValue {
-        debug_assert!(t_elem != ValueType::Void);
-        dispatcher_a_s_for(t_elem).array_with_data(data, gcc)
+        debug_assert!(caller.typ() != ValueType::Void);
+        caller.array_with_data(data, gcc)
     }
 
     #[inline]
@@ -1518,23 +1527,23 @@ impl GosValue {
         size: usize,
         cap: usize,
         val: &GosValue,
-        t_elem: ValueType,
+        caller: &Box<dyn Dispatcher>,
         gcc: &GcContainer,
     ) -> GosValue {
-        let arr = GosValue::array_with_size(size, cap, val, t_elem, gcc);
-        GosValue::slice_array(arr, 0, size as isize, t_elem).unwrap()
+        let arr = GosValue::array_with_size(size, cap, val, caller, gcc);
+        GosValue::slice_array(arr, 0, size as isize, caller).unwrap()
     }
 
     #[inline]
     pub(crate) fn slice_with_data(
         data: Vec<GosValue>,
-        t_elem: ValueType,
+        caller: &Box<dyn Dispatcher>,
         gcc: &GcContainer,
     ) -> GosValue {
-        assert!(t_elem != ValueType::Void);
+        assert!(caller.typ() != ValueType::Void);
         let len = data.len();
-        let arr = GosValue::array_with_data(data, t_elem, gcc);
-        GosValue::slice_array(arr, 0, len as isize, t_elem).unwrap()
+        let arr = GosValue::array_with_data(data, caller, gcc);
+        GosValue::slice_array(arr, 0, len as isize, caller).unwrap()
     }
 
     #[inline]
@@ -1542,9 +1551,9 @@ impl GosValue {
         arr: GosValue,
         begin: isize,
         end: isize,
-        t_elem: ValueType,
+        caller: &Box<dyn Dispatcher>,
     ) -> RuntimeResult<GosValue> {
-        dispatcher_a_s_for(t_elem).slice_array(arr, begin, end)
+        caller.slice_array(arr, begin, end)
     }
 
     #[inline]
@@ -1962,7 +1971,7 @@ impl GosValue {
     }
 
     pub fn slice_swap(&self, i: usize, j: usize) -> RuntimeResult<()> {
-        self.dispatcher_a_s().slice_swap(self, i, j)
+        self.caller_slow().slice_swap(self, i, j)
     }
 
     #[inline]
@@ -1994,7 +2003,7 @@ impl GosValue {
             GosValue::with_elem_type(
                 self.typ,
                 self.t_elem,
-                self.data.copy_semantic(self.typ, self.t_elem, gcc),
+                self.data.copy_semantic(self.typ, &self.caller_slow(), gcc),
             )
         }
     }
@@ -2041,7 +2050,7 @@ impl GosValue {
     #[inline]
     pub fn len(&self) -> usize {
         match self.typ {
-            ValueType::Array => self.dispatcher_a_s().array_len(self),
+            ValueType::Array => self.caller_slow().array_len(self),
             ValueType::Slice => match self.as_slice::<AnyElem>() {
                 Some(s) => s.0.len(),
                 None => 0,
@@ -2216,7 +2225,7 @@ impl PartialEq for GosValue {
                 *StrUtil::as_str(self.as_string()) == *StrUtil::as_str(b.as_string())
             }
             (ValueType::Array, ValueType::Array) => {
-                self.dispatcher_a_s().array_eq(self.data(), b.data())
+                self.caller_slow().array_eq(self.data(), b.data())
             }
             (ValueType::Struct, ValueType::Struct) => {
                 StructObj::eq(&self.as_struct().0, &b.as_struct().0)
@@ -2274,7 +2283,7 @@ impl Hash for GosValue {
             ValueType::Package => self.as_package().hash(state),
             ValueType::Metadata => self.as_metadata().hash(state),
             ValueType::String => StrUtil::as_str(self.as_string()).hash(state),
-            ValueType::Array => self.dispatcher_a_s().array_hash(self, state),
+            ValueType::Array => self.caller_slow().array_hash(self, state),
             ValueType::Complex128 => {
                 let c = self.as_complex128();
                 c.r.hash(state);
@@ -2375,7 +2384,7 @@ impl Display for GosValue {
                 write!(f, "({}, {})", c.r, c.i)
             }
             ValueType::String => f.write_str(&StrUtil::as_str(self.as_string())),
-            ValueType::Array => self.dispatcher_a_s().array_display_fmt(self.data(), f),
+            ValueType::Array => self.caller_slow().array_display_fmt(self.data(), f),
             ValueType::Struct => write!(f, "{}", self.as_struct().0),
             ValueType::Pointer => match self.as_pointer() {
                 Some(p) => std::fmt::Display::fmt(p, f),
@@ -2389,7 +2398,7 @@ impl Display for GosValue {
                 Some(_) => f.write_str("<closure>"),
                 None => f.write_str("<nil(closure)>"),
             },
-            ValueType::Slice => self.dispatcher_a_s().slice_display_fmt(self.data(), f),
+            ValueType::Slice => self.caller_slow().slice_display_fmt(self.data(), f),
             ValueType::Map => match self.as_map() {
                 Some(m) => write!(f, "{}", m.0),
                 None => f.write_str("<nil(map)>"),
@@ -2600,6 +2609,8 @@ impl AsPrimitive<f64> for GosValue {
 
 /// Dispatcher is used to diapatch Array/Slice calls using the vtable.
 pub(crate) trait Dispatcher {
+    fn typ(&self) -> ValueType;
+
     fn array_with_size(
         &self,
         size: usize,
@@ -2688,6 +2699,10 @@ macro_rules! define_dispatcher {
         }
 
         impl Dispatcher for $dispatcher {
+            fn typ(&self) -> ValueType {
+                self.typ
+            }
+
             fn array_with_size(
                 &self,
                 size: usize,
@@ -2897,109 +2912,130 @@ define_dispatcher!(Dispatcher32, Elem32);
 define_dispatcher!(Dispatcher64, Elem64);
 define_dispatcher!(DispatcherGos, GosElem);
 
-// todo: OnceCell
-static mut __DISPATCHERS: Option<[Box<dyn Dispatcher>; ValueType::Channel as usize + 1]> = None;
+pub(crate) struct ArrCaller {
+    array: [Box<dyn Dispatcher>; ValueType::Channel as usize + 1],
+}
 
-#[inline]
-pub(crate) fn dispatcher_a_s_for(t: ValueType) -> &'static Box<dyn Dispatcher> {
-    unsafe {
-        match &__DISPATCHERS {
-            Some(d) => &d[t as usize],
-            None => {
-                __DISPATCHERS = Some([
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Void,
-                    }),
-                    Box::new(Dispatcher8 {
-                        typ: ValueType::Bool,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Int,
-                    }),
-                    Box::new(Dispatcher8 {
-                        typ: ValueType::Int8,
-                    }),
-                    Box::new(Dispatcher16 {
-                        typ: ValueType::Int16,
-                    }),
-                    Box::new(Dispatcher32 {
-                        typ: ValueType::Int32,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Int64,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Uint,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::UintPtr,
-                    }),
-                    Box::new(Dispatcher8 {
-                        typ: ValueType::Uint8,
-                    }),
-                    Box::new(Dispatcher16 {
-                        typ: ValueType::Uint16,
-                    }),
-                    Box::new(Dispatcher32 {
-                        typ: ValueType::Uint32,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Uint64,
-                    }),
-                    Box::new(Dispatcher32 {
-                        typ: ValueType::Float32,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Float64,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Complex64,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Function,
-                    }),
-                    Box::new(Dispatcher64 {
-                        typ: ValueType::Package,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Metadata,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Complex128,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::String,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Array,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Struct,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Pointer,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::UnsafePtr,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Closure,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Slice,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Map,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Interface,
-                    }),
-                    Box::new(DispatcherGos {
-                        typ: ValueType::Channel,
-                    }),
-                ]);
-                &__DISPATCHERS.as_ref().unwrap()[t as usize]
+impl ArrCaller {
+    pub fn new() -> ArrCaller {
+        ArrCaller {
+            array: [
+                Box::new(DispatcherGos {
+                    typ: ValueType::Void,
+                }),
+                Box::new(Dispatcher8 {
+                    typ: ValueType::Bool,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Int,
+                }),
+                Box::new(Dispatcher8 {
+                    typ: ValueType::Int8,
+                }),
+                Box::new(Dispatcher16 {
+                    typ: ValueType::Int16,
+                }),
+                Box::new(Dispatcher32 {
+                    typ: ValueType::Int32,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Int64,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Uint,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::UintPtr,
+                }),
+                Box::new(Dispatcher8 {
+                    typ: ValueType::Uint8,
+                }),
+                Box::new(Dispatcher16 {
+                    typ: ValueType::Uint16,
+                }),
+                Box::new(Dispatcher32 {
+                    typ: ValueType::Uint32,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Uint64,
+                }),
+                Box::new(Dispatcher32 {
+                    typ: ValueType::Float32,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Float64,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Complex64,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Function,
+                }),
+                Box::new(Dispatcher64 {
+                    typ: ValueType::Package,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Metadata,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Complex128,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::String,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Array,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Struct,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Pointer,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::UnsafePtr,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Closure,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Slice,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Map,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Interface,
+                }),
+                Box::new(DispatcherGos {
+                    typ: ValueType::Channel,
+                }),
+            ],
+        }
+    }
+
+    #[inline]
+    pub fn get(&self, t: ValueType) -> &Box<dyn Dispatcher> {
+        &self.array[t as usize]
+    }
+
+    pub fn get_slow(t: ValueType) -> Box<dyn Dispatcher> {
+        match t {
+            ValueType::Int8 | ValueType::Uint8 => Box::new(Dispatcher8 { typ: t }),
+            ValueType::Int16 | ValueType::Uint16 => Box::new(Dispatcher16 { typ: t }),
+            ValueType::Int32 | ValueType::Uint32 | ValueType::Float32 => {
+                Box::new(Dispatcher32 { typ: t })
             }
+            ValueType::Int
+            | ValueType::Uint
+            | ValueType::Int64
+            | ValueType::Uint64
+            | ValueType::UintPtr
+            | ValueType::Float64
+            | ValueType::Function
+            | ValueType::Package
+            | ValueType::Complex64 => Box::new(Dispatcher64 { typ: t }),
+            _ => Box::new(DispatcherGos { typ: t }),
         }
     }
 }

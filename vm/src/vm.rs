@@ -125,9 +125,6 @@ macro_rules! unary_op {
 
 /// Entry point
 pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
-    // Init array/slice dispatcher
-    dispatcher_a_s_for(ValueType::Uint);
-
     let gcc = GcContainer::new();
 
     #[cfg(not(feature = "async"))]
@@ -152,7 +149,6 @@ pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     }
 }
 
-#[derive(Debug)]
 pub struct ByteCode {
     pub objects: VMObjects,
     pub consts: Vec<GosValue>,
@@ -375,6 +371,7 @@ impl<'a> Fiber<'a> {
         let ctx = &self.context;
         let gcc = ctx.gcc;
         let objs: &VMObjects = &ctx.code.objects;
+        let caller = &objs.arr_slice_caller;
         let consts = &ctx.code.consts;
         let s_meta: &StaticMeta = &objs.s_meta;
         let ifaces = &ctx.code.ifaces;
@@ -422,7 +419,7 @@ impl<'a> Fiber<'a> {
                         let slice = stack.read(inst.s0, sb, consts);
                         let index = stack.read(inst.s1, sb, consts).as_index();
                         match slice.slice_array_equivalent(index) {
-                            Ok((array, i)) => match array.dispatcher_a_s().array_get(&array, i) {
+                            Ok((array, i)) => match array.caller(caller).array_get(&array, i) {
                                 Ok(val) => stack.set(sb + inst.d, val),
                                 Err(e) => go_panic_str!(panic, &e, frame, code),
                             },
@@ -439,10 +436,10 @@ impl<'a> Fiber<'a> {
                             Ok((array, i)) => match inst.op1 {
                                 Opcode::VOID => {
                                     let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
-                                    let result = array.dispatcher_a_s().array_set(&array, &val, i);
+                                    let result = array.caller(caller).array_set(&array, &val, i);
                                     panic_if_err!(result, panic, frame, code);
                                 }
-                                _ => match array.dispatcher_a_s().array_get(&array, i) {
+                                _ => match array.caller(caller).array_get(&array, i) {
                                     Ok(old) => {
                                         let val = stack.read_and_op(
                                             old.data(),
@@ -453,7 +450,7 @@ impl<'a> Fiber<'a> {
                                             &consts,
                                         );
                                         let result =
-                                            array.dispatcher_a_s().array_set(&array, &val, i);
+                                            array.caller(caller).array_set(&array, &val, i);
                                         panic_if_err!(result, panic, frame, code);
                                     }
                                     Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -468,7 +465,7 @@ impl<'a> Fiber<'a> {
                     Opcode::LOAD_ARRAY => {
                         let array = stack.read(inst.s0, sb, consts);
                         let index = stack.read(inst.s1, sb, consts).as_index();
-                        match array.dispatcher_a_s().array_get(&array, index) {
+                        match array.caller(caller).array_get(&array, index) {
                             Ok(val) => stack.set(inst.d + sb, val),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         }
@@ -482,10 +479,10 @@ impl<'a> Fiber<'a> {
                         match inst.op1 {
                             Opcode::VOID => {
                                 let val = stack.read(inst.s1, sb, consts).copy_semantic(gcc);
-                                let result = array.dispatcher_a_s().array_set(&array, &val, index);
+                                let result = array.caller(caller).array_set(&array, &val, index);
                                 panic_if_err!(result, panic, frame, code);
                             }
-                            _ => match array.dispatcher_a_s().array_get(&array, index) {
+                            _ => match array.caller(caller).array_get(&array, index) {
                                 Ok(old) => {
                                     let val = stack.read_and_op(
                                         old.data(),
@@ -496,7 +493,7 @@ impl<'a> Fiber<'a> {
                                         &consts,
                                     );
                                     let result =
-                                        array.dispatcher_a_s().array_set(&array, &val, index);
+                                        array.caller(caller).array_set(&array, &val, index);
                                     panic_if_err!(result, panic, frame, code);
                                 }
                                 Err(e) => go_panic_str!(panic, &e, frame, code),
@@ -724,7 +721,7 @@ impl<'a> Fiber<'a> {
                                 PointerObj::SliceMember(s, index) => {
                                     let index = *index as usize;
                                     let (array, index) = s.slice_array_equivalent(index)?;
-                                    array.dispatcher_a_s().array_set(&array, &val, index)
+                                    array.caller(caller).array_set(&array, &val, index)
                                 }
                                 PointerObj::StructField(s, index) => {
                                     s.as_struct().0.borrow_fields_mut()[*index as usize] = val;
@@ -879,7 +876,12 @@ impl<'a> Fiber<'a> {
                     Opcode::REF_SLICE_MEMBER => {
                         let arr_or_slice = stack.read(inst.s0, sb, consts).clone();
                         let index = stack.read(inst.s1, sb, consts).as_index() as OpIndex;
-                        match PointerObj::new_slice_member(arr_or_slice, index, inst.t0, inst.t1) {
+                        match PointerObj::new_slice_member_internal(
+                            arr_or_slice,
+                            index,
+                            inst.t0,
+                            caller.get(inst.t1),
+                        ) {
                             Ok(p) => stack.set(inst.d + sb, GosValue::new_pointer(p)),
                             Err(e) => {
                                 go_panic_str!(panic, &e, frame, code)
@@ -959,7 +961,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::PACK_VARIADIC => {
                         let v = stack.move_vec(inst.s0 + sb, inst.s1 + sb);
-                        let val = GosValue::slice_with_data(v, inst.t0, gcc);
+                        let val = GosValue::slice_with_data(v, caller.get(inst.t0), gcc);
                         stack.set(inst.d + sb, val);
                     }
                     // t0: call style
@@ -1277,13 +1279,13 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::RANGE_INIT => {
                         let target = stack.read(inst.s0, sb, consts);
-                        let re = self.rstack.range_init(target, inst.t0, inst.t1);
+                        let re = self.rstack.range_init(target, inst.t0, caller.get(inst.t1));
                         panic_if_err!(re, panic, frame, code);
                     }
                     Opcode::RANGE => {
                         if self.rstack.range_body(
                             inst.t0,
-                            inst.t1,
+                            caller.get(inst.t1),
                             stack,
                             inst.d + sb,
                             inst.s1 + sb,
@@ -1395,7 +1397,11 @@ impl<'a> Fiber<'a> {
                                             .chars()
                                             .map(|x| (x as i32).into())
                                             .collect();
-                                        GosValue::slice_with_data(data, inst.op1_as_t(), gcc)
+                                        GosValue::slice_with_data(
+                                            data,
+                                            caller.get(inst.op1_as_t()),
+                                            gcc,
+                                        )
                                     }
                                     ValueType::Uint8 => {
                                         GosValue::new_slice(from.clone(), ValueType::Uint8)
@@ -1499,10 +1505,10 @@ impl<'a> Fiber<'a> {
                         let end = *stack.read(inst_ex.s0, sb, consts).as_int();
                         let max = *stack.read(inst_ex.s1, sb, consts).as_int();
                         let result = match inst.t0 {
-                            ValueType::Slice => s.dispatcher_a_s().slice_slice(s, begin, end, max),
+                            ValueType::Slice => s.caller(caller).slice_slice(s, begin, end, max),
                             ValueType::String => GosValue::slice_string(s, begin, end, max),
                             ValueType::Array => {
-                                GosValue::slice_array(s.clone(), begin, end, inst.t1)
+                                GosValue::slice_array(s.clone(), begin, end, caller.get(inst.t1))
                             }
                             _ => unreachable!(),
                         };
@@ -1580,11 +1586,11 @@ impl<'a> Fiber<'a> {
                         let new_val = match &objs.metas[md.key] {
                             MetadataType::Slice(m) => {
                                 let (val, typ) = build_val(m);
-                                GosValue::slice_with_data(val, typ, gcc)
+                                GosValue::slice_with_data(val, caller.get(typ), gcc)
                             }
                             MetadataType::Array(m, _) => {
                                 let (val, typ) = build_val(m);
-                                GosValue::array_with_data(val, typ, gcc)
+                                GosValue::array_with_data(val, caller.get(typ), gcc)
                             }
                             MetadataType::Map(_, _) => {
                                 let map_val = GosValue::new_map(gcc);
@@ -1640,7 +1646,13 @@ impl<'a> Fiber<'a> {
                                     _ => unreachable!(),
                                 };
                                 let zero = vmeta.zero(&objs.metas, gcc);
-                                GosValue::slice_with_size(len, cap, &zero, zero.typ(), gcc)
+                                GosValue::slice_with_size(
+                                    len,
+                                    cap,
+                                    &zero,
+                                    caller.get(zero.typ()),
+                                    gcc,
+                                )
                             }
                             MetadataType::Map(_, _) => GosValue::new_map(gcc),
                             #[cfg(not(feature = "async"))]
@@ -1726,10 +1738,10 @@ impl<'a> Fiber<'a> {
                                 ArrayObj::with_raw_data(s.as_rust_slice().to_vec()),
                                 ValueType::Uint8,
                             );
-                            GosValue::slice_array(arr, 0, -1, ValueType::Uint8).unwrap()
+                            GosValue::slice_array(arr, 0, -1, caller.get(ValueType::Uint8)).unwrap()
                         };
 
-                        match dispatcher_a_s_for(inst.t1).slice_append(a, b, gcc) {
+                        match caller.get(inst.t1).slice_append(a, b, gcc) {
                             Ok(slice) => stack.set(inst.d + sb, slice),
                             Err(e) => go_panic_str!(panic, &e, frame, code),
                         };
@@ -1745,7 +1757,7 @@ impl<'a> Fiber<'a> {
                                     None => 0,
                                 }
                             }
-                            _ => dispatcher_a_s_for(inst.t1).slice_copy_from(a, b),
+                            _ => caller.get(inst.t1).slice_copy_from(a, b),
                         };
                         stack.set(inst.d + sb, (count as isize).into());
                     }

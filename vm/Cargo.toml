@@ -22,7 +22,7 @@ version = "0.1.0"
 
 
 [dependencies.goscript-pmacro]
-path = "../pmacro"
+path = "../pmacro" 
 version = "0.1.0"
 
 [dev-dependencies]

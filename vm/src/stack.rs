@@ -165,11 +165,11 @@ impl RangeStack {
     /// But it's not rust-safe just go-safe. because the Ref is dropped inside the transmute.
     /// that means if you write to the container we are ranging, it'll not be stopped by
     /// the borrow checker. Which is not safe to Rust, but it's exactly what Go does.
-    pub fn range_init(
+    pub(crate) fn range_init(
         &mut self,
         target: &GosValue,
         typ: ValueType,
-        t_elem: ValueType,
+        arr_caller: &Box<dyn Dispatcher>,
     ) -> RuntimeResult<()> {
         match typ {
             ValueType::Map => {
@@ -178,7 +178,7 @@ impl RangeStack {
                 self.maps.push(iter);
             }
             ValueType::Array | ValueType::Slice => {
-                let iter = dispatcher_a_s_for(t_elem).array_slice_iter(&target)?;
+                let iter = arr_caller.array_slice_iter(&target)?;
                 self.slices.push(iter);
             }
             ValueType::String => {
@@ -192,10 +192,10 @@ impl RangeStack {
         Ok(())
     }
 
-    pub fn range_body(
+    pub(crate) fn range_body(
         &mut self,
         typ: ValueType,
-        t_elem: ValueType,
+        arr_caller: &Box<dyn Dispatcher>,
         stack: &mut Stack,
         index_key: OpIndex,
         index_val: OpIndex,
@@ -213,7 +213,7 @@ impl RangeStack {
                 }
             },
             ValueType::Array | ValueType::Slice => {
-                match dispatcher_a_s_for(t_elem).array_slice_next(self.slices.last_mut().unwrap()) {
+                match arr_caller.array_slice_next(self.slices.last_mut().unwrap()) {
                     Some((k, v)) => {
                         stack.set(index_key, (k as isize).into());
                         stack.set(index_val, v);

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use crate::value::ArrCaller;
+
 use super::gc::GcContainer;
 use super::instruction::{OpIndex, ValueType};
 use super::objects::{FunctionKey, IfaceBinding, MetadataKey, MetadataObjs, StructObj, VMObjects};
@@ -256,7 +258,8 @@ impl Meta {
                 MetadataType::Array(m, size) => {
                     let val = m.zero(mobjs, gcc);
                     let t = m.value_type(mobjs);
-                    GosValue::array_with_size(*size, *size, &val, t, gcc)
+                    let caller = ArrCaller::get_slow(t);
+                    GosValue::array_with_size(*size, *size, &val, &caller, gcc)
                 }
                 MetadataType::Slice(m) => GosValue::new_nil_slice(m.value_type(mobjs)),
                 MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcc),

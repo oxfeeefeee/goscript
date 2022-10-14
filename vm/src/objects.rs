@@ -36,12 +36,12 @@ pub type MetadataObjs = PiggyVec<MetadataKey, MetadataType>;
 pub type FunctionObjs = PiggyVec<FunctionKey, FunctionVal>;
 pub type PackageObjs = PiggyVec<PackageKey, PackageVal>;
 
-#[derive(Debug)]
 pub struct VMObjects {
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
     pub s_meta: StaticMeta,
+    pub(crate) arr_slice_caller: Box<ArrCaller>,
 }
 
 impl VMObjects {
@@ -54,6 +54,7 @@ impl VMObjects {
             functions: PiggyVec::with_capacity(CAP),
             packages: PiggyVec::with_capacity(CAP),
             s_meta: md,
+            arr_slice_caller: Box::new(ArrCaller::new()),
         }
     }
 }
@@ -1179,25 +1180,35 @@ impl PointerObj {
     }
 
     #[inline]
-    pub fn new_array_member(
-        val: GosValue,
-        i: OpIndex,
-        t_elem: ValueType,
-    ) -> RuntimeResult<PointerObj> {
-        let slice = GosValue::slice_array(val, 0, -1, t_elem)?;
-        // todo: index check!
-        Ok(PointerObj::SliceMember(slice, i))
-    }
-
-    #[inline]
     pub fn new_slice_member(
         val: GosValue,
         i: OpIndex,
         t: ValueType,
         t_elem: ValueType,
     ) -> RuntimeResult<PointerObj> {
+        PointerObj::new_slice_member_internal(val, i, t, &ArrCaller::get_slow(t_elem))
+    }
+
+    #[inline]
+    pub(crate) fn new_array_member_internal(
+        val: GosValue,
+        i: OpIndex,
+        caller: &Box<dyn Dispatcher>,
+    ) -> RuntimeResult<PointerObj> {
+        let slice = GosValue::slice_array(val, 0, -1, caller)?;
+        // todo: index check!
+        Ok(PointerObj::SliceMember(slice, i))
+    }
+
+    #[inline]
+    pub(crate) fn new_slice_member_internal(
+        val: GosValue,
+        i: OpIndex,
+        t: ValueType,
+        caller: &Box<dyn Dispatcher>,
+    ) -> RuntimeResult<PointerObj> {
         match t {
-            ValueType::Array => PointerObj::new_array_member(val, i, t_elem),
+            ValueType::Array => PointerObj::new_array_member_internal(val, i, caller),
             ValueType::Slice => match val.is_nil() {
                 false => Ok(PointerObj::SliceMember(val, i)),
                 true => Err("access nil value".to_owned()),
@@ -1210,7 +1221,7 @@ impl PointerObj {
     pub fn deref(&self, stack: &Stack, pkgs: &PackageObjs) -> RuntimeResult<GosValue> {
         match self {
             PointerObj::UpVal(uv) => Ok(uv.value(stack).into_owned()),
-            PointerObj::SliceMember(s, index) => s.dispatcher_a_s().slice_get(s, *index as usize),
+            PointerObj::SliceMember(s, index) => s.caller_slow().slice_get(s, *index as usize),
             PointerObj::StructField(s, index) => {
                 Ok(s.as_struct().0.borrow_fields()[*index as usize].clone())
             }
@@ -1243,7 +1254,7 @@ impl PointerObj {
         match self {
             PointerObj::UpVal(uv) => uv.set_value(val.copy_semantic(gcc), stack),
             PointerObj::SliceMember(s, index) => {
-                s.dispatcher_a_s()
+                s.caller_slow()
                     .slice_set(s, &val.copy_semantic(gcc), *index as usize)?;
             }
             PointerObj::StructField(s, index) => {
@@ -1260,7 +1271,7 @@ impl PointerObj {
     }
 
     /// for gc
-    pub fn ref_sub_one(&self) {
+    pub(crate) fn ref_sub_one(&self) {
         match &self {
             PointerObj::UpVal(uv) => uv.ref_sub_one(),
             PointerObj::SliceMember(s, _) => {
@@ -1276,7 +1287,7 @@ impl PointerObj {
     }
 
     /// for gc
-    pub fn mark_dirty(&self, queue: &mut RCQueue) {
+    pub(crate) fn mark_dirty(&self, queue: &mut RCQueue) {
         match &self {
             PointerObj::UpVal(uv) => uv.mark_dirty(queue),
             PointerObj::SliceMember(s, _) => {
