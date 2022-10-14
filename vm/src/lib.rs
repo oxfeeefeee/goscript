@@ -14,6 +14,8 @@ mod objects;
 
 pub mod ffi;
 
+#[macro_use]
+mod dispatcher;
 pub mod value;
 
 mod stack;
