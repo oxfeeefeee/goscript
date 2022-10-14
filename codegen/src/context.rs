@@ -154,7 +154,8 @@ impl ExprCtx {
         }
     }
 
-    pub fn emit_assign<F>(
+    /// Load, store or discard based on current ExprMode, by calling f.
+    pub fn assign_with<F>(
         &mut self,
         fctx: &mut FuncCtx,
         cast_index: Option<OpIndex>,
@@ -189,7 +190,8 @@ impl ExprCtx {
         }
     }
 
-    pub fn emit_direct_assign(
+    /// Load or store 'src' based on current ExprMode
+    pub fn direct_assign(
         &mut self,
         fctx: &mut FuncCtx,
         src: Addr,
