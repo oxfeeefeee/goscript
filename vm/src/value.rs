@@ -1238,12 +1238,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn copy_semantic(
-        &self,
-        t: ValueType,
-        caller: &Box<dyn Dispatcher>,
-        gcc: &GcContainer,
-    ) -> ValueData {
+    fn copy_semantic(&self, t: ValueType, t_elem: ValueType, gcc: &GcContainer) -> ValueData {
         match t {
             _ if t != ValueType::Array
                 && t != ValueType::Struct
@@ -1252,9 +1247,9 @@ impl ValueData {
             {
                 self.clone(t)
             }
-            ValueType::Array => caller.array_copy_semantic(self, gcc),
+            ValueType::Array => ArrCaller::get_slow(t_elem).array_copy_semantic(self, gcc),
             ValueType::Struct => ValueData::new_struct(StructObj::clone(&self.as_struct().0), gcc),
-            ValueType::Slice => caller.slice_copy_semantic(self),
+            ValueType::Slice => ArrCaller::get_slow(t_elem).slice_copy_semantic(self),
             ValueType::Map => match self.as_map() {
                 Some(m) => ValueData::new_map(m.0.clone(), gcc),
                 None => ValueData::new_nil(t),
@@ -1280,9 +1275,14 @@ impl ValueData {
             ValueType::String => {
                 self.copy().into_string();
             }
-            ValueType::Array => {
-                ArrCaller::get_slow(t_elem).array_drop_data(self);
-            }
+            // Release mannualy for performance
+            ValueType::Array => match ArrCaller::get_elem_type(t_elem) {
+                ElemType::ElemType8 => drop(self.copy().into_array::<Elem8>()),
+                ElemType::ElemType16 => drop(self.copy().into_array::<Elem16>()),
+                ElemType::ElemType32 => drop(self.copy().into_array::<Elem32>()),
+                ElemType::ElemType64 => drop(self.copy().into_array::<Elem64>()),
+                ElemType::ElemTypeGos => drop(self.copy().into_array::<GosElem>()),
+            },
             ValueType::Pointer => {
                 self.copy().into_pointer();
             }
@@ -1292,9 +1292,14 @@ impl ValueData {
             ValueType::Closure => {
                 self.copy().into_closure();
             }
-            ValueType::Slice => {
-                ArrCaller::get_slow(t_elem).slice_drop_data(self);
-            }
+            // Release mannualy for performance
+            ValueType::Slice => match ArrCaller::get_elem_type(t_elem) {
+                ElemType::ElemType8 => drop(self.copy().into_slice::<Elem8>()),
+                ElemType::ElemType16 => drop(self.copy().into_slice::<Elem16>()),
+                ElemType::ElemType32 => drop(self.copy().into_slice::<Elem32>()),
+                ElemType::ElemType64 => drop(self.copy().into_slice::<Elem64>()),
+                ElemType::ElemTypeGos => drop(self.copy().into_slice::<GosElem>()),
+            },
             ValueType::Map => {
                 self.copy().into_map();
             }
@@ -2003,7 +2008,7 @@ impl GosValue {
             GosValue::with_elem_type(
                 self.typ,
                 self.t_elem,
-                self.data.copy_semantic(self.typ, &self.caller_slow(), gcc),
+                self.data.copy_semantic(self.typ, self.t_elem, gcc),
             )
         }
     }
@@ -2050,7 +2055,7 @@ impl GosValue {
     #[inline]
     pub fn len(&self) -> usize {
         match self.typ {
-            ValueType::Array => self.caller_slow().array_len(self),
+            ValueType::Array => self.as_array::<AnyElem>().0.len(),
             ValueType::Slice => match self.as_slice::<AnyElem>() {
                 Some(s) => s.0.len(),
                 None => 0,
@@ -2631,10 +2636,6 @@ pub(crate) trait Dispatcher {
 
     fn slice_copy_semantic(&self, vdata: &ValueData) -> ValueData;
 
-    fn array_drop_data(&self, vdata: &ValueData);
-
-    fn slice_drop_data(&self, vdata: &ValueData);
-
     // you cannot just dispatch the default fn hash, as it makes this trait not object-safe
     fn array_hash(&self, val: &GosValue, state: &mut dyn Hasher);
 
@@ -2739,16 +2740,6 @@ macro_rules! define_dispatcher {
                     Some(s) => ValueData::new_slice(s.0.clone()),
                     None => ValueData::new_nil(ValueType::Slice),
                 }
-            }
-
-            #[inline]
-            fn array_drop_data(&self, vdata: &ValueData) {
-                vdata.copy().into_array::<$elem>();
-            }
-
-            #[inline]
-            fn slice_drop_data(&self, vdata: &ValueData) {
-                vdata.copy().into_slice::<$elem>();
             }
 
             #[inline]
@@ -2918,14 +2909,23 @@ define_dispatcher!(Dispatcher32, Elem32);
 define_dispatcher!(Dispatcher64, Elem64);
 define_dispatcher!(DispatcherGos, GosElem);
 
+#[derive(Clone, Copy)]
+pub(crate) enum ElemType {
+    ElemType8,
+    ElemType16,
+    ElemType32,
+    ElemType64,
+    ElemTypeGos,
+}
+
 pub(crate) struct ArrCaller {
-    array: [Box<dyn Dispatcher>; ValueType::Channel as usize + 1],
+    disp_array: [Box<dyn Dispatcher>; ValueType::Channel as usize + 1],
 }
 
 impl ArrCaller {
     pub fn new() -> ArrCaller {
         ArrCaller {
-            array: [
+            disp_array: [
                 Box::new(DispatcherGos {
                     typ: ValueType::Void,
                 }),
@@ -3022,9 +3022,10 @@ impl ArrCaller {
 
     #[inline]
     pub fn get(&self, t: ValueType) -> &Box<dyn Dispatcher> {
-        &self.array[t as usize]
+        &self.disp_array[t as usize]
     }
 
+    #[inline]
     pub fn get_slow(t: ValueType) -> Box<dyn Dispatcher> {
         match t {
             ValueType::Int8 | ValueType::Uint8 => Box::new(Dispatcher8 { typ: t }),
@@ -3044,6 +3045,57 @@ impl ArrCaller {
             _ => Box::new(DispatcherGos { typ: t }),
         }
     }
+
+    #[inline]
+    pub fn get_elem_type(t: ValueType) -> ElemType {
+        const ELEM_TYPES: [ElemType; ValueType::Channel as usize + 1] = [
+            ElemType::ElemTypeGos,
+            ElemType::ElemType8,
+            ElemType::ElemType64,
+            ElemType::ElemType8,
+            ElemType::ElemType16,
+            ElemType::ElemType32,
+            ElemType::ElemType64,
+            ElemType::ElemType64,
+            ElemType::ElemType64,
+            ElemType::ElemType8,
+            ElemType::ElemType16,
+            ElemType::ElemType32,
+            ElemType::ElemType64,
+            ElemType::ElemType32,
+            ElemType::ElemType64,
+            ElemType::ElemType64,
+            ElemType::ElemType64,
+            ElemType::ElemType64,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+            ElemType::ElemTypeGos,
+        ];
+        ELEM_TYPES[t as usize]
+    }
+
+    // #[inline]
+    // pub fn get_static(t: ValueType) -> &'static Box<dyn Dispatcher> {
+    //     static mut DISPATCHERS: Option<ArrCaller> = None;
+    //     unsafe {
+    //         match &DISPATCHERS {
+    //             Some(d) => &d.disp_array[t as usize],
+    //             None => {
+    //                 DISPATCHERS = Some(ArrCaller::new());
+    //                 &DISPATCHERS.as_ref().unwrap().disp_array[t as usize]
+    //             }
+    //         }
+    //     }
+    // }
 }
 
 #[cfg(test)]

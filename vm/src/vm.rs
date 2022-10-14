@@ -371,7 +371,7 @@ impl<'a> Fiber<'a> {
         let ctx = &self.context;
         let gcc = ctx.gcc;
         let objs: &VMObjects = &ctx.code.objects;
-        let caller = &objs.arr_slice_caller;
+        let caller: &ArrCaller = &objs.arr_slice_caller;
         let consts = &ctx.code.consts;
         let s_meta: &StaticMeta = &objs.s_meta;
         let ifaces = &ctx.code.ifaces;
