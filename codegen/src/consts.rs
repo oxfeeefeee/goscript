@@ -13,7 +13,6 @@ use std::hash::Hasher;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Const {
     Var(GosValue),
-    ZeroValue(Meta),
     Method(Meta, usize), // deferred resolve
 }
 
@@ -30,10 +29,6 @@ impl Consts {
 
     pub fn add_const(&self, v: GosValue) -> usize {
         self.add(Const::Var(v))
-    }
-
-    pub fn add_zero(&self, typ: Meta) -> usize {
-        self.add(Const::ZeroValue(typ))
     }
 
     pub fn add_method(&self, obj_type: Meta, index: usize) -> usize {
@@ -118,7 +113,6 @@ impl Consts {
                             .func
                             .unwrap(),
                     ),
-                    Const::ZeroValue(m) => vmctx.ffi_ctx().zero_val(m),
                 };
 
                 if val.is_nil() {

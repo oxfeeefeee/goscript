@@ -24,7 +24,7 @@ pub enum SelectionType {
     MethodPtrRecv,
 }
 
-pub struct TypeLookup<'a> {
+pub(crate) struct TypeLookup<'a> {
     tc_objs: &'a TCObjects,
     ti: &'a TypeInfo,
     types_cache: &'a mut TypeCache,
@@ -68,29 +68,6 @@ impl<'a> TypeLookup<'a> {
         let lobj = &self.tc_objs.lobjs[lobj_key];
         let tkey = lobj.typ().unwrap();
         self.const_value_type(tkey, lobj.const_val())
-    }
-
-    pub fn expr_value_types(&self, e: &Expr) -> Vec<ValueType> {
-        let typ_val = self.ti.types.get(&e.id()).unwrap();
-        let tcts = match typ_val.mode {
-            OperandMode::Value => {
-                let typ = self.tc_objs.types[typ_val.typ].underlying_val(self.tc_objs);
-                match typ {
-                    Type::Tuple(tp) => tp
-                        .vars()
-                        .iter()
-                        .map(|o| self.tc_objs.lobjs[*o].typ().unwrap())
-                        .collect(),
-                    _ => vec![typ_val.typ],
-                }
-            }
-            OperandMode::NoValue => vec![],
-            OperandMode::Constant(_) => vec![typ_val.typ],
-            _ => unreachable!(),
-        };
-        tcts.iter()
-            .map(|x| self.tc_type_to_value_type(*x))
-            .collect()
     }
 
     #[inline]
@@ -227,11 +204,6 @@ impl<'a> TypeLookup<'a> {
     pub fn obj_tc_type(&self, okey: TCObjKey) -> TCTypeKey {
         let obj = &self.tc_objs.lobjs[okey];
         obj.typ().unwrap()
-    }
-
-    #[inline]
-    pub fn obj_def_value_type(&mut self, ikey: IdentKey) -> ValueType {
-        self.tc_type_to_value_type(self.obj_def_tc_type(ikey))
     }
 
     #[inline]
@@ -591,13 +563,6 @@ impl<'a> TypeLookup<'a> {
                 dbg!(&self.tc_objs.types[typ]);
                 unimplemented!()
             }
-        }
-    }
-
-    pub fn pointer_point_to_type(&self, typ: TCTypeKey) -> ValueType {
-        match &self.tc_objs.types[typ] {
-            Type::Pointer(p) => self.tc_type_to_value_type(p.base()),
-            _ => unreachable!(),
         }
     }
 

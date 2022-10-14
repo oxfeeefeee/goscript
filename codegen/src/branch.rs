@@ -13,7 +13,7 @@ use goscript_types::ObjKey as TCObjKey;
 use goscript_vm::value::*;
 
 /// branch points of break and continue
-pub struct BranchBlock {
+pub(crate) struct BranchBlock {
     points: Vec<(usize, Token, Option<TCObjKey>)>,
     label: Option<TCObjKey>,
     is_loop: bool,
@@ -30,7 +30,7 @@ impl BranchBlock {
 }
 
 /// helper for break, continue and goto
-pub struct BranchHelper {
+pub(crate) struct BranchHelper {
     block_stack: Vec<BranchBlock>,
     next_block_label: Option<TCObjKey>,
     labels: Map<TCObjKey, usize>,
@@ -105,7 +105,7 @@ impl BranchHelper {
     }
 }
 
-pub struct SwitchJumpPoints {
+pub(crate) struct SwitchJumpPoints {
     cases: Vec<Vec<usize>>,
     default: Option<usize>,
 }
@@ -143,7 +143,7 @@ impl SwitchJumpPoints {
     }
 }
 
-pub struct SwitchHelper {
+pub(crate) struct SwitchHelper {
     // the beginnings of the cases
     pub tags: SwitchJumpPoints,
     // the ends of the cases
@@ -186,7 +186,7 @@ impl SwitchHelper {
     }
 }
 
-pub enum CommType {
+pub(crate) enum CommType {
     Send(Addr),
     RecvNoLhs,
     Recv(AssignStmtKey, Addr, bool),
@@ -210,7 +210,7 @@ impl CommType {
     }
 }
 
-pub struct SelectComm {
+pub(crate) struct SelectComm {
     typ: CommType,
     chan_addr: Option<Addr>,
     pos: usize,
@@ -232,7 +232,7 @@ impl SelectComm {
     }
 }
 
-pub struct SelectHelper {
+pub(crate) struct SelectHelper {
     comms: Vec<SelectComm>,
 }
 

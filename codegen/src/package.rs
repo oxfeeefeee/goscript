@@ -12,7 +12,7 @@ use goscript_vm::ffi::FfiCtx;
 use goscript_vm::value::*;
 use std::rc::Rc;
 
-pub struct PkgHelper<'a> {
+pub(crate) struct PkgHelper<'a> {
     tc_objs: &'a TCObjects,
     ast_objs: &'a AstObjects,
     pkg_map: &'a Map<TCPackageKey, PackageKey>,

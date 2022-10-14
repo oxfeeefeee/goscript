@@ -84,10 +84,6 @@ pub enum VirtualAddr {
 }
 
 impl VirtualAddr {
-    pub fn new_reg(reg_index: usize) -> VirtualAddr {
-        VirtualAddr::Direct(Addr::Regsiter(reg_index))
-    }
-
     pub fn try_as_direct_addr(&self) -> Option<Addr> {
         match self {
             Self::Direct(a) => Some(*a),
@@ -131,7 +127,7 @@ impl ExprMode {
 }
 
 #[derive(Clone, Debug)]
-pub struct ExprCtx {
+pub(crate) struct ExprCtx {
     pub mode: ExprMode,
     pub cur_reg: usize,
     pub load_addr: Addr,
@@ -357,7 +353,7 @@ impl CallStyle {
     }
 }
 
-pub struct FuncCtx<'c> {
+pub(crate) struct FuncCtx<'c> {
     pub f_key: FunctionKey,
     pub tc_key: Option<TCTypeKey>, // for casting return values to interfaces
     consts: &'c Consts,
@@ -413,10 +409,6 @@ impl<'a> FuncCtx<'a> {
         Addr::Const(self.consts.add_const(cst))
     }
 
-    pub fn add_zero_val(&self, typ: Meta) -> Addr {
-        Addr::Const(self.consts.add_zero(typ))
-    }
-
     pub fn add_method(&self, obj_type: Meta, index: usize) -> Addr {
         Addr::Const(self.consts.add_method(obj_type, index))
     }
@@ -450,7 +442,7 @@ impl<'a> FuncCtx<'a> {
         addr
     }
 
-    pub fn add_upvalue(&mut self, entity: &TCObjKey, uv: ValueDesc) -> VirtualAddr {
+    pub(crate) fn add_upvalue(&mut self, entity: &TCObjKey, uv: ValueDesc) -> VirtualAddr {
         let addr = match self.uv_entities.get(entity) {
             Some(i) => *i,
             None => {
@@ -464,7 +456,12 @@ impl<'a> FuncCtx<'a> {
         VirtualAddr::UpValue(addr)
     }
 
-    pub fn add_params(&mut self, fl: &FieldList, o: &AstObjects, t_lookup: &TypeLookup) -> usize {
+    pub(crate) fn add_params(
+        &mut self,
+        fl: &FieldList,
+        o: &AstObjects,
+        t_lookup: &TypeLookup,
+    ) -> usize {
         fl.list
             .iter()
             .map(|f| {

@@ -34,7 +34,7 @@ macro_rules! expr_ctx {
 }
 
 /// CodeGen implements the code generation logic.
-pub struct CodeGen<'a, 'c> {
+pub(crate) struct CodeGen<'a, 'c> {
     vmctx: &'a mut CodeGenVMCtx,
     consts: &'c Consts,
     ast_objs: &'a AstObjects,
@@ -83,10 +83,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             expr_ctx_stack: vec![],
             results: vec![],
         }
-    }
-
-    pub fn pkg_helper(&mut self) -> &mut PkgHelper<'a> {
-        &mut self.pkg_helper
     }
 
     fn resolve_any_ident(&mut self, ident: &IdentKey, expr: Option<&Expr>) -> VirtualAddr {
