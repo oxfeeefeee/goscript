@@ -250,6 +250,22 @@ impl<'a> TypeLookup<'a> {
         (recv_type, expr_type, &sel.indices(), sel_typ)
     }
 
+    pub fn need_cast_container_index(&self, container: &Expr, index: &Expr) -> Option<TCTypeKey> {
+        let index_key = self.node_tc_type(index.id());
+        if self.tc_type_to_value_type(index_key) == ValueType::Interface {
+            return None;
+        }
+        let container_key = self.node_tc_type(container.id());
+        match &self.tc_objs.types[container_key] {
+            Type::Map(detail) => {
+                dbg!(self.tc_type_to_value_type(detail.key()));
+                (self.tc_type_to_value_type(detail.key()) == ValueType::Interface)
+                    .then_some(detail.key())
+            }
+            _ => None,
+        }
+    }
+
     pub fn tc_type_to_meta(&mut self, typ: TCTypeKey, vmctx: &mut CodeGenVMCtx) -> Meta {
         if !self.types_cache.contains_key(&typ) {
             let val = self.tc_type_to_meta_impl(typ, vmctx);

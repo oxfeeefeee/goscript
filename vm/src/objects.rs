@@ -19,6 +19,7 @@ use goscript_parser::{Map, MapIter};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
+use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display, Write};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -921,22 +922,22 @@ impl PartialEq for StructObj {
 
 impl PartialOrd for StructObj {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 // For when used as a BTreeMap key
 impl Ord for StructObj {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         let other_fields = other.borrow_fields();
         for (i, f) in self.borrow_fields().iter().enumerate() {
             let order = f.cmp(&other_fields[i]);
-            if order != std::cmp::Ordering::Equal {
+            if order != Ordering::Equal {
                 return order;
             }
         }
-        std::cmp::Ordering::Equal
+        Ordering::Equal
     }
 }
 
@@ -1069,19 +1070,26 @@ impl PartialEq for InterfaceObj {
 
 impl PartialOrd for InterfaceObj {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-// For when used as a BTreeMap key
 impl Ord for InterfaceObj {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Gos(x, _), Self::Gos(y, _)) => x.cmp(y),
+            (Self::Gos(x, _), Self::Gos(y, _)) => {
+                let xt = x.typ();
+                let yt = y.typ();
+                if xt == yt {
+                    x.cmp(y)
+                } else {
+                    xt.cmp(&yt)
+                }
+            }
             (Self::Ffi(x), Self::Ffi(y)) => Rc::as_ptr(&x.ffi_obj).cmp(&Rc::as_ptr(&y.ffi_obj)),
-            (Self::Gos(_, _), Self::Ffi(_)) => std::cmp::Ordering::Greater,
-            (Self::Ffi(_), Self::Gos(_, _)) => std::cmp::Ordering::Less,
+            (Self::Gos(_, _), Self::Ffi(_)) => Ordering::Greater,
+            (Self::Ffi(_), Self::Gos(_, _)) => Ordering::Less,
         }
     }
 }
@@ -1297,6 +1305,16 @@ impl PointerObj {
             _ => {}
         };
     }
+
+    #[inline]
+    fn order(&self) -> usize {
+        match self {
+            Self::UpVal(_) => 0,
+            Self::SliceMember(_, _) => 1,
+            Self::StructField(_, _) => 2,
+            Self::PkgMember(_, _) => 3,
+        }
+    }
 }
 
 impl Eq for PointerObj {}
@@ -1334,6 +1352,29 @@ impl Hash for PointerObj {
                 p.hash(state);
                 index.hash(state);
             }
+        }
+    }
+}
+
+impl PartialOrd for PointerObj {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PointerObj {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::UpVal(x), Self::UpVal(y)) => x.cmp(&y),
+            (Self::SliceMember(x, ix), Self::SliceMember(y, iy)) => {
+                x.as_addr().cmp(&y.as_addr()).then(ix.cmp(&iy))
+            }
+            (Self::StructField(x, ix), Self::StructField(y, iy)) => {
+                x.as_addr().cmp(&y.as_addr()).then(ix.cmp(&iy))
+            }
+            (Self::PkgMember(ka, ix), Self::PkgMember(kb, iy)) => ka.cmp(&kb).then(ix.cmp(&iy)),
+            _ => self.order().cmp(&other.order()),
         }
     }
 }
@@ -1657,13 +1698,7 @@ impl PartialEq for UpValue {
         let state_a: &UpValueState = &self.inner.borrow();
         let state_b: &UpValueState = &b.inner.borrow();
         match (state_a, state_b) {
-            (UpValueState::Closed(va), UpValueState::Closed(vb)) => {
-                if va.typ().copyable() {
-                    Rc::ptr_eq(&self.inner, &b.inner)
-                } else {
-                    va.data().as_addr() == vb.data().as_addr()
-                }
-            }
+            (UpValueState::Closed(_), UpValueState::Closed(_)) => Rc::ptr_eq(&self.inner, &b.inner),
             (UpValueState::Open(da), UpValueState::Open(db)) => {
                 da.abs_index() == db.abs_index() && Weak::ptr_eq(&da.stack, &db.stack)
             }
@@ -1679,6 +1714,31 @@ impl Hash for UpValue {
         match b {
             UpValueState::Open(desc) => desc.abs_index().hash(state),
             UpValueState::Closed(_) => Rc::as_ptr(&self.inner).hash(state),
+        }
+    }
+}
+
+impl PartialOrd for UpValue {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for UpValue {
+    fn cmp(&self, b: &Self) -> Ordering {
+        let state_a: &UpValueState = &self.inner.borrow();
+        let state_b: &UpValueState = &b.inner.borrow();
+        match (state_a, state_b) {
+            (UpValueState::Closed(_), UpValueState::Closed(_)) => {
+                Rc::as_ptr(&self.inner).cmp(&Rc::as_ptr(&b.inner))
+            }
+            (UpValueState::Open(da), UpValueState::Open(db)) => da
+                .abs_index()
+                .cmp(&db.abs_index())
+                .then(Weak::as_ptr(&da.stack).cmp(&Weak::as_ptr(&db.stack))),
+            (UpValueState::Open(_), UpValueState::Closed(_)) => Ordering::Greater,
+            (UpValueState::Closed(_), UpValueState::Open(_)) => Ordering::Less,
         }
     }
 }

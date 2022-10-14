@@ -238,7 +238,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     let obj = &ind_expr.as_ref().expr;
                     let obj_addr = self.load_mode_call(|g| g.gen_expr(obj));
                     let ind = &ind_expr.as_ref().index;
-                    let ind_addr = self.load_mode_call(|g| g.gen_expr(ind));
+                    let ind_addr = match self.t.need_cast_container_index(obj, ind) {
+                        None => self.load_mode_call(|g| g.gen_expr(ind)),
+                        Some(t) => {
+                            let iface_addr = expr_ctx!(self).inc_cur_reg();
+                            self.store_mode_call(VirtualAddr::Direct(iface_addr), Some(t), |g| {
+                                g.gen_expr(ind)
+                            });
+                            iface_addr
+                        }
+                    };
                     let obj_typ = self.t.expr_value_type(obj);
                     let typ = self.t.expr_tc_type(expr);
                     let pos = ind_expr.as_ref().l_brack;
@@ -1019,7 +1028,16 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         ok_lhs_ectx: Option<ExprCtx>,
     ) {
         let mut container_addr = self.load_mode_call(|g| g.gen_expr(container));
-        let index_reg = self.load_mode_call(|g| g.gen_expr(index));
+        let index_reg = match self.t.need_cast_container_index(container, index) {
+            None => self.load_mode_call(|g| g.gen_expr(index)),
+            Some(t) => {
+                let iface_addr = expr_ctx!(self).inc_cur_reg();
+                self.store_mode_call(VirtualAddr::Direct(iface_addr), Some(t), |g| {
+                    g.gen_expr(index)
+                });
+                iface_addr
+            }
+        };
         let zero = self.add_zero_val(val_tc_type);
         let pos = Some(container.pos(&self.ast_objs));
         match ok_lhs_ectx {
