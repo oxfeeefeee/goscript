@@ -11,7 +11,7 @@ read_zip = ["dep:zip"]
 read_map = []
 async = ["goscript-codegen/async", "goscript-vm/async"]  
 go_std = []
-no_hash = ["goscript-parser/no_hash", "goscript-codegen/no_hash", "goscript-vm/no_hash"]
+btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscript-vm/btree_map"]
   
 [dependencies]  
 futures-lite = "1.12.0"

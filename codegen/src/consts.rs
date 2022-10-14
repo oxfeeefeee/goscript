@@ -7,7 +7,7 @@ use goscript_vm::ffi::*;
 use goscript_vm::value::*;
 use std::cell::RefCell;
 use std::hash::Hash;
-#[cfg(not(feature = "no_hash"))]
+#[cfg(not(feature = "btree_map"))]
 use std::hash::Hasher;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -72,7 +72,7 @@ impl Consts {
             }
         }
 
-        #[cfg(not(feature = "no_hash"))]
+        #[cfg(not(feature = "btree_map"))]
         impl Hash for CopyableVal {
             fn hash<H: Hasher>(&self, state: &mut H) {
                 self.val.typ().hash(state);
@@ -80,7 +80,7 @@ impl Consts {
             }
         }
 
-        #[cfg(feature = "no_hash")]
+        #[cfg(feature = "btree_map")]
         impl PartialOrd for CopyableVal {
             #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -88,7 +88,7 @@ impl Consts {
             }
         }
 
-        #[cfg(feature = "no_hash")]
+        #[cfg(feature = "btree_map")]
         impl Ord for CopyableVal {
             fn cmp(&self, b: &Self) -> std::cmp::Ordering {
                 if self.val.typ() == b.val.typ() {

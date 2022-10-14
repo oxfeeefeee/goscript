@@ -7,7 +7,7 @@ edition = "2021"
 [features] 
 default = []
 async = ["goscript-vm/async"]  
-no_hash = ["goscript-parser/no_hash"]
+btree_map = ["goscript-parser/btree_map"]
 
 [dependencies]
 
