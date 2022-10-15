@@ -481,6 +481,35 @@ fn test_std_fmt() {
 }
 
 #[test]
+fn test_map_perf() {
+    time_test!();
+    let mut m: goscript_parser::Map<usize, usize> = goscript_parser::Map::new();
+    for i in 0..2000000 {
+        m.insert(i, i);
+    }
+    let mut total: usize = 0;
+    for i in 0..2000000 {
+        total += m[&i];
+    }
+    dbg!(total);
+}
+
+#[test]
+fn test_map_perf2() {
+    time_test!();
+    use goscript_vm::value::GosValue;
+    let mut m: goscript_parser::Map<GosValue, usize> = goscript_parser::Map::new();
+    for i in 0..2000000 {
+        m.insert(i.into(), i);
+    }
+    let mut total: usize = 0;
+    for i in 0usize..2000000 {
+        total += m[&i.into()];
+    }
+    dbg!(total);
+}
+
+#[test]
 fn test_std_temp() {
     time_test!();
 
