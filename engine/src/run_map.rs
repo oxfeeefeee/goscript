@@ -24,14 +24,14 @@ pub struct Config<'a> {
 }
 
 pub fn run(map: &Map<&Path, String>, config: Config, path: &str) -> Result<(), ErrorList> {
-    run_zip_impl(map, config, None, path)
+    run_map_impl(map, config, None, path)
 }
 
 pub fn run_string(map: &Map<&Path, String>, config: Config, source: &str) -> Result<(), ErrorList> {
-    run_zip_impl(map, config, Some(source), MapReader::temp_file_path())
+    run_map_impl(map, config, Some(source), MapReader::temp_file_path())
 }
 
-fn run_zip_impl(
+fn run_map_impl(
     map: &Map<&Path, String>,
     config: Config,
     temp_source: Option<&str>,
