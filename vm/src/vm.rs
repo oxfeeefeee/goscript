@@ -124,7 +124,7 @@ macro_rules! unary_op {
 }
 
 /// Entry point
-pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
+pub fn run(code: &Bytecode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     let gcc = GcContainer::new();
 
     #[cfg(not(feature = "async"))]
@@ -149,7 +149,7 @@ pub fn run(code: &ByteCode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     }
 }
 
-pub struct ByteCode {
+pub struct Bytecode {
     pub objects: VMObjects,
     pub consts: Vec<GosValue>,
     /// For calling method via interfaces
@@ -159,14 +159,14 @@ pub struct ByteCode {
     pub entry: FunctionKey,
 }
 
-impl ByteCode {
+impl Bytecode {
     pub fn new(
         objects: VMObjects,
         consts: Vec<GosValue>,
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
         indices: Vec<Vec<OpIndex>>,
         entry: FunctionKey,
-    ) -> ByteCode {
+    ) -> Bytecode {
         let ifaces = ifaces
             .into_iter()
             .map(|(ms, binding)| {
@@ -174,7 +174,7 @@ impl ByteCode {
                 (ms, binding)
             })
             .collect();
-        ByteCode {
+        Bytecode {
             objects,
             consts,
             ifaces,
@@ -297,7 +297,7 @@ impl PanicData {
 struct Context<'a> {
     #[cfg(feature = "async")]
     exec: Rc<LocalExecutor<'a>>,
-    code: &'a ByteCode,
+    code: &'a Bytecode,
     gcc: &'a GcContainer,
     ffi_factory: &'a FfiFactory,
     fs: Option<&'a FileSet>,
@@ -307,7 +307,7 @@ struct Context<'a> {
 impl<'a> Context<'a> {
     fn new(
         #[cfg(feature = "async")] exec: Rc<LocalExecutor<'a>>,
-        code: &'a ByteCode,
+        code: &'a Bytecode,
         gcc: &'a GcContainer,
         ffi_factory: &'a FfiFactory,
         fs: Option<&'a FileSet>,

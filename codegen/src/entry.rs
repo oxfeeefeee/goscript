@@ -18,7 +18,7 @@ use goscript_types::{
 };
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use goscript_vm::vm::ByteCode;
+use goscript_vm::vm::Bytecode;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(
@@ -26,7 +26,7 @@ pub fn parse_check_gen<S: SourceRead>(
     tconfig: &TraceConfig,
     reader: &S,
     fset: &mut FileSet,
-) -> Result<ByteCode, ErrorList> {
+) -> Result<Bytecode, ErrorList> {
     let ast_objs = &mut AstObjects::new();
     let tc_objs = &mut TCObjects::new();
     let results = &mut Map::new();
@@ -61,7 +61,7 @@ fn gen_byte_code(
     main_pkg: TCPackageKey,
     main_ident: IdentKey,
     blank_ident: IdentKey,
-) -> ByteCode {
+) -> Bytecode {
     let vm_objs = VMObjects::new();
     let mut vmctx = CodeGenVMCtx::new(vm_objs);
     let consts = Consts::new();
@@ -113,7 +113,7 @@ fn gen_byte_code(
         .map(|x| lookup.iface_binding_info(x, &mut vmctx))
         .collect();
 
-    ByteCode::new(
+    Bytecode::new(
         vmctx.into_vmo(),
         consts,
         iface_binding,
@@ -122,7 +122,7 @@ fn gen_byte_code(
     )
 }
 
-// generate the entry function for ByteCode
+// generate the entry function for Bytecode
 fn gen_entry_func<'a, 'c>(
     vmctx: &'a mut CodeGenVMCtx,
     consts: &'c Consts,
