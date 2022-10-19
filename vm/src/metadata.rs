@@ -76,7 +76,7 @@ impl StaticMeta {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Meta {
     pub key: MetadataKey,
     pub ptr_depth: u8,

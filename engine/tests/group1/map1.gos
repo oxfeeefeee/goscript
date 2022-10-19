@@ -41,6 +41,18 @@ func commaOk() {
 	assert(t02 == 20)
 }
 
+func arrayKey() {
+    m := make(map[[2]int]int)
+    m[[2]int{1, 2}] = 1223
+    m[[2]int{2, 2}] = 12233
+    assert(m[[2]int{1, 2}] == 1223)
+
+    m2 := make(map[[2]string]int)
+    m2[[2]string{"1", "2"}] = 1223
+    m2[[2]string{"2", "2"}] = 12233
+    assert(m2[[2]string{"1", "2"}] == 1223)
+}
+
 func main() {
     var s1 = map[int]int{1:2, 3: 888}
     var v = s1[1]
@@ -55,4 +67,6 @@ func main() {
     assert(s1[3] == 888)
 
     commaOk()
+
+    arrayKey()
 }

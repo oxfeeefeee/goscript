@@ -137,7 +137,7 @@ pub trait Element: Clone + Hash + Debug {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct GosElem {
     cell: RefCell<GosValue>,
 }
@@ -191,7 +191,7 @@ impl Element for GosElem {
 }
 
 /// Cell is much cheaper than RefCell, used to store basic types
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct CellElem<T>
 where
     T: Copy + PartialEq,
@@ -473,6 +473,38 @@ where
             }
         }
         true
+    }
+}
+
+impl<T> PartialOrd for ArrayObj<T>
+where
+    T: Element + PartialEq + Ord,
+{
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for ArrayObj<T>
+where
+    T: Element + PartialEq + Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        let a = self.borrow_data();
+        let b = other.borrow_data();
+        let order = a.len().cmp(&b.len());
+        if order != Ordering::Equal {
+            return order;
+        }
+        for (i, elem) in self.borrow_data().iter().enumerate() {
+            let order = elem.cmp(&b[i]);
+            if order != Ordering::Equal {
+                return order;
+            }
+        }
+
+        Ordering::Equal
     }
 }
 

@@ -2299,12 +2299,12 @@ impl Hash for GosValue {
             ValueType::Struct => {
                 self.as_struct().0.hash(state);
             }
-            ValueType::Interface => match self.as_interface() {
-                Some(iface) => iface.hash(state),
-                None => 0.hash(state),
-            },
             ValueType::Pointer => match self.as_pointer() {
                 Some(p) => PointerObj::hash(&p, state),
+                None => 0.hash(state),
+            },
+            ValueType::Interface => match self.as_interface() {
+                Some(iface) => iface.hash(state),
                 None => 0.hash(state),
             },
             _ => {
@@ -2339,12 +2339,25 @@ impl Ord for GosValue {
             (ValueType::Uint64, ValueType::Uint64) => self.as_uint64().cmp(b.as_uint64()),
             (ValueType::Float32, ValueType::Float32) => self.as_float32().cmp(b.as_float32()),
             (ValueType::Float64, ValueType::Float64) => self.as_float64().cmp(b.as_float64()),
+            (ValueType::Complex128, ValueType::Complex128) => {
+                let left = self.as_complex128();
+                let right = self.as_complex128();
+                left.r.cmp(&right.r).then(left.i.cmp(&right.i))
+            }
+            (ValueType::Function, ValueType::Function) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Package, ValueType::Package) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Metadata, ValueType::Metadata) => self.as_metadata().cmp(b.as_metadata()),
             (ValueType::String, ValueType::String) => {
                 StrUtil::as_str(self.as_string()).cmp(&StrUtil::as_str(b.as_string()))
             }
-            (ValueType::Complex64, ValueType::Complex64) => self.as_uint64().cmp(b.as_uint64()),
-            (ValueType::Function, ValueType::Function) => self.as_uint64().cmp(b.as_uint64()),
-            (ValueType::Package, ValueType::Package) => self.as_uint64().cmp(b.as_uint64()),
+            (ValueType::Array, ValueType::Array) => {
+                self.caller_slow().array_cmp(self.data(), b.data())
+            }
+            (ValueType::Complex64, ValueType::Complex64) => {
+                let left = self.as_complex64();
+                let right = self.as_complex64();
+                left.r.cmp(&right.r).then(left.i.cmp(&right.i))
+            }
             (ValueType::Struct, ValueType::Struct) => self.as_struct().0.cmp(&b.as_struct().0),
             (ValueType::Pointer, ValueType::Pointer) => match (self.as_pointer(), b.as_pointer()) {
                 (Some(a), Some(b)) => a.cmp(b),

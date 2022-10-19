@@ -30,6 +30,8 @@ pub(crate) trait Dispatcher {
 
     fn array_eq(&self, a: &ValueData, b: &ValueData) -> bool;
 
+    fn array_cmp(&self, a: &ValueData, b: &ValueData) -> std::cmp::Ordering;
+
     fn array_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
 
     fn slice_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
@@ -145,6 +147,11 @@ macro_rules! define_dispatcher {
             #[inline]
             fn array_eq(&self, a: &ValueData, b: &ValueData) -> bool {
                 a.as_array::<$elem>().0 == b.as_array::<$elem>().0
+            }
+
+            #[inline]
+            fn array_cmp(&self, a: &ValueData, b: &ValueData) -> std::cmp::Ordering {
+                a.as_array::<$elem>().0.cmp(&b.as_array::<$elem>().0)
             }
 
             fn array_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
