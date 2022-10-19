@@ -343,7 +343,6 @@ impl StdValue {
                     let metas = &ctx.vm_objs.metas;
                     let fields = &metas[self.meta().unwrap().underlying(metas).key]
                         .as_struct()
-                        .0
                         .all();
                     Ok(FfiCtx::new_unsafe_ptr(StdValue::Pointer(
                         p,

@@ -1305,7 +1305,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 }
                 clit.elts.len()
             }
-            MetadataType::Struct(f, _) => {
+            MetadataType::Struct(f) => {
                 let fields = typ.try_as_struct().unwrap().fields();
                 for (i, expr) in clit.elts.iter().enumerate() {
                     let (index, expr) = match expr {
@@ -1374,7 +1374,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
     fn get_field_meta(&self, parent: &Meta, indices: &[usize]) -> Meta {
         match parent.mtype_unwraped(self.vmctx.metas()) {
-            MetadataType::Struct(f, _) => f.get(indices, self.vmctx.metas()).meta,
+            MetadataType::Struct(f) => f.get(indices, self.vmctx.metas()).meta,
             _ => unreachable!(),
         }
     }

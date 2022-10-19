@@ -206,7 +206,7 @@ impl CodeGenVMCtx {
     }
 
     pub fn new_struct_meta(&mut self, fields: Fields) -> Meta {
-        Meta::new_struct(fields, &mut self.vm_objs, &self.dummy_gcc)
+        Meta::new_struct(fields, &mut self.vm_objs)
     }
 
     #[inline]

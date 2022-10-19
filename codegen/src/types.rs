@@ -152,7 +152,7 @@ impl<'a> TypeLookup<'a> {
                 ValueType::Slice,
                 self.tc_objs.types[typ].try_as_slice().unwrap().elem(),
             ),
-            MetadataType::Str(_) => (
+            MetadataType::Str => (
                 ValueType::String,
                 self.tc_objs.universe().types()[&BasicType::Uint8],
             ),
@@ -668,7 +668,7 @@ impl<'a> TypeLookup<'a> {
             map.insert(field.name().clone(), vec![i]);
             if is_embedded {
                 match f_type.mtype_unwraped(&vmctx.metas()) {
-                    MetadataType::Struct(fields, _) => {
+                    MetadataType::Struct(fields) => {
                         for (k, v) in fields.mapping() {
                             let mut indices = vec![i];
                             indices.append(&mut v.clone());

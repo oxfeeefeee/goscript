@@ -1567,7 +1567,7 @@ impl<'a> Fiber<'a> {
                                 }
                                 map_val
                             }
-                            MetadataType::Struct(_, _) => {
+                            MetadataType::Struct(_) => {
                                 let struct_val = md.zero(&objs.metas, gcc);
                                 {
                                     let fields = &mut struct_val.as_struct().0.borrow_fields_mut();

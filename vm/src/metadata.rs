@@ -64,7 +64,7 @@ impl StaticMeta {
             mfloat64: Meta::with_type(MetadataType::Float64, objs),
             mcomplex64: Meta::with_type(MetadataType::Complex64, objs),
             mcomplex128: Meta::with_type(MetadataType::Complex128, objs),
-            mstr: Meta::with_type(MetadataType::Str(GosValue::with_str("")), objs),
+            mstr: Meta::with_type(MetadataType::Str, objs),
             unsafe_ptr: Meta::with_type(MetadataType::UnsafePtr, objs),
             default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
             empty_iface: Meta::with_type(
@@ -129,14 +129,8 @@ impl Meta {
     }
 
     #[inline]
-    pub(crate) fn new_struct(f: Fields, objs: &mut VMObjects, gcc: &GcContainer) -> Meta {
-        let field_zeros: Vec<GosValue> = f
-            .fields
-            .iter()
-            .map(|x| x.meta.zero(&objs.metas, gcc))
-            .collect();
-        let struct_val = StructObj::new(field_zeros);
-        let key = objs.metas.insert(MetadataType::Struct(f, struct_val));
+    pub(crate) fn new_struct(f: Fields, objs: &mut VMObjects) -> Meta {
+        let key = objs.metas.insert(MetadataType::Struct(f));
         Meta::new(key, 0, false)
     }
 
@@ -217,8 +211,8 @@ impl Meta {
                     MetadataType::Complex64 => ValueType::Complex64,
                     MetadataType::Complex128 => ValueType::Complex128,
                     MetadataType::UnsafePtr => ValueType::UnsafePtr,
-                    MetadataType::Str(_) => ValueType::String,
-                    MetadataType::Struct(_, _) => ValueType::Struct,
+                    MetadataType::Str => ValueType::String,
+                    MetadataType::Struct(_) => ValueType::Struct,
                     MetadataType::Signature(_) => ValueType::Closure,
                     MetadataType::Array(_, _) => ValueType::Array,
                     MetadataType::Slice(_) => ValueType::Slice,
@@ -255,7 +249,7 @@ impl Meta {
                 MetadataType::Complex64 => GosValue::new_complex64(0.0.into(), 0.0.into()),
                 MetadataType::Complex128 => GosValue::new_complex128(0.0.into(), 0.0.into()),
                 MetadataType::UnsafePtr => GosValue::new_nil(ValueType::UnsafePtr),
-                MetadataType::Str(s) => s.clone(),
+                MetadataType::Str => GosValue::with_str(""),
                 MetadataType::Array(m, size) => {
                     let val = m.zero(mobjs, gcc);
                     let t = m.value_type(mobjs);
@@ -263,7 +257,12 @@ impl Meta {
                     GosValue::array_with_size(*size, *size, &val, &caller, gcc)
                 }
                 MetadataType::Slice(m) => GosValue::new_nil_slice(m.value_type(mobjs)),
-                MetadataType::Struct(_, s) => GosValue::new_struct(s.clone(), gcc),
+                MetadataType::Struct(f) => {
+                    let field_zeros: Vec<GosValue> =
+                        f.fields.iter().map(|x| x.meta.zero(mobjs, gcc)).collect();
+                    let struct_val = StructObj::new(field_zeros);
+                    GosValue::new_struct(struct_val, gcc)
+                }
                 MetadataType::Signature(_) => GosValue::new_nil(ValueType::Closure),
                 MetadataType::Map(_, _) => GosValue::new_nil(ValueType::Map),
                 MetadataType::Interface(_) => GosValue::new_nil(ValueType::Interface),
@@ -279,7 +278,7 @@ impl Meta {
     pub fn field_indices<'a, 'b: 'a>(&'a self, name: &str, metas: &'b MetadataObjs) -> &'b [usize] {
         let key = self.recv_meta_key();
         match &metas[Meta::new(key, 0, false).underlying(metas).key] {
-            MetadataType::Struct(m, _) => &m.mapping[name],
+            MetadataType::Struct(m) => &m.mapping[name],
             _ => unreachable!(),
         }
     }
@@ -334,7 +333,7 @@ impl Meta {
                 .mapping
                 .get(name)
                 .map(|x| IfaceBinding::Iface(x[0], None)),
-            MetadataType::Struct(fields, _) => {
+            MetadataType::Struct(fields) => {
                 for (i, f) in fields.fields.iter().enumerate() {
                     if let Some(mut re) = f.meta.get_iface_binding(name, metas) {
                         let indices = match &mut re {
@@ -410,7 +409,6 @@ impl Fields {
             metas[self.fields[indices[0] as usize].meta.key]
                 .unwrap_named(metas)
                 .as_struct()
-                .0
                 .get(&indices[1..], metas)
         }
     }
@@ -560,10 +558,10 @@ pub enum MetadataType {
     Complex64,
     Complex128,
     UnsafePtr,
-    Str(GosValue),
+    Str,
     Array(Meta, usize),
     Slice(Meta),
-    Struct(Fields, StructObj),
+    Struct(Fields),
     Signature(SigMetadata),
     Map(Meta, Meta),
     Interface(Fields),
@@ -622,9 +620,9 @@ impl MetadataType {
     }
 
     #[inline]
-    pub fn as_struct(&self) -> (&Fields, &StructObj) {
+    pub fn as_struct(&self) -> &Fields {
         match self {
-            Self::Struct(f, v) => (f, v),
+            Self::Struct(f) => f,
             _ => unreachable!(),
         }
     }
@@ -661,8 +659,8 @@ impl MetadataType {
             (Self::Float64, Self::Float64) => true,
             (Self::Complex64, Self::Complex64) => true,
             (Self::Complex128, Self::Complex128) => true,
-            (Self::Str(_), Self::Str(_)) => true,
-            (Self::Struct(a, _), Self::Struct(b, _)) => a.identical(b, metas),
+            (Self::Str, Self::Str) => true,
+            (Self::Struct(a), Self::Struct(b)) => a.identical(b, metas),
             (Self::Signature(a), Self::Signature(b)) => a.identical(b, metas),
             (Self::Array(a, size_a), Self::Array(b, size_b)) => {
                 size_a == size_b && a.identical(b, metas)
