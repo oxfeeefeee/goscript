@@ -208,7 +208,7 @@ impl CallFrame {
     }
 
     #[inline]
-    fn func_val<'a>(&self, objs: &'a VMObjects) -> &'a FunctionVal {
+    fn func_obj<'a>(&self, objs: &'a VMObjects) -> &'a FunctionObj {
         let fkey = self.func();
         &objs.functions[fkey]
     }
@@ -1071,7 +1071,7 @@ impl<'a> Fiber<'a> {
                                 let pkey = stack.read(inst.d, sb, consts).as_package();
                                 let pkg = &objs.packages[*pkey];
                                 // the var values left on the stack are for pkg members
-                                let func = frame.func_val(objs);
+                                let func = frame.func_obj(objs);
                                 let begin = sb;
                                 let end = begin + func.local_count();
                                 pkg.init_vars(stack.move_vec(begin, end));
@@ -1086,7 +1086,7 @@ impl<'a> Fiber<'a> {
                                     frame.pc -= 1;
 
                                     let call_vec_len = call.vec.len() as OpIndex;
-                                    let cur_func = frame.func_val(objs);
+                                    let cur_func = frame.func_obj(objs);
                                     // dont overwrite locals of current function
                                     let new_sb = sb
                                         + cur_func.ret_count()
@@ -1122,7 +1122,7 @@ impl<'a> Fiber<'a> {
                             // );
 
                             frame.on_drop(&stack);
-                            let func = frame.func_val(objs);
+                            let func = frame.func_obj(objs);
                             let begin = sb + func.ret_count() as OpIndex;
                             let end = begin + func.param_count() + func.local_count();
                             stack.move_vec(begin, end);

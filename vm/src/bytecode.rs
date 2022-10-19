@@ -35,8 +35,8 @@ impl_borsh_for_key!(FunctionKey);
 impl_borsh_for_key!(PackageKey);
 
 pub type MetadataObjs = PiggyVec<MetadataKey, MetadataType>;
-pub type FunctionObjs = PiggyVec<FunctionKey, FunctionVal>;
-pub type PackageObjs = PiggyVec<PackageKey, PackageVal>;
+pub type FunctionObjs = PiggyVec<FunctionKey, FunctionObj>;
+pub type PackageObjs = PiggyVec<PackageKey, PackageObj>;
 
 pub struct VMObjects {
     pub metas: MetadataObjs,
@@ -75,8 +75,8 @@ impl BorshDeserialize for VMObjects {
         unimplemented!();
 
         // let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
-        // let functions = Vec::<FunctionVal>::deserialize(buf)?.into();
-        // let packages = Vec::<PackageVal>::deserialize(buf)?.into();
+        // let functions = Vec::<FunctionObj>::deserialize(buf)?.into();
+        // let packages = Vec::<PackageObj>::deserialize(buf)?.into();
         // let s_meta = StaticMeta::new(&mut metas);
         // Ok(VMObjects {
         //     metas,
