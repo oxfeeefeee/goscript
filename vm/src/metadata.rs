@@ -4,10 +4,11 @@
 
 use crate::value::ArrCaller;
 
-use super::gc::GcContainer;
-use super::instruction::{OpIndex, ValueType};
-use super::objects::{FunctionKey, IfaceBinding, MetadataKey, MetadataObjs, StructObj, VMObjects};
-use super::value::GosValue;
+use crate::bytecode::{FunctionKey, MetadataKey, MetadataObjs, VMObjects};
+use crate::gc::GcContainer;
+use crate::instruction::{OpIndex, ValueType};
+use crate::objects::{IfaceBinding, StructObj};
+use crate::value::GosValue;
 use goscript_parser::Map;
 use std::cell::RefCell;
 use std::rc::Rc;

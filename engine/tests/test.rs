@@ -484,11 +484,11 @@ fn test_std_fmt() {
 fn test_map_perf() {
     time_test!();
     let mut m: goscript_parser::Map<usize, usize> = goscript_parser::Map::new();
-    for i in 0..2000000 {
+    for i in 0..200000 {
         m.insert(i, i);
     }
     let mut total: usize = 0;
-    for i in 0..2000000 {
+    for i in 0..200000 {
         total += m[&i];
     }
     dbg!(total);
@@ -499,11 +499,11 @@ fn test_map_perf2() {
     time_test!();
     use goscript_vm::value::GosValue;
     let mut m: goscript_parser::Map<GosValue, usize> = goscript_parser::Map::new();
-    for i in 0..2000000 {
+    for i in 0..200000 {
         m.insert(i.into(), i);
     }
     let mut total: usize = 0;
-    for i in 0usize..2000000 {
+    for i in 0usize..200000 {
         total += m[&i.into()];
     }
     dbg!(total);

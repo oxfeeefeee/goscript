@@ -16,6 +16,7 @@ pub mod visitor;
 
 pub use ast::Expr;
 pub use map::{Map, MapIter};
+pub use objects::{PiggyVec, PiggyVecKey};
 pub use parser::Parser;
 pub use position::{FilePos, FileSet, Pos};
 pub use token::Token;

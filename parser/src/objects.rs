@@ -39,6 +39,11 @@ where
         self.vec.push(v);
         (self.vec.len() - 1).into()
     }
+
+    #[inline]
+    pub fn vec(&self) -> &Vec<V> {
+        &self.vec
+    }
 }
 
 impl<K, V> Index<K> for PiggyVec<K, V>
@@ -60,6 +65,19 @@ where
     #[inline]
     fn index_mut(&mut self, index: K) -> &mut Self::Output {
         &mut self.vec[index.as_usize()]
+    }
+}
+
+impl<K, V> From<Vec<V>> for PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    #[inline]
+    fn from(vec: Vec<V>) -> Self {
+        PiggyVec {
+            vec,
+            phantom: PhantomData {},
+        }
     }
 }
 

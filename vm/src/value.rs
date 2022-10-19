@@ -4,6 +4,7 @@
 
 #![allow(dead_code)]
 
+pub use crate::bytecode::*;
 #[cfg(feature = "async")]
 use crate::channel::Channel;
 pub(crate) use crate::dispatcher::*;

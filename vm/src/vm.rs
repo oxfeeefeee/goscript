@@ -149,41 +149,6 @@ pub fn run(code: &Bytecode, ffi: &FfiFactory, fs: Option<&FileSet>) {
     }
 }
 
-pub struct Bytecode {
-    pub objects: VMObjects,
-    pub consts: Vec<GosValue>,
-    /// For calling method via interfaces
-    pub ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
-    /// For embedded fields of structs
-    pub indices: Vec<Vec<OpIndex>>,
-    pub entry: FunctionKey,
-}
-
-impl Bytecode {
-    pub fn new(
-        objects: VMObjects,
-        consts: Vec<GosValue>,
-        ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
-        indices: Vec<Vec<OpIndex>>,
-        entry: FunctionKey,
-    ) -> Bytecode {
-        let ifaces = ifaces
-            .into_iter()
-            .map(|(ms, binding)| {
-                let binding = binding.into_iter().map(|x| x.into()).collect();
-                (ms, binding)
-            })
-            .collect();
-        Bytecode {
-            objects,
-            consts,
-            ifaces,
-            indices,
-            entry,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct Referers {
     typ: ValueType,

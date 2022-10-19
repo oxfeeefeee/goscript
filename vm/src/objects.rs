@@ -14,7 +14,6 @@ use crate::metadata::*;
 use crate::stack::Stack;
 use crate::value::*;
 use goscript_parser::objects::*;
-use goscript_parser::piggy_key_type;
 use goscript_parser::{Map, MapIter};
 use std::any::Any;
 use std::borrow::Cow;
@@ -26,39 +25,6 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use std::rc::{Rc, Weak};
 use std::{panic, ptr, str};
-
-piggy_key_type! {
-    pub struct MetadataKey;
-    pub struct FunctionKey;
-    pub struct PackageKey;
-}
-
-pub type MetadataObjs = PiggyVec<MetadataKey, MetadataType>;
-pub type FunctionObjs = PiggyVec<FunctionKey, FunctionVal>;
-pub type PackageObjs = PiggyVec<PackageKey, PackageVal>;
-
-pub struct VMObjects {
-    pub metas: MetadataObjs,
-    pub functions: FunctionObjs,
-    pub packages: PackageObjs,
-    pub s_meta: StaticMeta,
-    pub(crate) arr_slice_caller: Box<ArrCaller>,
-}
-
-impl VMObjects {
-    pub fn new() -> VMObjects {
-        const CAP: usize = 16;
-        let mut metas = PiggyVec::with_capacity(CAP);
-        let md = StaticMeta::new(&mut metas);
-        VMObjects {
-            metas,
-            functions: PiggyVec::with_capacity(CAP),
-            packages: PiggyVec::with_capacity(CAP),
-            s_meta: md,
-            arr_slice_caller: Box::new(ArrCaller::new()),
-        }
-    }
-}
 
 // ----------------------------------------------------------------------------
 // MapObj

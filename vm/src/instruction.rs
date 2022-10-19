@@ -3,12 +3,16 @@
 // license that can be found in the LICENSE file.
 
 #![allow(non_camel_case_types)]
+use borsh::{
+    maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
+    BorshSerialize,
+};
 use std::fmt;
 use std::fmt::Debug;
 
 pub type OpIndex = i32;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Opcode {
     VOID,
@@ -126,7 +130,9 @@ impl fmt::Display for Opcode {
 
 pub const COPYABLE_END: ValueType = ValueType::Package;
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd,
+)]
 #[repr(u8)]
 pub enum ValueType {
     Void,
@@ -345,6 +351,39 @@ impl Instruction {
             }
         }
         result
+    }
+}
+
+impl BorshSerialize for Instruction {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        self.op0.serialize(writer)?;
+        self.op1.serialize(writer)?;
+        self.t0.serialize(writer)?;
+        self.t1.serialize(writer)?;
+        self.d.serialize(writer)?;
+        self.s0.serialize(writer)?;
+        self.s1.serialize(writer)
+    }
+}
+
+impl BorshDeserialize for Instruction {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let op0 = Opcode::deserialize(buf)?;
+        let op1 = Opcode::deserialize(buf)?;
+        let t0 = ValueType::deserialize(buf)?;
+        let t1 = ValueType::deserialize(buf)?;
+        let d = OpIndex::deserialize(buf)?;
+        let s0 = OpIndex::deserialize(buf)?;
+        let s1 = OpIndex::deserialize(buf)?;
+        Ok(Instruction {
+            op0,
+            op1,
+            t0,
+            t1,
+            d,
+            s0,
+            s1,
+        })
     }
 }
 

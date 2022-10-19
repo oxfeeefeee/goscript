@@ -18,8 +18,10 @@ pub mod ffi;
 mod dispatcher;
 pub mod value;
 
+mod bytecode;
 mod stack;
-
 pub mod vm;
 
 pub mod gc;
+
+pub use value::Bytecode;

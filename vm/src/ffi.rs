@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+use crate::bytecode::*;
 use crate::gc::GcContainer;
-use crate::objects::VMObjects;
 use crate::stack::Stack;
 use crate::value::*;
 use crate::value::{GosValue, RuntimeResult};

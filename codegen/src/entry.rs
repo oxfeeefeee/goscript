@@ -18,7 +18,7 @@ use goscript_types::{
 };
 use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use goscript_vm::vm::Bytecode;
+use goscript_vm::Bytecode;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(
