@@ -405,8 +405,12 @@ impl<'a> FuncCtx<'a> {
         self.entities.get(entity)
     }
 
-    pub fn add_const(&self, cst: GosValue) -> Addr {
-        Addr::Const(self.consts.add_const(cst))
+    pub fn add_nil(&self, v: GosValue) -> Addr {
+        Addr::Const(self.consts.add_nil(v))
+    }
+
+    pub fn add_comparable(&self, v: GosValue) -> Addr {
+        Addr::Const(self.consts.add_comparable(v))
     }
 
     pub fn add_method(&self, obj_type: Meta, index: usize) -> Addr {
@@ -414,15 +418,15 @@ impl<'a> FuncCtx<'a> {
     }
 
     pub fn add_metadata(&mut self, meta: Meta) -> Addr {
-        self.add_const(FfiCtx::new_metadata(meta))
+        self.add_comparable(FfiCtx::new_metadata(meta))
     }
 
     pub fn add_package(&mut self, pkg: PackageKey) -> Addr {
-        self.add_const(FfiCtx::new_package(pkg))
+        self.add_comparable(FfiCtx::new_package(pkg))
     }
 
     pub fn add_const_var(&mut self, entity: TCObjKey, cst: GosValue) -> Addr {
-        let addr = Addr::Const(self.consts.add_const(cst));
+        let addr = Addr::Const(self.consts.add_comparable(cst));
         let old = self.entities.insert(entity, addr);
         assert_eq!(old, None);
         addr
@@ -675,7 +679,7 @@ impl<'a> FuncCtx<'a> {
 
     pub fn emit_import(&mut self, pkg: PackageKey, pos: Option<usize>) {
         let pkg_addr = self.add_package(pkg);
-        let zero_addr = Addr::Const(self.consts.add_const(0i32.into()));
+        let zero_addr = Addr::Const(self.consts.add_comparable(0i32.into()));
         let imm0 = Addr::Imm(0);
         let reg0 = Addr::Regsiter(0);
         let reg1 = Addr::Regsiter(1);

@@ -12,7 +12,9 @@ use std::hash::Hasher;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum Const {
-    Var(GosValue),
+    Nil(GosValue),
+    Comparable(GosValue),
+    ZeroVal(GosValue, Meta),
     Method(Meta, usize), // deferred resolve
 }
 
@@ -27,8 +29,26 @@ impl Consts {
         }
     }
 
-    pub fn add_const(&self, v: GosValue) -> usize {
-        self.add(Const::Var(v))
+    pub fn add_nil(&self, v: GosValue) -> usize {
+        assert!(v.is_nil());
+        self.add(Const::Nil(v))
+    }
+
+    pub fn add_comparable(&self, v: GosValue) -> usize {
+        assert!(v.comparable());
+        self.add(Const::Comparable(v))
+    }
+
+    pub fn add_zero_val(&self, v: GosValue, m: Meta) -> usize {
+        if v.nilable() {
+            self.add_nil(v)
+        } else if v.typ() == ValueType::Struct || v.typ() == ValueType::Array {
+            // Structs and Arrays
+            self.add(Const::ZeroVal(v, m))
+        } else {
+            // Not all Structs and Arrays are comparable
+            self.add_comparable(v)
+        }
     }
 
     pub fn add_method(&self, obj_type: Meta, index: usize) -> usize {
@@ -46,29 +66,44 @@ impl Consts {
         &self,
         vmctx: &mut CodeGenVMCtx,
     ) -> (Vec<GosValue>, Map<usize, usize>) {
+        // First, resolve methods
+        for c in self.consts.borrow_mut().iter_mut() {
+            match c {
+                Const::Method(meta, index) => {
+                    *c = Const::Comparable(FfiCtx::new_function(
+                        meta.get_method(*index as OpIndex, vmctx.metas())
+                            .borrow()
+                            .func
+                            .unwrap(),
+                    ));
+                }
+                _ => {}
+            }
+        }
+
         #[derive(Debug)]
         enum ConstType {
             Nil,
-            Copyable,
+            Comparable,
             Other,
         }
 
         // Runtime never compare two GosValues with different types,
         // so GosValue::Eq, GosValue::Hash and GosValue::Ord cannot be used here.
-        struct CopyableVal {
+        struct ComparableVal {
             val: GosValue,
         }
 
-        impl Eq for CopyableVal {}
+        impl Eq for ComparableVal {}
 
-        impl PartialEq for CopyableVal {
-            fn eq(&self, b: &CopyableVal) -> bool {
+        impl PartialEq for ComparableVal {
+            fn eq(&self, b: &ComparableVal) -> bool {
                 self.val.typ() == b.val.typ() && self.val == b.val
             }
         }
 
         #[cfg(not(feature = "btree_map"))]
-        impl Hash for CopyableVal {
+        impl Hash for ComparableVal {
             fn hash<H: Hasher>(&self, state: &mut H) {
                 self.val.typ().hash(state);
                 self.val.hash(state);
@@ -76,7 +111,7 @@ impl Consts {
         }
 
         #[cfg(feature = "btree_map")]
-        impl PartialOrd for CopyableVal {
+        impl PartialOrd for ComparableVal {
             #[inline]
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.cmp(other))
@@ -84,7 +119,7 @@ impl Consts {
         }
 
         #[cfg(feature = "btree_map")]
-        impl Ord for CopyableVal {
+        impl Ord for ComparableVal {
             fn cmp(&self, b: &Self) -> std::cmp::Ordering {
                 if self.val.typ() == b.val.typ() {
                     self.val.cmp(&b.val)
@@ -96,49 +131,43 @@ impl Consts {
 
         let mut nils = vec![];
         let mut nil_map = Map::new();
-        let mut copyables = vec![];
-        let mut copyables_map = Map::new();
+        let mut comparables = vec![];
+        let mut comparables_map = Map::new();
         let mut others = vec![];
+        let mut others_map = Map::new();
         let consts_indices: Vec<(ConstType, usize, usize)> = self
             .consts
             .borrow()
             .iter()
             .enumerate()
-            .map(|(i, c)| {
-                let val = match c {
-                    Const::Var(v) => v.clone(),
-                    Const::Method(m, index) => FfiCtx::new_function(
-                        m.get_method(*index as OpIndex, vmctx.metas())
-                            .borrow()
-                            .func
-                            .unwrap(),
-                    ),
-                };
-
-                if val.is_nil() {
-                    (
-                        ConstType::Nil,
-                        i,
-                        *nil_map.entry(val.typ()).or_insert_with(|| {
-                            nils.push(val);
-                            nils.len() - 1
+            .map(|(i, c)| match c {
+                Const::Nil(val) => (
+                    ConstType::Nil,
+                    i,
+                    *nil_map.entry((val.typ(), val.t_elem())).or_insert_with(|| {
+                        nils.push(val.clone());
+                        nils.len() - 1
+                    }),
+                ),
+                Const::Comparable(val) => (
+                    ConstType::Comparable,
+                    i,
+                    *comparables_map
+                        .entry(ComparableVal { val: val.clone() })
+                        .or_insert_with(|| {
+                            comparables.push(val.clone());
+                            comparables.len() - 1
                         }),
-                    )
-                } else if val.typ().copyable() {
-                    (
-                        ConstType::Copyable,
-                        i,
-                        *copyables_map
-                            .entry(CopyableVal { val: val.clone() })
-                            .or_insert_with(|| {
-                                copyables.push(val);
-                                copyables.len() - 1
-                            }),
-                    )
-                } else {
-                    others.push(val);
-                    (ConstType::Other, i, others.len() - 1)
-                }
+                ),
+                Const::ZeroVal(val, meta) => (
+                    ConstType::Other,
+                    i,
+                    *others_map.entry(meta).or_insert_with(|| {
+                        others.push(val.clone());
+                        others.len() - 1
+                    }),
+                ),
+                Const::Method(_, _) => unreachable!(),
             })
             .collect();
 
@@ -146,14 +175,14 @@ impl Consts {
         for (t, i, j) in consts_indices {
             let offset = match t {
                 ConstType::Nil => 0,
-                ConstType::Copyable => nils.len(),
-                ConstType::Other => nils.len() + copyables.len(),
+                ConstType::Comparable => nils.len(),
+                ConstType::Other => nils.len() + comparables.len(),
             };
             map.insert(i, j + offset);
         }
         let mut consts = vec![];
         consts.append(&mut nils);
-        consts.append(&mut copyables);
+        consts.append(&mut comparables);
         consts.append(&mut others);
         (consts, map)
     }

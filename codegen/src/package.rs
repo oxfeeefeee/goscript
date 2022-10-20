@@ -54,7 +54,7 @@ impl<'a> PkgHelper<'a> {
     ) -> VirtualAddr {
         let tc_pkg = self.tc_objs.lobjs[okey].pkg().unwrap();
         let pkg = self.get_runtime_key(tc_pkg);
-        let pkg_addr = fctx.add_const(FfiCtx::new_package(pkg));
+        let pkg_addr = fctx.add_comparable(FfiCtx::new_package(pkg));
         let index_addr = Addr::PkgMemberIndex(pkg, ident);
         VirtualAddr::PackageMember(pkg_addr, index_addr)
     }

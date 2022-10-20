@@ -106,8 +106,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             OperandMode::Value => {
                 let id = &self.ast_objs.idents[*ident];
                 match &*id.name {
-                    "true" => VirtualAddr::Direct(func_ctx!(self).add_const(true.into())),
-                    "false" => VirtualAddr::Direct(func_ctx!(self).add_const(false.into())),
+                    "true" => VirtualAddr::Direct(func_ctx!(self).add_comparable(true.into())),
+                    "false" => VirtualAddr::Direct(func_ctx!(self).add_comparable(false.into())),
                     "nil" => VirtualAddr::Direct(Addr::UntypedNil),
                     _ => self.resolve_var_ident(ident),
                 }
@@ -268,7 +268,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     match self.t.try_pkg_key(&sexpr.expr) {
                         Some(key) => {
                             let pkg = self.pkg_helper.get_runtime_key(key);
-                            let pkg_addr = func_ctx!(self).add_const(FfiCtx::new_package(pkg));
+                            let pkg_addr = func_ctx!(self).add_comparable(FfiCtx::new_package(pkg));
                             let index_addr = Addr::PkgMemberIndex(pkg, sexpr.sel);
                             (VirtualAddr::PackageMember(pkg_addr, index_addr), typ, pos)
                         }
@@ -1097,7 +1097,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         let val_addr = self.load_mode_call(|g| g.gen_expr(expr));
         let val_tc_type = self.t.expr_tc_type(typ.as_ref().unwrap());
         let meta = self.t.tc_type_to_meta(val_tc_type, self.vmctx);
-        let meta_addr = func_ctx!(self).add_const(FfiCtx::new_metadata(meta));
+        let meta_addr = func_ctx!(self).add_comparable(FfiCtx::new_metadata(meta));
         let pos = Some(expr.pos(self.ast_objs));
         match ok_lhs_ectx {
             Some(mut ok_ectx) => {
@@ -1277,7 +1277,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     };
                     let fctx = func_ctx!(self);
                     let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
-                    let index_addr = fctx.add_const((key as i32).into());
+                    let index_addr = fctx.add_comparable((key as i32).into());
                     fctx.emit_assign(key_reg, index_addr, None, pos);
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     self.store_mode_call(elem_reg, Some(elem_type), |g| {
@@ -1318,7 +1318,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     };
                     let fctx = func_ctx!(self);
                     let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
-                    let index_addr = fctx.add_const(index.into());
+                    let index_addr = fctx.add_comparable(index.into());
                     fctx.emit_assign(key_reg, index_addr, None, pos);
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
@@ -1333,7 +1333,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 unreachable!()
             }
         };
-        let meta_addr = func_ctx!(self).add_const(FfiCtx::new_metadata(meta));
+        let meta_addr = func_ctx!(self).add_comparable(FfiCtx::new_metadata(meta));
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| {
             f.emit_literal(d, reg_base, count, meta_addr, p);
         });
@@ -1350,15 +1350,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn gen_expr_type(&mut self, typ: &Expr) {
         let m = self.t.node_meta(typ.id(), self.vmctx);
         let pos = Some(typ.pos(&self.ast_objs));
-        let addr = func_ctx!(self).add_const(FfiCtx::new_metadata(m));
+        let addr = func_ctx!(self).add_comparable(FfiCtx::new_metadata(m));
         self.cur_expr_emit_direct_assign(self.t.expr_tc_type(typ), addr, pos);
     }
 
     fn gen_expr_const(&mut self, expr: &Expr, pos: Option<Pos>) {
         let (tc_type, val) = self.t.const_type_value(expr.id());
         let fctx = func_ctx!(self);
-        //let t = val.typ();
-        let addr = fctx.add_const(val);
+        let addr = fctx.add_comparable(val);
         self.cur_expr_emit_direct_assign(tc_type, addr, pos);
     }
 
@@ -1404,7 +1403,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
     fn add_zero_val(&mut self, typ: TCTypeKey) -> Addr {
         let meta = self.t.tc_type_to_meta(typ, self.vmctx);
         let zero = self.vmctx.ffi_ctx().zero_val(&meta);
-        Addr::Const(self.consts.add_const(zero))
+        Addr::Const(self.consts.add_zero_val(zero, meta))
     }
 
     pub fn get_struct_field_op_index(
@@ -1573,7 +1572,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                 }
                 None => FfiCtx::new_nil(ValueType::Void),
             };
-            func_ctx!(self).add_const(nil)
+            func_ctx!(self).add_nil(nil)
         } else {
             src
         };
@@ -1659,7 +1658,7 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
         let tc_type = self.t.expr_tc_type(this);
         let (fkey, _) = self.gen_func_def(tc_type, flit.typ, None, &flit.body);
         let fctx = func_ctx!(self);
-        let addr = fctx.add_const(FfiCtx::new_function(fkey));
+        let addr = fctx.add_comparable(FfiCtx::new_function(fkey));
         let pos = Some(flit.body.l_brace);
         self.cur_expr_emit_assign(tc_type, pos, |f, d, p| f.emit_closure(d, addr, p));
     }
@@ -1798,15 +1797,15 @@ impl<'a, 'c> ExprVisitor for CodeGen<'a, 'c> {
 
         let slice_array_addr = self.load_mode_call(|g| g.gen_expr(expr));
         let low_addr = match low {
-            None => func_ctx!(self).add_const(0isize.into()),
+            None => func_ctx!(self).add_comparable(0isize.into()),
             Some(e) => self.load_mode_call(|g| g.gen_expr(e)),
         };
         let high_addr = match high {
-            None => func_ctx!(self).add_const((-1isize).into()),
+            None => func_ctx!(self).add_comparable((-1isize).into()),
             Some(e) => self.load_mode_call(|g| g.gen_expr(e)),
         };
         let max_addr = match max {
-            None => func_ctx!(self).add_const((-1isize).into()),
+            None => func_ctx!(self).add_comparable((-1isize).into()),
             Some(e) => self.load_mode_call(|g| g.gen_expr(e)),
         };
         let t_elem = self.t.tc_type_to_value_type(tct_elem);
@@ -2201,7 +2200,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                 self.load_mode_call(|g| g.gen_expr(e)),
                 self.t.expr_value_type(e),
             ),
-            None => (func_ctx!(self).add_const(true.into()), ValueType::Bool),
+            None => (func_ctx!(self).add_comparable(true.into()), ValueType::Bool),
         };
         self.gen_switch_body(&*sstmt.body, addr, typ, None);
 
