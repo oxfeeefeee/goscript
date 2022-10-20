@@ -1366,6 +1366,21 @@ impl GosValue {
     }
 
     #[inline]
+    pub fn copyable(&self) -> bool {
+        self.typ.copyable()
+    }
+
+    #[inline]
+    pub fn comparable(&self) -> bool {
+        self.typ.comparable()
+    }
+
+    #[inline]
+    pub fn nilable(&self) -> bool {
+        self.typ.nilable()
+    }
+
+    #[inline]
     pub(crate) fn new_nil(t: ValueType) -> GosValue {
         debug_assert!(t != ValueType::Slice);
         GosValue::new(t, ValueData::new_nil(t))
@@ -1749,103 +1764,103 @@ impl GosValue {
 
     #[inline]
     pub fn as_bool(&self) -> &bool {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_bool()
     }
 
     #[inline]
     pub fn as_int(&self) -> &isize {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_int()
     }
 
     #[inline]
     pub fn as_int8(&self) -> &i8 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_int8()
     }
 
     #[inline]
     pub fn as_int16(&self) -> &i16 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_int16()
     }
 
     #[inline]
     pub fn as_int32(&self) -> &i32 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_int32()
     }
 
     #[inline]
     pub fn as_int64(&self) -> &i64 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_int64()
     }
 
     #[inline]
     pub fn as_uint(&self) -> &usize {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint()
     }
 
     #[inline]
     pub fn as_uint_ptr(&self) -> &usize {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint_ptr()
     }
 
     #[inline]
     pub fn as_uint8(&self) -> &u8 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint8()
     }
 
     #[inline]
     pub fn as_uint16(&self) -> &u16 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint16()
     }
 
     #[inline]
     pub fn as_uint32(&self) -> &u32 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint32()
     }
 
     #[inline]
     pub fn as_uint64(&self) -> &u64 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_uint64()
     }
 
     #[inline]
     pub fn as_float32(&self) -> &F32 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_float32()
     }
 
     #[inline]
     pub fn as_float64(&self) -> &F64 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_float64()
     }
 
     #[inline]
     pub fn as_complex64(&self) -> &Complex64 {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_complex64()
     }
 
     #[inline]
     pub fn as_function(&self) -> &FunctionKey {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_function()
     }
 
     #[inline]
     pub fn as_package(&self) -> &PackageKey {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_package()
     }
 
@@ -2004,7 +2019,7 @@ impl GosValue {
 
     #[inline]
     pub(crate) fn copy_semantic(&self, gcc: &GcContainer) -> GosValue {
-        if self.typ.copyable() {
+        if self.copyable() {
             GosValue::new(self.typ, self.data.copy())
         } else {
             GosValue::with_elem_type(
@@ -2024,7 +2039,7 @@ impl GosValue {
 
     #[inline]
     pub fn as_index(&self) -> usize {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         self.data.as_index(self.typ)
     }
 
@@ -2150,7 +2165,7 @@ impl GosValue {
 
     #[inline]
     pub(crate) fn drop_as_copyable(self) {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         drop(self);
     }
 
@@ -2178,7 +2193,7 @@ impl GosValue {
 impl Drop for GosValue {
     #[inline]
     fn drop(&mut self) {
-        if !self.typ.copyable() {
+        if !self.copyable() {
             self.data.drop_as_ptr(self.typ, self.t_elem);
         }
     }
@@ -2187,7 +2202,7 @@ impl Drop for GosValue {
 impl Clone for GosValue {
     #[inline]
     fn clone(&self) -> Self {
-        if self.typ.copyable() {
+        if self.copyable() {
             GosValue::new(self.typ, self.data.copy())
         } else {
             GosValue::with_elem_type(self.typ, self.t_elem, self.data.clone(self.typ))
@@ -2374,7 +2389,7 @@ impl Ord for GosValue {
                 }
             }
             _ => {
-                dbg!(&self, b);
+                dbg!(self.typ(), b.typ());
                 unreachable!()
             }
         }
@@ -2460,7 +2475,7 @@ impl From<bool> for GosValue {
 impl AsPrimitive<bool> for GosValue {
     #[inline]
     fn as_(&self) -> bool {
-        debug_assert!(self.typ.copyable());
+        debug_assert!(self.copyable());
         *self.data.as_bool()
     }
 }

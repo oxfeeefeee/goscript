@@ -257,11 +257,8 @@ impl<'a> TypeLookup<'a> {
         }
         let container_key = self.node_tc_type(container.id());
         match &self.tc_objs.types[container_key] {
-            Type::Map(detail) => {
-                dbg!(self.tc_type_to_value_type(detail.key()));
-                (self.tc_type_to_value_type(detail.key()) == ValueType::Interface)
-                    .then_some(detail.key())
-            }
+            Type::Map(detail) => (self.tc_type_to_value_type(detail.key()) == ValueType::Interface)
+                .then_some(detail.key()),
             _ => None,
         }
     }

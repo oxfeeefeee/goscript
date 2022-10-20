@@ -128,8 +128,6 @@ impl fmt::Display for Opcode {
     }
 }
 
-pub const COPYABLE_END: ValueType = ValueType::Package;
-
 #[derive(
     BorshDeserialize, BorshSerialize, Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd,
 )]
@@ -158,7 +156,7 @@ pub enum ValueType {
     String,
     Array,
     Struct,
-    Pointer,
+    Pointer, // COMPARABLE_END
     UnsafePtr,
     Closure,
     Slice,
@@ -176,7 +174,17 @@ pub enum ValueType {
 impl ValueType {
     #[inline]
     pub fn copyable(&self) -> bool {
-        self <= &COPYABLE_END
+        self <= &Self::Package
+    }
+
+    #[inline]
+    pub fn comparable(&self) -> bool {
+        self <= &Self::Pointer
+    }
+
+    #[inline]
+    pub fn nilable(&self) -> bool {
+        self >= &Self::Pointer && self <= &Self::Channel
     }
 }
 
