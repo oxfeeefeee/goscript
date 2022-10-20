@@ -208,8 +208,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let (val, typ) = self.t.ident_const_value_type(name);
-            self.add_const_def(name, val, typ);
+            let (val, _) = self.t.ident_const_value_type(name);
+            self.add_const_def(name, val);
         }
     }
 
@@ -1378,14 +1378,14 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn add_const_def(&mut self, ikey: &IdentKey, cst: GosValue, typ: ValueType) -> Addr {
+    fn add_const_def(&mut self, ikey: &IdentKey, cst: GosValue) -> Addr {
         let fctx = func_ctx!(self);
         let index = fctx.add_const_var(self.t.object_def(*ikey), cst.clone());
         if fctx.is_ctor(self.vmctx.functions()) {
             let pkg_key = self.vmctx.functions()[fctx.f_key].package;
             let pkg = &mut self.vmctx.packages_mut()[pkg_key];
             let ident = &self.ast_objs.idents[*ikey];
-            pkg.add_member(ident.name.clone(), cst, typ);
+            pkg.add_member(ident.name.clone(), cst);
         }
         index
     }
@@ -1395,8 +1395,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             let ident = &self.ast_objs.idents[*n];
             let meta = self.t.obj_def_meta(*n, self.vmctx);
             let val = self.vmctx.ffi_ctx().zero_val(&meta);
-            let typ = meta.value_type(self.vmctx.metas());
-            self.vmctx.packages_mut()[pkey].add_member(ident.name.clone(), val, typ);
+            self.vmctx.packages_mut()[pkey].add_member(ident.name.clone(), val);
         }
     }
 
@@ -1590,7 +1589,6 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         self.vmctx.packages_mut()[pkey].add_member(
             String::new(),
             CodeGenVMCtx::new_closure_static(fkey, None, fmeta),
-            ValueType::Closure,
         );
         self.pkg_key = pkey;
         self.func_ctx_stack
@@ -2002,7 +2000,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
                 }
                 Spec::Type(ts) => {
                     let m = self.t.obj_def_meta(ts.name, self.vmctx);
-                    self.add_const_def(&ts.name, FfiCtx::new_metadata(m), ValueType::Metadata);
+                    self.add_const_def(&ts.name, FfiCtx::new_metadata(m));
                 }
                 Spec::Value(vs) => match &gdecl.token {
                     Token::VAR => {
@@ -2038,7 +2036,7 @@ impl<'a, 'c> StmtVisitor for CodeGen<'a, 'c> {
             match name.as_str() {
                 "init" => pkg.add_init_func(cls),
                 _ => {
-                    pkg.add_member(name.clone(), cls, ValueType::Closure);
+                    pkg.add_member(name.clone(), cls);
                 }
             };
         }

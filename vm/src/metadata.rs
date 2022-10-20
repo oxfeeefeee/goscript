@@ -2,18 +2,21 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use crate::value::ArrCaller;
-
 use crate::bytecode::{FunctionKey, MetadataKey, MetadataObjs, VMObjects};
 use crate::gc::GcContainer;
 use crate::instruction::{OpIndex, ValueType};
 use crate::objects::{IfaceBinding, StructObj};
+use crate::value::ArrCaller;
 use crate::value::GosValue;
+use borsh::{
+    maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
+    BorshSerialize,
+};
 use goscript_parser::Map;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, PartialEq, Eq, Clone, Debug)]
 pub enum ChannelType {
     Send,
     Recv,
@@ -76,7 +79,9 @@ impl StaticMeta {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub struct Meta {
     pub key: MetadataKey,
     pub ptr_depth: u8,
@@ -370,7 +375,7 @@ impl Meta {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct FieldInfo {
     pub meta: Meta,
     pub name: String,
@@ -378,7 +383,7 @@ pub struct FieldInfo {
     pub embedded: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct Fields {
     fields: Vec<FieldInfo>,
     mapping: Map<String, Vec<usize>>,
@@ -454,7 +459,7 @@ impl Fields {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, Copy)]
 pub struct MethodDesc {
     pub pointer_recv: bool,
     pub func: Option<FunctionKey>,
@@ -475,7 +480,27 @@ impl Methods {
     }
 }
 
-#[derive(Debug, Clone)]
+impl BorshSerialize for Methods {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        let methods: Vec<MethodDesc> = self.members.iter().map(|x| *x.borrow()).collect();
+        methods.serialize(writer)?;
+        self.mapping.serialize(writer)
+    }
+}
+
+impl BorshDeserialize for Methods {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let methods = Vec::<MethodDesc>::deserialize(buf)?;
+        let members = methods
+            .into_iter()
+            .map(|x| Rc::new(RefCell::new(x)))
+            .collect();
+        let mapping = Map::<String, OpIndex>::deserialize(buf)?;
+        Ok(Methods { members, mapping })
+    }
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct SigMetadata {
     pub recv: Option<Meta>,
     pub params: Vec<Meta>,
@@ -539,7 +564,7 @@ impl SigMetadata {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub enum MetadataType {
     Bool,
     Int,

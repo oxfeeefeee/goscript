@@ -62,29 +62,26 @@ impl VMObjects {
 }
 
 impl BorshSerialize for VMObjects {
-    fn serialize<W: Write>(&self, _writer: &mut W) -> Result<()> {
-        unimplemented!();
-        // self.metas.vec().serialize(writer)?;
-        // self.functions.vec().serialize(writer)?;
-        // self.packages.vec().serialize(writer)
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
+        self.metas.vec().serialize(writer)?;
+        self.functions.vec().serialize(writer)?;
+        self.packages.vec().serialize(writer)
     }
 }
 
 impl BorshDeserialize for VMObjects {
-    fn deserialize(_buf: &mut &[u8]) -> Result<Self> {
-        unimplemented!();
-
-        // let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
-        // let functions = Vec::<FunctionObj>::deserialize(buf)?.into();
-        // let packages = Vec::<PackageObj>::deserialize(buf)?.into();
-        // let s_meta = StaticMeta::new(&mut metas);
-        // Ok(VMObjects {
-        //     metas,
-        //     functions,
-        //     packages,
-        //     s_meta,
-        //     arr_slice_caller: Box::new(ArrCaller::new()),
-        // })
+    fn deserialize(buf: &mut &[u8]) -> Result<Self> {
+        let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
+        let functions = Vec::<FunctionObj>::deserialize(buf)?.into();
+        let packages = Vec::<PackageObj>::deserialize(buf)?.into();
+        let s_meta = StaticMeta::new(&mut metas);
+        Ok(VMObjects {
+            metas,
+            functions,
+            packages,
+            s_meta,
+            arr_slice_caller: Box::new(ArrCaller::new()),
+        })
     }
 }
 

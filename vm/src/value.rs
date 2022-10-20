@@ -12,6 +12,10 @@ use crate::gc::GcContainer;
 pub use crate::instruction::*;
 pub use crate::metadata::*;
 pub use crate::objects::*;
+use borsh::{
+    maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
+    BorshSerialize,
+};
 use ordered_float;
 use std::cell::Cell;
 use std::cmp::Ordering;
@@ -2393,6 +2397,49 @@ impl Ord for GosValue {
                 unreachable!()
             }
         }
+    }
+}
+
+impl BorshSerialize for GosValue {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        match &self.typ {
+            ValueType::Bool => self.as_bool().serialize(writer),
+            ValueType::Int => self.as_int64().serialize(writer),
+            ValueType::Int8 => self.as_int8().serialize(writer),
+            ValueType::Int16 => self.as_int16().serialize(writer),
+            ValueType::Int32 => self.as_int32().serialize(writer),
+            ValueType::Int64 => self.as_int64().serialize(writer),
+            ValueType::Uint => self.as_uint().serialize(writer),
+            ValueType::UintPtr => self.as_uint_ptr().serialize(writer),
+            ValueType::Uint8 => self.as_uint8().serialize(writer),
+            ValueType::Uint16 => self.as_uint16().serialize(writer),
+            ValueType::Uint32 => self.as_uint32().serialize(writer),
+            ValueType::Uint64 => self.as_uint64().serialize(writer),
+            ValueType::Float32 => self.as_float32().serialize(writer),
+            ValueType::Float64 => self.as_float64().serialize(writer),
+            ValueType::Complex64 => self.as_uint64().serialize(writer),
+            ValueType::Function => self.as_function().serialize(writer),
+            ValueType::Package => self.as_package().serialize(writer),
+            ValueType::Metadata => self.as_metadata().serialize(writer),
+            ValueType::String => StrUtil::as_str(self.as_string()).serialize(writer),
+            ValueType::Array => {
+                unimplemented!()
+            }
+            ValueType::Complex128 => {
+                let c = self.as_complex128();
+                c.r.serialize(writer)?;
+                c.i.serialize(writer)
+            }
+            ValueType::Struct => self.as_struct().0.borrow_fields().serialize(writer),
+            ValueType::Slice => self.t_elem().serialize(writer),
+            _ => Ok(assert!(self.is_nil())),
+        }
+    }
+}
+
+impl BorshDeserialize for GosValue {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        unimplemented!()
     }
 }
 

@@ -6,13 +6,16 @@
 
 #[cfg(feature = "async")]
 use crate::channel::Channel;
-
 use crate::ffi::Ffi;
 use crate::gc::GcContainer;
 use crate::instruction::{Instruction, OpIndex, ValueType};
 use crate::metadata::*;
 use crate::stack::Stack;
 use crate::value::*;
+use borsh::{
+    maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
+    BorshSerialize,
+};
 use goscript_parser::objects::*;
 use goscript_parser::{Map, MapIter};
 use std::any::Any;
@@ -191,7 +194,7 @@ impl Element for GosElem {
 }
 
 /// Cell is much cheaper than RefCell, used to store basic types
-#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct CellElem<T>
 where
     T: Copy + PartialEq,
@@ -721,14 +724,6 @@ where
             array: self.array.clone(),
             phantom: PhantomData,
         })
-    }
-
-    #[inline]
-    pub fn get_vec(&self, t: ValueType) -> Vec<GosValue> {
-        self.as_rust_slice()
-            .iter()
-            .map(|x: &T| x.clone().into_value(t))
-            .collect()
     }
 
     #[inline]
@@ -1512,13 +1507,15 @@ impl Display for UnsafePtrObj {
 // ----------------------------------------------------------------------------
 // ClosureObj
 
-#[derive(Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Clone)]
 pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
     pub typ: ValueType,
     pub is_local: bool,
+    #[borsh_skip]
     pub stack: Weak<RefCell<Stack>>,
+    #[borsh_skip]
     pub stack_base: OpIndex,
 }
 
@@ -1535,10 +1532,10 @@ impl PartialEq for ValueDesc {
 impl ValueDesc {
     pub fn new(func: FunctionKey, index: OpIndex, typ: ValueType, is_local: bool) -> ValueDesc {
         ValueDesc {
-            func: func,
-            index: index,
-            typ: typ,
-            is_local: is_local,
+            func,
+            index,
+            typ,
+            is_local,
             stack: Weak::new(),
             stack_base: 0,
         }
@@ -1877,7 +1874,6 @@ impl ClosureObj {
 #[derive(Clone, Debug)]
 pub struct PackageObj {
     members: Vec<RefCell<GosValue>>, // imports, const, var, func are all stored here
-    member_types: Vec<ValueType>,
     member_indices: Map<String, OpIndex>,
     init_funcs: Vec<GosValue>,
     // maps func_member_index of the constructor to pkg_member_index
@@ -1888,16 +1884,14 @@ impl PackageObj {
     pub fn new() -> PackageObj {
         PackageObj {
             members: vec![],
-            member_types: vec![],
             member_indices: Map::new(),
             init_funcs: vec![],
             var_mapping: RefCell::new(Some(Map::new())),
         }
     }
 
-    pub fn add_member(&mut self, name: String, val: GosValue, typ: ValueType) -> OpIndex {
+    pub fn add_member(&mut self, name: String, val: GosValue) -> OpIndex {
         self.members.push(RefCell::new(val));
-        self.member_types.push(typ);
         let index = (self.members.len() - 1) as OpIndex;
         self.member_indices.insert(name, index);
         index as OpIndex
@@ -1952,10 +1946,42 @@ impl PackageObj {
     }
 }
 
+impl BorshSerialize for PackageObj {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        let members: Vec<GosValue> = self
+            .members
+            .iter()
+            .map(|x| x.clone().into_inner())
+            .collect();
+        members.serialize(writer)?;
+        self.member_indices.serialize(writer)?;
+        self.init_funcs.serialize(writer)?;
+        self.var_mapping.borrow().serialize(writer)
+    }
+}
+
+impl BorshDeserialize for PackageObj {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let members = Vec::<GosValue>::deserialize(buf)?
+            .into_iter()
+            .map(|x| RefCell::new(x))
+            .collect();
+        let member_indices = Map::<String, OpIndex>::deserialize(buf)?;
+        let init_funcs = Vec::<GosValue>::deserialize(buf)?;
+        let var_mapping = RefCell::new(Option::<Map<OpIndex, OpIndex>>::deserialize(buf)?);
+        Ok(PackageObj {
+            members,
+            member_indices,
+            init_funcs,
+            var_mapping,
+        })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // FunctionObj
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Eq, PartialEq, Copy, Clone, Debug)]
 pub enum FuncFlag {
     Default,
     PkgCtor,
@@ -1963,7 +1989,7 @@ pub enum FuncFlag {
 }
 
 /// FunctionObj is the direct container of the Opcode.
-#[derive(Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub struct FunctionObj {
     pub package: PackageKey,
     pub meta: Meta,
