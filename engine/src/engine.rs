@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-pub use cg::SourceRead;
-
 use crate::ffi::Ffi;
 #[cfg(feature = "go_std")]
 use crate::std::os;
+use borsh::{BorshDeserialize, BorshSerialize};
+pub use cg::SourceRead;
 use std::rc::Rc;
 extern crate goscript_codegen as cg;
 extern crate goscript_parser as fe;
@@ -57,7 +57,10 @@ impl Engine {
         };
         let mut fs = fe::FileSet::new();
         let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs)?;
-        vm::vm::run(&code, &self.ffi, Some(&fs));
+        let encoded = code.try_to_vec().unwrap();
+        let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
+        dbg!(encoded.len());
+        vm::vm::run(&decoded, &self.ffi, Some(&fs));
         Ok(())
     }
 }

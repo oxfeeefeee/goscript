@@ -424,28 +424,6 @@ where
     pub fn size_of_data(&self) -> usize {
         std::mem::size_of::<T>() * self.len()
     }
-
-    pub fn display_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for (i, e) in self.vec.borrow().iter().enumerate() {
-            if i > 0 {
-                f.write_char(' ')?;
-            }
-            write!(f, "{}", e.clone().into_value(t))?
-        }
-        f.write_char(']')
-    }
-
-    pub fn debug_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for (i, e) in self.vec.borrow().iter().enumerate() {
-            if i > 0 {
-                f.write_char(' ')?;
-            }
-            write!(f, "{:#?}", e.clone().into_value(t))?
-        }
-        f.write_char(']')
-    }
 }
 
 impl<T> Hash for ArrayObj<T>
@@ -786,28 +764,6 @@ where
 
         Ok((bi, ei, cap))
     }
-
-    pub fn display_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for (i, e) in self.as_rust_slice().iter().enumerate() {
-            if i > 0 {
-                f.write_char(' ')?;
-            }
-            write!(f, "{}", e.clone().into_value(t))?
-        }
-        f.write_char(']')
-    }
-
-    pub fn debug_fmt(&self, t: ValueType, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_char('[')?;
-        for (i, e) in self.as_rust_slice().iter().enumerate() {
-            if i > 0 {
-                f.write_char(' ')?;
-            }
-            write!(f, "{:#?}", e.clone().into_value(t))?
-        }
-        f.write_char(']')
-    }
 }
 
 impl<T> PartialEq for SliceObj<T> {
@@ -982,7 +938,7 @@ pub enum IfaceBinding {
     Iface(usize, Option<Vec<OpIndex>>),
 }
 
-#[derive(Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub enum Binding4Runtime {
     Struct(FunctionKey, bool, Option<Vec<OpIndex>>),
     Iface(usize, Option<Vec<OpIndex>>),
@@ -1738,6 +1694,23 @@ impl Ord for UpValue {
     }
 }
 
+impl BorshSerialize for UpValue {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        match &self.inner.borrow() as &UpValueState {
+            UpValueState::Open(uv) => uv,
+            UpValueState::Closed(_) => unreachable!(),
+        }
+        .serialize(writer)
+    }
+}
+
+impl BorshDeserialize for UpValue {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let uv = ValueDesc::deserialize(buf)?;
+        Ok(Self::new(uv))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WeakUpValue {
     pub inner: Weak<RefCell<UpValueState>>,
@@ -1749,10 +1722,11 @@ impl WeakUpValue {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
 pub struct GosClosureObj {
     pub func: FunctionKey,
     pub uvs: Option<Map<usize, UpValue>>,
+    #[borsh_skip]
     pub recv: Option<GosValue>,
     pub meta: Meta,
 }

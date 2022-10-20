@@ -17,6 +17,7 @@ btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscrip
 futures-lite = "1.12.0"
 zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
 lazy_static = "1.4.0"
+borsh = "0.9.3"
 
 [dependencies.goscript-parser] 
 path = "../parser"

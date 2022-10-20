@@ -85,6 +85,7 @@ impl BorshDeserialize for VMObjects {
     }
 }
 
+#[derive(BorshDeserialize, BorshSerialize)]
 pub struct Bytecode {
     pub objects: VMObjects,
     pub consts: Vec<GosValue>,

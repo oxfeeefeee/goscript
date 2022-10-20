@@ -21,6 +21,7 @@ use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::convert::From;
+use std::fmt::Write;
 use std::fmt::{self, Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::num::Wrapping;
@@ -872,65 +873,6 @@ impl ValueData {
         }
     }
 
-    pub(crate) fn fmt_debug(
-        &self,
-        t: ValueType,
-        t_elem: ValueType,
-        f: &mut fmt::Formatter,
-    ) -> fmt::Result {
-        match t {
-            ValueType::Bool => write!(f, "Type: {:?}, Data: {:?}", t, self.as_bool()),
-            ValueType::Int => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int()),
-            ValueType::Int8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int8()),
-            ValueType::Int16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int16()),
-            ValueType::Int32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int32()),
-            ValueType::Int64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int64()),
-            ValueType::Uint => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint()),
-            ValueType::UintPtr => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint_ptr()),
-            ValueType::Uint8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint8()),
-            ValueType::Uint16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint16()),
-            ValueType::Uint32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint32()),
-            ValueType::Uint64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint64()),
-            ValueType::Float32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float32()),
-            ValueType::Float64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float64()),
-            ValueType::Complex64 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex64()),
-            ValueType::Function => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_function()),
-            ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
-            ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
-            ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
-            ValueType::String => write!(
-                f,
-                "Type: {:?}, Data: {:#?}",
-                t,
-                StrUtil::as_str(&self.clone(t).into_string())
-            ),
-            ValueType::Array => match t_elem {
-                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
-                _ => ArrCaller::get_slow(t_elem).array_debug_fmt(self, f),
-            },
-            ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
-            ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
-            ValueType::UnsafePtr => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_unsafe_ptr()),
-            ValueType::Closure => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_closure()),
-            ValueType::Slice => match t_elem {
-                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
-                _ => ArrCaller::get_slow(t_elem).slice_debug_fmt(self, f),
-            },
-            ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
-            ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
-            #[cfg(feature = "async")]
-            ValueType::Channel => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_channel()),
-            ValueType::Void => write!(
-                f,
-                "Type: {:?}, Data: {:#018x}/{:?}",
-                t,
-                self.as_uint(),
-                self.as_uint()
-            ),
-            _ => unreachable!(),
-        }
-    }
-
     #[inline]
     pub(crate) unsafe fn copy_non_ptr(&self) -> ValueData {
         self.copy()
@@ -1326,7 +1268,12 @@ impl ValueData {
 
 impl fmt::Debug for ValueData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.fmt_debug(ValueType::Void, ValueType::Void, f)
+        write!(
+            f,
+            "ValueData: {:#018x}/{:?}",
+            self.as_uint(),
+            self.as_uint()
+        )
     }
 }
 
@@ -2402,6 +2349,7 @@ impl Ord for GosValue {
 
 impl BorshSerialize for GosValue {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        self.typ().serialize(writer)?;
         match &self.typ {
             ValueType::Bool => self.as_bool().serialize(writer),
             ValueType::Int => self.as_int64().serialize(writer),
@@ -2423,7 +2371,8 @@ impl BorshSerialize for GosValue {
             ValueType::Metadata => self.as_metadata().serialize(writer),
             ValueType::String => StrUtil::as_str(self.as_string()).serialize(writer),
             ValueType::Array => {
-                unimplemented!()
+                self.t_elem().serialize(writer)?;
+                self.caller_slow().array_get_vec(self).serialize(writer)
             }
             ValueType::Complex128 => {
                 let c = self.as_complex128();
@@ -2432,14 +2381,76 @@ impl BorshSerialize for GosValue {
             }
             ValueType::Struct => self.as_struct().0.borrow_fields().serialize(writer),
             ValueType::Slice => self.t_elem().serialize(writer),
-            _ => Ok(assert!(self.is_nil())),
+            ValueType::Closure => self
+                .as_closure()
+                .map(|x| match &x.0 {
+                    ClosureObj::Gos(cls) => cls,
+                    ClosureObj::Ffi(_) => unreachable!(),
+                })
+                .serialize(writer),
+            _ => {
+                if !self.is_nil() {
+                    dbg!(self);
+                }
+                Ok(())
+            }
         }
     }
 }
 
 impl BorshDeserialize for GosValue {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        unimplemented!()
+        let dummy_gcc = &GcContainer::new();
+        let typ = ValueType::deserialize(buf)?;
+        let val: GosValue = match typ {
+            ValueType::Bool => bool::deserialize(buf)?.into(),
+            ValueType::Int => i64::deserialize(buf)?.into(),
+            ValueType::Int8 => i8::deserialize(buf)?.into(),
+            ValueType::Int16 => i16::deserialize(buf)?.into(),
+            ValueType::Int32 => i32::deserialize(buf)?.into(),
+            ValueType::Int64 => i64::deserialize(buf)?.into(),
+            ValueType::Uint => usize::deserialize(buf)?.into(),
+            ValueType::UintPtr => usize::deserialize(buf)?.into(),
+            ValueType::Uint8 => u8::deserialize(buf)?.into(),
+            ValueType::Uint16 => u16::deserialize(buf)?.into(),
+            ValueType::Uint32 => u32::deserialize(buf)?.into(),
+            ValueType::Uint64 => u64::deserialize(buf)?.into(),
+            ValueType::Float32 => f32::deserialize(buf)?.into(),
+            ValueType::Float64 => f64::deserialize(buf)?.into(),
+            ValueType::Complex64 => {
+                let r = f32::deserialize(buf)?.into();
+                let i = f32::deserialize(buf)?.into();
+                GosValue::new_complex64(r, i)
+            }
+            ValueType::Function => GosValue::new_function(FunctionKey::deserialize(buf)?),
+            ValueType::Package => GosValue::new_package(PackageKey::deserialize(buf)?),
+            ValueType::Metadata => GosValue::new_metadata(Meta::deserialize(buf)?),
+            ValueType::String => GosValue::with_str(&String::deserialize(buf)?),
+            ValueType::Array => {
+                let t_elem = ValueType::deserialize(buf)?;
+                let vec = Vec::<GosValue>::deserialize(buf)?;
+                GosValue::array_with_data(vec, &ArrCaller::get_slow(t_elem), dummy_gcc)
+            }
+            ValueType::Complex128 => {
+                let r = f64::deserialize(buf)?.into();
+                let i = f64::deserialize(buf)?.into();
+                GosValue::new_complex128(r, i)
+            }
+            ValueType::Struct => {
+                let fields = Vec::<GosValue>::deserialize(buf)?;
+                GosValue::new_struct(StructObj::new(fields), dummy_gcc)
+            }
+            ValueType::Slice => {
+                let t_elem = ValueType::deserialize(buf)?;
+                GosValue::new_nil_slice(t_elem)
+            }
+            ValueType::Closure => match Option::<GosClosureObj>::deserialize(buf)? {
+                Some(cls) => GosValue::new_closure(ClosureObj::Gos(cls), dummy_gcc),
+                None => GosValue::new_nil(typ),
+            },
+            _ => GosValue::new_nil(typ),
+        };
+        Ok(val)
     }
 }
 
@@ -2472,7 +2483,7 @@ impl Display for GosValue {
                 write!(f, "({}, {})", c.r, c.i)
             }
             ValueType::String => f.write_str(&StrUtil::as_str(self.as_string())),
-            ValueType::Array => self.caller_slow().array_display_fmt(self.data(), f),
+            ValueType::Array => display_vec(&self.caller_slow().array_get_vec(self), f),
             ValueType::Struct => write!(f, "{}", self.as_struct().0),
             ValueType::Pointer => match self.as_pointer() {
                 Some(p) => std::fmt::Display::fmt(p, f),
@@ -2486,7 +2497,10 @@ impl Display for GosValue {
                 Some(_) => f.write_str("<closure>"),
                 None => f.write_str("<nil(closure)>"),
             },
-            ValueType::Slice => self.caller_slow().slice_display_fmt(self.data(), f),
+            ValueType::Slice => match self.caller_slow().slice_get_vec(self) {
+                Some(v) => display_vec(&v, f),
+                None => f.write_str("<nil(slice)>"),
+            },
             ValueType::Map => match self.as_map() {
                 Some(m) => write!(f, "{}", m.0),
                 None => f.write_str("<nil(map)>"),
@@ -2508,8 +2522,84 @@ impl Display for GosValue {
 
 impl fmt::Debug for GosValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.data.fmt_debug(self.typ, self.t_elem, f)
+        let t = self.typ();
+        match t {
+            ValueType::Bool => write!(f, "Type: {:?}, Data: {:?}", t, self.as_bool()),
+            ValueType::Int => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int()),
+            ValueType::Int8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int8()),
+            ValueType::Int16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int16()),
+            ValueType::Int32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int32()),
+            ValueType::Int64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_int64()),
+            ValueType::Uint => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint()),
+            ValueType::UintPtr => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint_ptr()),
+            ValueType::Uint8 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint8()),
+            ValueType::Uint16 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint16()),
+            ValueType::Uint32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint32()),
+            ValueType::Uint64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_uint64()),
+            ValueType::Float32 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float32()),
+            ValueType::Float64 => write!(f, "Type: {:?}, Data: {:?}", t, self.as_float64()),
+            ValueType::Complex64 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex64()),
+            ValueType::Function => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_function()),
+            ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
+            ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
+            ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
+            ValueType::String => write!(
+                f,
+                "Type: {:?}, Data: {:?}",
+                t,
+                &StrUtil::as_str(self.as_string()),
+            ),
+            ValueType::Array => match self.t_elem {
+                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
+                _ => display_vec(&self.caller_slow().array_get_vec(self), f),
+            },
+            ValueType::Struct => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_struct()),
+            ValueType::Pointer => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_pointer()),
+            ValueType::UnsafePtr => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_unsafe_ptr()),
+            ValueType::Closure => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_closure()),
+            ValueType::Slice => match self.t_elem {
+                ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
+                _ => match self.caller_slow().slice_get_vec(self) {
+                    Some(v) => debug_vec(&v, f),
+                    None => f.write_str("<nil(slice)>"),
+                },
+            },
+            ValueType::Map => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_map()),
+            ValueType::Interface => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_interface()),
+            #[cfg(feature = "async")]
+            ValueType::Channel => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_channel()),
+            ValueType::Void => write!(
+                f,
+                "Type: {:?}, Data: {:#018x}/{:?}",
+                t,
+                self.as_uint(),
+                self.as_uint()
+            ),
+            _ => unreachable!(),
+        }
     }
+}
+
+fn display_vec(vec: &Vec<GosValue>, f: &mut fmt::Formatter) -> fmt::Result {
+    f.write_char('[')?;
+    for (i, v) in vec.iter().enumerate() {
+        if i > 0 {
+            f.write_char(' ')?;
+        }
+        write!(f, "{}", v)?
+    }
+    f.write_char(']')
+}
+
+pub fn debug_vec(vec: &Vec<GosValue>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_char('[')?;
+    for (i, v) in vec.iter().enumerate() {
+        if i > 0 {
+            f.write_char(' ')?;
+        }
+        write!(f, "{:#?}", v)?
+    }
+    f.write_char(']')
 }
 
 impl From<bool> for GosValue {

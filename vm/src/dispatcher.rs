@@ -4,7 +4,6 @@
 
 use crate::gc::GcContainer;
 use crate::value::*;
-use std::fmt;
 use std::hash::{Hash, Hasher};
 
 /// Dispatcher is used to diapatch Array/Slice calls using the vtable.
@@ -32,13 +31,9 @@ pub(crate) trait Dispatcher {
 
     fn array_cmp(&self, a: &ValueData, b: &ValueData) -> std::cmp::Ordering;
 
-    fn array_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
+    fn array_get_vec(&self, val: &GosValue) -> Vec<GosValue>;
 
-    fn slice_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
-
-    fn array_display_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
-
-    fn slice_display_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result;
+    fn slice_get_vec(&self, val: &GosValue) -> Option<Vec<GosValue>>;
 
     fn array_len(&self, val: &GosValue) -> usize;
 
@@ -154,26 +149,22 @@ macro_rules! define_dispatcher {
                 a.as_array::<$elem>().0.cmp(&b.as_array::<$elem>().0)
             }
 
-            fn array_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                vdata.as_array::<$elem>().0.debug_fmt(self.typ, f)
+            fn array_get_vec(&self, val: &GosValue) -> Vec<GosValue> {
+                val.as_array::<$elem>()
+                    .0
+                    .as_rust_slice()
+                    .iter()
+                    .map(|x| x.clone().into_value(val.t_elem()))
+                    .collect()
             }
 
-            fn slice_debug_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                match vdata.as_slice::<$elem>() {
-                    Some(s) => s.0.debug_fmt(self.typ, f),
-                    None => f.write_str("<nil(slice)>"),
-                }
-            }
-
-            fn array_display_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                vdata.as_array::<$elem>().0.display_fmt(self.typ, f)
-            }
-
-            fn slice_display_fmt(&self, vdata: &ValueData, f: &mut fmt::Formatter) -> fmt::Result {
-                match vdata.as_slice::<$elem>() {
-                    Some(s) => s.0.display_fmt(self.typ, f),
-                    None => f.write_str("<nil(slice)>"),
-                }
+            fn slice_get_vec(&self, val: &GosValue) -> Option<Vec<GosValue>> {
+                val.as_slice::<$elem>().map(|x| {
+                    x.0.as_rust_slice()
+                        .iter()
+                        .map(|y| y.clone().into_value(val.t_elem()))
+                        .collect()
+                })
             }
 
             #[inline]
