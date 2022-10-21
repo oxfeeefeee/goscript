@@ -2821,6 +2821,15 @@ mod test {
         dbg!(mem::size_of::<Cell<u8>>());
         dbg!(mem::size_of::<RefCell<u8>>());
 
+        dbg!(mem::size_of::<ArrayObj<GosElem>>());
+        dbg!(mem::size_of::<SliceObj<GosElem>>());
+        dbg!(mem::size_of::<(StructObj, RCount)>());
+        dbg!(mem::size_of::<MapObj>());
+        dbg!(mem::size_of::<PackageObj>());
+        dbg!(mem::size_of::<FunctionObj>());
+        dbg!(mem::size_of::<ClosureObj>());
+        dbg!(mem::size_of::<RefCell<GosValue>>());
+
         let s = GosValue::with_str("aaa");
         dbg!(s.data());
         //let s2 = s.clone().into_string();

@@ -18,4 +18,9 @@ mod vm;
 pub mod gc;
 pub mod value;
 
-pub use {ffi::*, value::Bytecode, vm::run};
+pub use {
+    ffi::*,
+    goscript_pmacro::{ffi_impl, Ffi},
+    value::Bytecode,
+    vm::run,
+};

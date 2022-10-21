@@ -44,7 +44,7 @@ fn run_map_impl(
         }
     }
     let reader = MapReader::new(map, config.working_dir, config.base_dir, temp_source);
-    engine.run(config.trace_parser, config.trace_checker, &reader, path)
+    engine.run_source(config.trace_parser, config.trace_checker, &reader, path)
 }
 
 pub struct MapReader<'a> {

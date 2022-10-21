@@ -219,8 +219,8 @@ fn gen_new_method(type_name: &Ident, new_method: &Option<ImplItemMethod>) -> Imp
 
 fn gen_register_method() -> ImplItemMethod {
     parse_quote! {
-        pub fn register(engine: &mut goscript_engine::Engine) {
-            engine.register_extension(Self::auto_gen_ffi_id(), Self::auto_gen_ffi_new());
+        pub fn register(factory: &mut goscript_vm::FfiFactory) {
+            factory.register(Self::auto_gen_ffi_id(), Self::auto_gen_ffi_new());
         }
     }
 }

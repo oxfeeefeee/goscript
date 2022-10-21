@@ -49,7 +49,7 @@ fn run_zip_impl(
     let engine = Engine::new();
     engine.set_std_io(config.std_in, config.std_out, config.std_err);
     match ZipReader::new(archive, config.working_dir, config.base_dir, temp_source) {
-        Ok(reader) => engine.run(config.trace_parser, config.trace_checker, &reader, path),
+        Ok(reader) => engine.run_source(config.trace_parser, config.trace_checker, &reader, path),
         Err(e) => {
             let err = ErrorList::new();
             err.add(None, format!("{}", e), false, false);

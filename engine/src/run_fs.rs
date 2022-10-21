@@ -40,7 +40,7 @@ fn run_fs_impl(config: Config, temp_source: Option<&str>, path: &str) -> Result<
     let engine = Engine::new();
     engine.set_std_io(config.std_in, config.std_out, config.std_err);
     let reader = FsReader::new(config.working_dir, config.base_dir, temp_source);
-    engine.run(config.trace_parser, config.trace_checker, &reader, path)
+    engine.run_source(config.trace_parser, config.trace_checker, &reader, path)
 }
 
 pub struct FsReader<'a> {

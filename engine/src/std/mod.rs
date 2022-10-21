@@ -12,14 +12,14 @@ mod reflect;
 #[cfg(feature = "async")]
 mod sync;
 
-pub(crate) fn register(engine: &mut crate::engine::Engine) {
-    fmt2::Fmt2Ffi::register(engine);
-    bits::BitsFfi::register(engine);
+pub(crate) fn register(factory: &mut goscript_vm::FfiFactory) {
+    fmt2::Fmt2Ffi::register(factory);
+    bits::BitsFfi::register(factory);
     #[cfg(feature = "async")]
-    sync::MutexFfi::register(engine);
+    sync::MutexFfi::register(factory);
     #[cfg(feature = "async")]
-    sync::RWMutexFfi::register(engine);
-    reflect::ReflectFfi::register(engine);
-    io::IoFfi::register(engine);
-    os::FileFfi::register(engine);
+    sync::RWMutexFfi::register(factory);
+    reflect::ReflectFfi::register(factory);
+    io::IoFfi::register(factory);
+    os::FileFfi::register(factory);
 }

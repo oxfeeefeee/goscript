@@ -6,10 +6,15 @@ use crate::ffi::Ffi;
 #[cfg(feature = "go_std")]
 use crate::std::os;
 use borsh::{BorshDeserialize, BorshSerialize};
-pub use cg::SourceRead;
 use std::rc::Rc;
+
+#[cfg(feature = "codegen")]
+pub use cg::SourceRead;
+#[cfg(feature = "codegen")]
 extern crate goscript_codegen as cg;
+#[cfg(feature = "codegen")]
 extern crate goscript_parser as fe;
+#[cfg(feature = "codegen")]
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
 
@@ -23,7 +28,7 @@ impl Engine {
         #[cfg(feature = "go_std")]
         {
             let mut e = Engine { ffi };
-            crate::std::register(&mut e);
+            crate::std::register(&mut e.ffi);
             e
         }
         #[cfg(not(feature = "go_std"))]
@@ -44,7 +49,12 @@ impl Engine {
         self.ffi.register(name, proto);
     }
 
-    pub fn run<S: SourceRead>(
+    pub fn run_bytecode(&self, bc: &vm::Bytecode) {
+        vm::run(bc, &self.ffi, None)
+    }
+
+    #[cfg(feature = "codegen")]
+    pub fn run_source<S: SourceRead>(
         &self,
         trace_parser: bool,
         trace_checker: bool,
@@ -60,7 +70,7 @@ impl Engine {
         let encoded = code.try_to_vec().unwrap();
         let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
         dbg!(encoded.len());
-        //dbg!(base64::encode(encoded));
+        dbg!(base64::encode(encoded));
         vm::run(&decoded, &self.ffi, Some(&fs));
         Ok(())
     }
