@@ -784,12 +784,12 @@ impl Value {
 // ----------------------------------------------------------------------------
 // utilities
 
-pub fn short_quote_str(s: &str, max: usize) -> String {
+fn short_quote_str(s: &str, max: usize) -> String {
     let result = s.escape_default().collect();
     shorten_with_ellipsis(result, max)
 }
 
-pub fn int_from_literal(lit: &str) -> Value {
+fn int_from_literal(lit: &str) -> Value {
     let result = if lit.starts_with("0x") {
         BigInt::from_str_radix(&lit[2..], 16)
     } else if lit.starts_with("0o") {
@@ -805,7 +805,7 @@ pub fn int_from_literal(lit: &str) -> Value {
     }
 }
 
-pub fn float_from_literal(lit: &str) -> Value {
+fn float_from_literal(lit: &str) -> Value {
     match lit.parse::<f64>() {
         Ok(f) => Value::with_f64(f),
         Err(_) => Value::Unknown,

@@ -177,7 +177,7 @@ impl EntityType {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ObjColor {
+pub(crate) enum ObjColor {
     White,
     Black,
     Gray(usize),
@@ -358,19 +358,19 @@ impl LangObj {
         self.order
     }
 
-    pub fn color(&self) -> ObjColor {
+    pub(crate) fn color(&self) -> ObjColor {
         self.color
     }
 
-    pub fn set_type(&mut self, typ: Option<TypeKey>) {
+    pub(crate) fn set_type(&mut self, typ: Option<TypeKey>) {
         self.typ = typ
     }
 
-    pub fn set_pkg(&mut self, pkg: Option<PackageKey>) {
+    pub(crate) fn set_pkg(&mut self, pkg: Option<PackageKey>) {
         self.pkg = pkg;
     }
 
-    pub fn set_parent(&mut self, parent: Option<ScopeKey>) {
+    pub(crate) fn set_parent(&mut self, parent: Option<ScopeKey>) {
         self.parent = parent
     }
 
@@ -383,12 +383,12 @@ impl LangObj {
         self.order = order;
     }
 
-    pub fn set_color(&mut self, color: ObjColor) {
+    pub(crate) fn set_color(&mut self, color: ObjColor) {
         assert!(color != ObjColor::White);
         self.color = color
     }
 
-    pub fn set_scope_pos(&mut self, pos: Pos) {
+    pub(crate) fn set_scope_pos(&mut self, pos: Pos) {
         self.scope_pos = pos
     }
 
@@ -424,7 +424,7 @@ impl LangObj {
         }
     }
 
-    pub fn set_const_val(&mut self, v: constant::Value) {
+    pub(crate) fn set_const_val(&mut self, v: constant::Value) {
         match &mut self.entity_type {
             EntityType::Const(val) => *val = v,
             _ => unreachable!(),
@@ -477,7 +477,7 @@ impl LangObj {
     }
 }
 
-pub fn type_name_is_alias(okey: ObjKey, objs: &TCObjects) -> bool {
+pub(crate) fn type_name_is_alias(okey: ObjKey, objs: &TCObjects) -> bool {
     let lobj = &objs.lobjs[okey];
     match lobj.entity_type {
         EntityType::TypeName => match lobj.typ {
@@ -516,7 +516,7 @@ pub fn type_name_is_alias(okey: ObjKey, objs: &TCObjects) -> bool {
 // ObjSet
 //
 /// An ObjSet is a set of objects identified by their unique id.
-pub struct ObjSet(Map<String, ObjKey>);
+pub(crate) struct ObjSet(Map<String, ObjKey>);
 
 impl ObjSet {
     pub fn new() -> ObjSet {
@@ -533,7 +533,7 @@ impl ObjSet {
 // ----------------------------------------------------------------------------
 // utilities
 
-pub fn get_id<'a>(pkg: Option<&Package>, name: &'a str) -> Cow<'a, str> {
+pub(crate) fn get_id<'a>(pkg: Option<&Package>, name: &'a str) -> Cow<'a, str> {
     if ast::is_exported(name) {
         return Cow::Borrowed(name);
     }
@@ -549,7 +549,7 @@ pub fn get_id<'a>(pkg: Option<&Package>, name: &'a str) -> Cow<'a, str> {
     Cow::Owned(format!("{}.{}", path, name))
 }
 
-pub fn fmt_obj(okey: ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
+pub(crate) fn fmt_obj(okey: ObjKey, f: &mut fmt::Formatter<'_>, objs: &TCObjects) -> fmt::Result {
     let obj = &objs.lobjs[okey];
     match obj.entity_type() {
         EntityType::PkgName(imported, _) => {

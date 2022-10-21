@@ -5,9 +5,9 @@
 use goscript_parser::ast::{Expr, Node, NodeId};
 use goscript_parser::{IdentKey, Map};
 use goscript_types::{
-    BasicType, ChanDir, ConstValue, EntityType, ObjKey as TCObjKey, OperandMode,
-    PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
-    TypeKey as TCTypeKey,
+    check::TypeInfo, typ::BasicType, typ::ChanDir, typ::Type, ConstValue, EntityType,
+    ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, SelectionKind as TCSelectionKind,
+    TCObjects, TypeKey as TCTypeKey,
 };
 use goscript_vm::value::*;
 use goscript_vm::*;

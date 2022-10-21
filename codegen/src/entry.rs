@@ -11,7 +11,8 @@ use super::types::{TypeCache, TypeLookup};
 use goscript_parser::ast::Ident;
 use goscript_parser::{AstObjects, ErrorList, FileSet, IdentKey, Map};
 use goscript_types::{
-    ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo,
+    check::TypeInfo, ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects,
+    TraceConfig,
 };
 use goscript_vm::value::*;
 use goscript_vm::*;

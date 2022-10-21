@@ -11,8 +11,10 @@ use goscript_parser::ast::*;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
 use goscript_parser::*;
 use goscript_types::{
-    identical_ignore_tags, Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey,
-    TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
+    check::TypeInfo,
+    typ::{identical_ignore_tags, Type},
+    Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, TCObjects,
+    TypeKey as TCTypeKey,
 };
 use goscript_vm::value::*;
 use goscript_vm::*;

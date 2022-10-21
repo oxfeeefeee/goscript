@@ -5,7 +5,7 @@
 use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::{AstObjects, IdentKey, Map, Token};
-use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
+use goscript_types::{check::TypeInfo, ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects};
 use goscript_vm::value::*;
 use goscript_vm::FfiCtx;
 use std::rc::Rc;

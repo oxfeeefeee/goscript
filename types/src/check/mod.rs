@@ -4,11 +4,10 @@
 
 #[macro_use]
 mod util;
-
 mod assignment;
 mod builtin;
 mod call;
-pub mod check;
+mod check;
 mod conversion;
 mod decl;
 mod expr;
@@ -20,7 +19,7 @@ mod returns;
 mod stmt;
 mod typexpr;
 
-pub use check::TypeInfo;
-pub use check::{Checker, FilesContext};
+pub(crate) use check::FilesContext;
+pub use check::{Checker, TypeInfo};
 pub use interface::{IfaceInfo, MethodInfo};
-pub use resolver::DeclInfo;
+pub use resolver::*;
