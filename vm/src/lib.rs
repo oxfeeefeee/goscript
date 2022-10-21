@@ -3,25 +3,19 @@
 // license that can be found in the LICENSE file.
 
 mod instruction;
-
 #[macro_use]
 mod metadata;
-
 #[cfg(feature = "async")]
 mod channel;
-
 mod objects;
-
-pub mod ffi;
-
 #[macro_use]
 mod dispatcher;
-pub mod value;
-
 mod bytecode;
+mod ffi;
 mod stack;
-pub mod vm;
+mod vm;
 
 pub mod gc;
+pub mod value;
 
-pub use value::Bytecode;
+pub use {ffi::*, value::Bytecode, vm::run};

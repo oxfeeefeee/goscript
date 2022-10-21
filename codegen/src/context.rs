@@ -8,8 +8,8 @@ use goscript_parser::ast::*;
 use goscript_parser::objects::{IdentKey, Objects as AstObjects};
 use goscript_parser::{Map, Pos};
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
-use goscript_vm::ffi::*;
 use goscript_vm::value::*;
+use goscript_vm::*;
 use std::convert::TryFrom;
 
 #[derive(Clone, Copy, Debug, PartialEq)]

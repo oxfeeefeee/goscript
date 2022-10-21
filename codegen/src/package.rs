@@ -8,8 +8,8 @@ use goscript_parser::objects::Objects as AstObjects;
 use goscript_parser::objects::*;
 use goscript_parser::{Map, Token};
 use goscript_types::{ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects, TypeInfo};
-use goscript_vm::ffi::FfiCtx;
 use goscript_vm::value::*;
+use goscript_vm::FfiCtx;
 use std::rc::Rc;
 
 pub(crate) struct PkgHelper<'a> {

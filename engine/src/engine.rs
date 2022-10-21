@@ -14,12 +14,12 @@ extern crate goscript_types as types;
 extern crate goscript_vm as vm;
 
 pub struct Engine {
-    ffi: vm::ffi::FfiFactory,
+    ffi: vm::FfiFactory,
 }
 
 impl Engine {
     pub fn new() -> Engine {
-        let ffi = vm::ffi::FfiFactory::new();
+        let ffi = vm::FfiFactory::new();
         #[cfg(feature = "go_std")]
         {
             let mut e = Engine { ffi };
@@ -60,7 +60,8 @@ impl Engine {
         let encoded = code.try_to_vec().unwrap();
         let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
         dbg!(encoded.len());
-        vm::vm::run(&decoded, &self.ffi, Some(&fs));
+        //dbg!(base64::encode(encoded));
+        vm::run(&decoded, &self.ffi, Some(&fs));
         Ok(())
     }
 }

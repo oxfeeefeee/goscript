@@ -16,9 +16,8 @@ use goscript_parser::{FileSet, Map};
 use goscript_types::{
     ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo,
 };
-use goscript_vm::ffi::*;
 use goscript_vm::value::*;
-use goscript_vm::Bytecode;
+use goscript_vm::*;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(

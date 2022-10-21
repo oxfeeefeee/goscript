@@ -306,28 +306,28 @@ impl<'a> Context<'a> {
     }
 }
 
-pub struct Fiber<'a> {
+struct Fiber<'a> {
     stack: Rc<RefCell<Stack>>,
     rstack: RangeStack,
     frames: Vec<CallFrame>,
     context: Context<'a>,
-    id: usize,
+    _id: usize,
 }
 
 impl<'a> Fiber<'a> {
-    pub fn id(&self) -> usize {
-        self.id
+    pub fn _id(&self) -> usize {
+        self._id
     }
 
     fn new(context: Context<'a>, stack: Stack, first_frame: CallFrame) -> Fiber<'a> {
-        let id = context.next_id.get();
-        context.next_id.set(id + 1);
+        let _id = context.next_id.get();
+        context.next_id.set(_id + 1);
         Fiber {
             stack: Rc::new(RefCell::new(stack)),
             rstack: RangeStack::new(),
             frames: vec![first_frame],
             context,
-            id,
+            _id,
         }
     }
 
@@ -1892,7 +1892,7 @@ fn get_struct_and_index(
 }
 
 #[inline]
-pub fn get_embeded(
+fn get_embeded(
     val: GosValue,
     indices: &[OpIndex],
     stack: &Stack,

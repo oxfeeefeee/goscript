@@ -3,5 +3,5 @@
 // license that can be found in the LICENSE file.
 
 pub use goscript_pmacro::*;
-pub use goscript_vm::ffi::*;
 pub use goscript_vm::value::*;
+pub use goscript_vm::*;

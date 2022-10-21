@@ -11,8 +11,8 @@ use goscript_types::{
     PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,
     TypeKey as TCTypeKey,
 };
-use goscript_vm::ffi::*;
 use goscript_vm::value::*;
+use goscript_vm::*;
 use std::vec;
 
 pub type TypeCache = Map<TCTypeKey, Meta>;
