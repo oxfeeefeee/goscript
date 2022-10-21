@@ -20,7 +20,7 @@ use super::check::{Checker, FilesContext};
 use super::util::UnpackResult;
 use goscript_parser::ast::Expr;
 use goscript_parser::ast::Node;
-use goscript_parser::position::Pos;
+use goscript_parser::Pos;
 
 impl<'a, S: SourceRead> Checker<'a, S> {
     /// assignment reports whether x can be assigned to a variable of type t,

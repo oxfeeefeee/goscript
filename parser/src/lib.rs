@@ -2,29 +2,29 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#![allow(dead_code)]
-pub mod ast;
-pub mod errors;
+mod errors;
 mod map;
-pub mod objects;
+mod objects;
 mod parser;
-pub mod position;
+mod position;
 mod scanner;
+mod token;
+
+pub mod ast;
 pub mod scope;
-pub mod token;
 pub mod visitor;
 
-pub use ast::Expr;
+pub use errors::*;
 pub use map::{Map, MapIter};
-pub use objects::{PiggyVec, PiggyVecKey};
+pub use objects::*;
 pub use parser::Parser;
-pub use position::{FilePos, FileSet, Pos};
-pub use token::Token;
+pub use position::*;
+pub use token::*;
 
 pub fn parse_file<'a>(
-    o: &'a mut objects::Objects,
-    fs: &'a mut position::FileSet,
-    el: &'a errors::ErrorList,
+    o: &'a mut AstObjects,
+    fs: &'a mut FileSet,
+    el: &'a ErrorList,
     name: &str,
     src: &'a str,
     trace: bool,

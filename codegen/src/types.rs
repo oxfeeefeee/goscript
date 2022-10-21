@@ -2,10 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_parser::ast::Node;
-use goscript_parser::ast::{Expr, NodeId};
-use goscript_parser::objects::IdentKey;
-use goscript_parser::Map;
+use goscript_parser::ast::{Expr, Node, NodeId};
+use goscript_parser::{IdentKey, Map};
 use goscript_types::{
     BasicType, ChanDir, ConstValue, EntityType, ObjKey as TCObjKey, OperandMode,
     PackageKey as TCPackageKey, SelectionKind as TCSelectionKind, TCObjects, Type, TypeInfo,

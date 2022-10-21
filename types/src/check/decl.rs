@@ -21,8 +21,7 @@ use super::super::typ::{self};
 use super::check::{Checker, FilesContext, ObjContext};
 use super::stmt::BodyContainer;
 use goscript_parser::ast::{self, Expr, Node};
-use goscript_parser::objects::IdentKey;
-use goscript_parser::{Map, Pos, Token};
+use goscript_parser::{IdentKey, Map, Pos, Token};
 
 impl<'a, S: SourceRead> Checker<'a, S> {
     pub fn report_alt_decl(&self, okey: ObjKey) {

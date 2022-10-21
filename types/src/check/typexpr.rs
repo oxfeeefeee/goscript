@@ -21,8 +21,7 @@ use super::check::{Checker, FilesContext, ObjContext};
 use super::interface::MethodInfo;
 use crate::SourceRead;
 use goscript_parser::ast::{self, Expr, FieldList, Node};
-use goscript_parser::objects::{FuncTypeKey, IdentKey};
-use goscript_parser::{Map, Pos, Token};
+use goscript_parser::{FuncTypeKey, IdentKey, Map, Pos, Token};
 use std::borrow::Borrow;
 
 impl<'a, S: SourceRead> Checker<'a, S> {

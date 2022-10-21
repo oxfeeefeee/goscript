@@ -105,7 +105,7 @@ macro_rules! piggy_key_type {
             }
         }
 
-        impl $crate::objects::PiggyVecKey for $name {
+        impl $crate::PiggyVecKey for $name {
             #[inline]
             fn as_usize(&self) -> usize {
                 self.0
@@ -140,7 +140,7 @@ pub type Fields = PiggyVec<FieldKey, ast::Field>;
 pub type Entitys = PiggyVec<EntityKey, scope::Entity>;
 pub type Scopes = PiggyVec<ScopeKey, scope::Scope>;
 
-pub struct Objects {
+pub struct AstObjects {
     pub l_stmts: LabeledStmts,
     pub a_stmts: AssignStmts,
     pub specs: Specs,
@@ -152,10 +152,10 @@ pub struct Objects {
     pub scopes: Scopes,
 }
 
-impl Objects {
-    pub fn new() -> Objects {
+impl AstObjects {
+    pub fn new() -> AstObjects {
         const CAP: usize = 16;
-        Objects {
+        AstObjects {
             l_stmts: PiggyVec::with_capacity(CAP),
             a_stmts: PiggyVec::with_capacity(CAP),
             specs: PiggyVec::with_capacity(CAP),

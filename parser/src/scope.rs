@@ -81,7 +81,7 @@ impl Entity {
         Entity::new(kind, name, decl, EntityData::NoData)
     }
 
-    pub fn pos(&self, objs: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &AstObjects) -> position::Pos {
         match &self.decl {
             DeclObj::Field(i) => i.pos(objs),
             DeclObj::Spec(i) => objs.specs[*i].pos(objs),
@@ -114,7 +114,7 @@ impl Scope {
         self.entities.insert(name, entity)
     }
 
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    pub fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match write!(f, "scope {:p} {{\n", self) {
             Err(e) => {
                 return Err(e);

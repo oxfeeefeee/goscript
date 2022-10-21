@@ -4,8 +4,7 @@
 
 use crate::value::*;
 use borsh::{maybestd::io::Result, maybestd::io::Write, BorshDeserialize, BorshSerialize};
-use goscript_parser::objects::{PiggyVec, PiggyVecKey};
-use goscript_parser::piggy_key_type;
+use goscript_parser::{piggy_key_type, PiggyVec, PiggyVecKey};
 
 macro_rules! impl_borsh_for_key {
     ($key:ident) => {

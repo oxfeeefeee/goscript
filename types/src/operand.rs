@@ -19,12 +19,9 @@ use super::objects::{TCObjects, TypeKey};
 use super::typ;
 use super::typ::{fmt_type, BasicType, Type};
 use super::universe::{Builtin, Universe};
-use goscript_parser::ast;
 use goscript_parser::ast::*;
-use goscript_parser::objects::{FuncTypeKey, IdentKey, Objects as AstObjects};
-use goscript_parser::position;
-use goscript_parser::token::Token;
 use goscript_parser::visitor::{walk_expr, ExprVisitor};
+use goscript_parser::{AstObjects, FuncTypeKey, IdentKey, Pos, Token};
 use std::fmt;
 use std::fmt::Display;
 use std::fmt::Write;
@@ -82,7 +79,7 @@ impl fmt::Display for OperandMode {
 #[derive(Clone, Debug)]
 pub struct Operand {
     pub mode: OperandMode,
-    pub expr: Option<ast::Expr>,
+    pub expr: Option<Expr>,
     pub typ: Option<TypeKey>,
 }
 
@@ -91,7 +88,7 @@ impl Operand {
         Operand::with(OperandMode::Invalid, None, None)
     }
 
-    pub fn with(mode: OperandMode, expr: Option<ast::Expr>, typ: Option<TypeKey>) -> Operand {
+    pub fn with(mode: OperandMode, expr: Option<Expr>, typ: Option<TypeKey>) -> Operand {
         Operand {
             mode: mode,
             expr: expr,
@@ -103,7 +100,7 @@ impl Operand {
         self.mode == OperandMode::Invalid
     }
 
-    pub fn pos(&self, ast_objs: &AstObjects) -> position::Pos {
+    pub fn pos(&self, ast_objs: &AstObjects) -> Pos {
         if let Some(e) = &self.expr {
             e.pos(ast_objs)
         } else {

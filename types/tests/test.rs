@@ -158,8 +158,8 @@ fn test_file(path: &str, trace: bool) {
     };
     let reader = FsReader::new(Some("./"), None, None);
     let fs = &mut fe::FileSet::new();
-    let asto = &mut fe::objects::Objects::new();
-    let el = &mut fe::errors::ErrorList::new();
+    let asto = &mut fe::AstObjects::new();
+    let el = &mut fe::ErrorList::new();
     let tco = &mut types::TCObjects::new();
     let results = &mut Map::new();
 

@@ -8,10 +8,8 @@ use crate::context::*;
 use crate::package::PkgHelper;
 use crate::types::{SelectionType, TypeCache, TypeLookup};
 use goscript_parser::ast::*;
-use goscript_parser::objects::Objects as AstObjects;
-use goscript_parser::objects::*;
 use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
-use goscript_parser::{Map, Pos, Token};
+use goscript_parser::*;
 use goscript_types::{
     identical_ignore_tags, Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey,
     TCObjects, Type, TypeInfo, TypeKey as TCTypeKey,
@@ -1578,7 +1576,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         expr_ctx!(self).direct_assign(func_ctx!(self), src, index, pos);
     }
 
-    pub fn gen_with_files(mut self, files: &Vec<File>, tcpkg: TCPackageKey) -> Vec<FuncCtx<'c>> {
+    pub fn gen_with_files(
+        mut self,
+        files: &Vec<ast::File>,
+        tcpkg: TCPackageKey,
+    ) -> Vec<FuncCtx<'c>> {
         let pkey = self.pkg_key;
         let fmeta = self.vmctx.s_meta().default_sig;
         let f = self

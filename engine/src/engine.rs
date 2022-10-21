@@ -50,13 +50,13 @@ impl Engine {
         trace_checker: bool,
         reader: &S,
         path: &str,
-    ) -> Result<(), fe::errors::ErrorList> {
+    ) -> Result<(), fe::ErrorList> {
         let cfg = types::TraceConfig {
             trace_parser,
             trace_checker,
         };
         let mut fs = fe::FileSet::new();
-        let code = cg::entry::parse_check_gen(path, &cfg, reader, &mut fs)?;
+        let code = cg::parse_check_gen(path, &cfg, reader, &mut fs)?;
         let encoded = code.try_to_vec().unwrap();
         let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
         dbg!(encoded.len());

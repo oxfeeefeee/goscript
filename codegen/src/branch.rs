@@ -7,8 +7,7 @@
 ///
 use crate::context::*;
 use goscript_parser::ast::*;
-use goscript_parser::objects::AssignStmtKey;
-use goscript_parser::{Map, Token};
+use goscript_parser::{AssignStmtKey, Map, Token};
 use goscript_types::ObjKey as TCObjKey;
 use goscript_vm::value::*;
 

@@ -10,7 +10,7 @@
 // license that can be found in the LICENSE file.
 
 use super::typ::{BasicDetail, BasicInfo, BasicType};
-use goscript_parser::token::Token;
+use goscript_parser::Token;
 use num_bigint::{BigInt, Sign};
 use num_rational::BigRational;
 use num_traits::cast::FromPrimitive;

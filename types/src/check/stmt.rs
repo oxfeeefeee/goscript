@@ -23,8 +23,7 @@ use constant::Value;
 use goscript_parser::ast::{
     BasicLit, BlockStmt, CaseClause, CommClause, Expr, Ident, Node, Stmt, TypeAssertExpr,
 };
-use goscript_parser::objects::{FuncDeclKey, IdentKey, Objects as AstObjects};
-use goscript_parser::{Map, Pos, Token};
+use goscript_parser::{AstObjects, FuncDeclKey, IdentKey, Map, Pos, Token};
 use ordered_float;
 use std::rc::Rc;
 

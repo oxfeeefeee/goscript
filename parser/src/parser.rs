@@ -53,7 +53,7 @@ enum ParseSimpleMode {
 }
 
 pub struct Parser<'a> {
-    objects: &'a mut Objects,
+    objects: &'a mut AstObjects,
     scanner: scanner::Scanner<'a>,
     errors: &'a ErrorList,
 
@@ -80,7 +80,7 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     pub fn new(
-        objs: &'a mut Objects,
+        objs: &'a mut AstObjects,
         file: &'a mut position::File,
         el: &'a ErrorList,
         src: &'a str,
@@ -309,10 +309,6 @@ impl<'a> Parser<'a> {
 
     // ----------------------------------------------------------------------------
     // Parsing support
-
-    fn file_mut(&mut self) -> &mut position::File {
-        self.scanner.file_mut()
-    }
 
     fn file(&self) -> &position::File {
         self.scanner.file()
@@ -2830,7 +2826,7 @@ mod test {
             }
         }
         "###;
-        let o = &mut Objects::new();
+        let o = &mut AstObjects::new();
         let el = &mut ErrorList::new();
         let mut p = Parser::new(o, f, el, s1, true);
         p.open_scope();

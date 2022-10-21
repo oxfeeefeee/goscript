@@ -12,10 +12,7 @@
 use super::check::check::{Checker, TypeInfo};
 use super::objects::{PackageKey, TCObjects};
 use goscript_parser::ast;
-use goscript_parser::errors::ErrorList;
-use goscript_parser::objects::Objects as AstObjects;
-use goscript_parser::position;
-use goscript_parser::{FileSet, Map, Parser};
+use goscript_parser::{AstObjects, ErrorList, FileSet, Map, Parser, Pos};
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -72,7 +69,7 @@ pub struct Importer<'a, S: SourceRead> {
     ast_objs: &'a mut AstObjects,
     tc_objs: &'a mut TCObjects,
     errors: &'a ErrorList,
-    pos: position::Pos,
+    pos: Pos,
 }
 
 impl<'a, S: SourceRead> Importer<'a, S> {
@@ -85,7 +82,7 @@ impl<'a, S: SourceRead> Importer<'a, S> {
         ast_objs: &'a mut AstObjects,
         tc_objs: &'a mut TCObjects,
         errors: &'a ErrorList,
-        pos: position::Pos,
+        pos: Pos,
     ) -> Importer<'a, S> {
         Importer {
             trace_config: config,

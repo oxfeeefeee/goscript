@@ -9,10 +9,7 @@ use super::context::*;
 use super::package::PkgHelper;
 use super::types::{TypeCache, TypeLookup};
 use goscript_parser::ast::Ident;
-use goscript_parser::errors::ErrorList;
-use goscript_parser::objects::Objects as AstObjects;
-use goscript_parser::objects::*;
-use goscript_parser::{FileSet, Map};
+use goscript_parser::{AstObjects, ErrorList, FileSet, IdentKey, Map};
 use goscript_types::{
     ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects, TraceConfig, TypeInfo,
 };

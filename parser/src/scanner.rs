@@ -13,14 +13,10 @@ use super::errors;
 use super::position;
 use super::token::Token;
 use std::iter::Peekable;
-use std::path::Path;
 use std::str::Chars;
-
-type ErrorHandler = fn(pos: position::FilePos, msg: &str);
 
 pub struct Scanner<'a> {
     file: &'a mut position::File, // source file handle
-    dir: String,                  // directory portion of file.Name()
     src: Peekable<Chars<'a>>,     // source
     errors: &'a errors::ErrorList,
 
@@ -36,14 +32,8 @@ impl<'a> Scanner<'a> {
         src: &'a str,
         err: &'a errors::ErrorList,
     ) -> Scanner<'a> {
-        let dir = Path::new(file.name())
-            .parent()
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
         Scanner {
             file: file,
-            dir: dir,
             src: src.chars().peekable(),
             errors: err,
             offset: 0,
@@ -55,14 +45,6 @@ impl<'a> Scanner<'a> {
 
     fn error(&self, msg: &str) {
         errors::FilePosErrors::new(self.file, self.errors).add_str(self.offset, msg, false);
-    }
-
-    fn position(&self) -> position::FilePos {
-        self.file.position(self.pos())
-    }
-
-    pub fn pos(&self) -> position::Pos {
-        self.file().pos(self.offset)
     }
 
     // Read the next Unicode char
@@ -775,10 +757,6 @@ impl<'a> Scanner<'a> {
         literal.push(ch);
     }
 
-    pub fn file_mut(&mut self) -> &mut position::File {
-        self.file
-    }
-
     pub fn file(&self) -> &position::File {
         self.file
     }
@@ -853,10 +831,6 @@ impl IntPrefix {
 mod test {
     use super::position::FileSet;
     use super::*;
-
-    fn error_handler(pos: position::FilePos, msg: &str) {
-        print!("scan error at {}: {}\n", pos, msg);
-    }
 
     #[test]
     fn test_scanner() {

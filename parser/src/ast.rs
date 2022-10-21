@@ -9,7 +9,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use super::map::Map;
 use super::objects::*;
 use super::position;
 use super::scope;
@@ -32,9 +31,9 @@ pub enum NodeId {
 }
 
 pub trait Node {
-    fn pos(&self, objs: &Objects) -> position::Pos;
+    fn pos(&self, objs: &AstObjects) -> position::Pos;
 
-    fn end(&self, objs: &Objects) -> position::Pos;
+    fn end(&self, objs: &AstObjects) -> position::Pos;
 
     fn id(&self) -> NodeId;
 }
@@ -132,7 +131,7 @@ impl Expr {
         }))
     }
 
-    pub fn box_func_type(ft: FuncType, objs: &mut Objects) -> Expr {
+    pub fn box_func_type(ft: FuncType, objs: &mut AstObjects) -> Expr {
         Expr::Func(objs.ftypes.insert(ft))
     }
 
@@ -170,7 +169,7 @@ impl Expr {
 }
 
 impl Node for Expr {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.from,
             Expr::Ident(e) => objs.idents[*e].pos,
@@ -206,7 +205,7 @@ impl Node for Expr {
         }
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Expr::Bad(e) => e.to,
             Expr::Ident(e) => objs.idents[*e].end(),
@@ -270,7 +269,7 @@ impl Stmt {
     }
 
     pub fn new_assign(
-        objs: &mut Objects,
+        objs: &mut AstObjects,
         lhs: Vec<Expr>,
         tpos: position::Pos,
         tok: token::Token,
@@ -285,7 +284,7 @@ impl Stmt {
 }
 
 impl Node for Stmt {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.from,
             Stmt::Decl(d) => d.pos(objs),
@@ -316,7 +315,7 @@ impl Node for Stmt {
             Stmt::Range(s) => s.for_pos,
         }
     }
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Stmt::Bad(s) => s.to,
             Stmt::Decl(d) => d.end(objs),
@@ -409,7 +408,7 @@ impl Node for Stmt {
 }
 
 impl Node for Spec {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Spec::Import(s) => match &s.name {
                 Some(i) => objs.idents[*i].pos,
@@ -420,7 +419,7 @@ impl Node for Spec {
         }
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Spec::Import(s) => match s.end_pos {
                 Some(p) => p,
@@ -451,7 +450,7 @@ impl Node for Spec {
 }
 
 impl Node for Decl {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.from,
             Decl::Gen(d) => d.token_pos,
@@ -459,7 +458,7 @@ impl Node for Decl {
         }
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         match &self {
             Decl::Bad(d) => d.to,
             Decl::Gen(d) => match &d.r_paren {
@@ -496,11 +495,11 @@ pub struct File {
 }
 
 impl Node for File {
-    fn pos(&self, _arena: &Objects) -> position::Pos {
+    fn pos(&self, _arena: &AstObjects) -> position::Pos {
         self.package
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         let n = self.decls.len();
         if n > 0 {
             self.decls[n - 1].end(objs)
@@ -514,12 +513,12 @@ impl Node for File {
     }
 }
 
-pub struct Package {
-    name: String,
-    scope: ScopeKey,
-    imports: Map<String, EntityKey>,
-    files: Map<String, Box<File>>,
-}
+// pub struct Package {
+//     name: String,
+//     scope: ScopeKey,
+//     imports: Map<String, EntityKey>,
+//     files: Map<String, Box<File>>,
+// }
 
 // A BadExpr node is a placeholder for expressions containing
 // syntax errors for which no correct expression nodes can be
@@ -579,7 +578,7 @@ impl Ident {
         self.pos + self.name.len()
     }
 
-    pub fn entity_obj<'a>(&self, objs: &'a Objects) -> Option<&'a scope::Entity> {
+    pub fn entity_obj<'a>(&self, objs: &'a AstObjects) -> Option<&'a scope::Entity> {
         match self.entity {
             IdentEntity::Entity(i) => Some(&objs.entities[i]),
             _ => None,
@@ -770,7 +769,7 @@ impl FuncType {
 }
 
 impl Node for FuncTypeKey {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         let self_ = &objs.ftypes[*self];
         match self_.func {
             Some(p) => p,
@@ -778,7 +777,7 @@ impl Node for FuncTypeKey {
         }
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         let self_ = &objs.ftypes[*self];
         match &self_.results {
             Some(r) => (*r).end(objs),
@@ -883,7 +882,7 @@ pub struct FuncDecl {
 }
 
 impl FuncDecl {
-    pub fn pos(&self, objs: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &AstObjects) -> position::Pos {
         self.typ.pos(objs)
     }
 }
@@ -910,7 +909,7 @@ pub struct LabeledStmt {
 
 impl LabeledStmt {
     pub fn arena_new(
-        objs: &mut Objects,
+        objs: &mut AstObjects,
         label: IdentKey,
         colon: position::Pos,
         stmt: Stmt,
@@ -923,7 +922,7 @@ impl LabeledStmt {
         objs.l_stmts.insert(l)
     }
 
-    pub fn pos(&self, objs: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &AstObjects) -> position::Pos {
         objs.idents[self.label].pos
     }
 }
@@ -956,7 +955,7 @@ pub struct AssignStmt {
 
 impl AssignStmt {
     pub fn arena_new(
-        objs: &mut Objects,
+        objs: &mut AstObjects,
         lhs: Vec<Expr>,
         tpos: position::Pos,
         tok: token::Token,
@@ -971,7 +970,7 @@ impl AssignStmt {
         objs.a_stmts.insert(ass)
     }
 
-    pub fn pos(&self, objs: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &AstObjects) -> position::Pos {
         self.lhs[0].pos(objs)
     }
 }
@@ -1105,7 +1104,7 @@ pub struct Field {
 }
 
 impl Node for FieldKey {
-    fn pos(&self, objs: &Objects) -> position::Pos {
+    fn pos(&self, objs: &AstObjects) -> position::Pos {
         let self_ = &objs.fields[*self];
         if self_.names.len() > 0 {
             objs.idents[self_.names[0]].pos
@@ -1114,7 +1113,7 @@ impl Node for FieldKey {
         }
     }
 
-    fn end(&self, objs: &Objects) -> position::Pos {
+    fn end(&self, objs: &AstObjects) -> position::Pos {
         let self_ = &objs.fields[*self];
         match &self_.tag {
             Some(t) => t.end(objs),
@@ -1147,14 +1146,14 @@ impl FieldList {
         }
     }
 
-    pub fn pos(&self, objs: &Objects) -> position::Pos {
+    pub fn pos(&self, objs: &AstObjects) -> position::Pos {
         match self.openning {
             Some(o) => o,
             None => self.list[0].pos(objs),
         }
     }
 
-    pub fn end(&self, objs: &Objects) -> position::Pos {
+    pub fn end(&self, objs: &AstObjects) -> position::Pos {
         match self.closing {
             Some(c) => c,
             None => self.list[self.list.len() - 1].pos(objs),

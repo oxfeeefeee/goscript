@@ -21,4 +21,4 @@ pub mod ffi;
 extern crate lazy_static;
 
 pub use engine::*;
-pub use goscript_parser::errors::ErrorList;
+pub use goscript_parser::ErrorList;

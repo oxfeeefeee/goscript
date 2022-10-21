@@ -16,8 +16,7 @@ use super::package::Package;
 use super::scope::Scope;
 use super::typ::*;
 use super::universe::Universe;
-use goscript_parser::objects::*;
-use goscript_parser::{piggy_key_type, position};
+use goscript_parser::{piggy_key_type, PiggyVec, Pos};
 use std::borrow::Cow;
 
 piggy_key_type! {
@@ -75,8 +74,8 @@ impl TCObjects {
     pub fn new_scope(
         &mut self,
         parent: Option<ScopeKey>,
-        pos: position::Pos,
-        end: position::Pos,
+        pos: Pos,
+        end: Pos,
         comment: String,
         is_func: bool,
     ) -> ScopeKey {
@@ -105,7 +104,7 @@ impl TCObjects {
 
     pub fn new_pkg_name(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         imported: PackageKey,
@@ -116,7 +115,7 @@ impl TCObjects {
 
     pub fn new_const(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -128,7 +127,7 @@ impl TCObjects {
 
     pub fn new_type_name(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -139,7 +138,7 @@ impl TCObjects {
 
     pub fn new_var(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -150,7 +149,7 @@ impl TCObjects {
 
     pub fn new_param_var(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -161,7 +160,7 @@ impl TCObjects {
 
     pub fn new_field(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -173,7 +172,7 @@ impl TCObjects {
 
     pub fn new_func(
         &mut self,
-        pos: position::Pos,
+        pos: Pos,
         pkg: Option<PackageKey>,
         name: String,
         typ: Option<TypeKey>,
@@ -182,12 +181,7 @@ impl TCObjects {
         self.lobjs.insert(lobj)
     }
 
-    pub fn new_label(
-        &mut self,
-        pos: position::Pos,
-        pkg: Option<PackageKey>,
-        name: String,
-    ) -> ObjKey {
+    pub fn new_label(&mut self, pos: Pos, pkg: Option<PackageKey>, name: String) -> ObjKey {
         let lobj = LangObj::new_label(pos, pkg, name, self.universe());
         self.lobjs.insert(lobj)
     }

@@ -4,8 +4,8 @@ use std::fs;
 fn load_parse(path: &str, trace: bool) -> usize {
     let mut fs = fe::FileSet::new();
     let src = fs::read_to_string(path).expect("read file err: ");
-    let o = &mut fe::objects::Objects::new();
-    let el = &mut fe::errors::ErrorList::new();
+    let o = &mut fe::AstObjects::new();
+    let el = &mut fe::ErrorList::new();
     let (p, _) = fe::parse_file(o, &mut fs, el, path, &src, trace);
 
     print!("{}", p.get_errors());
@@ -52,8 +52,8 @@ fn test_parser_dir() {
 #[test]
 fn test_issue3() {
     let mut fs = fe::FileSet::new();
-    let o = &mut fe::objects::Objects::new();
-    let el = &mut fe::errors::ErrorList::new();
+    let o = &mut fe::AstObjects::new();
+    let el = &mut fe::ErrorList::new();
     let (p, _) = fe::parse_file(o, &mut fs, el, "/a", "`", false);
     print!("{}", p.get_errors());
 }

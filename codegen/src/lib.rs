@@ -8,9 +8,9 @@ mod context;
 //mod emit;
 mod package;
 //mod selector;
+mod codegen;
+mod entry;
 mod types;
 
-pub mod codegen;
-pub mod entry;
 pub use entry::parse_check_gen;
 pub use goscript_types::{SourceRead, TraceConfig};

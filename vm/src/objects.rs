@@ -16,8 +16,7 @@ use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
 };
-use goscript_parser::objects::*;
-use goscript_parser::{Map, MapIter};
+use goscript_parser::{Map, MapIter, PiggyVecKey};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
