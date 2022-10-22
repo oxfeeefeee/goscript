@@ -33,8 +33,4 @@ impl Fmt2Ffi {
         println!("{}", strs.join(", "));
         Ok(())
     }
-
-    fn ffi_printf(_args: GosValue) {
-        unimplemented!();
-    }
 }

@@ -733,7 +733,16 @@ impl<'a> FuncCtx<'a> {
             })
             .collect();
         let func = &mut vmctx.functions_mut()[self.f_key];
-        func.pos = self.pos;
+        func.pos = self
+            .pos
+            .into_iter()
+            .map(|x| {
+                x.map(|y| {
+                    assert!(y <= u32::MAX as usize);
+                    y as u32
+                })
+            })
+            .collect();
         func.up_ptrs = self.up_ptrs;
         func.max_write_index = Instruction::max_write_index(&code);
         func.local_zeros = self.local_zeros;

@@ -1789,7 +1789,10 @@ impl<'a> Fiber<'a> {
                             for (fkey, pc) in p.call_stack.iter() {
                                 let func = &objs.functions[*fkey];
                                 if let Some(p) = func.pos[*pc as usize] {
-                                    println!("{}", files.position(p).unwrap_or(FilePos::null()));
+                                    println!(
+                                        "{}",
+                                        files.position(p as usize).unwrap_or(FilePos::null())
+                                    );
                                 } else {
                                     println!("<no debug info available>");
                                 }

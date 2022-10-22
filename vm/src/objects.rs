@@ -1927,7 +1927,6 @@ impl BorshSerialize for PackageObj {
             .map(|x| x.clone().into_inner())
             .collect();
         members.serialize(writer)?;
-        self.member_indices.serialize(writer)?;
         self.init_funcs.serialize(writer)?;
         self.var_mapping.borrow().serialize(writer)
     }
@@ -1939,7 +1938,7 @@ impl BorshDeserialize for PackageObj {
             .into_iter()
             .map(|x| RefCell::new(x))
             .collect();
-        let member_indices = Map::<String, OpIndex>::deserialize(buf)?;
+        let member_indices = Map::new();
         let init_funcs = Vec::<GosValue>::deserialize(buf)?;
         let var_mapping = RefCell::new(Option::<Map<OpIndex, OpIndex>>::deserialize(buf)?);
         Ok(PackageObj {
@@ -1972,7 +1971,7 @@ pub struct FunctionObj {
     pub ret_zeros: Vec<GosValue>,
 
     pub code: Vec<Instruction>,
-    pub pos: Vec<Option<usize>>,
+    pub pos: Vec<Option<u32>>,
     pub up_ptrs: Vec<ValueDesc>,
     pub local_zeros: Vec<GosValue>,
 }

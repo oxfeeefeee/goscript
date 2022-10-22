@@ -6,15 +6,9 @@ package fmt2
 
 type ffiFmt2 interface {
     println(a ...interface{})
-    printf(a ...interface{})
 }
 
 func Println(a ...interface{})  {
     var f = ffi(ffiFmt2, "fmt2")
     f.println(a...)
-}
-
-func Printf(a ...interface{})  {
-    var f = ffi(ffiFmt2, "fmt2")
-    f.printf(a...)
 }
