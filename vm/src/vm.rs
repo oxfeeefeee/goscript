@@ -264,7 +264,7 @@ struct Context<'a> {
     exec: Rc<LocalExecutor<'a>>,
     code: &'a Bytecode,
     gcc: &'a GcContainer,
-    ffi_factory: &'a FfiFactory,
+    ffi_factory: &'a FfiFactory<'a>,
     fs: Option<&'a FileSet>,
     next_id: Cell<usize>,
 }
@@ -1033,6 +1033,7 @@ impl<'a> Fiber<'a> {
                                     let mut ctx = FfiCtx {
                                         func_name: &ffic.func_name,
                                         vm_objs: objs,
+                                        user_data: ctx.ffi_factory.user_data(),
                                         stack: &mut self.stack.borrow_mut(),
                                         gcc,
                                     };

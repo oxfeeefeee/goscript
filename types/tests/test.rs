@@ -49,8 +49,8 @@ impl<'a> SourceRead for FsReader<'a> {
         }
     }
 
-    fn base_dir(&self) -> Option<&str> {
-        self.base_dir
+    fn base_dir(&self) -> Option<&Path> {
+        self.base_dir.map(|x| Path::new(x))
     }
 
     fn read_file(&self, path: &Path) -> io::Result<String> {

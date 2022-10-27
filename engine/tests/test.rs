@@ -4,7 +4,7 @@
 use std::fs;
 use std::io;
 use std::io::Write;
-#[cfg(feature = "read_zip")]
+#[cfg(any(feature = "read_zip", feature = "go_std"))]
 use std::path::Path;
 
 #[macro_use]
@@ -41,11 +41,11 @@ impl Write for WriteBuf {
 #[cfg(feature = "go_std")]
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_fs::Config::default();
-    cfg.working_dir = Some("./");
-    cfg.base_dir = Some("../std/");
+    cfg.working_dir = Some(Path::new("./"));
+    cfg.base_dir = Some(Path::new("../std/"));
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let result = engine::run_fs::run(cfg, path);
+    let result = engine::run_fs::run(cfg, &Path::new(path));
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -61,8 +61,8 @@ fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 #[cfg(feature = "go_std")]
 fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_fs::Config::default();
-    cfg.working_dir = Some("./");
-    cfg.base_dir = Some("../std/");
+    cfg.working_dir = Some(Path::new("./"));
+    cfg.base_dir = Some(Path::new("../std/"));
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     let result = engine::run_fs::run_string(cfg, source);
@@ -81,7 +81,7 @@ fn run_string(_source: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 #[cfg(feature = "read_zip")]
 fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::run_zip::Config::default();
-    cfg.base_dir = Some("std/");
+    cfg.base_dir = Some(Path::new("std/"));
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     let zip = fs::read(Path::new(file)).unwrap();

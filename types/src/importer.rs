@@ -26,7 +26,7 @@ pub struct TraceConfig {
 pub trait SourceRead {
     fn working_dir(&self) -> io::Result<PathBuf>;
 
-    fn base_dir(&self) -> Option<&str>;
+    fn base_dir(&self) -> Option<&Path>;
 
     fn read_file(&self, path: &Path) -> io::Result<String>;
 

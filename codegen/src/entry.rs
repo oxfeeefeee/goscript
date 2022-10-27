@@ -16,10 +16,11 @@ use goscript_types::{
 };
 use goscript_vm::value::*;
 use goscript_vm::*;
+use std::path::Path;
 use std::vec;
 
 pub fn parse_check_gen<S: SourceRead>(
-    path: &str,
+    path: &Path,
     tconfig: &TraceConfig,
     reader: &S,
     fset: &mut FileSet,
@@ -33,7 +34,7 @@ pub fn parse_check_gen<S: SourceRead>(
     let importer = &mut Importer::new(
         &tconfig, reader, fset, pkgs, results, ast_objs, tc_objs, &el, 0,
     );
-    let key = ImportKey::new(path, "./");
+    let key = ImportKey::new(path.to_str().unwrap(), "./");
     let main_pkg = importer.import(&key);
     if el.len() > 0 {
         Err(el)

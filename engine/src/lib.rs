@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 mod engine;
-#[cfg(all(feature = "read_fs", feature = "go_std"))]
+#[cfg(any(feature = "read_fs", feature = "go_std"))]
 pub mod run_fs;
 #[cfg(feature = "read_map")]
 pub mod run_map;

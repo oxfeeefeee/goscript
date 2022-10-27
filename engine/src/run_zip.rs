@@ -17,9 +17,9 @@ use zip::result::{ZipError, ZipResult};
 #[derive(Default)]
 pub struct Config<'a> {
     /// working directory
-    pub working_dir: Option<&'a str>,
+    pub working_dir: Option<&'a Path>,
     /// base directory for non-local imports
-    pub base_dir: Option<&'a str>,
+    pub base_dir: Option<&'a Path>,
     /// print debug info in parser
     pub trace_parser: bool,
     /// print debug info in checker
@@ -32,7 +32,7 @@ pub struct Config<'a> {
     pub std_err: Option<Box<dyn std::io::Write + Sync + Send>>,
 }
 
-pub fn run(archive: &[u8], config: Config, path: &str) -> Result<(), ErrorList> {
+pub fn run(archive: &[u8], config: Config, path: &Path) -> Result<(), ErrorList> {
     run_zip_impl(archive, config, None, path)
 }
 
@@ -44,7 +44,7 @@ fn run_zip_impl(
     archive: &[u8],
     config: Config,
     temp_source: Option<&str>,
-    path: &str,
+    path: &Path,
 ) -> Result<(), ErrorList> {
     let engine = Engine::new();
     engine.set_std_io(config.std_in, config.std_out, config.std_err);
@@ -60,16 +60,16 @@ fn run_zip_impl(
 
 pub struct ZipReader<'a> {
     archive: RefCell<ZipArchive<io::Cursor<&'a [u8]>>>,
-    working_dir: Option<&'a str>,
-    base_dir: Option<&'a str>,
+    working_dir: Option<&'a Path>,
+    base_dir: Option<&'a Path>,
     temp_file: Option<&'a str>,
 }
 
 impl<'a> ZipReader<'a> {
     fn new(
         archive: &'a [u8],
-        working_dir: Option<&'a str>,
-        base_dir: Option<&'a str>,
+        working_dir: Option<&'a Path>,
+        base_dir: Option<&'a Path>,
         temp_file: Option<&'a str>,
     ) -> ZipResult<ZipReader<'a>> {
         let c = io::Cursor::new(archive);
@@ -82,12 +82,15 @@ impl<'a> ZipReader<'a> {
         })
     }
 
-    fn temp_file_path() -> &'static str {
-        &"temp_file_in_memory_for_testing_and_you_can_only_have_one____from_ZipReader.gos"
+    fn temp_file_path() -> &'static Path {
+        Path::new(
+            &"temp_file_in_memory_for_testing_and_you_can_only_have_one____from_ZipReader.gos",
+        )
     }
 
     fn is_temp_file(p: &Path) -> bool {
-        p.to_string_lossy().ends_with(Self::temp_file_path())
+        p.to_string_lossy()
+            .ends_with(Self::temp_file_path().to_str().unwrap())
     }
 
     fn convert_err<T>(err: ZipResult<T>) -> io::Result<T> {
@@ -103,14 +106,14 @@ impl<'a> ZipReader<'a> {
 
 impl<'a> SourceRead for ZipReader<'a> {
     fn working_dir(&self) -> io::Result<PathBuf> {
-        Ok(Path::new(match self.working_dir {
+        Ok(match self.working_dir {
             Some(p) => p,
-            None => "working_dir/",
-        })
+            None => Path::new("working_dir/"),
+        }
         .to_path_buf())
     }
 
-    fn base_dir(&self) -> Option<&str> {
+    fn base_dir(&self) -> Option<&Path> {
         self.base_dir
     }
 

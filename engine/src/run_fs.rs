@@ -13,9 +13,9 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct Config<'a> {
     /// working directory
-    pub working_dir: Option<&'a str>,
+    pub working_dir: Option<&'a Path>,
     /// base directory for non-local imports
-    pub base_dir: Option<&'a str>,
+    pub base_dir: Option<&'a Path>,
     /// print debug info in parser
     pub trace_parser: bool,
     /// print debug info in checker
@@ -28,7 +28,7 @@ pub struct Config<'a> {
     pub std_err: Option<Box<dyn std::io::Write + Sync + Send>>,
 }
 
-pub fn run(config: Config, path: &str) -> Result<(), ErrorList> {
+pub fn run(config: Config, path: &Path) -> Result<(), ErrorList> {
     run_fs_impl(config, None, path)
 }
 
@@ -36,23 +36,24 @@ pub fn run_string(config: Config, source: &str) -> Result<(), ErrorList> {
     run_fs_impl(config, Some(source), FsReader::temp_file_path())
 }
 
-fn run_fs_impl(config: Config, temp_source: Option<&str>, path: &str) -> Result<(), ErrorList> {
+fn run_fs_impl(config: Config, temp_source: Option<&str>, path: &Path) -> Result<(), ErrorList> {
     let engine = Engine::new();
+    #[cfg(feature = "go_std")]
     engine.set_std_io(config.std_in, config.std_out, config.std_err);
     let reader = FsReader::new(config.working_dir, config.base_dir, temp_source);
     engine.run_source(config.trace_parser, config.trace_checker, &reader, path)
 }
 
 pub struct FsReader<'a> {
-    working_dir: Option<&'a str>,
-    base_dir: Option<&'a str>,
+    working_dir: Option<&'a Path>,
+    base_dir: Option<&'a Path>,
     temp_file: Option<&'a str>,
 }
 
 impl<'a> FsReader<'a> {
     pub fn new(
-        working_dir: Option<&'a str>,
-        base_dir: Option<&'a str>,
+        working_dir: Option<&'a Path>,
+        base_dir: Option<&'a Path>,
         temp_file: Option<&'a str>,
     ) -> FsReader<'a> {
         FsReader {
@@ -62,8 +63,10 @@ impl<'a> FsReader<'a> {
         }
     }
 
-    pub fn temp_file_path() -> &'static str {
-        &"./temp_file_in_memory_for_testing_and_you_can_only_have_one____from_FsReader.gos"
+    pub fn temp_file_path() -> &'static Path {
+        Path::new(
+            &"./temp_file_in_memory_for_testing_and_you_can_only_have_one____from_FsReader.gos",
+        )
     }
 }
 
@@ -78,7 +81,7 @@ impl<'a> SourceRead for FsReader<'a> {
         }
     }
 
-    fn base_dir(&self) -> Option<&str> {
+    fn base_dir(&self) -> Option<&Path> {
         self.base_dir
     }
 

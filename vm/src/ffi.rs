@@ -14,9 +14,12 @@ use goscript_parser::Map;
 use std::pin::Pin;
 use std::rc::Rc;
 
+pub use crate::value::UnsafePtr;
+
 pub struct FfiCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
+    pub user_data: Option<&'a dyn UnsafePtr>,
     pub stack: &'a mut Stack,
     pub gcc: &'a GcContainer,
 }
@@ -94,19 +97,32 @@ impl std::fmt::Debug for dyn Ffi {
     }
 }
 
-pub struct FfiFactory {
+pub struct FfiFactory<'ud> {
     registry: Map<&'static str, Rc<dyn Ffi>>,
+    user_data: Option<&'ud dyn UnsafePtr>,
 }
 
-impl FfiFactory {
-    pub fn new() -> FfiFactory {
+impl<'ud> FfiFactory<'_> {
+    pub fn new() -> FfiFactory<'static> {
         FfiFactory {
             registry: Map::new(),
+            user_data: None,
+        }
+    }
+
+    pub fn with_user_data(data: &'ud dyn UnsafePtr) -> FfiFactory<'ud> {
+        FfiFactory {
+            registry: Map::new(),
+            user_data: Some(data),
         }
     }
 
     pub fn register(&mut self, name: &'static str, proto: Rc<dyn Ffi>) {
         assert!(self.registry.insert(name, proto).is_none());
+    }
+
+    pub(crate) fn user_data(&self) -> Option<&dyn UnsafePtr> {
+        self.user_data
     }
 
     pub(crate) fn create(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
@@ -117,7 +133,7 @@ impl FfiFactory {
     }
 }
 
-impl std::fmt::Debug for FfiFactory {
+impl std::fmt::Debug for FfiFactory<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "FfiFactory")
     }
@@ -145,6 +161,7 @@ impl CodeGenVMCtx {
         FfiCtx {
             func_name: self.dummy_func_name,
             vm_objs: &self.vm_objs,
+            user_data: None,
             stack: &mut self.dummy_stack,
             gcc: &&self.dummy_gcc,
         }

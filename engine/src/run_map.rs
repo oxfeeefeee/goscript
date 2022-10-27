@@ -12,9 +12,9 @@ use std::path::{Path, PathBuf};
 #[derive(Default)]
 pub struct Config<'a> {
     /// working directory
-    pub working_dir: Option<&'a str>,
+    pub working_dir: Option<&'a Path>,
     /// base directory for non-local imports
-    pub base_dir: Option<&'a str>,
+    pub base_dir: Option<&'a Path>,
     /// print debug info in parser
     pub trace_parser: bool,
     /// print debug info in checker
@@ -23,7 +23,7 @@ pub struct Config<'a> {
     pub extensions: Option<Vec<Box<dyn FnOnce(&mut Engine)>>>,
 }
 
-pub fn run(map: &Map<&Path, String>, config: Config, path: &str) -> Result<(), ErrorList> {
+pub fn run(map: &Map<&Path, String>, config: Config, path: &Path) -> Result<(), ErrorList> {
     run_map_impl(map, config, None, path)
 }
 
@@ -35,7 +35,7 @@ fn run_map_impl(
     map: &Map<&Path, String>,
     config: Config,
     temp_source: Option<&str>,
-    path: &str,
+    path: &Path,
 ) -> Result<(), ErrorList> {
     let mut engine = Engine::new();
     if let Some(exts) = config.extensions {
@@ -49,16 +49,16 @@ fn run_map_impl(
 
 pub struct MapReader<'a> {
     map: &'a Map<&'a Path, String>,
-    working_dir: Option<&'a str>,
-    base_dir: Option<&'a str>,
+    working_dir: Option<&'a Path>,
+    base_dir: Option<&'a Path>,
     temp_file: Option<&'a str>,
 }
 
 impl<'a> MapReader<'a> {
     fn new(
         map: &'a Map<&'a Path, String>,
-        working_dir: Option<&'a str>,
-        base_dir: Option<&'a str>,
+        working_dir: Option<&'a Path>,
+        base_dir: Option<&'a Path>,
         temp_file: Option<&'a str>,
     ) -> MapReader<'a> {
         MapReader {
@@ -69,25 +69,28 @@ impl<'a> MapReader<'a> {
         }
     }
 
-    fn temp_file_path() -> &'static str {
-        &"temp_file_in_memory_for_testing_and_you_can_only_have_one____from_MapReader.gos"
+    fn temp_file_path() -> &'static Path {
+        Path::new(
+            &"temp_file_in_memory_for_testing_and_you_can_only_have_one____from_MapReader.gos",
+        )
     }
 
     fn is_temp_file(p: &Path) -> bool {
-        p.to_string_lossy().ends_with(Self::temp_file_path())
+        p.to_string_lossy()
+            .ends_with(Self::temp_file_path().to_str().unwrap())
     }
 }
 
 impl<'a> SourceRead for MapReader<'a> {
     fn working_dir(&self) -> io::Result<PathBuf> {
-        Ok(Path::new(match self.working_dir {
+        Ok(match self.working_dir {
             Some(p) => p,
-            None => "working_dir/",
-        })
+            None => Path::new("working_dir/"),
+        }
         .to_path_buf())
     }
 
-    fn base_dir(&self) -> Option<&str> {
+    fn base_dir(&self) -> Option<&Path> {
         self.base_dir
     }
 
