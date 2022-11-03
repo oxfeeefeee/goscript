@@ -1968,8 +1968,8 @@ fn bind_iface_method(
             }
         }
         InterfaceObj::Ffi(ffi) => {
-            let methods = objs.metas[ffi.meta.key].as_interface().iface_methods_info();
-            let (func_name, meta) = methods[index].clone();
+            let method = &objs.metas[ffi.meta.key].as_interface().infos()[index];
+            let (func_name, meta) = (method.name.clone(), method.meta);
             let cls = FfiClosureObj {
                 ffi: ffi.ffi_obj.clone(),
                 is_async: func_name.starts_with("async"),

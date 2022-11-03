@@ -633,7 +633,7 @@ impl<'a> TypeLookup<'a> {
         let named = self.tc_type_to_meta(i_s.1, vmctx);
         let metas = vmctx.metas_mut();
         let fields: Vec<&String> = match &metas[iface.underlying(metas).key] {
-            MetadataType::Interface(m) => m.all().iter().map(|x| &x.name).collect(),
+            MetadataType::Interface(m) => m.infos().iter().map(|x| &x.name).collect(),
             _ => unreachable!(),
         };
         (
@@ -647,34 +647,42 @@ impl<'a> TypeLookup<'a> {
 
     fn build_fields(&mut self, fields: &Vec<TCObjKey>, vmctx: &mut CodeGenVMCtx) -> Fields {
         let mut infos = Vec::new();
-        let mut map = Map::<String, Vec<usize>>::new();
+        let mut embedded_fields = Vec::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
-            let f_type = self.tc_type_to_meta(field.typ().unwrap(), vmctx);
-            let is_exported = field.name().chars().next().unwrap().is_uppercase();
-            let is_embedded =
+            let meta = self.tc_type_to_meta(field.typ().unwrap(), vmctx);
+            let embedded =
                 field.entity_type().is_var() && field.entity_type().var_property().embedded;
             infos.push(FieldInfo {
-                meta: f_type,
+                meta,
                 name: field.name().clone(),
-                exported: is_exported,
-                embedded: is_embedded,
+                embedded_indices: None,
             });
-            map.insert(field.name().clone(), vec![i]);
-            if is_embedded {
-                match f_type.mtype_unwraped(&vmctx.metas()) {
-                    MetadataType::Struct(fields) => {
-                        for (k, v) in fields.mapping() {
-                            let mut indices = vec![i];
-                            indices.append(&mut v.clone());
-                            map.insert(k.clone(), indices);
-                        }
-                    }
-                    _ => {}
-                }
+            if embedded {
+                embedded_fields.push((meta, i));
             }
         }
 
-        Fields::new(infos, map)
+        for (meta, i) in embedded_fields {
+            match meta.mtype_unwraped(&vmctx.metas()) {
+                MetadataType::Struct(fields) => {
+                    for (j, f) in fields.infos().iter().enumerate() {
+                        let mut indices = vec![i];
+                        match f.embedded_indices.clone() {
+                            Some(mut ins) => indices.append(&mut ins),
+                            None => indices.push(j),
+                        };
+                        infos.push(FieldInfo {
+                            meta: f.meta,
+                            name: f.name.clone(),
+                            embedded_indices: Some(indices),
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Fields::new(infos)
     }
 }

@@ -70,10 +70,7 @@ impl PrimitiveMeta {
             mstr: Meta::with_type(MetadataType::Str, objs),
             unsafe_ptr: Meta::with_type(MetadataType::UnsafePtr, objs),
             default_sig: Meta::with_type(MetadataType::Signature(SigMetadata::default()), objs),
-            empty_iface: Meta::with_type(
-                MetadataType::Interface(Fields::new(vec![], Map::new())),
-                objs,
-            ),
+            empty_iface: Meta::with_type(MetadataType::Interface(Fields::new(vec![])), objs),
             none: Meta::with_type(MetadataType::None, objs),
         }
     }
@@ -280,10 +277,10 @@ impl Meta {
     }
 
     #[inline]
-    pub fn field_indices<'a, 'b: 'a>(&'a self, name: &str, metas: &'b MetadataObjs) -> &'b [usize] {
+    pub fn field_indices(&self, name: &str, metas: &MetadataObjs) -> Vec<usize> {
         let key = self.recv_meta_key();
         match &metas[Meta::new(key, 0, false).underlying(metas).key] {
-            MetadataType::Struct(m) => &m.mapping[name],
+            MetadataType::Struct(m) => m.indices_by_name(name),
             _ => unreachable!(),
         }
     }
@@ -335,9 +332,8 @@ impl Meta {
                 None => underlying.get_iface_binding(name, metas),
             },
             MetadataType::Interface(fields) => fields
-                .mapping
-                .get(name)
-                .map(|x| IfaceBinding::Iface(x[0], None)),
+                .try_index_by_name(name)
+                .map(|x| IfaceBinding::Iface(x, None)),
             MetadataType::Struct(fields) => {
                 for (i, f) in fields.fields.iter().enumerate() {
                     if let Some(mut re) = f.meta.get_iface_binding(name, metas) {
@@ -379,30 +375,30 @@ impl Meta {
 pub struct FieldInfo {
     pub meta: Meta,
     pub name: String,
-    pub exported: bool,
-    pub embedded: bool,
+    //pub exported: bool,
+    pub embedded_indices: Option<Vec<usize>>,
+}
+
+impl FieldInfo {
+    pub fn exported(&self) -> bool {
+        self.name.chars().next().unwrap().is_uppercase()
+    }
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
 pub struct Fields {
     fields: Vec<FieldInfo>,
-    mapping: Map<String, Vec<usize>>,
 }
 
 impl Fields {
     #[inline]
-    pub fn new(fields: Vec<FieldInfo>, mapping: Map<String, Vec<usize>>) -> Fields {
-        Fields { fields, mapping }
+    pub fn new(fields: Vec<FieldInfo>) -> Fields {
+        Fields { fields }
     }
 
     #[inline]
-    pub fn all(&self) -> &[FieldInfo] {
+    pub fn infos(&self) -> &[FieldInfo] {
         self.fields.as_ref()
-    }
-
-    #[inline]
-    pub fn mapping(&self) -> &Map<String, Vec<usize>> {
-        &self.mapping
     }
 
     #[inline]
@@ -424,25 +420,27 @@ impl Fields {
     }
 
     #[inline]
-    pub fn indices_by_name(&self, name: &str) -> &[usize] {
-        &self.mapping[name]
+    pub fn try_index_by_name(&self, name: &str) -> Option<usize> {
+        for (i, f) in self.fields.iter().enumerate() {
+            if f.name == name {
+                return Some(i);
+            }
+        }
+        None
     }
 
     #[inline]
     pub fn index_by_name(&self, name: &str) -> usize {
-        self.mapping[name][0]
+        self.try_index_by_name(name).unwrap()
     }
 
     #[inline]
-    pub fn iface_methods_info(&self) -> Vec<(String, Meta)> {
-        let mut ret = vec![];
-        for f in self.fields.iter() {
-            ret.push((String::new(), f.meta));
+    pub fn indices_by_name(&self, name: &str) -> Vec<usize> {
+        let index = self.index_by_name(name);
+        match &self.fields[index].embedded_indices {
+            Some(indices) => indices.clone(),
+            None => vec![index],
         }
-        for (name, indices) in self.mapping.iter() {
-            ret[indices[0]].0 = name.clone();
-        }
-        ret
     }
 
     #[inline]
@@ -451,7 +449,11 @@ impl Fields {
             return false;
         }
         for (i, f) in self.fields.iter().enumerate() {
-            if f.name == other.fields[i].name && !f.meta.identical(&other.fields[i].meta, metas) {
+            let other_f = &other.fields[i];
+            let ok = f.name == other_f.name
+                && f.embedded_indices == other_f.embedded_indices
+                && f.meta.identical(&other_f.meta, metas);
+            if !ok {
                 return false;
             }
         }
