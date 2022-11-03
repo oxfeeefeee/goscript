@@ -379,7 +379,7 @@ impl StdValue {
             ValueType::String => match container.as_string().len() > iusize {
                 true => Ok(wrap_std_val(
                     StrUtil::index_elem(container.as_string(), iusize).into(),
-                    Some(ctx.vm_objs.s_meta.mint8),
+                    Some(ctx.vm_objs.prim_meta.mint8),
                 )),
                 false => err_index_oor!(),
             },
@@ -499,7 +499,7 @@ impl StdValue {
     }
 
     fn set_pointer(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
-        if self.settable_meta()? != &ctx.vm_objs.s_meta.unsafe_ptr {
+        if self.settable_meta()? != &ctx.vm_objs.prim_meta.unsafe_ptr {
             err_wrong_type!()
         } else {
             self.set(ctx, val)

@@ -315,28 +315,28 @@ impl<'a> TypeLookup<'a> {
     }
 
     // returns vm_type(metadata) for the tc_type
-    pub fn basic_type_meta(&self, tkey: TCTypeKey, s_meta: &StaticMeta) -> Option<Meta> {
+    pub fn basic_type_meta(&self, tkey: TCTypeKey, prim_meta: &PrimitiveMeta) -> Option<Meta> {
         self.tc_objs.types[tkey].try_as_basic().map(|x| {
             let typ = x.typ();
             match typ {
-                BasicType::Bool | BasicType::UntypedBool => s_meta.mbool,
-                BasicType::Int | BasicType::UntypedInt => s_meta.mint,
-                BasicType::Int8 => s_meta.mint8,
-                BasicType::Int16 => s_meta.mint16,
-                BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => s_meta.mint32,
-                BasicType::Int64 => s_meta.mint64,
-                BasicType::Uint | BasicType::Uintptr => s_meta.muint,
-                BasicType::Uint8 | BasicType::Byte => s_meta.muint8,
-                BasicType::Uint16 => s_meta.muint16,
-                BasicType::Uint32 => s_meta.muint32,
-                BasicType::Uint64 => s_meta.muint64,
-                BasicType::Float32 => s_meta.mfloat32,
-                BasicType::Float64 | BasicType::UntypedFloat => s_meta.mfloat64,
-                BasicType::Complex64 => s_meta.mcomplex64,
-                BasicType::Complex128 => s_meta.mcomplex128,
-                BasicType::Str | BasicType::UntypedString => s_meta.mstr,
-                BasicType::UnsafePointer => s_meta.unsafe_ptr,
-                BasicType::UntypedNil => s_meta.none,
+                BasicType::Bool | BasicType::UntypedBool => prim_meta.mbool,
+                BasicType::Int | BasicType::UntypedInt => prim_meta.mint,
+                BasicType::Int8 => prim_meta.mint8,
+                BasicType::Int16 => prim_meta.mint16,
+                BasicType::Int32 | BasicType::Rune | BasicType::UntypedRune => prim_meta.mint32,
+                BasicType::Int64 => prim_meta.mint64,
+                BasicType::Uint | BasicType::Uintptr => prim_meta.muint,
+                BasicType::Uint8 | BasicType::Byte => prim_meta.muint8,
+                BasicType::Uint16 => prim_meta.muint16,
+                BasicType::Uint32 => prim_meta.muint32,
+                BasicType::Uint64 => prim_meta.muint64,
+                BasicType::Float32 => prim_meta.mfloat32,
+                BasicType::Float64 | BasicType::UntypedFloat => prim_meta.mfloat64,
+                BasicType::Complex64 => prim_meta.mcomplex64,
+                BasicType::Complex128 => prim_meta.mcomplex128,
+                BasicType::Str | BasicType::UntypedString => prim_meta.mstr,
+                BasicType::UnsafePointer => prim_meta.unsafe_ptr,
+                BasicType::UntypedNil => prim_meta.none,
                 _ => {
                     dbg!(typ);
                     unreachable!()
@@ -432,7 +432,7 @@ impl<'a> TypeLookup<'a> {
     // get vm_type from tc_type
     fn tc_type_to_meta_impl(&mut self, typ: TCTypeKey, vmctx: &mut CodeGenVMCtx) -> Meta {
         match &self.tc_objs.types[typ] {
-            Type::Basic(_) => self.basic_type_meta(typ, vmctx.s_meta()).unwrap(),
+            Type::Basic(_) => self.basic_type_meta(typ, vmctx.prim_meta()).unwrap(),
             Type::Array(detail) => {
                 let elem = self.tc_type_to_meta_impl(detail.elem(), vmctx);
                 Meta::new_array(elem, detail.len().unwrap() as usize, vmctx.metas_mut())
@@ -501,7 +501,7 @@ impl<'a> TypeLookup<'a> {
             }
             Type::Named(detail) => {
                 // generate a Named with dummy underlying to avoid recursion
-                let md = Meta::new_named(vmctx.s_meta().mint, vmctx.metas_mut());
+                let md = Meta::new_named(vmctx.prim_meta().mint, vmctx.metas_mut());
                 for key in detail.methods().iter() {
                     let mobj = &self.tc_objs.lobjs[*key];
                     md.add_method(

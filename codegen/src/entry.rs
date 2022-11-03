@@ -128,7 +128,7 @@ fn gen_entry_func<'a, 'c>(
     main_ident: IdentKey,
 ) -> FuncCtx<'c> {
     // import the 0th pkg and call the main function of the pkg
-    let fmeta = vmctx.s_meta().default_sig;
+    let fmeta = vmctx.prim_meta().default_sig;
     let fobj = vmctx.function_with_meta(None, fmeta.clone(), FuncFlag::Default);
     let fkey = *fobj.as_function();
     let mut fctx = FuncCtx::new(fkey, None, consts);

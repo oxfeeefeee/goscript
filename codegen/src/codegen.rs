@@ -90,7 +90,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         match mode {
             OperandMode::TypeExpr => {
                 let tctype = self.t.underlying_tc(self.t.obj_use_tc_type(*ident));
-                match self.t.basic_type_meta(tctype, self.vmctx.s_meta()) {
+                match self.t.basic_type_meta(tctype, self.vmctx.prim_meta()) {
                     Some(meta) => VirtualAddr::Direct(func_ctx!(self).add_metadata(meta)),
                     None => {
                         let id = &self.ast_objs.idents[*ident];
@@ -1584,7 +1584,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         tcpkg: TCPackageKey,
     ) -> Vec<FuncCtx<'c>> {
         let pkey = self.pkg_key;
-        let fmeta = self.vmctx.s_meta().default_sig;
+        let fmeta = self.vmctx.prim_meta().default_sig;
         let f = self
             .vmctx
             .function_with_meta(Some(pkey), fmeta, FuncFlag::PkgCtor);

@@ -199,8 +199,8 @@ impl CodeGenVMCtx {
         &mut self.vm_objs.packages
     }
 
-    pub fn s_meta(&self) -> &StaticMeta {
-        &self.vm_objs.s_meta
+    pub fn prim_meta(&self) -> &PrimitiveMeta {
+        &self.vm_objs.prim_meta
     }
 
     pub fn gc_container(&self) -> &GcContainer {

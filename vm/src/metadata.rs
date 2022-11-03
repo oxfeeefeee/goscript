@@ -24,7 +24,7 @@ pub enum ChannelType {
 }
 
 #[derive(Debug)]
-pub struct StaticMeta {
+pub struct PrimitiveMeta {
     pub mbool: Meta,
     pub mint: Meta,
     pub mint8: Meta,
@@ -48,9 +48,9 @@ pub struct StaticMeta {
     pub none: Meta,
 }
 
-impl StaticMeta {
-    pub fn new(objs: &mut MetadataObjs) -> StaticMeta {
-        StaticMeta {
+impl PrimitiveMeta {
+    pub fn new(objs: &mut MetadataObjs) -> PrimitiveMeta {
+        PrimitiveMeta {
             mbool: Meta::with_type(MetadataType::Bool, objs),
             mint: Meta::with_type(MetadataType::Int, objs),
             mint8: Meta::with_type(MetadataType::Int8, objs),

@@ -41,7 +41,7 @@ pub struct VMObjects {
     pub metas: MetadataObjs,
     pub functions: FunctionObjs,
     pub packages: PackageObjs,
-    pub s_meta: StaticMeta,
+    pub prim_meta: PrimitiveMeta,
     pub(crate) arr_slice_caller: Box<ArrCaller>,
 }
 
@@ -49,12 +49,12 @@ impl VMObjects {
     pub fn new() -> VMObjects {
         const CAP: usize = 16;
         let mut metas = PiggyVec::with_capacity(CAP);
-        let s_meta = StaticMeta::new(&mut metas);
+        let prim_meta = PrimitiveMeta::new(&mut metas);
         VMObjects {
             metas,
             functions: PiggyVec::with_capacity(CAP),
             packages: PiggyVec::with_capacity(CAP),
-            s_meta,
+            prim_meta,
             arr_slice_caller: Box::new(ArrCaller::new()),
         }
     }
@@ -73,12 +73,12 @@ impl BorshDeserialize for VMObjects {
         let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
         let functions = Vec::<FunctionObj>::deserialize(buf)?.into();
         let packages = Vec::<PackageObj>::deserialize(buf)?.into();
-        let s_meta = StaticMeta::new(&mut metas);
+        let prim_meta = PrimitiveMeta::new(&mut metas);
         Ok(VMObjects {
             metas,
             functions,
             packages,
-            s_meta,
+            prim_meta,
             arr_slice_caller: Box::new(ArrCaller::new()),
         })
     }

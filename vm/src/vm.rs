@@ -338,7 +338,7 @@ impl<'a> Fiber<'a> {
         let objs: &VMObjects = &ctx.code.objects;
         let caller: &ArrCaller = &objs.arr_slice_caller;
         let consts = &ctx.code.consts;
-        let s_meta: &StaticMeta = &objs.s_meta;
+        let prim_meta: &PrimitiveMeta = &objs.prim_meta;
         let ifaces = &ctx.code.ifaces;
         let indices = &ctx.code.indices;
         let mut frame_height = self.frames.len();
@@ -1438,9 +1438,9 @@ impl<'a> Fiber<'a> {
                             let meta = match iface_value.as_interface() {
                                 Some(iface) => match &iface as &InterfaceObj {
                                     InterfaceObj::Gos(_, b) => b.as_ref().unwrap().0,
-                                    _ => s_meta.none,
+                                    _ => prim_meta.none,
                                 },
-                                _ => s_meta.none,
+                                _ => prim_meta.none,
                             };
                             stack.set(inst.d + sb, GosValue::new_metadata(meta));
                         } else {
@@ -1449,9 +1449,9 @@ impl<'a> Fiber<'a> {
                                     InterfaceObj::Gos(v, b) => {
                                         (v.copy_semantic(gcc), b.as_ref().unwrap().0)
                                     }
-                                    _ => (iface_value.clone(), s_meta.none),
+                                    _ => (iface_value.clone(), prim_meta.none),
                                 },
-                                _ => (iface_value, s_meta.none),
+                                _ => (iface_value, prim_meta.none),
                             };
                             stack.set(inst.d + sb, GosValue::new_metadata(meta));
                             stack.set(inst.s1 + sb, val);
