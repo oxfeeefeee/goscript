@@ -210,6 +210,6 @@ impl VirtualFile {
     }
 
     fn into_val(self) -> GosValue {
-        FfiCtx::new_unsafe_ptr(self)
+        FfiCtx::new_unsafe_ptr(Rc::new(self))
     }
 }

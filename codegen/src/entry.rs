@@ -56,7 +56,7 @@ fn gen_byte_code(
     ast_objs: &AstObjects,
     tc_objs: &TCObjects,
     checker_result: &Map<TCPackageKey, TypeInfo>,
-    main_pkg: TCPackageKey,
+    tc_main_pkg: TCPackageKey,
     main_ident: IdentKey,
     blank_ident: IdentKey,
 ) -> Bytecode {
@@ -75,7 +75,8 @@ fn gen_byte_code(
         pkg_map.insert(tcpkg, pkey);
     }
 
-    let entry = gen_entry_func(&mut vmctx, &consts, pkg_map[&main_pkg], main_ident);
+    let main_pkg = pkg_map[&tc_main_pkg];
+    let entry = gen_entry_func(&mut vmctx, &consts, main_pkg, main_ident);
     let entry_key = entry.f_key;
     result_funcs.push(entry);
 
@@ -117,6 +118,7 @@ fn gen_byte_code(
         iface_binding,
         struct_selector.result(),
         entry_key,
+        main_pkg,
     )
 }
 
@@ -127,7 +129,6 @@ fn gen_entry_func<'a, 'c>(
     pkg: PackageKey,
     main_ident: IdentKey,
 ) -> FuncCtx<'c> {
-    // import the 0th pkg and call the main function of the pkg
     let fmeta = vmctx.prim_meta().default_sig;
     let fobj = vmctx.function_with_meta(None, fmeta.clone(), FuncFlag::Default);
     let fkey = *fobj.as_function();

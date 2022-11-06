@@ -70,10 +70,12 @@ impl<'a> FfiCtx<'a> {
         GosValue::with_str(s)
     }
 
-    pub fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
+    #[inline]
+    pub fn new_unsafe_ptr(p: Rc<dyn UnsafePtr>) -> GosValue {
         GosValue::new_unsafe_ptr(p)
     }
 
+    #[inline]
     pub fn zero_val(&self, m: &Meta) -> GosValue {
         m.zero(&self.vm_objs.metas, self.gcc)
     }

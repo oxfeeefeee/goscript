@@ -1406,7 +1406,7 @@ impl PointerHandle {
         match ptr.as_pointer() {
             Some(p) => {
                 let handle = PointerHandle { ptr: p.clone() };
-                GosValue::new_unsafe_ptr(handle)
+                GosValue::new_unsafe_ptr(Rc::new(handle))
             }
             None => GosValue::new_nil(ValueType::UnsafePtr),
         }
@@ -1424,8 +1424,8 @@ pub struct UnsafePtrObj {
 }
 
 impl UnsafePtrObj {
-    pub fn new<T: 'static + UnsafePtr>(p: T) -> UnsafePtrObj {
-        UnsafePtrObj { ptr: Rc::new(p) }
+    pub fn new(ptr: Rc<dyn UnsafePtr>) -> UnsafePtrObj {
+        UnsafePtrObj { ptr }
     }
 
     /// Get a reference to the unsafe ptr obj's ptr.

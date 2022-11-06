@@ -22,7 +22,7 @@ macro_rules! create_mutex {
         let p = pp.deref(&$ctx.stack, &$ctx.vm_objs.packages)?;
         if p.is_nil() {
             let inner = $typ::new();
-            let p = FfiCtx::new_unsafe_ptr(inner.clone());
+            let p = FfiCtx::new_unsafe_ptr(Rc::new(inner.clone()));
             pp.set_pointee(&p, $ctx.stack, &$ctx.vm_objs.packages, &$ctx.gcc)?;
             Ok(inner)
         } else {

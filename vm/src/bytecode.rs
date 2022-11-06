@@ -93,6 +93,7 @@ pub struct Bytecode {
     /// For embedded fields of structs
     pub indices: Vec<Vec<OpIndex>>,
     pub entry: FunctionKey,
+    pub main_pkg: PackageKey,
 }
 
 impl Bytecode {
@@ -102,6 +103,7 @@ impl Bytecode {
         ifaces: Vec<(Meta, Vec<IfaceBinding>)>,
         indices: Vec<Vec<OpIndex>>,
         entry: FunctionKey,
+        main_pkg: PackageKey,
     ) -> Bytecode {
         let ifaces = ifaces
             .into_iter()
@@ -116,6 +118,7 @@ impl Bytecode {
             ifaces,
             indices,
             entry,
+            main_pkg,
         }
     }
 }

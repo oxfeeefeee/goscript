@@ -1017,7 +1017,7 @@ impl ValueData {
     }
 
     #[inline]
-    fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> ValueData {
+    fn new_unsafe_ptr(p: Rc<dyn UnsafePtr>) -> ValueData {
         ValueData::from_unsafe_ptr(Some(Box::new(UnsafePtrObj::new(p))))
     }
 
@@ -1426,7 +1426,7 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_unsafe_ptr<T: 'static + UnsafePtr>(p: T) -> GosValue {
+    pub(crate) fn new_unsafe_ptr(p: Rc<dyn UnsafePtr>) -> GosValue {
         GosValue::new(ValueType::UnsafePtr, ValueData::new_unsafe_ptr(p))
     }
 

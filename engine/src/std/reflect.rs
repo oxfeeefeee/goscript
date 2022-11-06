@@ -8,6 +8,7 @@ use goscript_vm::value::*;
 use std::any::Any;
 use std::cell::RefCell;
 use std::mem;
+use std::rc::Rc;
 
 macro_rules! err_wrong_type {
     () => {
@@ -29,12 +30,12 @@ macro_rules! err_set_val_type {
 
 #[inline]
 fn wrap_std_val(v: GosValue, m: Option<Meta>) -> GosValue {
-    FfiCtx::new_unsafe_ptr(StdValue::new(v, m))
+    FfiCtx::new_unsafe_ptr(Rc::new(StdValue::new(v, m)))
 }
 
 #[inline]
 fn wrap_ptr_std_val(p: Box<PointerObj>, m: Option<Meta>) -> GosValue {
-    FfiCtx::new_unsafe_ptr(StdValue::Pointer(p, m, None))
+    FfiCtx::new_unsafe_ptr(Rc::new(StdValue::Pointer(p, m, None)))
 }
 
 #[inline]
@@ -344,11 +345,11 @@ impl StdValue {
                     let fields = &metas[self.meta().unwrap().underlying(metas).key]
                         .as_struct()
                         .infos();
-                    Ok(FfiCtx::new_unsafe_ptr(StdValue::Pointer(
+                    Ok(FfiCtx::new_unsafe_ptr(Rc::new(StdValue::Pointer(
                         p,
                         Some(fields[i].meta),
                         Some(fields[i].exported()),
-                    )))
+                    ))))
                 }
             }
             _ => err_wrong_type!(),
@@ -572,7 +573,7 @@ impl StdType {
             ValueType::Struct => GosKind::Struct,
             _ => GosKind::Invalid,
         };
-        (FfiCtx::new_unsafe_ptr(typ), (kind as usize))
+        (FfiCtx::new_unsafe_ptr(Rc::new(typ)), (kind as usize))
     }
 }
 
@@ -611,7 +612,7 @@ impl StdMapIter {
             key_meta: k,
             //val_meta: v,
         };
-        Ok(FfiCtx::new_unsafe_ptr(smi))
+        Ok(FfiCtx::new_unsafe_ptr(Rc::new(smi)))
     }
 
     fn next(&self) -> GosValue {
