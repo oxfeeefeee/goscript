@@ -71,7 +71,8 @@ fn gen_byte_code(
     let mut result_funcs = vec![];
 
     for (&tcpkg, _) in checker_result.iter() {
-        let pkey = vmctx.packages_mut().insert(PackageObj::new());
+        let name = tc_objs.pkgs[tcpkg].name().clone().unwrap();
+        let pkey = vmctx.packages_mut().insert(PackageObj::new(name));
         pkg_map.insert(tcpkg, pkey);
     }
 

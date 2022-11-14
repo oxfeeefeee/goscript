@@ -208,7 +208,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
 
     fn gen_def_const(&mut self, names: &Vec<IdentKey>) {
         for name in names.iter() {
-            let (val, _) = self.t.ident_const_value_type(name);
+            let val = self.t.ident_const_value(name);
             self.add_const_def(name, val);
         }
     }

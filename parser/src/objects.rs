@@ -44,6 +44,13 @@ where
     pub fn vec(&self) -> &Vec<V> {
         &self.vec
     }
+
+    pub fn iter<'a>(&'a self) -> PiggyVecIter<'a, K, V> {
+        PiggyVecIter {
+            vec_iter: self.vec.iter(),
+            phantom: PhantomData {},
+        }
+    }
 }
 
 impl<K, V> Index<K> for PiggyVec<K, V>
@@ -78,6 +85,25 @@ where
             vec,
             phantom: PhantomData {},
         }
+    }
+}
+
+pub struct PiggyVecIter<'a, K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    vec_iter: std::slice::Iter<'a, V>,
+    phantom: PhantomData<K>,
+}
+
+impl<'a, K, V> Iterator for PiggyVecIter<'a, K, V>
+where
+    K: PiggyVecKey + From<usize>,
+{
+    type Item = &'a V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.vec_iter.next()
     }
 }
 

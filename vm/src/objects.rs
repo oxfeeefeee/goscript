@@ -1846,6 +1846,7 @@ impl ClosureObj {
 /// vars, funcs declared in a package
 #[derive(Clone, Debug)]
 pub struct PackageObj {
+    name: String,
     members: Vec<RefCell<GosValue>>, // imports, const, var, func are all stored here
     member_indices: Map<String, OpIndex>,
     init_funcs: Vec<GosValue>,
@@ -1854,13 +1855,18 @@ pub struct PackageObj {
 }
 
 impl PackageObj {
-    pub fn new() -> PackageObj {
+    pub fn new(name: String) -> PackageObj {
         PackageObj {
+            name,
             members: vec![],
             member_indices: Map::new(),
             init_funcs: vec![],
             var_mapping: RefCell::new(Some(Map::new())),
         }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     pub fn add_member(&mut self, name: String, val: GosValue) -> OpIndex {
@@ -1871,7 +1877,7 @@ impl PackageObj {
     }
 
     pub fn add_var_mapping(&mut self, name: String, fn_index: OpIndex) -> OpIndex {
-        let index = *self.get_member_index(&name).unwrap();
+        let index = *self.member_index(&name).unwrap();
         self.var_mapping
             .borrow_mut()
             .as_mut()
@@ -1884,7 +1890,11 @@ impl PackageObj {
         self.init_funcs.push(func);
     }
 
-    pub fn get_member_index(&self, name: &str) -> Option<&OpIndex> {
+    pub fn member_indices(&self) -> &Map<String, OpIndex> {
+        &self.member_indices
+    }
+
+    pub fn member_index(&self, name: &str) -> Option<&OpIndex> {
         self.member_indices.get(name)
     }
 
@@ -1903,7 +1913,7 @@ impl PackageObj {
     }
 
     #[inline]
-    pub fn get_init_func(&self, i: OpIndex) -> Option<&GosValue> {
+    pub fn init_func(&self, i: OpIndex) -> Option<&GosValue> {
         self.init_funcs.get(i as usize)
     }
 
@@ -1921,12 +1931,14 @@ impl PackageObj {
 
 impl BorshSerialize for PackageObj {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        self.name.serialize(writer)?;
         let members: Vec<GosValue> = self
             .members
             .iter()
             .map(|x| x.clone().into_inner())
             .collect();
         members.serialize(writer)?;
+        self.member_indices.serialize(writer)?;
         self.init_funcs.serialize(writer)?;
         self.var_mapping.borrow().serialize(writer)
     }
@@ -1934,14 +1946,16 @@ impl BorshSerialize for PackageObj {
 
 impl BorshDeserialize for PackageObj {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let name = String::deserialize(buf)?;
         let members = Vec::<GosValue>::deserialize(buf)?
             .into_iter()
             .map(|x| RefCell::new(x))
             .collect();
-        let member_indices = Map::new();
+        let member_indices = Map::<String, OpIndex>::deserialize(buf)?;
         let init_funcs = Vec::<GosValue>::deserialize(buf)?;
         let var_mapping = RefCell::new(Option::<Map<OpIndex, OpIndex>>::deserialize(buf)?);
         Ok(PackageObj {
+            name,
             members,
             member_indices,
             init_funcs,

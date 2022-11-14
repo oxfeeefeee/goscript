@@ -55,7 +55,7 @@ impl Addr {
             Self::PkgMemberIndex(key, ident) => {
                 let pkg = &packages[key];
                 let id = &ast_objs.idents[ident];
-                *pkg.get_member_index(&id.name).unwrap()
+                *pkg.member_index(&id.name).unwrap()
             }
             Self::Label(key) => {
                 let label_offset = labels[&key];

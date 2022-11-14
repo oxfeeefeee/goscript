@@ -1264,7 +1264,7 @@ impl<'a> Fiber<'a> {
                         let src = stack.read(inst.s0, sb, consts);
                         let index = *stack.read(inst.s1, sb, consts).as_int32();
                         let pkg = &objs.packages[*src.as_package()];
-                        match pkg.get_init_func(index) {
+                        match pkg.init_func(index) {
                             Some(f) => {
                                 stack.set(inst.d + sb, f.clone());
                                 stack.set(inst.s1 + sb, (index + 1).into());
