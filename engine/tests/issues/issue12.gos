@@ -1,0 +1,19 @@
+package main
+
+import (
+	"fmt2"
+)
+
+
+
+func broken(elems ...int) {
+    fmt2.Println(elems)
+}
+
+func main() {
+  broken()
+  
+  broken(1)
+
+  broken(2,3)
+}

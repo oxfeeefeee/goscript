@@ -409,6 +409,14 @@ fn test_issue8() {
 }
 
 #[test]
+fn test_issue12() {
+    time_test!();
+
+    let result = run("./tests/issues/issue12.gos", true);
+    assert!(result.is_ok());
+}
+
+#[test]
 fn test_std_math() {
     time_test!();
 

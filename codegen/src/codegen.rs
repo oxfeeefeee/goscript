@@ -962,7 +962,8 @@ impl<'a, 'c> CodeGen<'a, 'c> {
             if let Some(t) = variadic {
                 let variadic_count = params.len() - non_variadic_count;
                 let variadic_begin_reg = init_reg + non_variadic_count;
-                let pos = Some(params[non_variadic_count].pos(&self.ast_objs));
+                let pos =
+                    (!params.is_empty()).then(|| params[non_variadic_count].pos(&self.ast_objs));
                 let t_elem = self.t.tc_type_to_value_type(t);
                 let begin = Addr::Regsiter(variadic_begin_reg);
                 let end = Addr::Regsiter(variadic_begin_reg + variadic_count);
