@@ -7,7 +7,7 @@ use super::types::TypeLookup;
 use goscript_parser::ast::*;
 use goscript_parser::{AstObjects, IdentKey, Map, Pos};
 use goscript_types::{ObjKey as TCObjKey, TypeKey as TCTypeKey};
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use goscript_vm::*;
 use std::convert::TryFrom;
 

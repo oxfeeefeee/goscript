@@ -16,7 +16,7 @@ use goscript_types::{
     Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, TCObjects,
     TypeKey as TCTypeKey,
 };
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use goscript_vm::*;
 use std::hash::Hash;
 use std::iter::FromIterator;

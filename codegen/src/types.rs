@@ -9,7 +9,7 @@ use goscript_types::{
     ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, SelectionKind as TCSelectionKind,
     TCObjects, TypeKey as TCTypeKey,
 };
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use goscript_vm::*;
 use std::vec;
 

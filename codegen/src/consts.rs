@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 use goscript_parser::Map;
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use goscript_vm::*;
 use std::cell::RefCell;
 use std::hash::Hash;

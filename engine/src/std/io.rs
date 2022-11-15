@@ -4,7 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::value::GosValue;
+use goscript_vm::types::GosValue;
 
 #[derive(Ffi)]
 pub struct IoFfi;

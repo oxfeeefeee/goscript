@@ -9,7 +9,7 @@ use crate::context::*;
 use goscript_parser::ast::*;
 use goscript_parser::{AssignStmtKey, Map, Token};
 use goscript_types::ObjKey as TCObjKey;
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 
 /// branch points of break and continue
 pub(crate) struct BranchBlock {

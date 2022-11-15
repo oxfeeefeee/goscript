@@ -13,10 +13,13 @@ mod dispatcher;
 mod bytecode;
 mod ffi;
 mod stack;
+mod value;
 mod vm;
 
 pub mod gc;
-pub mod value;
+pub mod types {
+    pub use crate::value::*;
+}
 
 pub use {
     ffi::*,

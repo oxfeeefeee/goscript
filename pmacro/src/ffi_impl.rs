@@ -94,7 +94,7 @@ fn gen_dispatch_method(
                 &self,
                 ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
-            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::value::RuntimeResult<Vec<GosValue>>> + '_>> {
+            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::types::RuntimeResult<Vec<GosValue>>> + '_>> {
                 let arg_count = args.len();
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {
@@ -111,7 +111,7 @@ fn gen_dispatch_method(
                 &self,
                 ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
-            ) -> goscript_vm::value::RuntimeResult<Vec<GosValue>> {
+            ) -> goscript_vm::types::RuntimeResult<Vec<GosValue>> {
                 let arg_count = args.len();
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {

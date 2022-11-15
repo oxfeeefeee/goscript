@@ -14,7 +14,7 @@ use goscript_types::{
     check::TypeInfo, ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects,
     TraceConfig,
 };
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use goscript_vm::*;
 use std::path::Path;
 use std::vec;

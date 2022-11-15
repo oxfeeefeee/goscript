@@ -4,7 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::value::*;
+use goscript_vm::types::*;
 use std::any::Any;
 use std::cell::RefCell;
 use std::fs;

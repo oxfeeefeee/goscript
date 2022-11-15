@@ -4,7 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::value::{GosElem, GosValue, ValueType};
+use goscript_vm::types::{GosElem, GosValue, ValueType};
 
 #[derive(Ffi)]
 pub struct Fmt2Ffi;

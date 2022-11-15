@@ -505,7 +505,7 @@ fn test_map_perf() {
 #[test]
 fn test_map_perf2() {
     time_test!();
-    use goscript_vm::value::GosValue;
+    use goscript_vm::types::GosValue;
     let mut m: goscript_parser::Map<GosValue, usize> = goscript_parser::Map::new();
     for i in 0..200000 {
         m.insert(i.into(), i);

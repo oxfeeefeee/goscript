@@ -9,7 +9,7 @@ extern crate self as goscript_engine;
 use crate::ffi::*;
 use futures_lite::future;
 use futures_lite::future::Future;
-use goscript_vm::value::{GosValue, RuntimeResult, UnsafePtr};
+use goscript_vm::types::{GosValue, RuntimeResult, UnsafePtr};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::pin::Pin;
