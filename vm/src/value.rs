@@ -21,9 +21,9 @@ use std::cell::Cell;
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::convert::From;
-use std::fmt::Write;
-use std::fmt::{self, Debug, Display};
+use std::fmt::{self, Debug, Display, Write};
 use std::hash::{Hash, Hasher};
+use std::io::{Error, ErrorKind};
 use std::num::Wrapping;
 use std::ptr;
 use std::rc::Rc;
@@ -2347,9 +2347,118 @@ impl Ord for GosValue {
     }
 }
 
-impl BorshSerialize for GosValue {
-    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
-        self.typ().serialize(writer)?;
+/// How type info should be serialized
+pub trait TypeWrite {
+    fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()>;
+}
+
+/// How type info should be deserialized
+pub trait TypeRead {
+    fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType>;
+
+    fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize>;
+
+    fn t_elem_read(&self) -> BorshResult<Self>
+    where
+        Self: Sized;
+}
+
+/// Type info is embeded when serialize GosValue
+struct TypeEmbeded;
+
+/// Type info is omitted when serialize GosValue
+struct TypeOmitted;
+
+/// Type info is provied by metadata when deserialize GosValue
+struct TypeFromMetadata<'a>(&'a Meta, &'a MetadataObjs);
+
+impl TypeWrite for TypeEmbeded {
+    #[inline]
+    fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()> {
+        val.typ().serialize(writer)?;
+        match val.typ() {
+            ValueType::Array => {
+                val.t_elem().serialize(writer)?;
+                (val.len() as u32).serialize(writer)?;
+            }
+            ValueType::Slice => {
+                val.t_elem().serialize(writer)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+impl TypeWrite for TypeOmitted {
+    #[inline]
+    fn serialize<W: BorshWrite>(_: &GosValue, _: &mut W) -> BorshResult<()> {
+        Ok(())
+    }
+}
+
+impl TypeRead for TypeEmbeded {
+    #[inline]
+    fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType> {
+        ValueType::deserialize(buf)
+    }
+
+    fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize> {
+        Ok(u32::deserialize(buf)? as usize)
+    }
+
+    #[inline]
+    fn t_elem_read(&self) -> BorshResult<Self>
+    where
+        Self: Sized,
+    {
+        Ok(TypeEmbeded {})
+    }
+}
+
+impl<'a> TypeRead for TypeFromMetadata<'a> {
+    #[inline]
+    fn deserialize(&self, _: &mut &[u8]) -> BorshResult<ValueType> {
+        Ok(self.0.value_type(self.1))
+    }
+
+    #[inline]
+    fn deserialize_array_len(&self, _: &mut &[u8]) -> BorshResult<usize> {
+        match &self.1[self.0.key] {
+            MetadataType::Array(_, len) => Ok(*len),
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    fn t_elem_read(&self) -> BorshResult<Self>
+    where
+        Self: Sized,
+    {
+        let elem = match &self.1[self.0.key] {
+            MetadataType::Array(et, _) => et,
+            MetadataType::Slice(et) => et,
+            _ => unreachable!(),
+        };
+        Ok(Self(elem, self.1))
+    }
+}
+
+impl GosValue {
+    pub fn serialize_wo_type<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        self.serialize::<W, TypeOmitted>(writer)
+    }
+
+    pub fn deserialize_wo_type(
+        meta: &Meta,
+        metas: &MetadataObjs,
+        buf: &mut &[u8],
+    ) -> BorshResult<GosValue> {
+        GosValue::deserialize(&TypeFromMetadata(meta, metas), buf)
+    }
+
+    fn serialize<W: BorshWrite, T: TypeWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        T::serialize(&self, writer)?;
         match &self.typ {
             ValueType::Bool => self.as_bool().serialize(writer),
             ValueType::Int => self.as_int64().serialize(writer),
@@ -2371,8 +2480,12 @@ impl BorshSerialize for GosValue {
             ValueType::Metadata => self.as_metadata().serialize(writer),
             ValueType::String => StrUtil::as_str(self.as_string()).serialize(writer),
             ValueType::Array => {
-                self.t_elem().serialize(writer)?;
-                self.caller_slow().array_get_vec(self).serialize(writer)
+                let vec = self.caller_slow().array_get_vec(self);
+                GosValue::too_large_check(vec.len())?;
+                for v in vec.iter() {
+                    v.serialize::<W, T>(writer)?;
+                }
+                Ok(())
             }
             ValueType::Complex128 => {
                 let c = self.as_complex128();
@@ -2380,7 +2493,33 @@ impl BorshSerialize for GosValue {
                 c.i.serialize(writer)
             }
             ValueType::Struct => self.as_struct().0.borrow_fields().serialize(writer),
-            ValueType::Slice => self.t_elem().serialize(writer),
+            ValueType::Slice => {
+                let op_vec = self.caller_slow().slice_get_vec(self);
+                match op_vec {
+                    Some(vec) => {
+                        GosValue::too_large_check(vec.len())?;
+                        (vec.len() as u32).serialize(writer)?;
+                        for v in vec.iter() {
+                            v.serialize::<W, T>(writer)?;
+                        }
+                        Ok(())
+                    }
+                    None => u32::MAX.serialize(writer),
+                }
+            }
+            ValueType::Map => match self.as_map() {
+                Some(m) => {
+                    let map = m.0.borrow_data();
+                    GosValue::too_large_check(map.len())?;
+                    (map.len() as u32).serialize(writer)?;
+                    for (k, v) in map.iter() {
+                        k.serialize::<W, T>(writer)?;
+                        v.serialize::<W, T>(writer)?;
+                    }
+                    Ok(())
+                }
+                None => u32::MAX.serialize(writer),
+            },
             ValueType::Closure => self
                 .as_closure()
                 .map(|x| match &x.0 {
@@ -2390,18 +2529,20 @@ impl BorshSerialize for GosValue {
                 .serialize(writer),
             _ => {
                 if !self.is_nil() {
-                    dbg!(self);
+                    Err(Error::new(
+                        ErrorKind::InvalidData,
+                        "GosValue serialization: only nil supported for this type",
+                    ))
+                } else {
+                    Ok(())
                 }
-                Ok(())
             }
         }
     }
-}
 
-impl BorshDeserialize for GosValue {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+    fn deserialize<T: TypeRead>(tr: &T, buf: &mut &[u8]) -> BorshResult<GosValue> {
         let dummy_gcc = &GcContainer::new();
-        let typ = ValueType::deserialize(buf)?;
+        let typ = tr.deserialize(buf)?;
         let val: GosValue = match typ {
             ValueType::Bool => bool::deserialize(buf)?.into(),
             ValueType::Int => i64::deserialize(buf)?.into(),
@@ -2427,9 +2568,11 @@ impl BorshDeserialize for GosValue {
             ValueType::Metadata => GosValue::new_metadata(Meta::deserialize(buf)?),
             ValueType::String => GosValue::with_str(&String::deserialize(buf)?),
             ValueType::Array => {
-                let t_elem = ValueType::deserialize(buf)?;
-                let vec = Vec::<GosValue>::deserialize(buf)?;
-                GosValue::array_with_data(vec, &ArrCaller::get_slow(t_elem), dummy_gcc)
+                let elem_read = tr.t_elem_read()?;
+                let t_elem = elem_read.deserialize(buf)?;
+                let caller = ArrCaller::get_slow(t_elem);
+                let len = tr.deserialize_array_len(buf)?;
+                GosValue::deserialize_array(&elem_read, len, &caller, dummy_gcc, buf)?
             }
             ValueType::Complex128 => {
                 let r = f64::deserialize(buf)?.into();
@@ -2441,8 +2584,39 @@ impl BorshDeserialize for GosValue {
                 GosValue::new_struct(StructObj::new(fields), dummy_gcc)
             }
             ValueType::Slice => {
-                let t_elem = ValueType::deserialize(buf)?;
-                GosValue::new_nil_slice(t_elem)
+                let elem_read = tr.t_elem_read()?;
+                let t_elem = elem_read.deserialize(buf)?;
+                let len = u32::deserialize(buf)?;
+                match len {
+                    u32::MAX => GosValue::new_nil_slice(t_elem),
+                    _ => {
+                        let caller = ArrCaller::get_slow(t_elem);
+                        let array = GosValue::deserialize_array(
+                            &elem_read,
+                            len as usize,
+                            &caller,
+                            dummy_gcc,
+                            buf,
+                        )?;
+                        GosValue::slice_array(array, 0, -1, &caller).unwrap()
+                    }
+                }
+            }
+            ValueType::Map => {
+                let len = u32::deserialize(buf)?;
+                match len {
+                    u32::MAX => GosValue::new_nil(ValueType::Map),
+                    _ => {
+                        let map = GosValue::new_map(dummy_gcc);
+                        let mo = &map.as_non_nil_map().unwrap().0;
+                        for _ in 0..len {
+                            let key = GosValue::deserialize(tr, buf)?;
+                            let val = GosValue::deserialize(tr, buf)?;
+                            mo.insert(key, val);
+                        }
+                        map
+                    }
+                }
             }
             ValueType::Closure => match Option::<GosClosureObj>::deserialize(buf)? {
                 Some(cls) => GosValue::new_closure(ClosureObj::Gos(cls), dummy_gcc),
@@ -2451,6 +2625,44 @@ impl BorshDeserialize for GosValue {
             _ => GosValue::new_nil(typ),
         };
         Ok(val)
+    }
+
+    #[inline]
+    fn deserialize_array<T: TypeRead>(
+        tr: &T,
+        len: usize,
+        caller: &Box<dyn Dispatcher>,
+        gcc: &GcContainer,
+        buf: &mut &[u8],
+    ) -> BorshResult<GosValue> {
+        let mut data = Vec::with_capacity(len);
+        for _ in 0..len {
+            data.push(GosValue::deserialize(tr, buf)?)
+        }
+        Ok(caller.array_with_data(data, gcc))
+    }
+
+    fn too_large_check(len: usize) -> BorshResult<()> {
+        if len >= u32::MAX as usize {
+            Err(Error::new(
+                ErrorKind::InvalidData,
+                "Data size too large, require: len(slice) < u32::MAX",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl BorshSerialize for GosValue {
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        GosValue::serialize::<W, TypeEmbeded>(&self, writer)
+    }
+}
+
+impl BorshDeserialize for GosValue {
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        GosValue::deserialize(&TypeEmbeded, buf)
     }
 }
 
@@ -2799,7 +3011,14 @@ mod test {
     use std::mem;
 
     #[test]
-    fn test_container() {}
+    fn test_serial() {
+        let data = vec![1.into()];
+        let dummy_gcc = &GcContainer::new();
+        let arr = GosValue::array_with_data(data, &ArrCaller::get_slow(ValueType::Int), dummy_gcc);
+        let v = arr.try_to_vec().unwrap();
+        let arr = GosValue::try_from_slice(&v).unwrap();
+        dbg!(arr);
+    }
 
     #[test]
     fn test_size() {
