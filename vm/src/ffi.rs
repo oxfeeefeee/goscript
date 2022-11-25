@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 use crate::bytecode::*;
+use crate::dispatcher::ArrCaller;
 use crate::gc::GcContainer;
 use crate::stack::Stack;
 use crate::value::*;
@@ -14,14 +15,13 @@ use goscript_parser::Map;
 use std::pin::Pin;
 use std::rc::Rc;
 
-pub use crate::value::UnsafePtr;
-
 pub struct FfiCtx<'a> {
     pub func_name: &'a str,
     pub vm_objs: &'a VMObjects,
-    pub user_data: Option<&'a dyn UnsafePtr>,
+    pub user_data: Option<usize>,
     pub stack: &'a mut Stack,
     pub gcc: &'a GcContainer,
+    pub(crate) array_slice_caller: &'a ArrCaller,
 }
 
 impl<'a> FfiCtx<'a> {
@@ -76,6 +76,54 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
+    pub fn new_struct(&self, fields: Vec<GosValue>) -> GosValue {
+        GosValue::new_struct(StructObj::new(fields), self.gcc)
+    }
+
+    #[inline]
+    pub fn new_array(&self, member: Vec<GosValue>, t_elem: ValueType) -> GosValue {
+        GosValue::array_with_data(member, self.array_slice_caller.get(t_elem), self.gcc)
+    }
+
+    #[inline]
+    pub fn new_1byte_array(&self, member: Vec<u8>, t_elem: ValueType) -> GosValue {
+        let buf: Vec<Elem8> = unsafe { std::mem::transmute(member) };
+        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
+    }
+
+    #[inline]
+    pub fn new_2byte_array(&self, member: Vec<u16>, t_elem: ValueType) -> GosValue {
+        let buf: Vec<Elem16> = unsafe { std::mem::transmute(member) };
+        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
+    }
+
+    #[inline]
+    pub fn new_4byte_array(&self, member: Vec<u32>, t_elem: ValueType) -> GosValue {
+        let buf: Vec<Elem32> = unsafe { std::mem::transmute(member) };
+        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
+    }
+
+    #[inline]
+    pub fn new_8byte_array(&self, member: Vec<u64>, t_elem: ValueType) -> GosValue {
+        let buf: Vec<Elem64> = unsafe { std::mem::transmute(member) };
+        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
+    }
+
+    #[inline]
+    pub fn new_pointer(pointee: GosValue) -> GosValue {
+        let pobj = PointerObj::UpVal(UpValue::new_closed(pointee));
+        GosValue::new_pointer(pobj)
+    }
+
+    #[inline]
+    pub fn new_interface(
+        underlying: GosValue,
+        meta: Option<(Meta, Vec<Binding4Runtime>)>,
+    ) -> GosValue {
+        GosValue::new_interface(InterfaceObj::with_value(underlying, meta))
+    }
+
+    #[inline]
     pub fn zero_val(&self, m: &Meta) -> GosValue {
         m.zero(&self.vm_objs.metas, self.gcc)
     }
@@ -99,23 +147,25 @@ impl std::fmt::Debug for dyn Ffi {
     }
 }
 
-pub struct FfiFactory<'ud> {
+pub struct FfiFactory {
     registry: Map<&'static str, Rc<dyn Ffi>>,
-    user_data: Option<&'ud dyn UnsafePtr>,
+    /// Down-casting only works for 'static types,
+    /// so we just use the good old pointers
+    user_data: Option<usize>,
 }
 
-impl<'ud> FfiFactory<'_> {
-    pub fn new() -> FfiFactory<'static> {
+impl FfiFactory {
+    pub fn new() -> FfiFactory {
         FfiFactory {
             registry: Map::new(),
             user_data: None,
         }
     }
 
-    pub fn with_user_data(data: &'ud dyn UnsafePtr) -> FfiFactory<'ud> {
+    pub fn with_user_data(ptr: usize) -> FfiFactory {
         FfiFactory {
             registry: Map::new(),
-            user_data: Some(data),
+            user_data: Some(ptr),
         }
     }
 
@@ -123,7 +173,7 @@ impl<'ud> FfiFactory<'_> {
         assert!(self.registry.insert(name, proto).is_none());
     }
 
-    pub(crate) fn user_data(&self) -> Option<&dyn UnsafePtr> {
+    pub(crate) fn user_data(&self) -> Option<usize> {
         self.user_data
     }
 
@@ -135,7 +185,7 @@ impl<'ud> FfiFactory<'_> {
     }
 }
 
-impl std::fmt::Debug for FfiFactory<'_> {
+impl std::fmt::Debug for FfiFactory {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "FfiFactory")
     }
@@ -147,6 +197,7 @@ pub struct CodeGenVMCtx {
     dummy_func_name: &'static str,
     dummy_stack: Stack,
     dummy_gcc: GcContainer,
+    caller: ArrCaller,
 }
 
 impl CodeGenVMCtx {
@@ -156,6 +207,7 @@ impl CodeGenVMCtx {
             dummy_func_name: "dummy_name",
             dummy_stack: Stack::new(),
             dummy_gcc: GcContainer::new(),
+            caller: ArrCaller::new(),
         }
     }
 
@@ -166,6 +218,7 @@ impl CodeGenVMCtx {
             user_data: None,
             stack: &mut self.dummy_stack,
             gcc: &&self.dummy_gcc,
+            array_slice_caller: &self.caller,
         }
     }
 

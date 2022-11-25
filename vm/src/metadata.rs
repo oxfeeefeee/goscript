@@ -231,7 +231,7 @@ impl Meta {
     }
 
     #[inline]
-    pub fn zero(&self, mobjs: &MetadataObjs, gcc: &GcContainer) -> GosValue {
+    pub(crate) fn zero(&self, mobjs: &MetadataObjs, gcc: &GcContainer) -> GosValue {
         match self.ptr_depth {
             0 => match &mobjs[self.key] {
                 MetadataType::Bool => false.into(),
@@ -650,6 +650,14 @@ impl MetadataType {
     pub fn as_struct(&self) -> &Fields {
         match self {
             Self::Struct(f) => f,
+            _ => unreachable!(),
+        }
+    }
+
+    #[inline]
+    pub fn as_named(&self) -> (&Methods, &Meta) {
+        match self {
+            Self::Named(meth, meta) => (meth, meta),
             _ => unreachable!(),
         }
     }

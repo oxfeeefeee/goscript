@@ -19,12 +19,12 @@ extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
 
-pub struct Engine<'ud> {
-    ffi: vm::FfiFactory<'ud>,
+pub struct Engine {
+    ffi: vm::FfiFactory,
 }
 
-impl<'ud> Engine<'_> {
-    pub fn new() -> Engine<'static> {
+impl Engine {
+    pub fn new() -> Engine {
         #[cfg(not(feature = "go_std"))]
         {
             Engine {
@@ -42,7 +42,7 @@ impl<'ud> Engine<'_> {
         }
     }
 
-    pub fn with_user_data(data: &'ud dyn vm::UnsafePtr) -> Engine<'ud> {
+    pub fn with_user_data(data: usize) -> Engine {
         #[cfg(not(feature = "go_std"))]
         {
             Engine {

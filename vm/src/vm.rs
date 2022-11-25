@@ -264,7 +264,7 @@ struct Context<'a> {
     exec: Rc<LocalExecutor<'a>>,
     code: &'a Bytecode,
     gcc: &'a GcContainer,
-    ffi_factory: &'a FfiFactory<'a>,
+    ffi_factory: &'a FfiFactory,
     fs: Option<&'a FileSet>,
     next_id: Cell<usize>,
 }
@@ -1036,6 +1036,7 @@ impl<'a> Fiber<'a> {
                                         user_data: ctx.ffi_factory.user_data(),
                                         stack: &mut self.stack.borrow_mut(),
                                         gcc,
+                                        array_slice_caller: caller,
                                     };
                                     if !ffic.is_async {
                                         ffic.ffi.call(&mut ctx, params)
