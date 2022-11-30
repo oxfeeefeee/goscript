@@ -11,6 +11,7 @@ use crate::value::{GosValue, RuntimeResult};
 #[cfg(feature = "async")]
 use futures_lite::future::Future;
 use goscript_parser::Map;
+use std::cell::Ref;
 #[cfg(feature = "async")]
 use std::pin::Pin;
 use std::rc::Rc;
@@ -86,26 +87,11 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
-    pub fn new_1byte_array(&self, member: Vec<u8>, t_elem: ValueType) -> GosValue {
-        let buf: Vec<Elem8> = unsafe { std::mem::transmute(member) };
-        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
-    }
-
-    #[inline]
-    pub fn new_2byte_array(&self, member: Vec<u16>, t_elem: ValueType) -> GosValue {
-        let buf: Vec<Elem16> = unsafe { std::mem::transmute(member) };
-        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
-    }
-
-    #[inline]
-    pub fn new_4byte_array(&self, member: Vec<u32>, t_elem: ValueType) -> GosValue {
-        let buf: Vec<Elem32> = unsafe { std::mem::transmute(member) };
-        GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
-    }
-
-    #[inline]
-    pub fn new_8byte_array(&self, member: Vec<u64>, t_elem: ValueType) -> GosValue {
-        let buf: Vec<Elem64> = unsafe { std::mem::transmute(member) };
+    pub fn new_primitive_array<T>(&self, member: Vec<T>, t_elem: ValueType) -> GosValue
+    where
+        T: CellData,
+    {
+        let buf: Vec<CellElem<T>> = unsafe { std::mem::transmute(member) };
         GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), t_elem)
     }
 
@@ -127,6 +113,28 @@ impl<'a> FfiCtx<'a> {
     pub fn zero_val(&self, m: &Meta) -> GosValue {
         m.zero(&self.vm_objs.metas, self.gcc)
     }
+
+    #[inline]
+    pub fn slice_as_rust_slice<T>(val: &GosValue) -> RuntimeResult<Ref<[T]>>
+    where
+        T: Element,
+    {
+        Ok(val.as_non_nil_slice::<T>()?.0.as_rust_slice())
+    }
+
+    #[inline]
+    pub fn slice_as_primitive_slice<'b, C, D>(val: &'b GosValue) -> RuntimeResult<Ref<[D]>>
+    where
+        C: CellData + 'b,
+    {
+        Ok(unsafe { val.as_non_nil_slice::<CellElem<C>>()?.0.as_raw_slice::<D>() })
+    }
+
+    // #[inline]
+    // pub unsafe fn array_into_raw_u8(arr: GosValue) -> Vec<u8> {
+    //     let arr_obj =
+    //     arr.into_array::<CellElem<u8>>()..into_raw_array()
+    // }
 }
 
 /// A FFI Object implemented in Rust for Goscript to call

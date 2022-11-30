@@ -4,7 +4,7 @@
 
 extern crate self as goscript_engine;
 use crate::ffi::*;
-use goscript_vm::types::{GosElem, GosValue, ValueType};
+use goscript_vm::types::{GosElem, GosValue};
 
 #[derive(Ffi)]
 pub struct Fmt2Ffi;
@@ -12,11 +12,11 @@ pub struct Fmt2Ffi;
 #[ffi_impl]
 impl Fmt2Ffi {
     fn ffi_println(args: GosValue) -> RuntimeResult<()> {
-        let vec = args.as_non_nil_slice::<GosElem>()?.0.as_rust_slice();
+        let vec = FfiCtx::slice_as_rust_slice::<GosElem>(&args)?;
         let strs: Vec<String> = vec
             .iter()
             .map(|x| {
-                let val = x.clone().into_value(ValueType::Interface);
+                let val = x.borrow();
                 let s = if val.is_nil() {
                     "<nil>".to_owned()
                 } else {

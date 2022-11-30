@@ -86,7 +86,7 @@ impl FileFfi {
     fn ffi_read(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
         let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
         let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
-        let mut buf = unsafe { slice.as_raw_slice_mut::<u8>() };
+        let mut buf = unsafe { slice.as_raw_slice_mut() };
         let r = file.read(&mut buf);
         Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }
@@ -94,7 +94,7 @@ impl FileFfi {
     fn ffi_write(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
         let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
         let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
-        let buf = unsafe { slice.as_raw_slice::<u8>() };
+        let buf = unsafe { slice.as_raw_slice() };
         let r = file.write(&buf);
         Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }

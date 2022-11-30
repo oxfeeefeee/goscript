@@ -302,6 +302,7 @@ pub(crate) enum ElemType {
     ElemType16,
     ElemType32,
     ElemType64,
+    ElemTypeWord,
     ElemTypeGos,
 }
 
@@ -315,13 +316,13 @@ impl ArrCaller {
             disp_array: [
                 Box::new(DispatcherGos::new(ValueType::Void)),
                 Box::new(Dispatcher8::new(ValueType::Bool)),
-                Box::new(Dispatcher64::new(ValueType::Int)),
+                Box::new(DispatcherWord::new(ValueType::Int)),
                 Box::new(Dispatcher8::new(ValueType::Int8)),
                 Box::new(Dispatcher16::new(ValueType::Int16)),
                 Box::new(Dispatcher32::new(ValueType::Int32)),
                 Box::new(Dispatcher64::new(ValueType::Int64)),
-                Box::new(Dispatcher64::new(ValueType::Uint)),
-                Box::new(Dispatcher64::new(ValueType::UintPtr)),
+                Box::new(DispatcherWord::new(ValueType::Uint)),
+                Box::new(DispatcherWord::new(ValueType::UintPtr)),
                 Box::new(Dispatcher8::new(ValueType::Uint8)),
                 Box::new(Dispatcher16::new(ValueType::Uint16)),
                 Box::new(Dispatcher32::new(ValueType::Uint32)),
@@ -329,8 +330,8 @@ impl ArrCaller {
                 Box::new(Dispatcher32::new(ValueType::Float32)),
                 Box::new(Dispatcher64::new(ValueType::Float64)),
                 Box::new(Dispatcher64::new(ValueType::Complex64)),
-                Box::new(Dispatcher64::new(ValueType::Function)),
-                Box::new(Dispatcher64::new(ValueType::Package)),
+                Box::new(DispatcherWord::new(ValueType::Function)),
+                Box::new(DispatcherWord::new(ValueType::Package)),
                 Box::new(DispatcherGos::new(ValueType::Metadata)),
                 Box::new(DispatcherGos::new(ValueType::Complex128)),
                 Box::new(DispatcherGos::new(ValueType::String)),
@@ -360,15 +361,14 @@ impl ArrCaller {
             ValueType::Int32 | ValueType::Uint32 | ValueType::Float32 => {
                 Box::new(Dispatcher32::new(t))
             }
+            ValueType::Int64 | ValueType::Uint64 | ValueType::Float64 | ValueType::Complex64 => {
+                Box::new(Dispatcher64::new(t))
+            }
             ValueType::Int
             | ValueType::Uint
-            | ValueType::Int64
-            | ValueType::Uint64
             | ValueType::UintPtr
-            | ValueType::Float64
             | ValueType::Function
-            | ValueType::Package
-            | ValueType::Complex64 => Box::new(Dispatcher64::new(t)),
+            | ValueType::Package => Box::new(Dispatcher64::new(t)),
             _ => Box::new(DispatcherGos::new(t)),
         }
     }
@@ -378,13 +378,13 @@ impl ArrCaller {
         const ELEM_TYPES: [ElemType; ValueType::Channel as usize + 1] = [
             ElemType::ElemTypeGos,
             ElemType::ElemType8,
-            ElemType::ElemType64,
+            ElemType::ElemTypeWord,
             ElemType::ElemType8,
             ElemType::ElemType16,
             ElemType::ElemType32,
             ElemType::ElemType64,
-            ElemType::ElemType64,
-            ElemType::ElemType64,
+            ElemType::ElemTypeWord,
+            ElemType::ElemTypeWord,
             ElemType::ElemType8,
             ElemType::ElemType16,
             ElemType::ElemType32,
@@ -392,8 +392,8 @@ impl ArrCaller {
             ElemType::ElemType32,
             ElemType::ElemType64,
             ElemType::ElemType64,
-            ElemType::ElemType64,
-            ElemType::ElemType64,
+            ElemType::ElemTypeWord,
+            ElemType::ElemTypeWord,
             ElemType::ElemTypeGos,
             ElemType::ElemTypeGos,
             ElemType::ElemTypeGos,

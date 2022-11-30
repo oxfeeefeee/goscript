@@ -154,6 +154,14 @@ impl GosElem {
     pub fn mark_dirty(&self, queue: &mut RCQueue) {
         self.cell.borrow().mark_dirty(queue);
     }
+
+    pub fn borrow(&self) -> Ref<GosValue> {
+        self.cell.borrow()
+    }
+
+    pub fn borrow_mut(&self) -> RefMut<GosValue> {
+        self.cell.borrow_mut()
+    }
 }
 
 impl std::fmt::Display for GosElem {
@@ -177,8 +185,10 @@ impl Element for GosElem {
     }
 
     #[inline]
-    fn into_value(self, _t: ValueType) -> GosValue {
-        self.cell.into_inner()
+    fn into_value(self, t: ValueType) -> GosValue {
+        let v = self.cell.into_inner();
+        assert!(v.typ() == t);
+        v
     }
 
     #[inline]
@@ -205,21 +215,64 @@ impl<T> CellElem<T>
 where
     T: Copy + PartialEq,
 {
+    #[inline]
     pub fn into_inner(self) -> T {
         self.cell.into_inner()
     }
 
-    fn clone_slice(dst: &mut [CellElem<T>], src: &[CellElem<T>]) {
-        let d: &mut [T] = unsafe { std::mem::transmute(dst) };
-        let s: &[T] = unsafe { std::mem::transmute(src) };
-        d.copy_from_slice(s)
+    #[inline]
+    pub unsafe fn slice_into_inner<U>(inner_slice: &[Self]) -> &[U] {
+        assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
+        std::mem::transmute(inner_slice)
+    }
+
+    #[inline]
+    pub unsafe fn slice_into_inner_mut<U>(inner_slice: &mut [Self]) -> &mut [U] {
+        assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
+        std::mem::transmute(inner_slice)
+    }
+
+    #[inline]
+    fn clone_slice(dst: &mut [Self], src: &[Self]) {
+        unsafe {
+            let d: &mut [T] = Self::slice_into_inner_mut(dst);
+            let s: &[T] = &Self::slice_into_inner(src);
+            d.copy_from_slice(s)
+        }
     }
 }
+
+pub trait CellData: Copy + PartialEq + Hash + Debug {
+    fn from_value(val: &GosValue) -> Self;
+
+    fn into_value(self, t: ValueType) -> GosValue;
+}
+
+macro_rules! impl_cell_data {
+    ($typ:ty, $as:tt, $value_type:tt, $new:tt) => {
+        impl CellData for $typ {
+            fn from_value(val: &GosValue) -> Self {
+                *val.$as()
+            }
+
+            fn into_value(self, t: ValueType) -> GosValue {
+                GosValue::new(t, ValueData::$new(self))
+            }
+        }
+    };
+}
+
+impl_cell_data!(u8, as_uint8, Uint8, new_uint8);
+impl_cell_data!(u16, as_uint16, Uint16, new_uint16);
+impl_cell_data!(u32, as_uint32, Uint32, new_uint32);
+impl_cell_data!(u64, as_uint64, Uint64, new_uint64);
+impl_cell_data!(usize, as_uint, Uint, new_uint);
 
 pub type Elem8 = CellElem<u8>;
 pub type Elem16 = CellElem<u16>;
 pub type Elem32 = CellElem<u32>;
 pub type Elem64 = CellElem<u64>;
+pub type ElemWord = CellElem<usize>;
 
 /// This can be used when any version of Slice/Array returns the same thing
 /// kind of unsafe
@@ -227,7 +280,7 @@ pub type AnyElem = CellElem<u8>;
 
 impl<T> Hash for CellElem<T>
 where
-    T: Copy + PartialEq + Hash,
+    T: CellData,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         let d = self.cell.get();
@@ -235,103 +288,30 @@ where
     }
 }
 
-impl Element for CellElem<u8> {
+impl<T> Element for CellElem<T>
+where
+    T: CellData,
+{
     #[inline]
     fn from_value(val: GosValue) -> Self {
         CellElem {
-            cell: Cell::new(*val.as_uint8()),
+            cell: Cell::new(T::from_value(&val)),
         }
     }
 
     #[inline]
     fn into_value(self, t: ValueType) -> GosValue {
-        let data = ValueData::new_uint8(self.cell.get());
-        GosValue::new(t, data)
+        self.cell.get().into_value(t)
     }
 
     #[inline]
     fn set_value(&self, val: &GosValue) {
-        self.cell.set(*val.as_uint8());
+        self.cell.set(T::from_value(val));
     }
 
     #[inline]
     fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
-        CellElem::<u8>::clone_slice(dst, src)
-    }
-}
-
-impl Element for Elem16 {
-    #[inline]
-    fn from_value(val: GosValue) -> Self {
-        CellElem {
-            cell: Cell::new(*val.as_uint16()),
-        }
-    }
-
-    #[inline]
-    fn into_value(self, t: ValueType) -> GosValue {
-        let data = ValueData::new_uint16(self.cell.get());
-        GosValue::new(t, data)
-    }
-
-    #[inline]
-    fn set_value(&self, val: &GosValue) {
-        self.cell.set(*val.as_uint16());
-    }
-
-    #[inline]
-    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
-        CellElem::<u16>::clone_slice(dst, src)
-    }
-}
-
-impl Element for Elem32 {
-    #[inline]
-    fn from_value(val: GosValue) -> Self {
-        CellElem {
-            cell: Cell::new(*val.as_uint32()),
-        }
-    }
-
-    #[inline]
-    fn into_value(self, t: ValueType) -> GosValue {
-        let data = ValueData::new_uint32(self.cell.get());
-        GosValue::new(t, data)
-    }
-
-    #[inline]
-    fn set_value(&self, val: &GosValue) {
-        self.cell.set(*val.as_uint32());
-    }
-
-    #[inline]
-    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
-        CellElem::<u32>::clone_slice(dst, src)
-    }
-}
-
-impl Element for Elem64 {
-    #[inline]
-    fn from_value(val: GosValue) -> Self {
-        CellElem {
-            cell: Cell::new(*val.as_uint64()),
-        }
-    }
-
-    #[inline]
-    fn into_value(self, t: ValueType) -> GosValue {
-        let data = ValueData::new_uint64(self.cell.get());
-        GosValue::new(t, data)
-    }
-
-    #[inline]
-    fn set_value(&self, val: &GosValue) {
-        self.cell.set(*val.as_uint64());
-    }
-
-    #[inline]
-    fn copy_or_clone_slice(dst: &mut [Self], src: &[Self]) {
-        CellElem::<u64>::clone_slice(dst, src)
+        Self::clone_slice(dst, src)
     }
 }
 
@@ -582,18 +562,6 @@ where
     }
 
     #[inline]
-    pub unsafe fn as_raw_slice<U>(&self) -> Ref<[U]> {
-        assert!(std::mem::size_of::<U>() == std::mem::size_of::<T>());
-        std::mem::transmute(self.as_rust_slice())
-    }
-
-    #[inline]
-    pub unsafe fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
-        assert!(std::mem::size_of::<U>() == std::mem::size_of::<T>());
-        std::mem::transmute(self.as_rust_slice_mut())
-    }
-
-    #[inline]
     pub fn sharing_with(&self, other: &SliceObj<T>) -> bool {
         self.array.as_addr() == other.array.as_addr()
     }
@@ -762,6 +730,23 @@ where
         };
 
         Ok((bi, ei, cap))
+    }
+}
+
+impl<T> SliceObj<CellElem<T>>
+where
+    T: CellData,
+{
+    #[inline]
+    pub unsafe fn as_raw_slice<U>(&self) -> Ref<[U]> {
+        assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
+        std::mem::transmute(self.as_rust_slice())
+    }
+
+    #[inline]
+    pub unsafe fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
+        assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
+        std::mem::transmute(self.as_rust_slice_mut())
     }
 }
 

@@ -1229,6 +1229,7 @@ impl ValueData {
                 ElemType::ElemType16 => drop(self.copy().into_array::<Elem16>()),
                 ElemType::ElemType32 => drop(self.copy().into_array::<Elem32>()),
                 ElemType::ElemType64 => drop(self.copy().into_array::<Elem64>()),
+                ElemType::ElemTypeWord => drop(self.copy().into_array::<ElemWord>()),
                 ElemType::ElemTypeGos => drop(self.copy().into_array::<GosElem>()),
             },
             ValueType::Pointer => {
@@ -1246,6 +1247,7 @@ impl ValueData {
                 ElemType::ElemType16 => drop(self.copy().into_slice::<Elem16>()),
                 ElemType::ElemType32 => drop(self.copy().into_slice::<Elem32>()),
                 ElemType::ElemType64 => drop(self.copy().into_slice::<Elem64>()),
+                ElemType::ElemTypeWord => drop(self.copy().into_slice::<ElemWord>()),
                 ElemType::ElemTypeGos => drop(self.copy().into_slice::<GosElem>()),
             },
             ValueType::Map => {
@@ -2466,8 +2468,8 @@ impl GosValue {
             ValueType::Int16 => self.as_int16().serialize(writer),
             ValueType::Int32 => self.as_int32().serialize(writer),
             ValueType::Int64 => self.as_int64().serialize(writer),
-            ValueType::Uint => self.as_uint().serialize(writer),
-            ValueType::UintPtr => self.as_uint_ptr().serialize(writer),
+            ValueType::Uint => self.as_uint64().serialize(writer),
+            ValueType::UintPtr => self.as_uint64().serialize(writer),
             ValueType::Uint8 => self.as_uint8().serialize(writer),
             ValueType::Uint16 => self.as_uint16().serialize(writer),
             ValueType::Uint32 => self.as_uint32().serialize(writer),
@@ -2545,13 +2547,13 @@ impl GosValue {
         let typ = tr.deserialize(buf)?;
         let val: GosValue = match typ {
             ValueType::Bool => bool::deserialize(buf)?.into(),
-            ValueType::Int => i64::deserialize(buf)?.into(),
+            ValueType::Int => (i64::deserialize(buf)? as isize).into(),
             ValueType::Int8 => i8::deserialize(buf)?.into(),
             ValueType::Int16 => i16::deserialize(buf)?.into(),
             ValueType::Int32 => i32::deserialize(buf)?.into(),
             ValueType::Int64 => i64::deserialize(buf)?.into(),
-            ValueType::Uint => usize::deserialize(buf)?.into(),
-            ValueType::UintPtr => usize::deserialize(buf)?.into(),
+            ValueType::Uint => (u64::deserialize(buf)? as usize).into(),
+            ValueType::UintPtr => GosValue::new_uint_ptr(u64::deserialize(buf)? as usize),
             ValueType::Uint8 => u8::deserialize(buf)?.into(),
             ValueType::Uint16 => u16::deserialize(buf)?.into(),
             ValueType::Uint32 => u32::deserialize(buf)?.into(),
@@ -3001,6 +3003,7 @@ define_dispatcher!(Dispatcher8, Elem8);
 define_dispatcher!(Dispatcher16, Elem16);
 define_dispatcher!(Dispatcher32, Elem32);
 define_dispatcher!(Dispatcher64, Elem64);
+define_dispatcher!(DispatcherWord, ElemWord);
 define_dispatcher!(DispatcherGos, GosElem);
 
 #[cfg(test)]
