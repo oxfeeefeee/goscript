@@ -627,7 +627,7 @@ impl ValueData {
 
     #[inline]
     pub(crate) fn add_str(&self, b: &ValueData) -> ValueData {
-        let s = StrUtil::add(self.as_string(), b.as_string());
+        let s = self.as_string().add(b.as_string());
         ValueData::new_string(s)
     }
 
@@ -1395,7 +1395,7 @@ impl GosValue {
 
     #[inline]
     pub(crate) fn with_str(s: &str) -> GosValue {
-        GosValue::new_string(StrUtil::with_str(s))
+        GosValue::new_string(StringObj::with_str(s))
     }
 
     #[inline]
@@ -2197,7 +2197,7 @@ impl PartialEq for GosValue {
                 x.r == y.r && x.i == y.i
             }
             (ValueType::String, ValueType::String) => {
-                *StrUtil::as_str(self.as_string()) == *StrUtil::as_str(b.as_string())
+                *self.as_string().as_str() == *b.as_string().as_str()
             }
             (ValueType::Array, ValueType::Array) => {
                 self.caller_slow().array_eq(self.data(), b.data())
@@ -2257,7 +2257,7 @@ impl Hash for GosValue {
             ValueType::Function => self.as_function().hash(state),
             ValueType::Package => self.as_package().hash(state),
             ValueType::Metadata => self.as_metadata().hash(state),
-            ValueType::String => StrUtil::as_str(self.as_string()).hash(state),
+            ValueType::String => self.as_string().as_str().hash(state),
             ValueType::Array => self.caller_slow().array_hash(self, state),
             ValueType::Complex128 => {
                 let c = self.as_complex128();
@@ -2316,7 +2316,7 @@ impl Ord for GosValue {
             (ValueType::Package, ValueType::Package) => self.as_uint64().cmp(b.as_uint64()),
             (ValueType::Metadata, ValueType::Metadata) => self.as_metadata().cmp(b.as_metadata()),
             (ValueType::String, ValueType::String) => {
-                StrUtil::as_str(self.as_string()).cmp(&StrUtil::as_str(b.as_string()))
+                self.as_string().as_str().cmp(&b.as_string().as_str())
             }
             (ValueType::Array, ValueType::Array) => {
                 self.caller_slow().array_cmp(self.data(), b.data())
@@ -2480,7 +2480,7 @@ impl GosValue {
             ValueType::Function => self.as_function().serialize(writer),
             ValueType::Package => self.as_package().serialize(writer),
             ValueType::Metadata => self.as_metadata().serialize(writer),
-            ValueType::String => StrUtil::as_str(self.as_string()).serialize(writer),
+            ValueType::String => self.as_string().as_str().serialize(writer),
             ValueType::Array => {
                 let vec = self.caller_slow().array_get_vec(self);
                 GosValue::too_large_check(vec.len())?;
@@ -2696,7 +2696,7 @@ impl Display for GosValue {
                 let c = self.as_complex128();
                 write!(f, "({}, {})", c.r, c.i)
             }
-            ValueType::String => f.write_str(&StrUtil::as_str(self.as_string())),
+            ValueType::String => f.write_str(&self.as_string().as_str()),
             ValueType::Array => display_vec(&self.caller_slow().array_get_vec(self), f),
             ValueType::Struct => write!(f, "{}", self.as_struct().0),
             ValueType::Pointer => match self.as_pointer() {
@@ -2757,12 +2757,9 @@ impl fmt::Debug for GosValue {
             ValueType::Package => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_package()),
             ValueType::Metadata => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_metadata()),
             ValueType::Complex128 => write!(f, "Type: {:?}, Data: {:#?}", t, self.as_complex128()),
-            ValueType::String => write!(
-                f,
-                "Type: {:?}, Data: {:?}",
-                t,
-                &StrUtil::as_str(self.as_string()),
-            ),
+            ValueType::String => {
+                write!(f, "Type: {:?}, Data: {:?}", t, &self.as_string().as_str(),)
+            }
             ValueType::Array => match self.t_elem {
                 ValueType::Void => write!(f, "Type: {:?}, Data: {:?}", t, "unknown"),
                 _ => display_vec(&self.caller_slow().array_get_vec(self), f),

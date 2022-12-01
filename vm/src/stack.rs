@@ -182,9 +182,8 @@ impl RangeStack {
                 self.slices.push(iter);
             }
             ValueType::String => {
-                let iter = unsafe {
-                    std::mem::transmute(StrUtil::as_str(target.as_string()).chars().enumerate())
-                };
+                let iter =
+                    unsafe { std::mem::transmute(target.as_string().as_str().chars().enumerate()) };
                 self.strings.push(iter);
             }
             _ => unreachable!(),

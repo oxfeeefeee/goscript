@@ -379,7 +379,7 @@ impl StdValue {
             // specs: a[x] is the non-constant byte value at index x and the type of a[x] is byte
             ValueType::String => match container.as_string().len() > iusize {
                 true => Ok(wrap_std_val(
-                    StrUtil::index_elem(container.as_string(), iusize).into(),
+                    container.as_string().index_elem_u8(iusize).into(),
                     Some(ctx.vm_objs.prim_meta.mint8),
                 )),
                 false => err_index_oor!(),

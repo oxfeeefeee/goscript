@@ -1360,7 +1360,8 @@ impl<'a> Fiber<'a> {
                                 let from = stack.read(inst.s0, sb, consts).as_string();
                                 match inst.op1_as_t() {
                                     ValueType::Int32 => {
-                                        let data = StrUtil::as_str(from)
+                                        let data = from
+                                            .as_str()
                                             .chars()
                                             .map(|x| (x as i32).into())
                                             .collect();
@@ -1764,7 +1765,7 @@ impl<'a> Fiber<'a> {
                         let val = {
                             let itype = stack.read(inst.s0, sb, consts);
                             let name = stack.read(inst.s1, sb, consts);
-                            let name_str = StrUtil::as_str(name.as_string());
+                            let name_str = name.as_string().as_str();
                             match self.context.ffi_factory.create(&name_str) {
                                 Ok(v) => {
                                     let meta = itype.as_metadata().underlying(&objs.metas).clone();
@@ -1805,7 +1806,7 @@ impl<'a> Fiber<'a> {
                         let iface = p.msg.as_interface().unwrap();
                         let val = iface.underlying_value().unwrap();
                         if val.typ() == ValueType::String
-                            && StrUtil::as_str(val.as_string()).starts_with("Opcode::ASSERT")
+                            && val.as_string().as_str().starts_with("Opcode::ASSERT")
                         {
                             panic!("ASSERT");
                         }

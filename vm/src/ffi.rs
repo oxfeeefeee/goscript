@@ -126,15 +126,27 @@ impl<'a> FfiCtx<'a> {
     pub fn slice_as_primitive_slice<'b, C, D>(val: &'b GosValue) -> RuntimeResult<Ref<[D]>>
     where
         C: CellData + 'b,
+        D: Copy,
     {
-        Ok(unsafe { val.as_non_nil_slice::<CellElem<C>>()?.0.as_raw_slice::<D>() })
+        Ok(val.as_non_nil_slice::<CellElem<C>>()?.0.as_raw_slice::<D>())
     }
 
-    // #[inline]
-    // pub unsafe fn array_into_raw_u8(arr: GosValue) -> Vec<u8> {
-    //     let arr_obj =
-    //     arr.into_array::<CellElem<u8>>()..into_raw_array()
-    // }
+    #[inline]
+    pub fn array_as_rust_slice<T>(val: &GosValue) -> Ref<[T]>
+    where
+        T: Element,
+    {
+        val.as_array::<T>().0.as_rust_slice()
+    }
+
+    #[inline]
+    pub fn array_as_primitive_slice<'b, C, D>(val: &'b GosValue) -> Ref<[D]>
+    where
+        C: CellData + 'b,
+        D: Copy,
+    {
+        val.as_array::<CellElem<C>>().0.as_raw_slice::<D>()
+    }
 }
 
 /// A FFI Object implemented in Rust for Goscript to call

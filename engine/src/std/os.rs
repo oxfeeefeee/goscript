@@ -60,7 +60,7 @@ impl FileFfi {
     }
 
     fn ffi_open(path: GosValue, flags: isize) -> (GosValue, isize, GosValue) {
-        let path = StrUtil::as_str(path.as_string());
+        let path = path.as_string().as_str();
         let flags = flags as usize;
         let mut options = fs::OpenOptions::new();
         match flags & O_RDWR {
@@ -86,7 +86,7 @@ impl FileFfi {
     fn ffi_read(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
         let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
         let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
-        let mut buf = unsafe { slice.as_raw_slice_mut() };
+        let mut buf = slice.as_raw_slice_mut();
         let r = file.read(&mut buf);
         Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }
@@ -94,7 +94,7 @@ impl FileFfi {
     fn ffi_write(fp: GosValue, buffer: GosValue) -> RuntimeResult<(isize, isize, GosValue)> {
         let file = fp.as_non_nil_unsafe_ptr()?.downcast_ref::<VirtualFile>()?;
         let slice = &buffer.as_non_nil_slice::<Elem8>()?.0;
-        let buf = unsafe { slice.as_raw_slice() };
+        let buf = slice.as_raw_slice();
         let r = file.write(&buf);
         Ok(FileFfi::result_to_go(r, |opt| opt.unwrap_or(0) as isize))
     }

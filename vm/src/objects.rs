@@ -221,24 +221,34 @@ where
     }
 
     #[inline]
-    pub unsafe fn slice_into_inner<U>(inner_slice: &[Self]) -> &[U] {
+    pub fn slice_into_inner<U>(inner_slice: &[Self]) -> &[U] {
         assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
-        std::mem::transmute(inner_slice)
+        unsafe { std::mem::transmute(inner_slice) }
     }
 
     #[inline]
-    pub unsafe fn slice_into_inner_mut<U>(inner_slice: &mut [Self]) -> &mut [U] {
+    pub fn slice_into_inner_mut<U>(inner_slice: &mut [Self]) -> &mut [U] {
         assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
-        std::mem::transmute(inner_slice)
+        unsafe { std::mem::transmute(inner_slice) }
+    }
+
+    #[inline]
+    pub fn slice_ref_into_inner<U>(inner_slice: Ref<[Self]>) -> Ref<[U]> {
+        assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
+        unsafe { std::mem::transmute(inner_slice) }
+    }
+
+    #[inline]
+    pub fn slice_ref_into_inner_mut<U>(inner_slice: RefMut<[Self]>) -> RefMut<[U]> {
+        assert!(core::mem::size_of::<T>() == core::mem::size_of::<U>());
+        unsafe { std::mem::transmute(inner_slice) }
     }
 
     #[inline]
     fn clone_slice(dst: &mut [Self], src: &[Self]) {
-        unsafe {
-            let d: &mut [T] = Self::slice_into_inner_mut(dst);
-            let s: &[T] = &Self::slice_into_inner(src);
-            d.copy_from_slice(s)
-        }
+        let d: &mut [T] = Self::slice_into_inner_mut(dst);
+        let s: &[T] = &Self::slice_into_inner(src);
+        d.copy_from_slice(s)
     }
 }
 
@@ -402,6 +412,21 @@ where
     #[inline]
     pub fn size_of_data(&self) -> usize {
         std::mem::size_of::<T>() * self.len()
+    }
+}
+
+impl<T> ArrayObj<CellElem<T>>
+where
+    T: CellData,
+{
+    #[inline]
+    pub fn as_raw_slice<U>(&self) -> Ref<[U]> {
+        CellElem::<T>::slice_ref_into_inner(self.as_rust_slice())
+    }
+
+    #[inline]
+    pub fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
+        CellElem::<T>::slice_ref_into_inner_mut(self.as_rust_slice_mut())
     }
 }
 
@@ -738,15 +763,13 @@ where
     T: CellData,
 {
     #[inline]
-    pub unsafe fn as_raw_slice<U>(&self) -> Ref<[U]> {
-        assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
-        std::mem::transmute(self.as_rust_slice())
+    pub fn as_raw_slice<U>(&self) -> Ref<[U]> {
+        CellElem::<T>::slice_ref_into_inner(self.as_rust_slice())
     }
 
     #[inline]
-    pub unsafe fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
-        assert_eq!(core::mem::size_of::<T>(), core::mem::size_of::<U>());
-        std::mem::transmute(self.as_rust_slice_mut())
+    pub fn as_raw_slice_mut<U>(&self) -> RefMut<[U]> {
+        CellElem::<T>::slice_ref_into_inner_mut(self.as_rust_slice_mut())
     }
 }
 
@@ -771,44 +794,42 @@ pub type StringEnumIter<'a> = std::iter::Enumerate<StringIter<'a>>;
 
 pub type StringObj = SliceObj<Elem8>;
 
-pub struct StrUtil;
-
-impl StrUtil {
+impl StringObj {
     #[inline]
     pub fn with_str(s: &str) -> StringObj {
         let buf: Vec<Elem8> = unsafe { std::mem::transmute(s.as_bytes().to_vec()) };
-        StrUtil::buf_into_string(buf)
+        Self::with_buf(buf)
+    }
+
+    #[inline]
+    fn with_buf(buf: Vec<Elem8>) -> StringObj {
+        let arr = GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), ValueType::Uint8);
+        SliceObj::with_array(arr, 0, -1).unwrap()
     }
 
     /// It's safe because strings are readonly
     /// https://stackoverflow.com/questions/50431702/is-it-safe-and-defined-behavior-to-transmute-between-a-t-and-an-unsafecellt
     /// https://doc.rust-lang.org/src/core/str/converts.rs.html#173
     #[inline]
-    pub fn as_str(this: &StringObj) -> Ref<str> {
-        unsafe { std::mem::transmute(this.as_rust_slice()) }
+    pub fn as_str(&self) -> Ref<str> {
+        unsafe { std::mem::transmute(self.as_rust_slice()) }
     }
 
     #[inline]
-    pub fn index(this: &StringObj, i: usize) -> RuntimeResult<GosValue> {
-        this.get(i, ValueType::Uint8)
+    pub fn index(&self, i: usize) -> RuntimeResult<GosValue> {
+        self.get(i, ValueType::Uint8)
     }
 
     #[inline]
-    pub fn index_elem(this: &StringObj, i: usize) -> u8 {
-        this.index_elem(i).into_inner()
+    pub fn index_elem_u8(&self, i: usize) -> u8 {
+        self.index_elem(i).into_inner()
     }
 
     #[inline]
-    pub fn add(a: &StringObj, b: &StringObj) -> StringObj {
-        let mut buf = a.as_rust_slice().to_vec();
-        buf.extend_from_slice(&b.as_rust_slice());
-        StrUtil::buf_into_string(buf)
-    }
-
-    #[inline]
-    fn buf_into_string(buf: Vec<Elem8>) -> StringObj {
-        let arr = GosValue::new_non_gc_array(ArrayObj::with_raw_data(buf), ValueType::Uint8);
-        SliceObj::with_array(arr, 0, -1).unwrap()
+    pub fn add(&self, other: &StringObj) -> StringObj {
+        let mut buf = self.as_rust_slice().to_vec();
+        buf.extend_from_slice(&other.as_rust_slice());
+        Self::with_buf(buf)
     }
 }
 
