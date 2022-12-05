@@ -99,7 +99,7 @@ fn gen_dispatch_method(
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {
                     _ => {
-                        let err = Err(format!("ffi function '{}' not found!", ctx.func_name));
+                        let err = Err(format!("ffi function '{}' not found!", ctx.func_name).into());
                         Box::pin(async move { err })
                     },
                 }
@@ -115,7 +115,7 @@ fn gen_dispatch_method(
                 let arg_count = args.len();
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {
-                    _ => Err(format!("ffi function '{}' not found!", ctx.func_name)),
+                    _ => Err(format!("ffi function '{}' not found!", ctx.func_name).into()),
                 }
             }
         }
@@ -174,7 +174,7 @@ fn gen_dispatch_method(
                 parse_quote! {
                     #short_name => {
                         if arg_count != #count_lit {
-                            Box::pin(async move { Err("FFI: bad argument count".to_owned()) })
+                            Box::pin(async move { Err("FFI: bad argument count".to_owned().into()) })
                         } else {
                             #wrapper
                         }
@@ -184,7 +184,7 @@ fn gen_dispatch_method(
                 parse_quote! {
                     #short_name => {
                         if arg_count != #count_lit {
-                            Err("FFI: bad argument count".to_owned())
+                            Err("FFI: bad argument count".to_owned().into())
                         } else {
                             #wrapper
                         }

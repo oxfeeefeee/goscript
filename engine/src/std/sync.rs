@@ -93,7 +93,7 @@ impl Mutex {
     async fn unlock(self) -> RuntimeResult<Vec<GosValue>> {
         //dbg!("unlock called");
         if !self.locked.get() {
-            Err("sync: unlock of unlocked mutex".to_owned())
+            Err("sync: unlock of unlocked mutex".to_owned().into())
         } else {
             self.locked.set(false);
             Ok(vec![])
@@ -227,7 +227,7 @@ impl RWMutex {
     async fn r_unlock(self) -> RuntimeResult<Vec<GosValue>> {
         let num = self.data.borrow_mut().dec_reader_num();
         if num < 0 {
-            Err("sync: unmatched rUnlock call".to_owned())
+            Err("sync: unmatched rUnlock call".to_owned().into())
         } else {
             Ok(vec![])
         }
@@ -252,7 +252,7 @@ impl RWMutex {
     async fn w_unlock(self) -> RuntimeResult<Vec<GosValue>> {
         let was_active = self.data.borrow_mut().set_writer_active(false);
         if !was_active {
-            Err("sync: unmatched wUnlock call".to_owned())
+            Err("sync: unmatched wUnlock call".to_owned().into())
         } else {
             Ok(vec![])
         }

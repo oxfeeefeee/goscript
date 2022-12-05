@@ -54,7 +54,7 @@ fn ref_ptr_eq<T>(x: Option<&T>, y: Option<&T>) -> bool {
 
 macro_rules! nil_err_str {
     () => {
-        "access nil value".to_owned()
+        "access nil value".to_owned().into()
     };
 }
 
@@ -237,7 +237,30 @@ macro_rules! convert_to_float {
     }};
 }
 
-pub type RuntimeResult<T> = result::Result<T, String>;
+#[derive(Debug)]
+pub struct RuntimeError(String);
+
+impl RuntimeError {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::error::Error for RuntimeError {}
+
+impl std::convert::From<String> for RuntimeError {
+    fn from(msg: String) -> Self {
+        Self(msg)
+    }
+}
+
+pub type RuntimeResult<T> = result::Result<T, RuntimeError>;
 
 pub(crate) type OptionBox<T> = Option<Box<T>>;
 

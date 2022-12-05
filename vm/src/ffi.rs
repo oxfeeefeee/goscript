@@ -200,7 +200,7 @@ impl FfiFactory {
     pub(crate) fn create(&self, name: &str) -> RuntimeResult<Rc<dyn Ffi>> {
         match self.registry.get(name) {
             Some(proto) => Ok(proto.clone()),
-            None => Err(format!("FFI named {} not found", name)),
+            None => Err(format!("FFI named {} not found", name).into()),
         }
     }
 }

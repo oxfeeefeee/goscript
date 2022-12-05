@@ -396,7 +396,7 @@ where
     #[inline(always)]
     pub fn get(&self, i: usize, t: ValueType) -> RuntimeResult<GosValue> {
         if i >= self.len() {
-            return Err(format!("index {} out of range", i).to_owned());
+            return Err(format!("index {} out of range", i).to_owned().into());
         }
         Ok(self.borrow_data()[i].clone().into_value(t))
     }
@@ -404,7 +404,7 @@ where
     #[inline(always)]
     pub fn set(&self, i: usize, val: &GosValue) -> RuntimeResult<()> {
         if i >= self.len() {
-            return Err(format!("index {} out of range", i).to_owned());
+            return Err(format!("index {} out of range", i).to_owned().into());
         }
         Ok(self.borrow_data()[i].set_value(&val))
     }
@@ -700,9 +700,9 @@ where
     pub fn swap(&self, i: usize, j: usize) -> RuntimeResult<()> {
         let len = self.len();
         if i >= len {
-            Err(format!("index {} out of range", i))
+            Err(format!("index {} out of range", i).into())
         } else if j >= len {
-            Err(format!("index {} out of range", j))
+            Err(format!("index {} out of range", j).into())
         } else {
             self.borrow_all_data_mut()
                 .swap(i + self.begin(), j + self.begin());
@@ -731,7 +731,7 @@ where
     ) -> RuntimeResult<(usize, usize, usize)> {
         let bi = this_begin + begin as usize;
         if bi > this_cap {
-            return Err(format!("index {} out of range", begin).to_owned());
+            return Err(format!("index {} out of range", begin).to_owned().into());
         }
 
         let cap = if max < 0 {
@@ -739,7 +739,7 @@ where
         } else {
             let val = max as usize;
             if val > this_cap {
-                return Err(format!("index {} out of range", max).to_owned());
+                return Err(format!("index {} out of range", max).to_owned().into());
             }
             val
         };
@@ -749,7 +749,7 @@ where
         } else {
             let val = this_begin + end as usize;
             if val < bi || val > cap {
-                return Err(format!("index {} out of range", end).to_owned());
+                return Err(format!("index {} out of range", end).to_owned().into());
             }
             val
         };
@@ -927,11 +927,8 @@ pub struct UnderlyingFfi {
 }
 
 impl UnderlyingFfi {
-    pub fn new(obj: Rc<dyn Ffi>, meta: Meta) -> UnderlyingFfi {
-        UnderlyingFfi {
-            ffi_obj: obj,
-            meta: meta,
-        }
+    pub fn new(ffi_obj: Rc<dyn Ffi>, meta: Meta) -> UnderlyingFfi {
+        UnderlyingFfi { ffi_obj, meta }
     }
 }
 
@@ -1173,7 +1170,7 @@ impl PointerObj {
             ValueType::Array => PointerObj::new_array_member_internal(val, i, caller),
             ValueType::Slice => match val.is_nil() {
                 false => Ok(PointerObj::SliceMember(val, i)),
-                true => Err("access nil value".to_owned()),
+                true => Err("access nil value".to_owned().into()),
             },
             _ => unreachable!(),
         }
@@ -1447,7 +1444,7 @@ impl UnsafePtrObj {
         self.ptr
             .as_any()
             .downcast_ref::<T>()
-            .ok_or("Unexpected unsafe pointer type".to_owned())
+            .ok_or("Unexpected unsafe pointer type".to_owned().into())
     }
 }
 

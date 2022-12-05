@@ -23,7 +23,7 @@ pub mod types {
 
 pub use {
     ffi::*,
-    goscript_pmacro::{ffi_impl, Ffi},
+    goscript_pmacro::{ffi_impl, Ffi, UnsafePtr},
     value::Bytecode,
     vm::run,
 };

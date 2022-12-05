@@ -13,7 +13,7 @@ pub fn derive_unsafe_ptr_implement(input: proc_macro::TokenStream) -> proc_macro
 
     let expanded = quote! {
         impl #impl_generics UnsafePtr for #name #ty_generics #where_clause {
-            fn as_any(&self) -> &dyn Any {
+            fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
         }

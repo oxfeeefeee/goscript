@@ -120,7 +120,7 @@ impl Channel {
                         future::yield_now().await;
                     }
                     async_channel::TrySendError::Closed(_) => {
-                        return Err("channel closed!".to_owned());
+                        return Err("channel closed!".to_owned().into());
                     }
                 },
             }
@@ -181,7 +181,7 @@ impl Selector {
                             Err(e) => match e {
                                 async_channel::TrySendError::Full(_) => {}
                                 async_channel::TrySendError::Closed(_) => {
-                                    return Err("channel closed!".to_owned());
+                                    return Err("channel closed!".to_owned().into());
                                 }
                             },
                         }

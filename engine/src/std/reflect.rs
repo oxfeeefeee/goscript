@@ -12,20 +12,21 @@ use std::rc::Rc;
 
 macro_rules! err_wrong_type {
     () => {
-        Err("reflect: wrong type".to_owned())
+        Err("reflect: wrong type".to_owned().into())
     };
 }
 
 macro_rules! err_index_oor {
     () => {
-        Err("reflect: index out of range".to_owned())
+        Err("reflect: index out of range".to_owned().into())
     };
 }
 
 macro_rules! err_set_val_type {
-    () => {
-        Err("reflect: set value with wrong type".to_owned())
-    };
+    () => {{
+        let err: RuntimeError = "reflect: set value with wrong type".to_owned().into();
+        Err(err)
+    }};
 }
 
 #[inline]
@@ -208,10 +209,10 @@ impl ReflectFfi {
                 if obj.typ() == ValueType::Slice {
                     obj.slice_swap(i as usize, j as usize)
                 } else {
-                    Err("reflect swap: not a slice".to_owned())
+                    Err("reflect swap: not a slice".to_owned().into())
                 }
             }
-            None => Err("reflect swap: nil value".to_owned()),
+            None => Err("reflect swap: nil value".to_owned().into()),
         }
     }
 }
@@ -229,13 +230,13 @@ impl StdValue {
 
     fn value_from_iface(v: &GosValue) -> RuntimeResult<GosValue> {
         if v.typ() != ValueType::Interface {
-            return Err("reflect: not an interface".to_owned());
+            return Err("reflect: not an interface".to_owned().into());
         }
         let iface = v.as_interface().unwrap();
         match &iface as &InterfaceObj {
             InterfaceObj::Gos(v, m) => Ok(wrap_std_val(v.clone(), m.as_ref().map(|x| x.0))),
             // todo: should we return something else?
-            InterfaceObj::Ffi(_) => Err("reflect: ffi objects are not supported".to_owned()),
+            InterfaceObj::Ffi(_) => Err("reflect: ffi objects are not supported".to_owned().into()),
         }
     }
 
@@ -254,8 +255,10 @@ impl StdValue {
 
     fn settable_meta(&self) -> RuntimeResult<&Meta> {
         match self {
-            Self::Pointer(_, m, _) => m.as_ref().ok_or("reflect: type info missing".to_owned()),
-            Self::Value(_, _) => Err("reflect: value not settable".to_owned()),
+            Self::Pointer(_, m, _) => m
+                .as_ref()
+                .ok_or("reflect: type info missing".to_owned().into()),
+            Self::Value(_, _) => Err("reflect: value not settable".to_owned().into()),
         }
     }
 
@@ -414,7 +417,7 @@ impl StdValue {
 
     fn set(&self, ctx: &mut FfiCtx, val: GosValue) -> RuntimeResult<()> {
         if !self.can_set() {
-            return Err("reflect: value is not settable".to_owned());
+            return Err("reflect: value is not settable".to_owned().into());
         }
         match self {
             Self::Pointer(p, _, _) => {
@@ -624,7 +627,9 @@ impl StdMapIter {
     fn key(&self) -> RuntimeResult<GosValue> {
         match &self.inner.borrow().item {
             Some(kv) => Ok(kv.0.clone()),
-            None => Err("reflect.MapIter: Next not called or iter exhausted".to_owned()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted"
+                .to_owned()
+                .into()),
         }
         .map(|x| wrap_std_val(x, Some(self.key_meta)))
     }
@@ -632,7 +637,9 @@ impl StdMapIter {
     fn value(&self) -> RuntimeResult<GosValue> {
         match &self.inner.borrow().item {
             Some(kv) => Ok(kv.1.clone()),
-            None => Err("reflect.MapIter: Next not called or iter exhausted".to_owned()),
+            None => Err("reflect.MapIter: Next not called or iter exhausted"
+                .to_owned()
+                .into()),
         }
         .map(|x| wrap_std_val(x, Some(self.key_meta)))
     }

@@ -55,7 +55,7 @@ macro_rules! go_panic_no_async {
 macro_rules! panic_if_err {
     ($result:expr, $panic:ident, $frame:ident, $code:ident) => {{
         if let Err(e) = $result {
-            go_panic_str!($panic, &e, $frame, $code);
+            go_panic_str!($panic, e.as_str(), $frame, $code);
         }
     }};
 }
@@ -386,9 +386,9 @@ impl<'a> Fiber<'a> {
                         match slice.slice_array_equivalent(index) {
                             Ok((array, i)) => match array.caller(caller).array_get(&array, i) {
                                 Ok(val) => stack.set(sb + inst.d, val),
-                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                                Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                             },
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: slice
@@ -418,10 +418,10 @@ impl<'a> Fiber<'a> {
                                             array.caller(caller).array_set(&array, &val, i);
                                         panic_if_err!(result, panic, frame, code);
                                     }
-                                    Err(e) => go_panic_str!(panic, &e, frame, code),
+                                    Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                                 },
                             },
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: local
@@ -432,7 +432,7 @@ impl<'a> Fiber<'a> {
                         let index = stack.read(inst.s1, sb, consts).as_index();
                         match array.caller(caller).array_get(&array, index) {
                             Ok(val) => stack.set(inst.d + sb, val),
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: array
@@ -461,7 +461,7 @@ impl<'a> Fiber<'a> {
                                         array.caller(caller).array_set(&array, &val, index);
                                     panic_if_err!(result, panic, frame, code);
                                 }
-                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                                Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                             },
                         }
                     }
@@ -522,7 +522,7 @@ impl<'a> Fiber<'a> {
                                     }
                                 }
                             }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: local
@@ -574,7 +574,7 @@ impl<'a> Fiber<'a> {
                                 let val = s.as_struct().0.borrow_fields()[index].clone();
                                 stack.set(inst.d + sb, val);
                             }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: struct
@@ -607,7 +607,7 @@ impl<'a> Fiber<'a> {
                                     s.as_struct().0.borrow_fields_mut()[index as usize] = val;
                                 }
                             },
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: local
@@ -654,9 +654,9 @@ impl<'a> Fiber<'a> {
                         match src.as_non_nil_pointer() {
                             Ok(p) => match p.deref(stack, &objs.packages) {
                                 Ok(val) => stack.set(inst.d + sb, val),
-                                Err(e) => go_panic_str!(panic, &e, frame, code),
+                                Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                             },
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     // desc: pointer
@@ -849,7 +849,7 @@ impl<'a> Fiber<'a> {
                         ) {
                             Ok(p) => stack.set(inst.d + sb, GosValue::new_pointer(p)),
                             Err(e) => {
-                                go_panic_str!(panic, &e, frame, code)
+                                go_panic_str!(panic, e.as_str(), frame, code)
                             }
                         }
                     }
@@ -878,7 +878,7 @@ impl<'a> Fiber<'a> {
                                     )),
                                 );
                             }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     Opcode::REF_PKG_MEMBER => {
@@ -1053,7 +1053,7 @@ impl<'a> Fiber<'a> {
                                 match returns {
                                     Ok(result) => stack.set_vec(result_begin, result),
                                     Err(e) => {
-                                        go_panic_str!(panic, &e, frame, code);
+                                        go_panic_str!(panic, e.as_str(), frame, code);
                                     }
                                 }
                             }
@@ -1240,7 +1240,7 @@ impl<'a> Fiber<'a> {
                                 frame.pc += block_offset;
                             }
                             Err(e) => {
-                                go_panic_str!(panic, &e, frame, code);
+                                go_panic_str!(panic, e.as_str(), frame, code);
                             }
                         }
                     }
@@ -1291,10 +1291,10 @@ impl<'a> Fiber<'a> {
                             Ok(iface) => {
                                 match bind_iface_method(iface, inst.s1 as usize, stack, objs, gcc) {
                                     Ok(cls) => stack.set(inst.d + sb, cls),
-                                    Err(e) => go_panic_str!(panic, &e, frame, code),
+                                    Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                                 }
                             }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     Opcode::CAST => {
@@ -1391,7 +1391,12 @@ impl<'a> Fiber<'a> {
                                                     ) {
                                                         Ok(p) => GosValue::new_pointer(p),
                                                         Err(e) => {
-                                                            go_panic_str!(panic, &e, frame, code);
+                                                            go_panic_str!(
+                                                                panic,
+                                                                e.as_str(),
+                                                                frame,
+                                                                code
+                                                            );
                                                             continue;
                                                         }
                                                     }
@@ -1431,7 +1436,7 @@ impl<'a> Fiber<'a> {
                                     stack.set(inst_ex.d + sb, ok.into());
                                 }
                             }
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     Opcode::TYPE => {
@@ -1483,7 +1488,7 @@ impl<'a> Fiber<'a> {
 
                         match result {
                             Ok(v) => stack.set(inst.d + sb, v),
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         }
                     }
                     Opcode::CLOSURE => {
@@ -1711,7 +1716,7 @@ impl<'a> Fiber<'a> {
 
                         match caller.get(inst.t1).slice_append(a, b, gcc) {
                             Ok(slice) => stack.set(inst.d + sb, slice),
-                            Err(e) => go_panic_str!(panic, &e, frame, code),
+                            Err(e) => go_panic_str!(panic, e.as_str(), frame, code),
                         };
                     }
                     Opcode::COPY => {
@@ -1774,7 +1779,7 @@ impl<'a> Fiber<'a> {
                                     )))
                                 }
                                 Err(e) => {
-                                    go_panic_str!(panic, &e, frame, code);
+                                    go_panic_str!(panic, e.as_str(), frame, code);
                                     continue;
                                 }
                             }
@@ -1864,11 +1869,13 @@ fn type_assert(
                     if let Some(mobjs) = metas {
                         Ok((want_meta.zero(mobjs, gcc), false))
                     } else {
-                        Err("interface conversion: wrong type".to_owned())
+                        Err("interface conversion: wrong type".to_owned().into())
                     }
                 }
             }
-            InterfaceObj::Ffi(_) => Err("FFI interface do not support type assertion".to_owned()),
+            InterfaceObj::Ffi(_) => Err("FFI interface do not support type assertion"
+                .to_owned()
+                .into()),
         },
         Err(e) => Err(e),
     }
