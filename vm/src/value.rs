@@ -241,6 +241,10 @@ macro_rules! convert_to_float {
 pub struct RuntimeError(String);
 
 impl RuntimeError {
+    pub fn new(msg: String) -> RuntimeError {
+        RuntimeError(msg)
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

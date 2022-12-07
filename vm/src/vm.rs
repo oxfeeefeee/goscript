@@ -1043,7 +1043,7 @@ impl<'a> Fiber<'a> {
                                     } else {
                                         #[cfg(not(feature = "async"))]
                                         {
-                                            Err("Async features disabled".to_owned())
+                                            Err("Async features disabled".to_owned().into())
                                         }
                                         #[cfg(feature = "async")]
                                         ffic.ffi.async_call(&mut ctx, params).await

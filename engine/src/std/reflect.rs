@@ -23,10 +23,11 @@ macro_rules! err_index_oor {
 }
 
 macro_rules! err_set_val_type {
-    () => {{
-        let err: RuntimeError = "reflect: set value with wrong type".to_owned().into();
-        Err(err)
-    }};
+    () => {
+        Err(RuntimeError::new(
+            "reflect: set value with wrong type".to_owned(),
+        ))
+    };
 }
 
 #[inline]
@@ -606,14 +607,10 @@ impl StdMapIter {
         let iter: GosMapIter<'static> = unsafe { mem::transmute(mref.iter()) };
         let metas = &ctx.vm_objs.metas;
         let map_meta = metas[v.meta().unwrap().underlying(metas).key].as_map();
-        let (k, _) = (map_meta.0.clone(), map_meta.1.clone());
+        let (key_meta, _) = (map_meta.0.clone(), map_meta.1.clone());
         let smi = StdMapIter {
-            inner: RefCell::new(StdMapIterInner {
-                iter: iter,
-                item: None,
-            }),
-            key_meta: k,
-            //val_meta: v,
+            inner: RefCell::new(StdMapIterInner { iter, item: None }),
+            key_meta,
         };
         Ok(FfiCtx::new_unsafe_ptr(Rc::new(smi)))
     }

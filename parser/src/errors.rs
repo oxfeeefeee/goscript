@@ -31,6 +31,8 @@ impl fmt::Display for Error {
     }
 }
 
+impl std::error::Error for Error {}
+
 #[derive(Clone, Debug)]
 pub struct ErrorList {
     errors: Rc<RefCell<Vec<Error>>>,
@@ -45,6 +47,8 @@ impl fmt::Display for ErrorList {
         Ok(())
     }
 }
+
+impl std::error::Error for ErrorList {}
 
 impl ErrorList {
     pub fn new() -> ErrorList {

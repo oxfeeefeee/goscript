@@ -711,7 +711,7 @@ where
     }
 
     #[inline]
-    pub fn borrow_all_data_mut(&self) -> std::cell::RefMut<Vec<T>> {
+    fn borrow_all_data_mut(&self) -> std::cell::RefMut<Vec<T>> {
         self.array_obj().borrow_data_mut()
     }
 
