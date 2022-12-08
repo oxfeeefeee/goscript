@@ -284,7 +284,7 @@ pub struct Complex128 {
 
 pub trait AsPrimitive<T>
 where
-    T: 'static + Copy,
+    T: 'static,
 {
     /// Convert a value to another, using the `as` operator.
     fn as_(&self) -> T;
@@ -3020,6 +3020,20 @@ impl AsPrimitive<f64> for GosValue {
     #[inline]
     fn as_(&self) -> f64 {
         self.as_float64().into_inner()
+    }
+}
+
+impl From<String> for GosValue {
+    #[inline]
+    fn from(s: String) -> Self {
+        GosValue::new_string(StringObj::with_str(&s))
+    }
+}
+
+impl AsPrimitive<String> for GosValue {
+    #[inline]
+    fn as_(&self) -> String {
+        self.as_string().as_str().to_owned()
     }
 }
 

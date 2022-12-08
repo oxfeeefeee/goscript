@@ -413,7 +413,7 @@ fn get_type_arg_type(args: &PathArguments) -> Type {
 fn is_primitive(name: &str) -> bool {
     match name {
         "bool" | "isize" | "i8" | "i16" | "i32" | "i64" | "usize" | "u8" | "u16" | "u32"
-        | "u64" | "f32" | "f64" => true,
+        | "u64" | "f32" | "f64" | "String" => true,
         _ => false,
     }
 }
