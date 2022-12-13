@@ -124,7 +124,7 @@ pub enum Opcode {
 
 impl fmt::Display for Opcode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        fmt::Debug::fmt(&self, f)
     }
 }
 
@@ -185,6 +185,12 @@ impl ValueType {
     #[inline]
     pub fn nilable(&self) -> bool {
         self >= &Self::Pointer && self <= &Self::Channel
+    }
+}
+
+impl fmt::Display for ValueType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self, f)
     }
 }
 
