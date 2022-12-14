@@ -110,6 +110,12 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
+    pub fn deref_pointer(&self, ptr: &GosValue) -> RuntimeResult<GosValue> {
+        ptr.as_non_nil_pointer()?
+            .deref(&self.stack, &self.vm_objs.packages)
+    }
+
+    #[inline]
     pub fn zero_val(&self, m: &Meta) -> GosValue {
         m.zero(&self.vm_objs.metas, self.gcc)
     }
