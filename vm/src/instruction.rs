@@ -12,7 +12,7 @@ use std::fmt::Debug;
 
 pub type OpIndex = i32;
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Opcode {
     VOID,
@@ -128,9 +128,23 @@ impl fmt::Display for Opcode {
     }
 }
 
-#[derive(
-    BorshDeserialize, BorshSerialize, Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd,
-)]
+impl BorshSerialize for Opcode {
+    #[inline]
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        let val: u8 = unsafe { std::mem::transmute(*self) };
+        val.serialize(writer)
+    }
+}
+
+impl BorshDeserialize for Opcode {
+    #[inline]
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let val = u8::deserialize(buf)?;
+        Ok(unsafe { std::mem::transmute(val) })
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Ord, PartialOrd)]
 #[repr(u8)]
 pub enum ValueType {
     Void,
@@ -185,6 +199,22 @@ impl ValueType {
     #[inline]
     pub fn nilable(&self) -> bool {
         self >= &Self::Pointer && self <= &Self::Channel
+    }
+}
+
+impl BorshSerialize for ValueType {
+    #[inline]
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        let val: u8 = unsafe { std::mem::transmute(*self) };
+        val.serialize(writer)
+    }
+}
+
+impl BorshDeserialize for ValueType {
+    #[inline]
+    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+        let val = u8::deserialize(buf)?;
+        Ok(unsafe { std::mem::transmute(val) })
     }
 }
 
@@ -382,13 +412,20 @@ impl BorshSerialize for Instruction {
 
 impl BorshDeserialize for Instruction {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let op0 = Opcode::deserialize(buf)?;
-        let op1 = Opcode::deserialize(buf)?;
-        let t0 = ValueType::deserialize(buf)?;
-        let t1 = ValueType::deserialize(buf)?;
-        let d = OpIndex::deserialize(buf)?;
-        let s0 = OpIndex::deserialize(buf)?;
-        let s1 = OpIndex::deserialize(buf)?;
+        // Optimization: Get all data at once
+        const BYTE_COUNT: usize = 4;
+        const OP_INDEX_SIZE: usize = core::mem::size_of::<OpIndex>();
+        let data = <[u8; (BYTE_COUNT + OP_INDEX_SIZE * 3)]>::deserialize(buf)?;
+        let op0 = unsafe { std::mem::transmute(data[0]) };
+        let op1 = unsafe { std::mem::transmute(data[1]) };
+        let t0 = unsafe { std::mem::transmute(data[2]) };
+        let t1 = unsafe { std::mem::transmute(data[3]) };
+        let mut begin = BYTE_COUNT;
+        let d = OpIndex::from_le_bytes(data[begin..begin + OP_INDEX_SIZE].try_into().unwrap());
+        begin += OP_INDEX_SIZE;
+        let s0 = OpIndex::from_le_bytes(data[begin..begin + OP_INDEX_SIZE].try_into().unwrap());
+        begin += OP_INDEX_SIZE;
+        let s1 = OpIndex::from_le_bytes(data[begin..begin + OP_INDEX_SIZE].try_into().unwrap());
         Ok(Instruction {
             op0,
             op1,
