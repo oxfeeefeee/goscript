@@ -5,7 +5,7 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [features] 
-default = ["read_fs", "async", "go_std", "codegen"]
+default = ["read_fs", "async", "go_std", "codegen", "instruction_pos"]
 read_fs = []
 read_zip = ["dep:zip"] 
 read_map = []
@@ -13,6 +13,7 @@ async = ["goscript-codegen/async", "goscript-vm/async"]
 go_std = []
 btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscript-vm/btree_map"]
 codegen = []
+instruction_pos = ["goscript-vm/instruction_pos"] 
   
 [dependencies]  
 futures-lite = "1.12.0"

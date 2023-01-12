@@ -8,6 +8,7 @@ edition = "2021"
 default = []
 async = ["dep:async-channel", "dep:async-executor", "dep:futures-lite", "dep:fastrand"]  
 btree_map = ["goscript-parser/btree_map"]
+instruction_pos = []
 
 [dependencies]
 ordered-float = "3.0"
