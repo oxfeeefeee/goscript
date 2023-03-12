@@ -3,15 +3,13 @@
 // license that can be found in the LICENSE file.
 
 mod engine;
-#[cfg(any(feature = "read_fs", feature = "go_std"))]
-pub mod run_fs;
-#[cfg(feature = "read_map")]
-pub mod run_map;
-#[cfg(feature = "read_zip")]
-pub mod run_zip;
 
 #[cfg(feature = "go_std")]
 mod std;
+
+mod vfs;
+
+mod source;
 
 #[macro_use]
 pub mod ffi;
@@ -22,3 +20,11 @@ extern crate lazy_static;
 
 pub use engine::*;
 pub use goscript_parser::ErrorList;
+pub use source::*;
+
+pub use crate::vfs::{compound::CompoundFs, vfs_map::VfsMap, VirtualFs};
+
+#[cfg(feature = "read_fs")]
+pub use crate::vfs::vfs_fs::VfsFs;
+#[cfg(feature = "read_zip")]
+pub use crate::vfs::vfs_zip::VfsZip;

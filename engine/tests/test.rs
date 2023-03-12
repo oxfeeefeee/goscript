@@ -5,7 +5,7 @@ use std::fs;
 use std::io;
 use std::io::Write;
 #[cfg(any(feature = "read_zip", feature = "go_std"))]
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[macro_use]
 extern crate time_test;
@@ -40,12 +40,11 @@ impl Write for WriteBuf {
 
 #[cfg(feature = "go_std")]
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let mut cfg = engine::run_fs::Config::default();
-    cfg.working_dir = Some(Path::new("./"));
-    cfg.base_dir = Some(Path::new("../std/"));
+    let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let result = engine::run_fs::run(cfg, &Path::new(path));
+    let sr = engine::SourceReader::local_fs(PathBuf::from("./"), PathBuf::from("../std/"));
+    let result = engine::run(cfg, &sr, Path::new(path));
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -60,12 +59,12 @@ fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 
 #[cfg(feature = "go_std")]
 fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let mut cfg = engine::run_fs::Config::default();
-    cfg.working_dir = Some(Path::new("./"));
-    cfg.base_dir = Some(Path::new("../std/"));
+    let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let result = engine::run_fs::run_string(cfg, source);
+    let (sr, path) =
+        engine::SourceReader::fs_lib_and_string(PathBuf::from("../std/"), source.to_owned());
+    let result = engine::run(cfg, &sr, &path);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -80,12 +79,14 @@ fn run_string(_source: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 
 #[cfg(feature = "read_zip")]
 fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
-    let mut cfg = engine::run_zip::Config::default();
-    cfg.base_dir = Some(Path::new("std/"));
+    let zip = fs::read(Path::new(file)).unwrap();
+
+    let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let zip = fs::read(Path::new(file)).unwrap();
-    let result = engine::run_zip::run_string(&zip, cfg, source);
+    let (sr, path) =
+        engine::SourceReader::zip_and_string(zip, PathBuf::from("std/"), source.to_owned());
+    let result = engine::run(cfg, &sr, &path);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -105,6 +106,7 @@ fn test_source() {
     }
     "#;
     let result = run_string(source, false);
+    dbg!(&result);
     assert!(result.is_ok());
 }
 

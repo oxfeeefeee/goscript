@@ -24,7 +24,7 @@ pub struct TraceConfig {
 }
 
 pub trait SourceRead {
-    fn working_dir(&self) -> io::Result<PathBuf>;
+    fn working_dir(&self) -> &Path;
 
     fn base_dir(&self) -> Option<&Path>;
 
@@ -129,11 +129,7 @@ impl<'a, S: SourceRead> Importer<'a, S> {
     fn canonicalize_import(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {
         let mut import_path = key.path.clone();
         let path = if is_local(&key.path) {
-            let working_dir = self.reader.working_dir();
-            if working_dir.is_err() {
-                return self.error(format!("failed to get working dir for: {}", key.path));
-            }
-            let mut wd = working_dir.unwrap();
+            let mut wd = self.reader.working_dir().to_owned();
             wd.push(&key.dir);
             wd.push(&key.path);
             if let Some(base) = &self.reader.base_dir() {
@@ -206,11 +202,7 @@ impl<'a, S: SourceRead> Importer<'a, S> {
 }
 
 fn read_content(p: &Path, reader: &dyn SourceRead) -> io::Result<Vec<(String, String)>> {
-    let working_dir = reader
-        .working_dir()
-        .ok()
-        .map(|x| x.canonicalize().ok())
-        .flatten();
+    let working_dir = reader.working_dir().canonicalize().ok();
     let mut result = vec![];
     let mut read = |path: PathBuf| -> io::Result<()> {
         if let Some(ext) = path.extension() {
@@ -251,5 +243,9 @@ fn read_content(p: &Path, reader: &dyn SourceRead) -> io::Result<Vec<(String, St
 }
 
 fn is_local(path: &str) -> bool {
-    path == "." || path == ".." || path.starts_with("./") || path.starts_with("../")
+    path == "."
+        || path == ".."
+        || path.starts_with("./")
+        || path.starts_with("../")
+        || path.starts_with("vfs_local_")
 }

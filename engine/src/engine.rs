@@ -19,6 +19,20 @@ extern crate goscript_parser as fe;
 extern crate goscript_types as types;
 extern crate goscript_vm as vm;
 
+#[derive(Default)]
+pub struct Config {
+    /// print debug info in parser
+    pub trace_parser: bool,
+    /// print debug info in checker
+    pub trace_checker: bool,
+    /// custom std in
+    pub std_in: Option<Box<dyn std::io::Read + Sync + Send>>,
+    /// custom std out
+    pub std_out: Option<Box<dyn std::io::Write + Sync + Send>>,
+    /// custom std err
+    pub std_err: Option<Box<dyn std::io::Write + Sync + Send>>,
+}
+
 pub struct Engine {
     ffi: vm::FfiFactory,
 }
