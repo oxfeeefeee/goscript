@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use std::borrow::Cow;
 #[cfg(feature = "read_zip")]
 use std::fs;
 use std::io;
@@ -58,12 +59,11 @@ fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 }
 
 #[cfg(feature = "go_std")]
-fn run_string(source: &str, trace: bool) -> Result<(), engine::ErrorList> {
+fn run_string(source: Cow<'static, str>, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let (sr, path) =
-        engine::SourceReader::fs_lib_and_string(PathBuf::from("../std/"), source.to_owned());
+    let (sr, path) = engine::SourceReader::fs_lib_and_string(PathBuf::from("../std/"), source);
     let result = engine::run(cfg, &sr, &path);
     if let Err(el) = &result {
         el.sort();
@@ -78,14 +78,21 @@ fn run_string(_source: &str, _trace: bool) -> Result<(), engine::ErrorList> {
 }
 
 #[cfg(feature = "read_zip")]
-fn run_zip_and_string(file: &str, source: &str, trace: bool) -> Result<(), engine::ErrorList> {
+fn run_zip_and_string(
+    file: &str,
+    source: Cow<'static, str>,
+    trace: bool,
+) -> Result<(), engine::ErrorList> {
     let zip = fs::read(Path::new(file)).unwrap();
 
     let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let (sr, path) =
-        engine::SourceReader::zip_and_string(zip, PathBuf::from("std/"), source.to_owned());
+    let (sr, path) = engine::SourceReader::zip_and_string(
+        std::borrow::Cow::Owned(zip),
+        PathBuf::from("std/"),
+        source,
+    );
     let result = engine::run(cfg, &sr, &path);
     if let Err(el) = &result {
         el.sort();
@@ -105,7 +112,7 @@ fn test_source() {
         fmt.Println("hello from raw source")
     }
     "#;
-    let result = run_string(source, false);
+    let result = run_string(Cow::Borrowed(source), false);
     dbg!(&result);
     assert!(result.is_ok());
 }
@@ -122,7 +129,7 @@ fn test_zip() {
         fmt.Println("hello from raw zip lalala")
     }
     "#;
-    let result = run_zip_and_string("./tests/std.zip", source, false);
+    let result = run_zip_and_string("./tests/std.zip", Cow::Borrowed(source), false);
     assert!(result.is_ok());
 }
 

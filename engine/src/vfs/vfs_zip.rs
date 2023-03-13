@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 use crate::vfs::VirtualFs;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::io;
 use std::io::Read;
@@ -13,11 +14,11 @@ use zip::read::ZipArchive;
 use zip::result::{ZipError, ZipResult};
 
 pub struct VfsZip {
-    archive: RefCell<ZipArchive<io::Cursor<Vec<u8>>>>,
+    archive: RefCell<ZipArchive<io::Cursor<Cow<'static, [u8]>>>>,
 }
 
 impl VfsZip {
-    pub fn new(archive: Vec<u8>) -> ZipResult<VfsZip> {
+    pub fn new(archive: Cow<'static, [u8]>) -> ZipResult<VfsZip> {
         let c = io::Cursor::new(archive);
         let archive = RefCell::new(ZipArchive::new(c)?);
         Ok(VfsZip { archive })

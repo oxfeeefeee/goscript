@@ -4,15 +4,16 @@
 
 use crate::vfs::VirtualFs;
 use goscript_parser::Map;
+use std::borrow::Cow;
 use std::io;
 use std::path::{Path, PathBuf};
 
 pub struct VfsMap {
-    map: Map<PathBuf, String>,
+    map: Map<PathBuf, Cow<'static, str>>,
 }
 
 impl VfsMap {
-    pub fn new(map: Map<PathBuf, String>) -> VfsMap {
+    pub fn new(map: Map<PathBuf, Cow<'static, str>>) -> VfsMap {
         VfsMap { map }
     }
 }
@@ -21,7 +22,7 @@ impl VirtualFs for VfsMap {
     fn read_file(&self, path: &Path) -> io::Result<String> {
         self.map
             .get(path)
-            .map(|x| x.as_str().to_owned())
+            .map(|x| x.to_string())
             .ok_or(io::Error::from(io::ErrorKind::NotFound))
     }
 

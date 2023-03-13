@@ -46,7 +46,10 @@ impl SourceReader {
     }
 
     #[cfg(feature = "read_fs")]
-    pub fn fs_lib_and_string(base_dir: PathBuf, source: String) -> (SourceReader, PathBuf) {
+    pub fn fs_lib_and_string(
+        base_dir: PathBuf,
+        source: std::borrow::Cow<'static, str>,
+    ) -> (SourceReader, PathBuf) {
         let temp_file_name = "temp_file.gos";
         // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
         let vfs_map_name = format!("{}map", VIRTUAL_LOCAL_PATH_PREFIX);
@@ -75,9 +78,9 @@ impl SourceReader {
 
     #[cfg(feature = "read_zip")]
     pub fn zip_and_string(
-        archive: Vec<u8>,
+        archive: std::borrow::Cow<'static, [u8]>,
         base_dir: PathBuf,
-        source: String,
+        source: std::borrow::Cow<'static, str>,
     ) -> (SourceReader, PathBuf) {
         let temp_file_name = "temp_file.gos";
         // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
