@@ -44,7 +44,7 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let sr = engine::SourceReader::local_fs(PathBuf::from("./"), PathBuf::from("../std/"));
+    let sr = engine::SourceReader::local_fs(PathBuf::from("../std/"), PathBuf::from("./"));
     let result = engine::run(cfg, &sr, Path::new(path));
     if let Err(el) = &result {
         el.sort();
@@ -55,6 +55,31 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
 
 #[cfg(not(feature = "go_std"))]
 fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
+    unimplemented!()
+}
+
+#[cfg(all(feature = "read_zip", feature = "go_std"))]
+fn run_zip(zip: &str, path: &str, trace: bool) -> Result<(), engine::ErrorList> {
+    let zip = fs::read(Path::new(zip)).unwrap();
+
+    let mut cfg = engine::Config::default();
+    cfg.trace_parser = trace;
+    cfg.trace_checker = trace;
+    let sr = engine::SourceReader::zip_lib_and_local_fs(
+        std::borrow::Cow::Owned(zip),
+        PathBuf::from("std/"),
+        PathBuf::from("./"),
+    );
+    let result = engine::run(cfg, &sr, Path::new(path));
+    if let Err(el) = &result {
+        el.sort();
+        eprint!("{}", el);
+    }
+    result
+}
+
+#[cfg(not(feature = "go_std"))]
+fn run_zip(_zip: &str, _path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
     unimplemented!()
 }
 
@@ -88,7 +113,7 @@ fn run_zip_and_string(
     let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
-    let (sr, path) = engine::SourceReader::zip_and_string(
+    let (sr, path) = engine::SourceReader::zip_lib_and_string(
         std::borrow::Cow::Owned(zip),
         PathBuf::from("std/"),
         source,
@@ -134,8 +159,15 @@ fn test_zip() {
 }
 
 #[test]
+#[cfg(all(feature = "read_zip", feature = "go_std"))]
+fn test_zip_g2case0() {
+    let result = run_zip("./tests/std.zip", "./tests/group2/case0.gos", false);
+    assert!(result.is_ok());
+}
+
+#[test]
 fn test_g2case0() {
-    let result = run("./tests/group2/case0.gos", true);
+    let result = run("./tests/group2/case0.gos", false);
     assert!(result.is_ok());
 }
 

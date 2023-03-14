@@ -19,32 +19,34 @@ pub fn run(config: Config, source: &SourceReader, path: &Path) -> Result<(), Err
 }
 
 pub struct SourceReader {
+    /// base directory for non-local imports(library files)
+    base_dir: Option<PathBuf>,
     /// working directory
     working_dir: PathBuf,
-    /// base directory for non-local imports
-    base_dir: Option<PathBuf>,
     /// The virtual file system from which to read files.
     vfs: Box<dyn VirtualFs>,
 }
 
 impl SourceReader {
     pub fn new(
-        working_dir: PathBuf,
         base_dir: Option<PathBuf>,
+        working_dir: PathBuf,
         vfs: Box<dyn VirtualFs>,
     ) -> SourceReader {
         SourceReader {
-            working_dir,
             base_dir,
+            working_dir,
             vfs,
         }
     }
 
+    /// Create a SourceReader that reads from local file system.
     #[cfg(feature = "read_fs")]
-    pub fn local_fs(working_dir: PathBuf, base_dir: PathBuf) -> SourceReader {
-        SourceReader::new(working_dir, Some(base_dir), Box::new(crate::VfsFs {}))
+    pub fn local_fs(base_dir: PathBuf, working_dir: PathBuf) -> SourceReader {
+        SourceReader::new(Some(base_dir), working_dir, Box::new(crate::VfsFs {}))
     }
 
+    /// Create a SourceReader that reads from a zip file and a string.
     #[cfg(feature = "read_fs")]
     pub fn fs_lib_and_string(
         base_dir: PathBuf,
@@ -56,8 +58,8 @@ impl SourceReader {
         let vfs_fs_name = "vfs_fs";
         (
             SourceReader::new(
+                Some(Path::new(vfs_fs_name).join(base_dir)),
                 PathBuf::from(format!("{}/", vfs_map_name)),
-                Some(Path::new("vfs_fs").join(base_dir)),
                 Box::new(crate::CompoundFs::new(Map::from([
                     (
                         vfs_fs_name.to_owned(),
@@ -76,8 +78,10 @@ impl SourceReader {
         )
     }
 
+    /// Creates a SourceReader that reads from a zip archive and a string.
+    /// Returns the SourceReader and the path of the virtual file that contains the string.
     #[cfg(feature = "read_zip")]
-    pub fn zip_and_string(
+    pub fn zip_lib_and_string(
         archive: std::borrow::Cow<'static, [u8]>,
         base_dir: PathBuf,
         source: std::borrow::Cow<'static, str>,
@@ -88,8 +92,8 @@ impl SourceReader {
         let vfs_zip_name = "vfs_zip";
         (
             SourceReader::new(
+                Some(Path::new(vfs_zip_name).join(base_dir)),
                 PathBuf::from(format!("{}/", vfs_map_name)),
-                Some(Path::new("vfs_zip").join(base_dir)),
                 Box::new(crate::CompoundFs::new(Map::from([
                     (
                         vfs_zip_name.to_owned(),
@@ -105,6 +109,32 @@ impl SourceReader {
                 ]))),
             ),
             PathBuf::from(format!("./{}", temp_file_name)),
+        )
+    }
+
+    /// Creates a SourceReader that reads from a zip archive and local file system.
+    /// Can be used when you want to read library files from a zip archive and user's
+    /// source code from the local file system.
+    #[cfg(feature = "read_zip")]
+    pub fn zip_lib_and_local_fs(
+        archive: std::borrow::Cow<'static, [u8]>,
+        base_dir: PathBuf,
+        working_dir: PathBuf,
+    ) -> SourceReader {
+        // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
+        let vfs_fs_name = format!("{}local_fs", VIRTUAL_LOCAL_PATH_PREFIX);
+        let vfs_zip_name = "vfs_zip";
+
+        SourceReader::new(
+            Some(Path::new(vfs_zip_name).join(base_dir)),
+            Path::new(&vfs_fs_name).join(working_dir),
+            Box::new(crate::CompoundFs::new(Map::from([
+                (vfs_fs_name, Box::new(crate::VfsFs {}) as Box<dyn VirtualFs>),
+                (
+                    vfs_zip_name.to_owned(),
+                    Box::new(crate::VfsZip::new(archive).unwrap()) as Box<dyn VirtualFs>,
+                ),
+            ]))),
         )
     }
 }
