@@ -12,6 +12,8 @@ use crate::instruction::{Instruction, OpIndex, ValueType};
 use crate::metadata::*;
 use crate::stack::Stack;
 use crate::value::*;
+
+#[cfg(feature = "serde_borsh")]
 use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
@@ -203,7 +205,8 @@ impl Element for GosElem {
 }
 
 /// Cell is much cheaper than RefCell, used to store basic types
-#[derive(BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct CellElem<T>
 where
     T: Copy + PartialEq,
@@ -940,7 +943,8 @@ pub enum IfaceBinding {
     Iface(usize, Option<Vec<OpIndex>>),
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Clone, Debug)]
 pub enum Binding4Runtime {
     Struct(FunctionKey, bool, Option<Vec<OpIndex>>),
     Iface(usize, Option<Vec<OpIndex>>),
@@ -1465,15 +1469,16 @@ impl Display for UnsafePtrObj {
 // ----------------------------------------------------------------------------
 // ClosureObj
 
-#[derive(BorshDeserialize, BorshSerialize, Clone)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Clone)]
 pub struct ValueDesc {
     pub func: FunctionKey,
     pub index: OpIndex,
     pub typ: ValueType,
     pub is_local: bool,
-    #[borsh_skip]
+    #[cfg_attr(feature = "serde_borsh", borsh_skip)]
     pub stack: Weak<RefCell<Stack>>,
-    #[borsh_skip]
+    #[cfg_attr(feature = "serde_borsh", borsh_skip)]
     pub stack_base: OpIndex,
 }
 
@@ -1696,6 +1701,7 @@ impl Ord for UpValue {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for UpValue {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
         match &self.inner.borrow() as &UpValueState {
@@ -1706,6 +1712,7 @@ impl BorshSerialize for UpValue {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for UpValue {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
         let uv = ValueDesc::deserialize(buf)?;
@@ -1724,11 +1731,12 @@ impl WeakUpValue {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Clone, Debug)]
 pub struct GosClosureObj {
     pub func: FunctionKey,
     pub uvs: Option<Map<usize, UpValue>>,
-    #[borsh_skip]
+    #[cfg_attr(feature = "serde_borsh", borsh_skip)]
     pub recv: Option<GosValue>,
     pub meta: Meta,
 }
@@ -1932,6 +1940,7 @@ impl PackageObj {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for PackageObj {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
         self.name.serialize(writer)?;
@@ -1947,6 +1956,7 @@ impl BorshSerialize for PackageObj {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for PackageObj {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
         let name = String::deserialize(buf)?;
@@ -1970,7 +1980,8 @@ impl BorshDeserialize for PackageObj {
 // ----------------------------------------------------------------------------
 // FunctionObj
 
-#[derive(BorshDeserialize, BorshSerialize, Eq, PartialEq, Copy, Clone, Debug)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Eq, PartialEq, Copy, Clone, Debug)]
 pub enum FuncFlag {
     Default,
     PkgCtor,
@@ -1978,7 +1989,8 @@ pub enum FuncFlag {
 }
 
 /// FunctionObj is the direct container of the Opcode.
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Clone, Debug)]
 pub struct FunctionObj {
     pub package: PackageKey,
     pub meta: Meta,

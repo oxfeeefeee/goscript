@@ -12,10 +12,14 @@ use crate::gc::GcContainer;
 pub use crate::instruction::*;
 pub use crate::metadata::*;
 pub use crate::objects::*;
+#[cfg(feature = "serde_borsh")]
 use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
 };
+#[cfg(feature = "serde_borsh")]
+use std::io::{Error, ErrorKind};
+
 use ordered_float;
 use std::cell::Cell;
 use std::cmp::Ordering;
@@ -23,7 +27,6 @@ use std::collections::VecDeque;
 use std::convert::From;
 use std::fmt::{self, Debug, Display, Write};
 use std::hash::{Hash, Hasher};
-use std::io::{Error, ErrorKind};
 use std::num::Wrapping;
 use std::ptr;
 use std::rc::Rc;
@@ -2376,106 +2379,112 @@ impl Ord for GosValue {
     }
 }
 
-/// How type info should be serialized
-pub trait TypeWrite {
-    fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()>;
-}
+#[cfg(feature = "serde_borsh")]
+mod type_serde {
+    use super::*;
 
-/// How type info should be deserialized
-pub trait TypeRead {
-    fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType>;
+    /// How type info should be serialized
+    pub trait TypeWrite {
+        fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()>;
+    }
 
-    fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize>;
+    /// How type info should be deserialized
+    pub trait TypeRead {
+        fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType>;
 
-    fn t_elem_read(&self) -> BorshResult<Self>
-    where
-        Self: Sized;
-}
+        fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize>;
 
-/// Type info is embeded when serialize GosValue
-struct TypeEmbeded;
+        fn t_elem_read(&self) -> BorshResult<Self>
+        where
+            Self: Sized;
+    }
 
-/// Type info is omitted when serialize GosValue
-struct TypeOmitted;
+    /// Type info is embeded when serialize GosValue
+    pub(super) struct TypeEmbeded;
 
-/// Type info is provied by metadata when deserialize GosValue
-struct TypeFromMetadata<'a>(&'a Meta, &'a MetadataObjs);
+    /// Type info is omitted when serialize GosValue
+    pub(super) struct TypeOmitted;
 
-impl TypeWrite for TypeEmbeded {
-    #[inline]
-    fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()> {
-        val.typ().serialize(writer)?;
-        match val.typ() {
-            ValueType::Array => {
-                val.t_elem().serialize(writer)?;
-                (val.len() as u32).serialize(writer)?;
+    /// Type info is provied by metadata when deserialize GosValue
+    pub(super) struct TypeFromMetadata<'a>(pub &'a Meta, pub &'a MetadataObjs);
+
+    impl TypeWrite for TypeEmbeded {
+        #[inline]
+        fn serialize<W: BorshWrite>(val: &GosValue, writer: &mut W) -> BorshResult<()> {
+            val.typ().serialize(writer)?;
+            match val.typ() {
+                ValueType::Array => {
+                    val.t_elem().serialize(writer)?;
+                    (val.len() as u32).serialize(writer)?;
+                }
+                ValueType::Slice => {
+                    val.t_elem().serialize(writer)?;
+                }
+                _ => {}
             }
-            ValueType::Slice => {
-                val.t_elem().serialize(writer)?;
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-}
-
-impl TypeWrite for TypeOmitted {
-    #[inline]
-    fn serialize<W: BorshWrite>(_: &GosValue, _: &mut W) -> BorshResult<()> {
-        Ok(())
-    }
-}
-
-impl TypeRead for TypeEmbeded {
-    #[inline]
-    fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType> {
-        ValueType::deserialize(buf)
-    }
-
-    fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize> {
-        Ok(u32::deserialize(buf)? as usize)
-    }
-
-    #[inline]
-    fn t_elem_read(&self) -> BorshResult<Self>
-    where
-        Self: Sized,
-    {
-        Ok(TypeEmbeded {})
-    }
-}
-
-impl<'a> TypeRead for TypeFromMetadata<'a> {
-    #[inline]
-    fn deserialize(&self, _: &mut &[u8]) -> BorshResult<ValueType> {
-        Ok(self.0.value_type(self.1))
-    }
-
-    #[inline]
-    fn deserialize_array_len(&self, _: &mut &[u8]) -> BorshResult<usize> {
-        match &self.1[self.0.key] {
-            MetadataType::Array(_, len) => Ok(*len),
-            _ => unreachable!(),
+            Ok(())
         }
     }
 
-    #[inline]
-    fn t_elem_read(&self) -> BorshResult<Self>
-    where
-        Self: Sized,
-    {
-        let elem = match &self.1[self.0.key] {
-            MetadataType::Array(et, _) => et,
-            MetadataType::Slice(et) => et,
-            _ => unreachable!(),
-        };
-        Ok(Self(elem, self.1))
+    impl TypeWrite for TypeOmitted {
+        #[inline]
+        fn serialize<W: BorshWrite>(_: &GosValue, _: &mut W) -> BorshResult<()> {
+            Ok(())
+        }
+    }
+
+    impl TypeRead for TypeEmbeded {
+        #[inline]
+        fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType> {
+            ValueType::deserialize(buf)
+        }
+
+        fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize> {
+            Ok(u32::deserialize(buf)? as usize)
+        }
+
+        #[inline]
+        fn t_elem_read(&self) -> BorshResult<Self>
+        where
+            Self: Sized,
+        {
+            Ok(TypeEmbeded {})
+        }
+    }
+
+    impl<'a> TypeRead for TypeFromMetadata<'a> {
+        #[inline]
+        fn deserialize(&self, _: &mut &[u8]) -> BorshResult<ValueType> {
+            Ok(self.0.value_type(self.1))
+        }
+
+        #[inline]
+        fn deserialize_array_len(&self, _: &mut &[u8]) -> BorshResult<usize> {
+            match &self.1[self.0.key] {
+                MetadataType::Array(_, len) => Ok(*len),
+                _ => unreachable!(),
+            }
+        }
+
+        #[inline]
+        fn t_elem_read(&self) -> BorshResult<Self>
+        where
+            Self: Sized,
+        {
+            let elem = match &self.1[self.0.key] {
+                MetadataType::Array(et, _) => et,
+                MetadataType::Slice(et) => et,
+                _ => unreachable!(),
+            };
+            Ok(Self(elem, self.1))
+        }
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl GosValue {
     pub fn serialize_wo_type<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
-        self.serialize::<W, TypeOmitted>(writer)
+        self.serialize::<W, type_serde::TypeOmitted>(writer)
     }
 
     pub fn deserialize_wo_type(
@@ -2483,10 +2492,13 @@ impl GosValue {
         metas: &MetadataObjs,
         buf: &mut &[u8],
     ) -> BorshResult<GosValue> {
-        GosValue::deserialize(&TypeFromMetadata(meta, metas), buf)
+        GosValue::deserialize(&type_serde::TypeFromMetadata(meta, metas), buf)
     }
 
-    fn serialize<W: BorshWrite, T: TypeWrite>(&self, writer: &mut W) -> BorshResult<()> {
+    fn serialize<W: BorshWrite, T: type_serde::TypeWrite>(
+        &self,
+        writer: &mut W,
+    ) -> BorshResult<()> {
         T::serialize(&self, writer)?;
         match &self.typ {
             ValueType::Bool => self.as_bool().serialize(writer),
@@ -2569,7 +2581,7 @@ impl GosValue {
         }
     }
 
-    fn deserialize<T: TypeRead>(tr: &T, buf: &mut &[u8]) -> BorshResult<GosValue> {
+    fn deserialize<T: type_serde::TypeRead>(tr: &T, buf: &mut &[u8]) -> BorshResult<GosValue> {
         let dummy_gcc = &GcContainer::new();
         let typ = tr.deserialize(buf)?;
         let val: GosValue = match typ {
@@ -2657,7 +2669,7 @@ impl GosValue {
     }
 
     #[inline]
-    fn deserialize_array<T: TypeRead>(
+    fn deserialize_array<T: type_serde::TypeRead>(
         tr: &T,
         len: usize,
         caller: &Box<dyn Dispatcher>,
@@ -2683,15 +2695,17 @@ impl GosValue {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for GosValue {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
-        GosValue::serialize::<W, TypeEmbeded>(&self, writer)
+        GosValue::serialize::<W, type_serde::TypeEmbeded>(&self, writer)
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for GosValue {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        GosValue::deserialize(&TypeEmbeded, buf)
+        GosValue::deserialize(&type_serde::TypeEmbeded, buf)
     }
 }
 
@@ -3051,6 +3065,7 @@ mod test {
     use std::collections::HashMap;
     use std::mem;
 
+    #[cfg(feature = "serde_borsh")]
     #[test]
     fn test_serial() {
         let data = vec![1.into()];

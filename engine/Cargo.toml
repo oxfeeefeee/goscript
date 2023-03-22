@@ -13,13 +13,15 @@ go_std = []
 btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscript-vm/btree_map"]
 codegen = []
 instruction_pos = ["goscript-vm/instruction_pos"] 
+serde_borsh = ["dep:borsh", "goscript-vm/serde_borsh"]
   
 [dependencies]   
 futures-lite = "1.12.0"
-zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
 lazy_static = "1.4.0"
-borsh = "0.9.3"
-base64 = "0.13.0"
+zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
+borsh = { version ="0.9.3", optional = true } 
+
+
 
 [dependencies.goscript-parser] 
 path = "../parser"

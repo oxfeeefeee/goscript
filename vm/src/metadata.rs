@@ -8,6 +8,7 @@ use crate::instruction::{OpIndex, ValueType};
 use crate::objects::{IfaceBinding, StructObj};
 use crate::value::ArrCaller;
 use crate::value::GosValue;
+#[cfg(feature = "serde_borsh")]
 use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
@@ -16,7 +17,8 @@ use goscript_parser::Map;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[derive(BorshDeserialize, BorshSerialize, PartialEq, Eq, Clone, Debug)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum ChannelType {
     Send,
     Recv,
@@ -76,9 +78,8 @@ impl PrimitiveMeta {
     }
 }
 
-#[derive(
-    BorshDeserialize, BorshSerialize, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord,
-)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Meta {
     pub key: MetadataKey,
     pub ptr_depth: u8,
@@ -371,7 +372,8 @@ impl Meta {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone)]
 pub struct FieldInfo {
     pub meta: Meta,
     pub name: String,
@@ -385,7 +387,8 @@ impl FieldInfo {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone)]
 pub struct Fields {
     fields: Vec<FieldInfo>,
 }
@@ -461,7 +464,8 @@ impl Fields {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone, Copy)]
 pub struct MethodDesc {
     pub pointer_recv: bool,
     pub func: Option<FunctionKey>,
@@ -482,6 +486,7 @@ impl Methods {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for Methods {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
         let methods: Vec<MethodDesc> = self.members.iter().map(|x| *x.borrow()).collect();
@@ -490,6 +495,7 @@ impl BorshSerialize for Methods {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Methods {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
         let methods = Vec::<MethodDesc>::deserialize(buf)?;
@@ -502,7 +508,8 @@ impl BorshDeserialize for Methods {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone)]
 pub struct SigMetadata {
     pub recv: Option<Meta>,
     pub params: Vec<Meta>,
@@ -566,7 +573,8 @@ impl SigMetadata {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, Clone)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
+#[derive(Debug, Clone)]
 pub enum MetadataType {
     Bool,
     Int,

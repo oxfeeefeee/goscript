@@ -5,6 +5,7 @@
 use crate::ffi::Ffi;
 #[cfg(feature = "go_std")]
 use crate::std::os;
+#[cfg(feature = "serde_borsh")]
 use borsh::{BorshDeserialize, BorshSerialize};
 use std::path::Path;
 use std::rc::Rc;
@@ -104,7 +105,7 @@ impl Engine {
         cg::parse_check_gen(path, &cfg, reader, &mut fs).map(|x| (x, fs))
     }
 
-    #[cfg(feature = "codegen")]
+    #[cfg(all(feature = "codegen", feature = "serde_borsh"))]
     pub fn compile_serialize<S: SourceRead>(
         &self,
         trace_parser: bool,
@@ -130,11 +131,17 @@ impl Engine {
     ) -> Result<(), fe::ErrorList> {
         self.compile(trace_parser, trace_checker, reader, path)
             .map(|(code, fs)| {
-                let encoded = code.try_to_vec().unwrap();
-                let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
-                dbg!(encoded.len());
-                //dbg!(base64::encode(encoded));
-                vm::run(&decoded, &self.ffi, Some(&fs))
+                #[cfg(feature = "serde_borsh")]
+                {
+                    let encoded = code.try_to_vec().unwrap();
+                    let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
+                    dbg!(encoded.len());
+                    vm::run(&decoded, &self.ffi, Some(&fs))
+                }
+                #[cfg(not(feature = "serde_borsh"))]
+                {
+                    vm::run(&code, &self.ffi, Some(&fs))
+                }
             })
     }
 }

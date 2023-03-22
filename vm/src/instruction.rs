@@ -3,6 +3,8 @@
 // license that can be found in the LICENSE file.
 
 #![allow(non_camel_case_types)]
+
+#[cfg(feature = "serde_borsh")]
 use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
@@ -128,6 +130,7 @@ impl fmt::Display for Opcode {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for Opcode {
     #[inline]
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
@@ -136,6 +139,7 @@ impl BorshSerialize for Opcode {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Opcode {
     #[inline]
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
@@ -202,6 +206,7 @@ impl ValueType {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for ValueType {
     #[inline]
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
@@ -210,6 +215,7 @@ impl BorshSerialize for ValueType {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for ValueType {
     #[inline]
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
@@ -398,6 +404,7 @@ impl Instruction {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for Instruction {
     fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
         self.op0.serialize(writer)?;
@@ -410,12 +417,13 @@ impl BorshSerialize for Instruction {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Instruction {
     fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
         // Optimization: Get all data at once
         const BYTE_COUNT: usize = 4;
         const OP_INDEX_SIZE: usize = core::mem::size_of::<OpIndex>();
-        let data = <[u8; (BYTE_COUNT + OP_INDEX_SIZE * 3)]>::deserialize(buf)?;
+        let data = <[u8; BYTE_COUNT + OP_INDEX_SIZE * 3]>::deserialize(buf)?;
         let op0 = unsafe { std::mem::transmute(data[0]) };
         let op1 = unsafe { std::mem::transmute(data[1]) };
         let t0 = unsafe { std::mem::transmute(data[2]) };

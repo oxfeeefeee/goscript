@@ -3,9 +3,13 @@
 // license that can be found in the LICENSE file.
 
 use crate::value::*;
+#[cfg(feature = "serde_borsh")]
 use borsh::{maybestd::io::Result, maybestd::io::Write, BorshDeserialize, BorshSerialize};
-use goscript_parser::{piggy_key_type, PiggyVec, PiggyVecKey};
+#[cfg(feature = "serde_borsh")]
+use goscript_parser::PiggyVecKey;
+use goscript_parser::{piggy_key_type, PiggyVec};
 
+#[cfg(feature = "serde_borsh")]
 macro_rules! impl_borsh_for_key {
     ($key:ident) => {
         impl BorshSerialize for $key {
@@ -29,8 +33,11 @@ piggy_key_type! {
     pub struct PackageKey;
 }
 
+#[cfg(feature = "serde_borsh")]
 impl_borsh_for_key!(MetadataKey);
+#[cfg(feature = "serde_borsh")]
 impl_borsh_for_key!(FunctionKey);
+#[cfg(feature = "serde_borsh")]
 impl_borsh_for_key!(PackageKey);
 
 pub type MetadataObjs = PiggyVec<MetadataKey, MetadataType>;
@@ -60,6 +67,7 @@ impl VMObjects {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshSerialize for VMObjects {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
         self.metas.vec().serialize(writer)?;
@@ -68,6 +76,7 @@ impl BorshSerialize for VMObjects {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for VMObjects {
     fn deserialize(buf: &mut &[u8]) -> Result<Self> {
         let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
@@ -84,7 +93,7 @@ impl BorshDeserialize for VMObjects {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize)]
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
 pub struct Bytecode {
     pub objects: VMObjects,
     pub consts: Vec<GosValue>,
