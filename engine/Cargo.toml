@@ -14,13 +14,17 @@ btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscrip
 codegen = []
 instruction_pos = ["goscript-vm/instruction_pos"] 
 serde_borsh = ["dep:borsh", "goscript-vm/serde_borsh"]
-  
+wasm = ["dep:wasm-bindgen", "dep:instant", "dep:getrandom"]
+
 [dependencies]   
 futures-lite = "1.12.0"
 lazy_static = "1.4.0"
 zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
-borsh = { version ="0.9.3", optional = true } 
+borsh = { version = "0.9.3", optional = true } 
 
+wasm-bindgen = { version = "0.2.84", optional = true }  
+instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }
 
 
 [dependencies.goscript-parser] 

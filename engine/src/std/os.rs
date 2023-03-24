@@ -155,11 +155,27 @@ impl StdIo {
         match self {
             Self::StdOut => match &mut api.std_out {
                 Some(r) => r.write(buf),
-                None => io::stdout().lock().write(buf),
+                None => {
+                    #[cfg(feature = "wasm")]
+                    {
+                        crate::std::wasm::console_log(&String::from_utf8_lossy(buf));
+                        Ok(buf.len())
+                    }
+                    #[cfg(not(feature = "wasm"))]
+                    io::stdout().lock().write(buf)
+                }
             },
             Self::StdErr => match &mut api.std_err {
                 Some(r) => r.write(buf),
-                None => io::stderr().lock().write(buf),
+                None => {
+                    #[cfg(feature = "wasm")]
+                    {
+                        crate::std::wasm::console_log(&String::from_utf8_lossy(buf));
+                        Ok(buf.len())
+                    }
+                    #[cfg(not(feature = "wasm"))]
+                    io::stderr().lock().write(buf)
+                }
             },
             Self::StdIn => Err(io::Error::new(
                 io::ErrorKind::Unsupported,

@@ -11,6 +11,8 @@ pub(crate) mod os;
 mod reflect;
 #[cfg(feature = "async")]
 mod sync;
+#[cfg(feature = "wasm")]
+mod wasm;
 
 pub(crate) fn register(factory: &mut goscript_vm::FfiFactory) {
     fmt2::Fmt2Ffi::register(factory);

@@ -30,6 +30,9 @@ impl Fmt2Ffi {
             })
             .map(|x: RuntimeResult<String>| x.unwrap())
             .collect();
+        #[cfg(feature = "wasm")]
+        crate::std::wasm::console_log(&strs.join(", "));
+        #[cfg(not(feature = "wasm"))]
         println!("{}", strs.join(", "));
         Ok(())
     }
