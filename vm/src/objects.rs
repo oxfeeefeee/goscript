@@ -2000,10 +2000,10 @@ pub struct FunctionObj {
     pub ret_zeros: Vec<GosValue>,
 
     pub code: Vec<Instruction>,
-    #[cfg(feature = "instruction_pos")]
-    pub pos: Vec<Option<u32>>,
-    #[cfg(not(feature = "instruction_pos"))]
-    #[borsh_skip]
+    #[cfg_attr(
+        all(feature = "serde_borsh", not(feature = "instruction_pos")),
+        borsh_skip
+    )]
     pub pos: Vec<Option<u32>>,
     pub up_ptrs: Vec<ValueDesc>,
     pub local_zeros: Vec<GosValue>,
