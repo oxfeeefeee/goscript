@@ -377,6 +377,7 @@ impl Meta {
 pub struct FieldInfo {
     pub meta: Meta,
     pub name: String,
+    pub tag: Option<String>,
     //pub exported: bool,
     pub embedded_indices: Option<Vec<usize>>,
 }
@@ -384,6 +385,58 @@ pub struct FieldInfo {
 impl FieldInfo {
     pub fn exported(&self) -> bool {
         self.name.chars().next().unwrap().is_uppercase()
+    }
+
+    pub fn lookup_tag(&self, key: &str) -> Option<String> {
+        if self.tag.is_none() {
+            return None;
+        }
+
+        let mut tag: &str = self.tag.as_ref().unwrap();
+        while !tag.is_empty() {
+            // Skip leading space.
+            let i = tag.find(|c: char| c != ' ').unwrap_or(tag.len());
+            tag = &tag[i..];
+            if tag.is_empty() {
+                break;
+            }
+
+            // Scan to colon. A space, a quote or a control character is a syntax error.
+            let i = tag
+                .find(|c: char| c <= ' ' || c == ':' || c == '"' || c as u32 == 0x7f)
+                .unwrap_or(tag.len());
+
+            if i == 0 || i + 1 >= tag.len() || &tag[i..i + 1] != ":" || &tag[i + 1..i + 2] != "\"" {
+                break;
+            }
+
+            let name = &tag[..i];
+            tag = &tag[i + 1..];
+
+            // Scan quoted string to find value.
+            let mut i = 1;
+            while i < tag.len() && &tag[i..i + 1] != "\"" {
+                if &tag[i..i + 1] == "\\" {
+                    i += 1;
+                }
+                i += 1;
+            }
+
+            if i >= tag.len() {
+                break;
+            }
+
+            let qvalue = &tag[..i + 1];
+            tag = &tag[i + 1..];
+
+            if key == name {
+                let value = str::replace(qvalue, "\\\"", "\"")
+                    .trim_matches('"')
+                    .to_string();
+                return Some(value);
+            }
+        }
+        None
     }
 }
 

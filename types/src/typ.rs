@@ -545,6 +545,10 @@ impl StructDetail {
         &self.fields
     }
 
+    pub fn tags(&self) -> &Option<Vec<Option<String>>> {
+        &self.tags
+    }
+
     pub fn tag(&self, i: usize) -> Option<&String> {
         self.tags
             .as_ref()

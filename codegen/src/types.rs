@@ -398,12 +398,12 @@ impl<'a> TypeLookup<'a> {
                 Meta::new_map(ktype, vtype, vmctx.metas_mut())
             }
             Type::Struct(detail) => {
-                let fields = self.build_fields(detail.fields(), vmctx);
+                let fields = self.build_fields(detail.fields(), detail.tags(), vmctx);
                 vmctx.new_struct_meta(fields)
             }
             Type::Interface(detail) => {
                 let methods = detail.all_methods();
-                let fields = self.build_fields(methods.as_ref().unwrap(), vmctx);
+                let fields = self.build_fields(methods.as_ref().unwrap(), &None, vmctx);
                 Meta::new_interface(fields, vmctx.metas_mut())
             }
             Type::Chan(detail) => {
@@ -596,17 +596,27 @@ impl<'a> TypeLookup<'a> {
         )
     }
 
-    fn build_fields(&mut self, fields: &Vec<TCObjKey>, vmctx: &mut CodeGenVMCtx) -> Fields {
+    fn build_fields(
+        &mut self,
+        fields: &Vec<TCObjKey>,
+        tags: &Option<Vec<Option<String>>>,
+        vmctx: &mut CodeGenVMCtx,
+    ) -> Fields {
         let mut infos = Vec::new();
         let mut embedded_fields = Vec::new();
         for (i, f) in fields.iter().enumerate() {
             let field = &self.tc_objs.lobjs[*f];
+            let tag = match tags {
+                Some(tags) => tags[i].clone(),
+                None => None,
+            };
             let meta = self.tc_type_to_meta(field.typ().unwrap(), vmctx);
             let embedded =
                 field.entity_type().is_var() && field.entity_type().var_property().embedded;
             infos.push(FieldInfo {
                 meta,
                 name: field.name().clone(),
+                tag,
                 embedded_indices: None,
             });
             if embedded {
@@ -626,6 +636,7 @@ impl<'a> TypeLookup<'a> {
                         infos.push(FieldInfo {
                             meta: f.meta,
                             name: f.name.clone(),
+                            tag: f.tag.clone(),
                             embedded_indices: Some(indices),
                         });
                     }
