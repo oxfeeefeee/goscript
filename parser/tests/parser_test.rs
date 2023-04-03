@@ -25,29 +25,29 @@ fn test_parser_case1() {
     dbg!(err_cnt);
 }
 
-fn parse_dir(s: &str, trace: bool) -> usize {
-    let mut total = 0;
-    let paths = fs::read_dir(s).unwrap();
-    for path in paths {
-        let p0 = path.unwrap().path();
-        if p0.is_dir() {
-            total += parse_dir(p0.to_str().unwrap(), trace);
-        }
-        let p = p0.to_str().unwrap();
-        if p.ends_with(".go") {
-            println!("Name: {}", p);
-            total += load_parse(p, trace);
-        }
-    }
-    total
-}
+// fn parse_dir(s: &str, trace: bool) -> usize {
+//     let mut total = 0;
+//     let paths = fs::read_dir(s).unwrap();
+//     for path in paths {
+//         let p0 = path.unwrap().path();
+//         if p0.is_dir() {
+//             total += parse_dir(p0.to_str().unwrap(), trace);
+//         }
+//         let p = p0.to_str().unwrap();
+//         if p.ends_with(".go") {
+//             println!("Name: {}", p);
+//             total += load_parse(p, trace);
+//         }
+//     }
+//     total
+// }
 
-#[test]
-fn test_parser_dir() {
-    let t = parse_dir("./../../go/src", false);
-    //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
-    println!("hohohoh{}", t);
-}
+// #[test]
+// fn test_parser_dir() {
+//     let t = parse_dir("./../../go/src", false);
+//     //let t = parse_dir("./../../../../go/src/github.com/ethereum", false);
+//     println!("hohohoh{}", t);
+// }
 
 #[test]
 fn test_issue3() {

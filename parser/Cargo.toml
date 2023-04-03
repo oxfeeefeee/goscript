@@ -3,6 +3,10 @@ name = "goscript-parser"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
+license = "BSD"
+repository = "https://github.com/oxfeeefeee/goscript/"
+keywords = ["golang", "parser", "goscript"]
+categories = ["compiler", "parser"]
 
 [features] 
 default = []
