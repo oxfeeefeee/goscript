@@ -3,6 +3,12 @@ name = "go-codegen"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
+license = "BSD-2-Clause"
+repository = "https://github.com/oxfeeefeee/goscript/"
+keywords = ["golang", "goscript", "codegen"]
+categories = ["scripting language", "programming language", "compiler"]
+description = "The codegen of the Goscript project."
+
 
 [features] 
 default = []
@@ -10,18 +16,9 @@ async = ["go-vm/async"]
 btree_map = ["go-parser/btree_map"]
 
 [dependencies]
-
-[dependencies.go-parser]
-path = "../parser"
-version = "0.1.0"
-
-[dependencies.go-vm]
-path = "../vm"
-version = "0.1.0"
-
-[dependencies.go-types]
-path = "../types"
-version = "0.1.0"
+go-parser = { version = "0.1.0", path = "../parser" }
+go-vm = { version = "0.1.0", path = "../vm" }
+go-types = { version = "0.1.0", path = "../types" }
 
 [dev-dependencies]
 time-test = "0.2.2"

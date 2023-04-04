@@ -2,7 +2,7 @@
 name = "go-pmacro"
 version = "0.1.0"
 edition = "2021"
-license = "BSD"
+license = "BSD-2-Clause	"
 repository = "https://github.com/oxfeeefeee/goscript/"
 description = "Provides some proc-macros for the goscript project"
 

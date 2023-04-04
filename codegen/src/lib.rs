@@ -2,6 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//! This crate is part of the Goscript project. Please refer to <https://goscript.dev> for more information.
+//!
+//! # Feature
+//! - `async`: Channel and goroutine support
+//! - `btree_map`: Make it use BTreeMap instead of HashMap
+
 mod branch;
 mod consts;
 mod context;

@@ -6,7 +6,7 @@
 //!
 //! # Feature
 //! - `async`: Channel and goroutine support
-//! - `btree_map`: Make it uses BTreeMap instead of HashMap
+//! - `btree_map`: Make it use BTreeMap instead of HashMap
 //! - `instruction_pos`: Add instruction position to bytecode for debugging
 //! - `serde_borsh`: Serde support for bytecode using Borsh
 
