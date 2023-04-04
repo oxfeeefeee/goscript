@@ -13,8 +13,8 @@
 use crate::SourceRead;
 
 use super::check::Checker;
-use goscript_parser::ast::{BlockStmt, Expr, Stmt};
-use goscript_parser::Token;
+use go_parser::ast::{BlockStmt, Expr, Stmt};
+use go_parser::Token;
 use std::rc::Rc;
 
 impl<'a, S: SourceRead> Checker<'a, S> {

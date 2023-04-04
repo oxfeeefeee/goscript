@@ -1,13 +1,18 @@
 [package]
-name = "goscript-vm"
+name = "go-vm"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
+license = "BSD"
+repository = "https://github.com/oxfeeefeee/goscript/"
+keywords = ["golang", "vm", "goscript"]
+categories = ["programming language", "vm"]
+description = "The vm of the Goscript project."
 
 [features] 
 default = []
 async = ["dep:async-channel", "dep:async-executor", "dep:futures-lite", "dep:fastrand"]  
-btree_map = ["goscript-parser/btree_map"]
+btree_map = ["go-parser/btree_map"]
 instruction_pos = []
 serde_borsh = ["dep:borsh"]
 
@@ -19,14 +24,8 @@ futures-lite = { version ="1.12.0", optional = true }
 fastrand = { version ="1.9.0", optional = true }
 borsh = { version ="0.9.3", optional = true } 
 
-[dependencies.goscript-parser]
-path = "../parser"
-version = "0.1.0"
-
-
-[dependencies.goscript-pmacro]
-path = "../pmacro" 
-version = "0.1.0"
+go-parser = { version = "0.1.0", path = "../parser" }
+go-pmacro = { version = "0.1.0", path = "../pmacro" }
 
 [dev-dependencies]
 time-test = "0.2.2"

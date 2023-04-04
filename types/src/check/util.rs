@@ -23,7 +23,7 @@ use super::check::{Checker, FilesContext};
 use super::resolver::DeclInfo;
 use std::cmp::Ordering;
 
-use goscript_parser::{ast, ast::Expr, FilePos, IdentKey, Map, Pos};
+use go_parser::{ast, ast::Expr, FilePos, IdentKey, Map, Pos};
 
 macro_rules! error_operand {
     ($x:ident, $fmt:expr, $checker:ident) => {

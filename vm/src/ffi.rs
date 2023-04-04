@@ -10,7 +10,7 @@ use crate::value::*;
 use crate::value::{GosValue, RuntimeResult};
 #[cfg(feature = "async")]
 use futures_lite::future::Future;
-use goscript_parser::Map;
+use go_parser::Map;
 use std::cell::Ref;
 #[cfg(feature = "async")]
 use std::pin::Pin;

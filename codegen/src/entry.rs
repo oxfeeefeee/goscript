@@ -8,14 +8,14 @@ use super::consts::*;
 use super::context::*;
 use super::package::PkgHelper;
 use super::types::{TypeCache, TypeLookup};
-use goscript_parser::ast::Ident;
-use goscript_parser::{AstObjects, ErrorList, FileSet, IdentKey, Map};
-use goscript_types::{
+use go_parser::ast::Ident;
+use go_parser::{AstObjects, ErrorList, FileSet, IdentKey, Map};
+use go_types::{
     check::TypeInfo, ImportKey, Importer, PackageKey as TCPackageKey, SourceRead, TCObjects,
     TraceConfig,
 };
-use goscript_vm::types::*;
-use goscript_vm::*;
+use go_vm::types::*;
+use go_vm::*;
 use std::path::Path;
 use std::vec;
 

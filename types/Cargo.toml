@@ -1,12 +1,17 @@
 [package]
-name = "goscript-types"
+name = "go-types"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
+license = "BSD"
+repository = "https://github.com/oxfeeefeee/goscript/"
+keywords = ["golang", "type checker", "goscript"]
+categories = ["compiler", "type checker"]
+description = "The type checker of the Goscript project."
 
 [features] 
 default = [] 
-btree_map = ["goscript-parser/btree_map"]
+btree_map = ["go-parser/btree_map"]
 
 [dependencies]
 num-bigint = "0.4"
@@ -14,9 +19,8 @@ num-rational = "0.4"
 num-traits = "0.2"
 ordered-float = "3.0"
 
+go-parser = { version = "0.1.0", path = "../parser" }
+
 [dev-dependencies]
 regex = "1"
 
-[dependencies.goscript-parser]
-path = "../parser"
-version = "0.1.0"

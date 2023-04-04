@@ -94,7 +94,7 @@ fn gen_dispatch_method(
                 &self,
                 ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
-            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = goscript_vm::types::RuntimeResult<Vec<GosValue>>> + '_>> {
+            ) -> std::pin::Pin<Box<dyn futures_lite::future::Future<Output = go_vm::types::RuntimeResult<Vec<GosValue>>> + '_>> {
                 let arg_count = args.len();
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {
@@ -111,7 +111,7 @@ fn gen_dispatch_method(
                 &self,
                 ctx: &mut FfiCtx,
                 args: Vec<GosValue>,
-            ) -> goscript_vm::types::RuntimeResult<Vec<GosValue>> {
+            ) -> go_vm::types::RuntimeResult<Vec<GosValue>> {
                 let arg_count = args.len();
                 let mut arg_iter = args.into_iter();
                 match ctx.func_name {
@@ -219,7 +219,7 @@ fn gen_new_method(type_name: &Ident, new_method: &Option<ImplItemMethod>) -> Imp
 
 fn gen_register_method() -> ImplItemMethod {
     parse_quote! {
-        pub fn register(factory: &mut goscript_vm::FfiFactory) {
+        pub fn register(factory: &mut go_vm::FfiFactory) {
             factory.register(Self::auto_gen_ffi_id(), Self::auto_gen_ffi_new());
         }
     }

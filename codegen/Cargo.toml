@@ -1,25 +1,25 @@
 [package]
-name = "goscript-codegen"
+name = "go-codegen"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 
 [features] 
 default = []
-async = ["goscript-vm/async"]  
-btree_map = ["goscript-parser/btree_map"]
+async = ["go-vm/async"]  
+btree_map = ["go-parser/btree_map"]
 
 [dependencies]
 
-[dependencies.goscript-parser]
+[dependencies.go-parser]
 path = "../parser"
 version = "0.1.0"
 
-[dependencies.goscript-vm]
+[dependencies.go-vm]
 path = "../vm"
 version = "0.1.0"
 
-[dependencies.goscript-types]
+[dependencies.go-types]
 path = "../types"
 version = "0.1.0"
 

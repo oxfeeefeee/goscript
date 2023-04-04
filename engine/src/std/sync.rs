@@ -5,11 +5,11 @@
 ///https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock
 ///
 ///
-extern crate self as goscript_engine;
+extern crate self as go_engine;
 use crate::ffi::*;
 use futures_lite::future;
 use futures_lite::future::Future;
-use goscript_vm::types::{GosValue, RuntimeResult, UnsafePtr};
+use go_vm::types::{GosValue, RuntimeResult, UnsafePtr};
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::pin::Pin;

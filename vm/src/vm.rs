@@ -7,8 +7,8 @@ use crate::gc::{collect, GcContainer};
 use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
-use goscript_parser::Map;
-use goscript_parser::{FilePos, FileSet};
+use go_parser::Map;
+use go_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::rc::Rc;
@@ -331,7 +331,7 @@ impl<'a> Fiber<'a> {
         }
     }
 
-    #[cfg_attr(feature = "async", goscript_pmacro::async_fn)]
+    #[cfg_attr(feature = "async", go_pmacro::async_fn)]
     fn main_loop(&mut self) {
         let ctx = &self.context;
         let gcc = ctx.gcc;

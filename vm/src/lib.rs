@@ -2,6 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//! This crate is part of the Goscript project. Please refer to <https://goscript.dev> for more information.
+//!
+//! # Feature
+//! - `async`: Channel and goroutine support
+//! - `btree_map`: Make it uses BTreeMap instead of HashMap
+//! - `instruction_pos`: Add instruction position to bytecode for debugging
+//! - `serde_borsh`: Serde support for bytecode using Borsh
+
 mod instruction;
 #[macro_use]
 mod metadata;
@@ -23,7 +31,7 @@ pub mod types {
 
 pub use {
     ffi::*,
-    goscript_pmacro::{ffi_impl, Ffi, UnsafePtr},
+    go_pmacro::{ffi_impl, Ffi, UnsafePtr},
     value::Bytecode,
     vm::run,
 };

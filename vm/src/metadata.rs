@@ -13,7 +13,7 @@ use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
 };
-use goscript_parser::Map;
+use go_parser::Map;
 use std::cell::RefCell;
 use std::rc::Rc;
 

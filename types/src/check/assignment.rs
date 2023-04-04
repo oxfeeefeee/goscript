@@ -18,9 +18,9 @@ use super::super::operand::{Operand, OperandMode};
 use super::super::typ;
 use super::check::{Checker, FilesContext};
 use super::util::UnpackResult;
-use goscript_parser::ast::Expr;
-use goscript_parser::ast::Node;
-use goscript_parser::Pos;
+use go_parser::ast::Expr;
+use go_parser::ast::Node;
+use go_parser::Pos;
 
 impl<'a, S: SourceRead> Checker<'a, S> {
     /// assignment reports whether x can be assigned to a variable of type t,

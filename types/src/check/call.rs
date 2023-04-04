@@ -21,8 +21,8 @@ use super::super::typ;
 use super::super::universe::ExprKind;
 use super::check::{Checker, FilesContext};
 use super::util::{UnpackResult, UnpackedResultLeftovers};
-use goscript_parser::ast::{CallExpr, Expr, Node, SelectorExpr};
-use goscript_parser::Pos;
+use go_parser::ast::{CallExpr, Expr, Node, SelectorExpr};
+use go_parser::Pos;
 use std::rc::Rc;
 
 impl<'a, S: SourceRead> Checker<'a, S> {

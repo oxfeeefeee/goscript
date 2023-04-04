@@ -1,19 +1,24 @@
 [package]
-name = "goscript-engine"
+name = "go-engine"
 version = "0.1.0"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
+license = "BSD"
+repository = "https://github.com/oxfeeefeee/goscript/"
+keywords = ["golang", "goscript"]
+categories = ["scripting language", "programming language", "compiler"]
+description = "The wrapper of the Goscript project."
 
 [features] 
 default = ["read_fs", "async", "go_std", "codegen", "instruction_pos"]
 read_fs = []
 read_zip = ["dep:zip"] 
-async = ["goscript-codegen/async", "goscript-vm/async"]  
+async = ["go-codegen/async", "go-vm/async"]  
 go_std = [] 
-btree_map = ["goscript-parser/btree_map", "goscript-codegen/btree_map", "goscript-vm/btree_map"]
+btree_map = ["go-parser/btree_map", "go-codegen/btree_map", "go-vm/btree_map"]
 codegen = []
-instruction_pos = ["goscript-vm/instruction_pos"] 
-serde_borsh = ["dep:borsh", "goscript-vm/serde_borsh"]
+instruction_pos = ["go-vm/instruction_pos"] 
+serde_borsh = ["dep:borsh", "go-vm/serde_borsh"]
 wasm = ["dep:wasm-bindgen", "dep:instant", "dep:getrandom"]
 
 [dependencies]   
@@ -26,26 +31,11 @@ wasm-bindgen = { version = "0.2.84", optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 
-
-[dependencies.goscript-parser] 
-path = "../parser"
-version = "0.1.0" 
-
-[dependencies.goscript-vm] 
-path = "../vm"
-version = "0.1.0"
-
-[dependencies.goscript-types] 
-path = "../types"
-version = "0.1.0"
-
-[dependencies.goscript-codegen]
-path = "../codegen"
-version = "0.1.0"
-   
-[dependencies.goscript-pmacro]
-path = "../pmacro"
-version = "0.1.0"
+go-parser = { version = "0.1.0", path = "../parser" }
+go-vm = { version = "0.1.0", path = "../vm" }
+go-types = { version = "0.1.0", path = "../types" }
+go-codegen = { version = "0.1.0", path = "../codegen" }
+go-pmacro = { version = "0.1.0", path = "../pmacro" }
 
 [dev-dependencies]
 time-test = "0.2.2"

@@ -17,7 +17,7 @@ use super::objects::{ObjKey, PackageKey, ScopeKey, TCObjects, TypeKey, Types};
 use super::package::*;
 use super::scope::*;
 use super::typ::*;
-use goscript_parser::Map;
+use go_parser::Map;
 
 /// ExprKind describes the kind of an expression; the kind
 /// determines if an expression is valid in 'statement context'.

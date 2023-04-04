@@ -14,7 +14,7 @@ mod sync;
 #[cfg(feature = "wasm")]
 mod wasm;
 
-pub(crate) fn register(factory: &mut goscript_vm::FfiFactory) {
+pub(crate) fn register(factory: &mut go_vm::FfiFactory) {
     fmt2::Fmt2Ffi::register(factory);
     bits::BitsFfi::register(factory);
     #[cfg(feature = "async")]

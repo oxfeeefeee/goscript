@@ -1,4 +1,4 @@
-extern crate goscript_parser as fe;
+extern crate go_parser as fe;
 use std::fs;
 
 fn load_parse(path: &str, trace: bool) -> usize {

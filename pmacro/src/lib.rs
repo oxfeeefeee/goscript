@@ -2,6 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//! This crate is part of the Goscript project. Please refer to <https://goscript.dev> for more information.
+//!
+//! This crate provides some proc-macros for the project.
+//!
+
 mod async_fn;
 mod ffi;
 mod ffi_impl;

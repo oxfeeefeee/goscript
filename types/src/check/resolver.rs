@@ -17,8 +17,8 @@ use super::super::importer::ImportKey;
 use super::super::obj::EntityType;
 use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey};
 use super::check::{Checker, FilesContext};
-use goscript_parser::ast::{self, Expr, Node};
-use goscript_parser::{FuncDeclKey, IdentKey, Pos, Token};
+use go_parser::ast::{self, Expr, Node};
+use go_parser::{FuncDeclKey, IdentKey, Pos, Token};
 use std::collections::HashSet;
 
 #[derive(Debug)]

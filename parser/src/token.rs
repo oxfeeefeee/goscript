@@ -12,9 +12,10 @@
 #![allow(non_camel_case_types)]
 use std::fmt;
 
-pub const LOWEST_PREC: usize = 0; // non-operators
-pub const UNARY_PREC: usize = 6;
-pub const HIGHEST_PREC: usize = 7;
+pub(crate) const LOWEST_PREC: usize = 0; // non-operators
+
+//pub(crate) const UNARY_PREC: usize = 6;
+//pub(crate) const HIGHEST_PREC: usize = 7;
 
 #[derive(Hash, Eq, PartialEq, Clone)]
 pub enum Token {

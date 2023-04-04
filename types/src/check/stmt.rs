@@ -20,10 +20,10 @@ use super::super::typ::{self, BasicInfo, BasicType, ChanDir, Type};
 use super::super::universe::ExprKind;
 use super::check::{Checker, FilesContext, ObjContext};
 use constant::Value;
-use goscript_parser::ast::{
+use go_parser::ast::{
     BasicLit, BlockStmt, CaseClause, CommClause, Expr, Ident, Node, Stmt, TypeAssertExpr,
 };
-use goscript_parser::{AstObjects, FuncDeclKey, IdentKey, Map, Pos, Token};
+use go_parser::{AstObjects, FuncDeclKey, IdentKey, Map, Pos, Token};
 use ordered_float;
 use std::rc::Rc;
 

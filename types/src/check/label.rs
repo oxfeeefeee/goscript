@@ -15,8 +15,8 @@ use crate::SourceRead;
 use super::super::objects::ScopeKey;
 use super::super::scope::Scope;
 use super::check::Checker;
-use goscript_parser::ast::{BlockStmt, BranchStmt, Decl, Node, Stmt};
-use goscript_parser::{AstObjects, LabeledStmtKey, Map, Pos, Token};
+use go_parser::ast::{BlockStmt, BranchStmt, Decl, Node, Stmt};
+use go_parser::{AstObjects, LabeledStmtKey, Map, Pos, Token};
 use std::cell::RefCell;
 use std::rc::Rc;
 

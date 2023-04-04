@@ -13,12 +13,12 @@ use std::rc::Rc;
 #[cfg(feature = "codegen")]
 pub use cg::SourceRead;
 #[cfg(feature = "codegen")]
-extern crate goscript_codegen as cg;
+extern crate go_codegen as cg;
 #[cfg(feature = "codegen")]
-extern crate goscript_parser as fe;
+extern crate go_parser as parser;
 #[cfg(feature = "codegen")]
-extern crate goscript_types as types;
-extern crate goscript_vm as vm;
+extern crate go_types as types;
+extern crate go_vm as vm;
 
 #[derive(Default)]
 pub struct Config {
@@ -96,12 +96,12 @@ impl Engine {
         trace_checker: bool,
         reader: &S,
         path: &Path,
-    ) -> Result<(vm::Bytecode, fe::FileSet), fe::ErrorList> {
+    ) -> Result<(vm::Bytecode, parser::FileSet), parser::ErrorList> {
         let cfg = types::TraceConfig {
             trace_parser,
             trace_checker,
         };
-        let mut fs = fe::FileSet::new();
+        let mut fs = parser::FileSet::new();
         cg::parse_check_gen(path, &cfg, reader, &mut fs).map(|x| (x, fs))
     }
 
@@ -112,7 +112,7 @@ impl Engine {
         trace_checker: bool,
         reader: &S,
         path: &Path,
-    ) -> Result<Vec<u8>, fe::ErrorList> {
+    ) -> Result<Vec<u8>, parser::ErrorList> {
         self.compile(trace_parser, trace_checker, reader, path)
             .map(|(code, _)| code.try_to_vec().unwrap())
     }
@@ -128,13 +128,13 @@ impl Engine {
         trace_checker: bool,
         reader: &S,
         path: &Path,
-    ) -> Result<(), fe::ErrorList> {
+    ) -> Result<(), parser::ErrorList> {
         self.compile(trace_parser, trace_checker, reader, path)
             .map(|(code, fs)| {
                 #[cfg(feature = "serde_borsh")]
                 {
                     let encoded = code.try_to_vec().unwrap();
-                    let decoded = goscript_vm::Bytecode::try_from_slice(&encoded).unwrap();
+                    let decoded = go_vm::Bytecode::try_from_slice(&encoded).unwrap();
                     dbg!(encoded.len());
                     vm::run(&decoded, &self.ffi, Some(&fs))
                 }

@@ -5,7 +5,7 @@
 use crate::engine::{Config, Engine, SourceRead};
 use crate::vfs::VirtualFs;
 use crate::ErrorList;
-use goscript_parser::Map;
+use go_parser::Map;
 use std::io;
 use std::path::{Path, PathBuf};
 

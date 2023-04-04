@@ -6,8 +6,8 @@ use crate::value::*;
 #[cfg(feature = "serde_borsh")]
 use borsh::{maybestd::io::Result, maybestd::io::Write, BorshDeserialize, BorshSerialize};
 #[cfg(feature = "serde_borsh")]
-use goscript_parser::PiggyVecKey;
-use goscript_parser::{piggy_key_type, PiggyVec};
+use go_parser::PiggyVecKey;
+use go_parser::{piggy_key_type, PiggyVec};
 
 #[cfg(feature = "serde_borsh")]
 macro_rules! impl_borsh_for_key {

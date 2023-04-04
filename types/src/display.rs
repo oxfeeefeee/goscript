@@ -19,7 +19,7 @@ use super::operand::{fmt_expr, Operand};
 use super::scope::fmt_scope_full;
 use super::selection::Selection;
 use super::typ::fmt_type;
-use goscript_parser::{ast::Expr, ast::Node, AstObjects, Pos};
+use go_parser::{ast::Expr, ast::Node, AstObjects, Pos};
 use std::fmt;
 
 pub fn type_str(t: &TypeKey, tco: &TCObjects) -> String {

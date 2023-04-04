@@ -4,7 +4,7 @@
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-extern crate goscript_engine as engine;
+extern crate go_engine as engine;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "go_std")]

@@ -4,9 +4,9 @@
 
 #![no_main]
 use arbitrary::Arbitrary;
-use goscript_parser::errors::ErrorList;
-use goscript_parser::objects::Objects;
-use goscript_parser::{parse_file, FileSet};
+use go_parser::errors::ErrorList;
+use go_parser::objects::Objects;
+use go_parser::{parse_file, FileSet};
 use libfuzzer_sys::fuzz_target;
 
 #[derive(Arbitrary, Debug)]

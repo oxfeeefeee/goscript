@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_parser::ast::{Expr, Node, NodeId};
-use goscript_parser::{IdentKey, Map};
-use goscript_types::{
+use go_parser::ast::{Expr, Node, NodeId};
+use go_parser::{IdentKey, Map};
+use go_types::{
     check::TypeInfo, typ::BasicType, typ::ChanDir, typ::Type, ConstValue, EntityType,
     ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, SelectionKind as TCSelectionKind,
     TCObjects, TypeKey as TCTypeKey,
 };
-use goscript_vm::types::*;
-use goscript_vm::*;
+use go_vm::types::*;
+use go_vm::*;
 use std::vec;
 
 pub type TypeCache = Map<TCTypeKey, Meta>;

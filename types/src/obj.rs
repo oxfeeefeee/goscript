@@ -16,7 +16,7 @@ use super::package::Package;
 use super::typ;
 use super::universe;
 use super::universe::Universe;
-use goscript_parser::{ast, Map, Pos};
+use go_parser::{ast, Map, Pos};
 use std::borrow::Cow;
 use std::fmt;
 use std::fmt::Write;

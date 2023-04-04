@@ -19,8 +19,8 @@ use super::super::typ::{self, BasicType, Type};
 use super::super::universe::ExprKind;
 use super::check::{Checker, ExprInfo, FilesContext};
 use super::stmt::BodyContainer;
-use goscript_parser::ast::{Expr, Node};
-use goscript_parser::{Map, Pos, Token};
+use go_parser::ast::{Expr, Node};
+use go_parser::{Map, Pos, Token};
 use std::collections::HashSet;
 
 ///Basic algorithm:

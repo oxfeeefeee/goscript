@@ -1,6 +1,6 @@
 
 [package]
-name = "goscript-parser-fuzz"
+name = "go-parser-fuzz"
 version = "0.0.0"
 authors = ["Automatically generated"]
 publish = false
@@ -13,7 +13,7 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1.0", features = ["derive"] }
 
-[dependencies.goscript-parser]
+[dependencies.go-parser]
 path = ".."
 
 # Prevent this from interfering with workspaces

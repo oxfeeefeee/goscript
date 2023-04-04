@@ -17,7 +17,7 @@ use super::obj;
 use super::objects::{ObjKey, PackageKey, TCObjects, TypeKey};
 use super::selection::*;
 use super::typ;
-use goscript_parser::Map;
+use go_parser::Map;
 use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;

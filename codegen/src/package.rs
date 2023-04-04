@@ -3,11 +3,11 @@
 // license that can be found in the LICENSE file.
 
 use crate::context::*;
-use goscript_parser::ast::*;
-use goscript_parser::{AstObjects, IdentKey, Map, Token};
-use goscript_types::{check::TypeInfo, ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects};
-use goscript_vm::types::*;
-use goscript_vm::FfiCtx;
+use go_parser::ast::*;
+use go_parser::{AstObjects, IdentKey, Map, Token};
+use go_types::{check::TypeInfo, ObjKey as TCObjKey, PackageKey as TCPackageKey, TCObjects};
+use go_vm::types::*;
+use go_vm::FfiCtx;
 use std::rc::Rc;
 
 pub(crate) struct PkgHelper<'a> {

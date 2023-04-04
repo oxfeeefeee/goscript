@@ -2,10 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-/// Goscirpt's type checker
-/// This is a port of the offical Go 1.12 type checker
-/// A lot of comments are directly taken from Go source file.
-///
+//! This crate is part of the Goscript project. Please refer to <https://goscript.dev> for more information.
+//!
+//! It's a port of the the parser from the Go standard library <https://github.com/golang/go/tree/release-branch.go1.12/src/go/types>
+//!
+//! # Feature
+//! - `btree_map`: Make it use BTreeMap instead of HashMap
+//!
+
 mod constant;
 mod obj;
 mod package;

@@ -11,7 +11,7 @@
 
 #![allow(dead_code)]
 use super::objects::{ObjKey, ScopeKey, TCObjects};
-use goscript_parser::{Map, Pos};
+use go_parser::{Map, Pos};
 use std::fmt;
 
 /// A Scope maintains a set of objects and links to its containing

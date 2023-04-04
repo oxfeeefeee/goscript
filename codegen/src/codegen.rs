@@ -7,17 +7,17 @@ use crate::consts::*;
 use crate::context::*;
 use crate::package::PkgHelper;
 use crate::types::{SelectionType, TypeCache, TypeLookup};
-use goscript_parser::ast::*;
-use goscript_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
-use goscript_parser::*;
-use goscript_types::{
+use go_parser::ast::*;
+use go_parser::visitor::{walk_decl, walk_expr, walk_stmt, ExprVisitor, StmtVisitor};
+use go_parser::*;
+use go_types::{
     check::TypeInfo,
     typ::{identical_ignore_tags, Type},
     Builtin, ObjKey as TCObjKey, OperandMode, PackageKey as TCPackageKey, TCObjects,
     TypeKey as TCTypeKey,
 };
-use goscript_vm::types::*;
-use goscript_vm::*;
+use go_vm::types::*;
+use go_vm::*;
 use std::hash::Hash;
 use std::iter::FromIterator;
 

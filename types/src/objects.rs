@@ -16,7 +16,7 @@ use super::package::Package;
 use super::scope::Scope;
 use super::typ::*;
 use super::universe::Universe;
-use goscript_parser::{piggy_key_type, PiggyVec, Pos};
+use go_parser::{piggy_key_type, PiggyVec, Pos};
 use std::borrow::Cow;
 
 piggy_key_type! {

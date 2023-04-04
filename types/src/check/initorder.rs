@@ -15,7 +15,7 @@ use crate::SourceRead;
 use super::super::objects::{DeclInfoKey, ObjKey, TCObjects};
 use super::check::{Checker, Initializer};
 use super::resolver::DeclInfo;
-use goscript_parser::Map;
+use go_parser::Map;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;

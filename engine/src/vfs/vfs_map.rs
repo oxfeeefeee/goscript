@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 use crate::vfs::VirtualFs;
-use goscript_parser::Map;
+use go_parser::Map;
 use std::borrow::Cow;
 use std::io;
 use std::path::{Path, PathBuf};

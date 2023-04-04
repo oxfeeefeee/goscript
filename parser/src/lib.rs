@@ -3,22 +3,23 @@
 // license that can be found in the LICENSE file.
 
 //! This crate is part of the Goscript project. Please refer to <https://goscript.dev> for more information.
+//!
 //! It's a port of the the parser from the Go standard library <https://github.com/golang/go/tree/release-branch.go1.12/src/go/parser>
 //!  
 //! # Usage:
 //! ```
 //! fn parse_file() {
 //!     let source = "package main ...";
-//!     let mut fs = goscript_parser::FileSet::new();
-//!     let o = &mut goscript_parser::AstObjects::new();
-//!     let el = &mut goscript_parser::ErrorList::new();
-//!     let (p, _) = goscript_parser::parse_file(o, &mut fs, el, "./main.go", source, false);
+//!     let mut fs = go_parser::FileSet::new();
+//!     let o = &mut go_parser::AstObjects::new();
+//!     let el = &mut go_parser::ErrorList::new();
+//!     let (p, _) = go_parser::parse_file(o, &mut fs, el, "./main.go", source, false);
 //!     print!("{}", p.get_errors());
 //! }
 //! ```
 //!
 //! # Feature
-//! - `btree_map`: Make it uses BTreeMap instead of HashMap
+//! - `btree_map`: Make it use BTreeMap instead of HashMap
 //!
 
 mod errors;

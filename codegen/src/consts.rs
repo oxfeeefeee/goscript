@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use goscript_parser::Map;
-use goscript_vm::types::*;
-use goscript_vm::*;
+use go_parser::Map;
+use go_vm::types::*;
+use go_vm::*;
 use std::cell::RefCell;
 use std::hash::Hash;
 #[cfg(not(feature = "btree_map"))]

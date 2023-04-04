@@ -11,8 +11,8 @@
 
 use super::check::{Checker, TypeInfo};
 use super::objects::{PackageKey, TCObjects};
-use goscript_parser::ast;
-use goscript_parser::{AstObjects, ErrorList, FileSet, Map, Parser, Pos};
+use go_parser::ast;
+use go_parser::{AstObjects, ErrorList, FileSet, Map, Parser, Pos};
 use std::io;
 use std::path::{Path, PathBuf};
 

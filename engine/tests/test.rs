@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 #[macro_use]
 extern crate time_test;
-extern crate goscript_engine as engine;
+extern crate go_engine as engine;
 
 #[derive(Clone)]
 struct WriteBuf {
@@ -532,7 +532,7 @@ fn test_std_fmt() {
 #[test]
 fn test_map_perf() {
     time_test!();
-    let mut m: goscript_parser::Map<usize, usize> = goscript_parser::Map::new();
+    let mut m: go_parser::Map<usize, usize> = go_parser::Map::new();
     for i in 0..200000 {
         m.insert(i, i);
     }
@@ -546,8 +546,8 @@ fn test_map_perf() {
 #[test]
 fn test_map_perf2() {
     time_test!();
-    use goscript_vm::types::GosValue;
-    let mut m: goscript_parser::Map<GosValue, usize> = goscript_parser::Map::new();
+    use go_vm::types::GosValue;
+    let mut m: go_parser::Map<GosValue, usize> = go_parser::Map::new();
     for i in 0..200000 {
         m.insert(i.into(), i);
     }

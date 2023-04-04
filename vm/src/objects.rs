@@ -18,7 +18,7 @@ use borsh::{
     maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
     BorshSerialize,
 };
-use goscript_parser::{Map, MapIter, PiggyVecKey};
+use go_parser::{Map, MapIter, PiggyVecKey};
 use std::any::Any;
 use std::borrow::Cow;
 use std::cell::{Cell, Ref, RefCell, RefMut};
@@ -811,8 +811,8 @@ impl StringObj {
     }
 
     /// It's safe because strings are readonly
-    /// https://stackoverflow.com/questions/50431702/is-it-safe-and-defined-behavior-to-transmute-between-a-t-and-an-unsafecellt
-    /// https://doc.rust-lang.org/src/core/str/converts.rs.html#173
+    /// <https://stackoverflow.com/questions/50431702/is-it-safe-and-defined-behavior-to-transmute-between-a-t-and-an-unsafecellt>
+    /// <https://doc.rust-lang.org/src/core/str/converts.rs.html#173>
     #[inline]
     pub fn as_str(&self) -> Ref<str> {
         unsafe { std::mem::transmute(self.as_rust_slice()) }

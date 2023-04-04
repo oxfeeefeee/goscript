@@ -16,9 +16,9 @@ use super::super::objects::{DeclInfoKey, ObjKey, PackageKey, ScopeKey, TCObjects
 use super::super::operand::OperandMode;
 use super::super::selection::Selection;
 use super::interface::IfaceInfo;
-use goscript_parser::ast;
-use goscript_parser::ast::{Expr, Node, NodeId};
-use goscript_parser::{AstObjects, ErrorList, FilePosErrors, FileSet, IdentKey, Map, Pos};
+use go_parser::ast;
+use go_parser::ast::{Expr, Node, NodeId};
+use go_parser::{AstObjects, ErrorList, FilePosErrors, FileSet, IdentKey, Map, Pos};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -78,13 +78,13 @@ pub struct TypeInfo {
     ///
     /// For an embedded field, Defs returns the field it defines.
     ///
-    /// Invariant: defs[id] == None || defs[id].pos() == id.pos()
+    /// Invariant: defs\[id\] == None || defs\[id\].pos() == id.pos()
     pub defs: Map<IdentKey, Option<ObjKey>>,
     /// 'uses' maps identifiers to the objects they denote.
     ///
     /// For an embedded field, 'uses' returns the TypeName it denotes.
     ///
-    /// Invariant: uses[id].pos() != id.pos()
+    /// Invariant: uses\[id\].pos() != id.pos()
     pub uses: Map<IdentKey, ObjKey>,
     /// 'implicits' maps nodes to their implicitly declared objects, if any.
     /// The following node and object types may appear:

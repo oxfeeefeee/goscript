@@ -13,4 +13,4 @@ mod entry;
 mod types;
 
 pub use entry::parse_check_gen;
-pub use goscript_types::{SourceRead, TraceConfig};
+pub use go_types::{SourceRead, TraceConfig};

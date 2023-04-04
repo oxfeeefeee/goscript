@@ -20,8 +20,8 @@ use super::super::typ::{self, Type};
 use super::check::{Checker, FilesContext, ObjContext};
 use super::interface::MethodInfo;
 use crate::SourceRead;
-use goscript_parser::ast::{self, Expr, FieldList, Node};
-use goscript_parser::{FuncTypeKey, IdentKey, Map, Pos, Token};
+use go_parser::ast::{self, Expr, FieldList, Node};
+use go_parser::{FuncTypeKey, IdentKey, Map, Pos, Token};
 use std::borrow::Borrow;
 
 impl<'a, S: SourceRead> Checker<'a, S> {
@@ -403,7 +403,7 @@ impl<'a, S: SourceRead> Checker<'a, S> {
 
     /// type_or_nil type-checks the type expression (or nil value) e
     /// and returns the typ of e, or None.
-    /// If e is neither a type nor nil, typOrNil returns Typ[Invalid].
+    /// If e is neither a type nor nil, typOrNil returns Typ\[Invalid\].
     pub fn type_or_nil(&mut self, e: &Expr, fctx: &mut FilesContext<S>) -> Option<TypeKey> {
         let mut x = Operand::new();
         self.raw_expr(&mut x, e, None, fctx);

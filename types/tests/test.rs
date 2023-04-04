@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-extern crate goscript_parser as fe;
-extern crate goscript_types as types;
-use goscript_parser::Map;
+extern crate go_parser as fe;
+extern crate go_types as types;
+use go_parser::Map;
 use regex::Regex;
 use std::fs;
 use std::fs::File;

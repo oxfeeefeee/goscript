@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-extern crate self as goscript_engine;
+extern crate self as go_engine;
 use crate::ffi::*;
-use goscript_vm::types::{GosElem, GosValue};
+use go_vm::types::{GosElem, GosValue};
 
 #[derive(Ffi)]
 pub struct Fmt2Ffi;
