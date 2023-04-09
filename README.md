@@ -35,7 +35,7 @@ An alternative implementation of Golang specs, written in Rust for embedding or 
 ## Who
 
 + email: [`pb01005051` at Gmail](mailto:pb01005051@gmail).
-+ discord: [join](https://discord.gg/smYvb3DR)
++ discord: [join](https://discord.gg/TEZxJtZnRf)
 
 ## FAQ
 
