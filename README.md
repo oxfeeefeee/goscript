@@ -35,7 +35,7 @@ An alternative implementation of Golang specs, written in Rust for embedding or 
 ## Who
 
 + email: [`pb01005051` at Gmail](mailto:pb01005051@gmail).
-+ discord: [join](https://discord.gg/TEZxJtZnRf)
++ discord: [join](https://discord.gg/tYwqXEhVqa)
 
 ## FAQ
 
@@ -116,7 +116,7 @@ Go语言规范非的官方实现，用于Rust项目的内嵌或封装。
 ## 谁？
 
 + email: [`pb01005051` at Gmail](mailto:pb01005051@gmail).
-+ discord: [加入](https://discord.gg/smYvb3DR)
++ discord: [加入](https://discord.gg/tYwqXEhVqa)
 
 ## 问
 
