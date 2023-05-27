@@ -18,7 +18,7 @@ btree_map = ["go-parser/btree_map"]
 [dependencies]
 go-parser = { version = "0.1.0", path = "../parser" }
 go-vm = { version = "0.1.0", path = "../vm" }
-go-types = { version = "0.1.0", path = "../types" }
+go-types = { version = "0.1.1", path = "../types" }
 
 [dev-dependencies]
 time-test = "0.2.2"
