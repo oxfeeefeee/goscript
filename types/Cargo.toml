@@ -5,8 +5,8 @@ authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-3-Clause"
 repository = "https://github.com/oxfeeefeee/goscript/"
-keywords = ["golang", "type checker", "goscript"]
-categories = ["compiler", "type checker"]
+keywords = ["golang", "type-checker", "goscript"]
+categories = ["compiler", "type-checker"]
 description = "The type checker of the Goscript project."
 
 [features] 
