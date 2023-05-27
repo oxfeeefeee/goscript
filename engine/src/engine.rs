@@ -11,7 +11,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 #[cfg(feature = "codegen")]
-pub use cg::SourceRead;
+pub use {cg::SourceRead, types::ImportKey};
 #[cfg(feature = "codegen")]
 extern crate go_codegen as cg;
 #[cfg(feature = "codegen")]

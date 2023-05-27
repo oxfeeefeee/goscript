@@ -82,4 +82,19 @@ impl VirtualFs for CompoundFs {
         let p = fs.canonicalize_path(&inner)?;
         Ok(CompoundFs::to_outer(&name, &p))
     }
+
+    fn strip_prefix<'a>(&'a self, path: &'a Path) -> &'a Path {
+        let path_str = path.to_str().unwrap();
+        let (_, suffix) = path_str.split_once('/').unwrap_or(("", path_str));
+        Path::new(suffix)
+    }
+
+    fn is_local(&self, path: &str) -> bool {
+        let local = |p: &str| p == "." || p == ".." || p.starts_with("./") || p.starts_with("../");
+        if local(path) {
+            return true;
+        }
+        let (_, path) = path.split_once('/').unwrap_or(("", path));
+        local(path)
+    }
 }

@@ -34,7 +34,10 @@ pub fn parse_check_gen<S: SourceRead>(
     let importer = &mut Importer::new(
         &tconfig, reader, fset, pkgs, results, ast_objs, tc_objs, &el, 0,
     );
-    let key = ImportKey::new(path.to_str().unwrap(), "./");
+    let key = ImportKey::new(
+        path.to_str().unwrap(),
+        reader.working_dir().to_str().unwrap(),
+    );
     let main_pkg = importer.import(&key);
     if el.len() > 0 {
         Err(el)

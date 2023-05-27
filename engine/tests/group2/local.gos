@@ -1,0 +1,7 @@
+package main
+
+import sl "./somelib"
+
+func main() {
+    sl.SomeFunc()
+}

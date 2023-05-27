@@ -2,6 +2,8 @@ package main
 
 import "fmt2"
 
+import sl "./somelib"
+
 type TestKey struct {
     i int
     s string
@@ -14,6 +16,8 @@ func ptr() (*int, *int) {
 
 
 func main() {
+
+    sl.SomeFunc()
 
     var errNil error
 	var mapNil map[int]string

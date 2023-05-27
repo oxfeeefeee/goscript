@@ -19,4 +19,12 @@ pub trait VirtualFs {
     fn is_dir(&self, path: &Path) -> bool;
 
     fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf>;
+
+    fn is_local(&self, path: &str) -> bool {
+        path == "." || path == ".." || path.starts_with("./") || path.starts_with("../")
+    }
+
+    fn strip_prefix<'a>(&'a self, path: &'a Path) -> &'a Path {
+        path
+    }
 }

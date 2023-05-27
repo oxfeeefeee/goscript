@@ -10,6 +10,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
+use types::ImportKey;
 use types::SourceRead;
 
 pub struct FsReader<'a> {
@@ -27,6 +28,20 @@ impl<'a> FsReader<'a> {
 
     pub fn temp_file_path() -> &'static str {
         &"./temp_file_in_memory_for_testing_and_you_can_only_have_one.gos"
+    }
+
+    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
+        if path.ends_with(Self::temp_file_path()) {
+            Ok(path.clone())
+        } else if !path.exists() {
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        } else {
+            path.canonicalize()
+        }
+    }
+
+    fn is_local(path: &str) -> bool {
+        path == "." || path == ".." || path.starts_with("./") || path.starts_with("../")
     }
 }
 
@@ -72,14 +87,32 @@ impl<'a> SourceRead for FsReader<'a> {
         path.is_dir()
     }
 
-    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
-        if path.ends_with(Self::temp_file_path()) {
-            Ok(path.clone())
-        } else if !path.exists() {
-            Err(io::Error::from(io::ErrorKind::NotFound))
+    fn canonicalize_import(&self, key: &ImportKey) -> io::Result<(PathBuf, String)> {
+        let mut import_path = key.path.clone();
+        let path = if Self::is_local(&key.path) {
+            let mut wd = self.working_dir().to_owned();
+            wd.push(&key.dir);
+            wd.push(&key.path);
+            if let Some(base) = &self.base_dir() {
+                if let Ok(rel) = wd.as_path().strip_prefix(base) {
+                    import_path = rel.to_string_lossy().to_string()
+                }
+            }
+            wd
         } else {
-            path.canonicalize()
-        }
+            if let Some(base) = &self.base_dir() {
+                let mut p = PathBuf::new();
+                p.push(base);
+                p.push(&key.path);
+                p
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("base dir required for path: {}", key.path),
+                ));
+            }
+        };
+        self.canonicalize_path(&path).map(|p| (p, import_path))
     }
 }
 

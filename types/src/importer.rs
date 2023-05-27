@@ -36,7 +36,7 @@ pub trait SourceRead {
 
     fn is_dir(&self, path: &Path) -> bool;
 
-    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf>;
+    fn canonicalize_import(&self, key: &ImportKey) -> io::Result<(PathBuf, String)>;
 }
 
 /// ImportKey identifies an imported package by import path and source directory
@@ -101,56 +101,29 @@ impl<'a, S: SourceRead> Importer<'a, S> {
         if key.path == "unsafe" {
             return Ok(*self.tc_objs.universe().unsafe_pkg());
         }
-        let pb = self.canonicalize_import(key)?;
-        let path = pb.0.as_path();
-        let import_path = pb.1;
-        match self.pkgs.get(&import_path) {
-            Some(key) => Ok(*key),
-            None => {
-                let pkg = self.tc_objs.new_package(import_path.clone());
-                self.pkgs.insert(import_path, pkg);
-                let files = self.parse_path(path)?;
-                Checker::new(
-                    self.tc_objs,
-                    self.ast_objs,
-                    self.fset,
-                    self.errors,
-                    self.pkgs,
-                    self.all_results,
-                    pkg,
-                    self.trace_config,
-                    self.reader,
-                )
-                .check(files)
-            }
-        }
-    }
 
-    fn canonicalize_import(&mut self, key: &'a ImportKey) -> Result<(PathBuf, String), ()> {
-        let mut import_path = key.path.clone();
-        let path = if is_local(&key.path) {
-            let mut wd = self.reader.working_dir().to_owned();
-            wd.push(&key.dir);
-            wd.push(&key.path);
-            if let Some(base) = &self.reader.base_dir() {
-                if let Ok(rel) = wd.as_path().strip_prefix(base) {
-                    import_path = rel.to_string_lossy().to_string()
+        match self.reader.canonicalize_import(key) {
+            Ok((path, import_path)) => match self.pkgs.get(&import_path) {
+                Some(key) => Ok(*key),
+                None => {
+                    let pkg = self.tc_objs.new_package(import_path.clone());
+                    self.pkgs.insert(import_path, pkg);
+                    let files = self.parse_path(&path)?;
+                    Checker::new(
+                        self.tc_objs,
+                        self.ast_objs,
+                        self.fset,
+                        self.errors,
+                        self.pkgs,
+                        self.all_results,
+                        pkg,
+                        self.trace_config,
+                        self.reader,
+                    )
+                    .check(files)
                 }
-            }
-            wd
-        } else {
-            if let Some(base) = &self.reader.base_dir() {
-                let mut p = PathBuf::new();
-                p.push(base);
-                p.push(&key.path);
-                p
-            } else {
-                return self.error(format!("base dir required for path: {}", key.path));
-            }
-        };
-        match self.reader.canonicalize_path(&path) {
-            Ok(p) => Ok((p, import_path)),
-            Err(e) => self.error(format!("{} {}", e, key.path)),
+            },
+            Err(e) => self.error(format!("canonicalize import error: {}", e)),
         }
     }
 
@@ -240,12 +213,4 @@ fn read_content(p: &Path, reader: &dyn SourceRead) -> io::Result<Vec<(String, St
         return Err(io::Error::new(io::ErrorKind::Other, "no file/dir found"));
     }
     Ok(result)
-}
-
-fn is_local(path: &str) -> bool {
-    path == "."
-        || path == ".."
-        || path.starts_with("./")
-        || path.starts_with("../")
-        || path.starts_with("vfs_local_")
 }

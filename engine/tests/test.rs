@@ -222,6 +222,12 @@ fn test_sync_rwmutex() {
 }
 
 #[test]
+fn test_local() {
+    let result = run("./tests/group2/local.gos", false);
+    assert!(result.is_ok());
+}
+
+#[test]
 fn test_g1case1() {
     let result = run("./tests/group1/case1.gos", true);
     assert!(result.is_ok());

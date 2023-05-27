@@ -2,14 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-use crate::engine::{Config, Engine, SourceRead};
+use crate::engine::{Config, Engine, ImportKey, SourceRead};
 use crate::vfs::VirtualFs;
 use crate::ErrorList;
 use go_parser::Map;
 use std::io;
 use std::path::{Path, PathBuf};
-
-const VIRTUAL_LOCAL_PATH_PREFIX: &str = "vfs_local_";
 
 pub fn run(config: Config, source: &SourceReader, path: &Path) -> Result<(), ErrorList> {
     let engine = Engine::new();
@@ -53,8 +51,7 @@ impl SourceReader {
         source: std::borrow::Cow<'static, str>,
     ) -> (SourceReader, PathBuf) {
         let temp_file_name = "temp_file.gos";
-        // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
-        let vfs_map_name = format!("{}map", VIRTUAL_LOCAL_PATH_PREFIX);
+        let vfs_map_name = "vfs_map";
         let vfs_fs_name = "vfs_fs";
         (
             SourceReader::new(
@@ -87,8 +84,7 @@ impl SourceReader {
         source: std::borrow::Cow<'static, str>,
     ) -> (SourceReader, PathBuf) {
         let temp_file_name = "temp_file.gos";
-        // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
-        let vfs_map_name = format!("{}map", VIRTUAL_LOCAL_PATH_PREFIX);
+        let vfs_map_name = "vfs_map";
         let vfs_zip_name = "vfs_zip";
         (
             SourceReader::new(
@@ -121,15 +117,17 @@ impl SourceReader {
         base_dir: PathBuf,
         working_dir: PathBuf,
     ) -> SourceReader {
-        // must start with VIRTUAL_LOCAL_PATH_PREFIX to be recognized as a local(as opposed to lib file) file
-        let vfs_fs_name = format!("{}local_fs", VIRTUAL_LOCAL_PATH_PREFIX);
+        let vfs_fs_name = "local_fs";
         let vfs_zip_name = "vfs_zip";
 
         SourceReader::new(
             Some(Path::new(vfs_zip_name).join(base_dir)),
             Path::new(&vfs_fs_name).join(working_dir),
             Box::new(crate::CompoundFs::new(Map::from([
-                (vfs_fs_name, Box::new(crate::VfsFs {}) as Box<dyn VirtualFs>),
+                (
+                    vfs_fs_name.to_owned(),
+                    Box::new(crate::VfsFs {}) as Box<dyn VirtualFs>,
+                ),
                 (
                     vfs_zip_name.to_owned(),
                     Box::new(crate::VfsZip::new(archive).unwrap()) as Box<dyn VirtualFs>,
@@ -164,7 +162,31 @@ impl SourceRead for SourceReader {
         self.vfs.is_dir(path)
     }
 
-    fn canonicalize_path(&self, path: &PathBuf) -> io::Result<PathBuf> {
-        self.vfs.canonicalize_path(path)
+    fn canonicalize_import(&self, key: &ImportKey) -> io::Result<(PathBuf, String)> {
+        let mut import_path = key.path.clone();
+        let path = if self.vfs.is_local(&key.path) {
+            let mut wd = self.working_dir().to_owned();
+            wd.push(self.vfs.strip_prefix(Path::new(&key.dir)));
+            wd.push(&key.path);
+            if let Some(base) = &self.base_dir() {
+                if let Ok(rel) = wd.as_path().strip_prefix(base) {
+                    import_path = rel.to_string_lossy().to_string()
+                }
+            }
+            wd
+        } else {
+            if let Some(base) = &self.base_dir() {
+                let mut p = PathBuf::new();
+                p.push(base);
+                p.push(&key.path);
+                p
+            } else {
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("base dir required for path: {}", key.path),
+                ));
+            }
+        };
+        self.vfs.canonicalize_path(&path).map(|p| (p, import_path))
     }
 }
