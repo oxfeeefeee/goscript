@@ -550,13 +550,13 @@ impl BorshSerialize for Methods {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Methods {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let methods = Vec::<MethodDesc>::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let methods = Vec::<MethodDesc>::deserialize_reader(reader)?;
         let members = methods
             .into_iter()
             .map(|x| Rc::new(RefCell::new(x)))
             .collect();
-        let mapping = Map::<String, OpIndex>::deserialize(buf)?;
+        let mapping = Map::<String, OpIndex>::deserialize_reader(reader)?;
         Ok(Methods { members, mapping })
     }
 }

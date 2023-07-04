@@ -19,8 +19,8 @@ macro_rules! impl_borsh_for_key {
         }
 
         impl BorshDeserialize for $key {
-            fn deserialize(buf: &mut &[u8]) -> Result<Self> {
-                let i: usize = usize::deserialize(buf)?;
+            fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> Result<Self> {
+                let i: usize = usize::deserialize_reader(reader)?;
                 Ok(i.into())
             }
         }
@@ -78,10 +78,10 @@ impl BorshSerialize for VMObjects {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for VMObjects {
-    fn deserialize(buf: &mut &[u8]) -> Result<Self> {
-        let mut metas = Vec::<MetadataType>::deserialize(buf)?.into();
-        let functions = Vec::<FunctionObj>::deserialize(buf)?.into();
-        let packages = Vec::<PackageObj>::deserialize(buf)?.into();
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> Result<Self> {
+        let mut metas = Vec::<MetadataType>::deserialize_reader(reader)?.into();
+        let functions = Vec::<FunctionObj>::deserialize_reader(reader)?.into();
+        let packages = Vec::<PackageObj>::deserialize_reader(reader)?.into();
         let prim_meta = PrimitiveMeta::new(&mut metas);
         Ok(VMObjects {
             metas,

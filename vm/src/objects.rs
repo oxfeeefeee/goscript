@@ -1714,8 +1714,8 @@ impl BorshSerialize for UpValue {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for UpValue {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let uv = ValueDesc::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let uv = ValueDesc::deserialize_reader(reader)?;
         Ok(Self::new(uv))
     }
 }
@@ -1958,15 +1958,16 @@ impl BorshSerialize for PackageObj {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for PackageObj {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let name = String::deserialize(buf)?;
-        let members = Vec::<GosValue>::deserialize(buf)?
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let name = String::deserialize_reader(reader)?;
+        let members = Vec::<GosValue>::deserialize_reader(reader)?
             .into_iter()
             .map(|x| RefCell::new(x))
             .collect();
-        let member_indices = Map::<String, OpIndex>::deserialize(buf)?;
-        let init_funcs = Vec::<GosValue>::deserialize(buf)?;
-        let var_mapping = RefCell::new(Option::<Map<OpIndex, OpIndex>>::deserialize(buf)?);
+        let member_indices = Map::<String, OpIndex>::deserialize_reader(reader)?;
+        let init_funcs = Vec::<GosValue>::deserialize_reader(reader)?;
+        let var_mapping =
+            RefCell::new(Option::<Map<OpIndex, OpIndex>>::deserialize_reader(reader)?);
         Ok(PackageObj {
             name,
             members,

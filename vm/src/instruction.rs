@@ -142,8 +142,8 @@ impl BorshSerialize for Opcode {
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Opcode {
     #[inline]
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let val = u8::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let val = u8::deserialize_reader(reader)?;
         Ok(unsafe { std::mem::transmute(val) })
     }
 }
@@ -218,8 +218,8 @@ impl BorshSerialize for ValueType {
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for ValueType {
     #[inline]
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        let val = u8::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let val = u8::deserialize_reader(reader)?;
         Ok(unsafe { std::mem::transmute(val) })
     }
 }
@@ -419,11 +419,11 @@ impl BorshSerialize for Instruction {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for Instruction {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
         // Optimization: Get all data at once
         const BYTE_COUNT: usize = 4;
         const OP_INDEX_SIZE: usize = core::mem::size_of::<OpIndex>();
-        let data = <[u8; BYTE_COUNT + OP_INDEX_SIZE * 3]>::deserialize(buf)?;
+        let data = <[u8; BYTE_COUNT + OP_INDEX_SIZE * 3]>::deserialize_reader(reader)?;
         let op0 = unsafe { std::mem::transmute(data[0]) };
         let op1 = unsafe { std::mem::transmute(data[1]) };
         let t0 = unsafe { std::mem::transmute(data[2]) };

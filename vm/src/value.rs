@@ -2390,9 +2390,12 @@ mod type_serde {
 
     /// How type info should be deserialized
     pub trait TypeRead {
-        fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType>;
+        fn deserialize_reader<R: std::io::Read>(&self, reader: &mut R) -> BorshResult<ValueType>;
 
-        fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize>;
+        fn deserialize_reader_array_len<R: std::io::Read>(
+            &self,
+            reader: &mut R,
+        ) -> BorshResult<usize>;
 
         fn t_elem_read(&self) -> BorshResult<Self>
         where
@@ -2435,12 +2438,15 @@ mod type_serde {
 
     impl TypeRead for TypeEmbeded {
         #[inline]
-        fn deserialize(&self, buf: &mut &[u8]) -> BorshResult<ValueType> {
-            ValueType::deserialize(buf)
+        fn deserialize_reader<R: std::io::Read>(&self, reader: &mut R) -> BorshResult<ValueType> {
+            ValueType::deserialize_reader(reader)
         }
 
-        fn deserialize_array_len(&self, buf: &mut &[u8]) -> BorshResult<usize> {
-            Ok(u32::deserialize(buf)? as usize)
+        fn deserialize_reader_array_len<R: std::io::Read>(
+            &self,
+            reader: &mut R,
+        ) -> BorshResult<usize> {
+            Ok(u32::deserialize_reader(reader)? as usize)
         }
 
         #[inline]
@@ -2454,12 +2460,12 @@ mod type_serde {
 
     impl<'a> TypeRead for TypeFromMetadata<'a> {
         #[inline]
-        fn deserialize(&self, _: &mut &[u8]) -> BorshResult<ValueType> {
+        fn deserialize_reader<R: std::io::Read>(&self, _: &mut R) -> BorshResult<ValueType> {
             Ok(self.0.value_type(self.1))
         }
 
         #[inline]
-        fn deserialize_array_len(&self, _: &mut &[u8]) -> BorshResult<usize> {
+        fn deserialize_reader_array_len<R: std::io::Read>(&self, _: &mut R) -> BorshResult<usize> {
             match &self.1[self.0.key] {
                 MetadataType::Array(_, len) => Ok(*len),
                 _ => unreachable!(),
@@ -2581,53 +2587,56 @@ impl GosValue {
         }
     }
 
-    fn deserialize<T: type_serde::TypeRead>(tr: &T, buf: &mut &[u8]) -> BorshResult<GosValue> {
+    fn deserialize<T: type_serde::TypeRead, R: std::io::Read>(
+        tr: &T,
+        reader: &mut R,
+    ) -> BorshResult<GosValue> {
         let dummy_gcc = &GcContainer::new();
-        let typ = tr.deserialize(buf)?;
+        let typ = tr.deserialize_reader(reader)?;
         let val: GosValue = match typ {
-            ValueType::Bool => bool::deserialize(buf)?.into(),
-            ValueType::Int => (i64::deserialize(buf)? as isize).into(),
-            ValueType::Int8 => i8::deserialize(buf)?.into(),
-            ValueType::Int16 => i16::deserialize(buf)?.into(),
-            ValueType::Int32 => i32::deserialize(buf)?.into(),
-            ValueType::Int64 => i64::deserialize(buf)?.into(),
-            ValueType::Uint => (u64::deserialize(buf)? as usize).into(),
-            ValueType::UintPtr => GosValue::new_uint_ptr(u64::deserialize(buf)? as usize),
-            ValueType::Uint8 => u8::deserialize(buf)?.into(),
-            ValueType::Uint16 => u16::deserialize(buf)?.into(),
-            ValueType::Uint32 => u32::deserialize(buf)?.into(),
-            ValueType::Uint64 => u64::deserialize(buf)?.into(),
-            ValueType::Float32 => f32::deserialize(buf)?.into(),
-            ValueType::Float64 => f64::deserialize(buf)?.into(),
+            ValueType::Bool => bool::deserialize_reader(reader)?.into(),
+            ValueType::Int => (i64::deserialize_reader(reader)? as isize).into(),
+            ValueType::Int8 => i8::deserialize_reader(reader)?.into(),
+            ValueType::Int16 => i16::deserialize_reader(reader)?.into(),
+            ValueType::Int32 => i32::deserialize_reader(reader)?.into(),
+            ValueType::Int64 => i64::deserialize_reader(reader)?.into(),
+            ValueType::Uint => (u64::deserialize_reader(reader)? as usize).into(),
+            ValueType::UintPtr => GosValue::new_uint_ptr(u64::deserialize_reader(reader)? as usize),
+            ValueType::Uint8 => u8::deserialize_reader(reader)?.into(),
+            ValueType::Uint16 => u16::deserialize_reader(reader)?.into(),
+            ValueType::Uint32 => u32::deserialize_reader(reader)?.into(),
+            ValueType::Uint64 => u64::deserialize_reader(reader)?.into(),
+            ValueType::Float32 => f32::deserialize_reader(reader)?.into(),
+            ValueType::Float64 => f64::deserialize_reader(reader)?.into(),
             ValueType::Complex64 => {
-                let r = f32::deserialize(buf)?.into();
-                let i = f32::deserialize(buf)?.into();
+                let r = f32::deserialize_reader(reader)?.into();
+                let i = f32::deserialize_reader(reader)?.into();
                 GosValue::new_complex64(r, i)
             }
-            ValueType::Function => GosValue::new_function(FunctionKey::deserialize(buf)?),
-            ValueType::Package => GosValue::new_package(PackageKey::deserialize(buf)?),
-            ValueType::Metadata => GosValue::new_metadata(Meta::deserialize(buf)?),
-            ValueType::String => GosValue::with_str(&String::deserialize(buf)?),
+            ValueType::Function => GosValue::new_function(FunctionKey::deserialize_reader(reader)?),
+            ValueType::Package => GosValue::new_package(PackageKey::deserialize_reader(reader)?),
+            ValueType::Metadata => GosValue::new_metadata(Meta::deserialize_reader(reader)?),
+            ValueType::String => GosValue::with_str(&String::deserialize_reader(reader)?),
             ValueType::Array => {
                 let elem_read = tr.t_elem_read()?;
-                let t_elem = elem_read.deserialize(buf)?;
+                let t_elem = elem_read.deserialize_reader(reader)?;
                 let caller = ArrCaller::get_slow(t_elem);
-                let len = tr.deserialize_array_len(buf)?;
-                GosValue::deserialize_array(&elem_read, len, &caller, dummy_gcc, buf)?
+                let len = tr.deserialize_reader_array_len(reader)?;
+                GosValue::deserialize_array(&elem_read, len, &caller, dummy_gcc, reader)?
             }
             ValueType::Complex128 => {
-                let r = f64::deserialize(buf)?.into();
-                let i = f64::deserialize(buf)?.into();
+                let r = f64::deserialize_reader(reader)?.into();
+                let i = f64::deserialize_reader(reader)?.into();
                 GosValue::new_complex128(r, i)
             }
             ValueType::Struct => {
-                let fields = Vec::<GosValue>::deserialize(buf)?;
+                let fields = Vec::<GosValue>::deserialize_reader(reader)?;
                 GosValue::new_struct(StructObj::new(fields), dummy_gcc)
             }
             ValueType::Slice => {
                 let elem_read = tr.t_elem_read()?;
-                let t_elem = elem_read.deserialize(buf)?;
-                let len = u32::deserialize(buf)?;
+                let t_elem = elem_read.deserialize_reader(reader)?;
+                let len = u32::deserialize_reader(reader)?;
                 match len {
                     u32::MAX => GosValue::new_nil_slice(t_elem),
                     _ => {
@@ -2637,29 +2646,29 @@ impl GosValue {
                             len as usize,
                             &caller,
                             dummy_gcc,
-                            buf,
+                            reader,
                         )?;
                         GosValue::slice_array(array, 0, -1, &caller).unwrap()
                     }
                 }
             }
             ValueType::Map => {
-                let len = u32::deserialize(buf)?;
+                let len = u32::deserialize_reader(reader)?;
                 match len {
                     u32::MAX => GosValue::new_nil(ValueType::Map),
                     _ => {
                         let map = GosValue::new_map(dummy_gcc);
                         let mo = &map.as_non_nil_map().unwrap().0;
                         for _ in 0..len {
-                            let key = GosValue::deserialize(tr, buf)?;
-                            let val = GosValue::deserialize(tr, buf)?;
+                            let key = GosValue::deserialize(tr, reader)?;
+                            let val = GosValue::deserialize(tr, reader)?;
                             mo.insert(key, val);
                         }
                         map
                     }
                 }
             }
-            ValueType::Closure => match Option::<GosClosureObj>::deserialize(buf)? {
+            ValueType::Closure => match Option::<GosClosureObj>::deserialize_reader(reader)? {
                 Some(cls) => GosValue::new_closure(ClosureObj::Gos(cls), dummy_gcc),
                 None => GosValue::new_nil(typ),
             },
@@ -2669,16 +2678,16 @@ impl GosValue {
     }
 
     #[inline]
-    fn deserialize_array<T: type_serde::TypeRead>(
+    fn deserialize_array<T: type_serde::TypeRead, R: std::io::Read>(
         tr: &T,
         len: usize,
         caller: &Box<dyn Dispatcher>,
         gcc: &GcContainer,
-        buf: &mut &[u8],
+        reader: &mut R,
     ) -> BorshResult<GosValue> {
         let mut data = Vec::with_capacity(len);
         for _ in 0..len {
-            data.push(GosValue::deserialize(tr, buf)?)
+            data.push(GosValue::deserialize(tr, reader)?)
         }
         Ok(caller.array_with_data(data, gcc))
     }
@@ -2704,8 +2713,8 @@ impl BorshSerialize for GosValue {
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for GosValue {
-    fn deserialize(buf: &mut &[u8]) -> BorshResult<Self> {
-        GosValue::deserialize(&type_serde::TypeEmbeded, buf)
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        GosValue::deserialize(&type_serde::TypeEmbeded, reader)
     }
 }
 
