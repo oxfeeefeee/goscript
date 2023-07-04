@@ -1,6 +1,6 @@
 [package]
 name = "go-engine"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-2-Clause"
@@ -25,16 +25,16 @@ wasm = ["dep:wasm-bindgen", "dep:instant", "dep:getrandom"]
 futures-lite = "1.12.0"
 lazy_static = "1.4.0"
 zip = { version = "0.6.2", features = ["deflate"], default-features = false, optional = true }
-borsh = { version = "0.9.3", optional = true } 
+borsh = { version ="~0.10", optional = true } 
 
 wasm-bindgen = { version = "0.2.84", optional = true }  
 instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 
 go-parser = { version = "0.1.0", path = "../parser" }
-go-vm = { version = "0.1.0", path = "../vm" }
+go-vm = { version = "0.1.1", path = "../vm" }
 go-types = { version = "0.1.1", path = "../types" }
-go-codegen = { version = "0.1.1", path = "../codegen" }
+go-codegen = { version = "0.1.2", path = "../codegen" }
 go-pmacro = { version = "0.1.0", path = "../pmacro" }
 
 [dev-dependencies]
