@@ -8,12 +8,24 @@ use crate::ErrorList;
 use go_parser::Map;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
-pub fn run(config: Config, source: &SourceReader, path: &Path) -> Result<(), ErrorList> {
+pub fn run(
+    config: Config,
+    source: &SourceReader,
+    path: &Path,
+    panic_handler: Option<Rc<dyn Fn(String, String)>>,
+) -> Result<(), ErrorList> {
     let engine = Engine::new();
     #[cfg(feature = "go_std")]
     engine.set_std_io(config.std_in, config.std_out, config.std_err);
-    engine.run_source(config.trace_parser, config.trace_checker, source, path)
+    engine.run_source(
+        config.trace_parser,
+        config.trace_checker,
+        source,
+        path,
+        panic_handler,
+    )
 }
 
 pub struct SourceReader {

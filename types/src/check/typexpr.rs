@@ -710,7 +710,8 @@ impl<'a, S: SourceRead> Checker<'a, S> {
             }
             itype_val.all_methods_push(fun);
         }
-        drop(info_ref);
+        // We used to need this to make the compiler happy:
+        //drop(info_ref);
 
         // fix signatures now that we have collected all methods
         let invalid_type = self.invalid_type();

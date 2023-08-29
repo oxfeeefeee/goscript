@@ -6,7 +6,7 @@ use crate::ffi::Ffi;
 #[cfg(feature = "go_std")]
 use crate::std::os;
 #[cfg(feature = "serde_borsh")]
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshSerialize;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -92,33 +92,34 @@ impl Engine {
     #[cfg(feature = "codegen")]
     pub fn compile<S: SourceRead>(
         &self,
-        trace_parser: bool,
-        trace_checker: bool,
         reader: &S,
         path: &Path,
-    ) -> Result<(vm::Bytecode, parser::FileSet), parser::ErrorList> {
+        debug_info: bool,
+        trace_parser: bool,
+        trace_checker: bool,
+    ) -> Result<vm::Bytecode, parser::ErrorList> {
         let cfg = types::TraceConfig {
             trace_parser,
             trace_checker,
         };
-        let mut fs = parser::FileSet::new();
-        cg::parse_check_gen(path, &cfg, reader, &mut fs).map(|x| (x, fs))
+        cg::parse_check_gen(path, &cfg, reader, debug_info)
     }
 
     #[cfg(all(feature = "codegen", feature = "serde_borsh"))]
     pub fn compile_serialize<S: SourceRead>(
         &self,
-        trace_parser: bool,
-        trace_checker: bool,
         reader: &S,
         path: &Path,
+        debug_info: bool,
+        trace_parser: bool,
+        trace_checker: bool,
     ) -> Result<Vec<u8>, parser::ErrorList> {
-        self.compile(trace_parser, trace_checker, reader, path)
-            .map(|(code, _)| code.try_to_vec().unwrap())
+        self.compile(reader, path, debug_info, trace_parser, trace_checker)
+            .map(|code| code.try_to_vec().unwrap())
     }
 
-    pub fn run_bytecode(&self, bc: &vm::Bytecode) {
-        vm::run(bc, &self.ffi, None)
+    pub fn run_bytecode(&self, bc: &vm::Bytecode) -> Option<vm::PanicData> {
+        vm::run(bc, &self.ffi)
     }
 
     #[cfg(feature = "codegen")]
@@ -128,19 +129,29 @@ impl Engine {
         trace_checker: bool,
         reader: &S,
         path: &Path,
+        panic_handler: Option<Rc<dyn Fn(String, String)>>,
     ) -> Result<(), parser::ErrorList> {
-        self.compile(trace_parser, trace_checker, reader, path)
-            .map(|(code, fs)| {
-                #[cfg(feature = "serde_borsh")]
-                {
-                    let encoded = code.try_to_vec().unwrap();
-                    let decoded = go_vm::Bytecode::try_from_slice(&encoded).unwrap();
-                    dbg!(encoded.len());
-                    vm::run(&decoded, &self.ffi, Some(&fs))
-                }
-                #[cfg(not(feature = "serde_borsh"))]
-                {
-                    vm::run(&code, &self.ffi, Some(&fs))
+        self.compile(reader, path, true, trace_parser, trace_checker)
+            .map(|code| {
+                // let mut decoded;
+                // #[cfg(feature = "serde_borsh")]
+                // {
+                //     let encoded = code.try_to_vec().unwrap();
+                //     decoded = go_vm::Bytecode::try_from_slice(&encoded).unwrap();
+                // }
+                // #[cfg(not(feature = "serde_borsh"))]
+                // {
+                //     decoded = code;
+                // }
+                let pdata = vm::run(&code, &self.ffi);
+                if let Some(pdata) = pdata {
+                    let call_stack = vm::CallStackDisplay::new(&pdata, &code);
+                    if let Some(handler) = panic_handler {
+                        handler(format!("{}", pdata.msg), format!("{}", call_stack));
+                    } else {
+                        eprintln!("{}\n", pdata.msg);
+                        eprintln!("{}\n", call_stack);
+                    }
                 }
             })
     }

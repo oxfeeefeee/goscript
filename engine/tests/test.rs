@@ -7,6 +7,7 @@ use std::io;
 use std::io::Write;
 #[cfg(any(feature = "read_zip", feature = "go_std"))]
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 #[macro_use]
 extern crate time_test;
@@ -39,13 +40,25 @@ impl Write for WriteBuf {
     }
 }
 
-#[cfg(feature = "go_std")]
 fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
+    run_path(path, trace, true)
+}
+
+#[cfg(feature = "go_std")]
+fn run_path(path: &str, trace: bool, fail_on_panic: bool) -> Result<(), engine::ErrorList> {
     let mut cfg = engine::Config::default();
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     let sr = engine::SourceReader::local_fs(PathBuf::from("../std/"), PathBuf::from("./"));
-    let result = engine::run(cfg, &sr, Path::new(path));
+    let ph: Option<Rc<dyn Fn(String, String)>> =
+        Some(Rc::new(move |msg: String, stack: String| {
+            eprintln!("{}\n", msg);
+            eprintln!("{}\n", stack);
+            if fail_on_panic {
+                panic!("test panicked");
+            }
+        }));
+    let result = engine::run(cfg, &sr, Path::new(path), ph);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -54,7 +67,7 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
 }
 
 #[cfg(not(feature = "go_std"))]
-fn run(_path: &str, _trace: bool) -> Result<(), engine::ErrorList> {
+fn run_path(_path: &str, _trace: bool, fail_on_panic: bool) -> Result<(), engine::ErrorList> {
     unimplemented!()
 }
 
@@ -70,7 +83,13 @@ fn run_zip(zip: &str, path: &str, trace: bool) -> Result<(), engine::ErrorList> 
         PathBuf::from("std/"),
         PathBuf::from("./"),
     );
-    let result = engine::run(cfg, &sr, Path::new(path));
+    let ph: Option<Rc<dyn Fn(String, String)>> =
+        Some(Rc::new(move |msg: String, stack: String| {
+            eprintln!("{}\n", msg);
+            eprintln!("{}\n", stack);
+            panic!("test panicked");
+        }));
+    let result = engine::run(cfg, &sr, Path::new(path), ph);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -89,7 +108,13 @@ fn run_string(source: Cow<'static, str>, trace: bool) -> Result<(), engine::Erro
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     let (sr, path) = engine::SourceReader::fs_lib_and_string(PathBuf::from("../std/"), source);
-    let result = engine::run(cfg, &sr, &path);
+    let ph: Option<Rc<dyn Fn(String, String)>> =
+        Some(Rc::new(move |msg: String, stack: String| {
+            eprintln!("{}\n", msg);
+            eprintln!("{}\n", stack);
+            panic!("test panicked");
+        }));
+    let result = engine::run(cfg, &sr, &path, ph);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -118,7 +143,13 @@ fn run_zip_and_string(
         PathBuf::from("std/"),
         source,
     );
-    let result = engine::run(cfg, &sr, &path);
+    let ph: Option<Rc<dyn Fn(String, String)>> =
+        Some(Rc::new(move |msg: String, stack: String| {
+            eprintln!("{}\n", msg);
+            eprintln!("{}\n", stack);
+            panic!("test panicked");
+        }));
+    let result = engine::run(cfg, &sr, &path, ph);
     if let Err(el) = &result {
         el.sort();
         eprint!("{}", el);
@@ -179,7 +210,7 @@ fn test_g2case1() {
 
 #[test]
 fn test_g2case2() {
-    let result = run("./tests/group2/case2.gos", true);
+    let result = run_path("./tests/group2/case2.gos", true, false);
     assert!(result.is_ok());
 }
 

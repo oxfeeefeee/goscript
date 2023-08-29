@@ -11,7 +11,7 @@ pub(crate) mod os;
 mod reflect;
 #[cfg(feature = "async")]
 mod sync;
-#[cfg(feature = "wasm")]
+#[cfg(target_arch = "wasm32")]
 mod wasm;
 
 pub(crate) fn register(factory: &mut go_vm::FfiFactory) {

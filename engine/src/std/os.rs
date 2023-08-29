@@ -156,24 +156,24 @@ impl StdIo {
             Self::StdOut => match &mut api.std_out {
                 Some(r) => r.write(buf),
                 None => {
-                    #[cfg(feature = "wasm")]
+                    #[cfg(target_arch = "wasm32")]
                     {
                         crate::std::wasm::console_log(&String::from_utf8_lossy(buf));
                         Ok(buf.len())
                     }
-                    #[cfg(not(feature = "wasm"))]
+                    #[cfg(not(target_arch = "wasm32"))]
                     io::stdout().lock().write(buf)
                 }
             },
             Self::StdErr => match &mut api.std_err {
                 Some(r) => r.write(buf),
                 None => {
-                    #[cfg(feature = "wasm")]
+                    #[cfg(target_arch = "wasm32")]
                     {
                         crate::std::wasm::console_log(&String::from_utf8_lossy(buf));
                         Ok(buf.len())
                     }
-                    #[cfg(not(feature = "wasm"))]
+                    #[cfg(not(target_arch = "wasm32"))]
                     io::stderr().lock().write(buf)
                 }
             },

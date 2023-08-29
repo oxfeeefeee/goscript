@@ -13,7 +13,7 @@ fn run(path: &str, trace: bool) -> Result<(), engine::ErrorList> {
     cfg.trace_parser = trace;
     cfg.trace_checker = trace;
     let sr = engine::SourceReader::local_fs(PathBuf::from("../std/"), PathBuf::from("./"));
-    engine::run(cfg, &sr, Path::new(path))
+    engine::run(cfg, &sr, Path::new(path), None)
 }
 
 #[cfg(not(feature = "go_std"))]

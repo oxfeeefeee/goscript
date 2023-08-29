@@ -17,7 +17,7 @@
 //!    cfg.trace_parser = trace;
 //!    cfg.trace_checker = trace;
 //!    let sr = SourceReader::local_fs(PathBuf::from("../std/"), PathBuf::from("./"));
-//!    let result = run(cfg, &sr, Path::new(path));
+//!    let result = run(cfg, &sr, Path::new(path), None);
 //!    if let Err(el) = &result {
 //!        el.sort();
 //!        eprint!("{}", el);
@@ -56,7 +56,7 @@ pub mod ffi;
 extern crate lazy_static;
 
 pub use engine::*;
-pub use go_parser::ErrorList;
+pub use go_parser::{ErrorList, FileSet};
 pub use source::*;
 
 pub use crate::vfs::{compound::CompoundFs, vfs_map::VfsMap, VirtualFs};

@@ -103,6 +103,8 @@ pub struct Bytecode {
     pub indices: Vec<Vec<OpIndex>>,
     pub entry: FunctionKey,
     pub main_pkg: PackageKey,
+    /// Optional, for debug info
+    pub file_set: Option<go_parser::FileSet>,
 }
 
 impl Bytecode {
@@ -113,6 +115,7 @@ impl Bytecode {
         indices: Vec<Vec<OpIndex>>,
         entry: FunctionKey,
         main_pkg: PackageKey,
+        file_set: Option<go_parser::FileSet>,
     ) -> Bytecode {
         let ifaces = ifaces
             .into_iter()
@@ -128,6 +131,7 @@ impl Bytecode {
             indices,
             entry,
             main_pkg,
+            file_set,
         }
     }
 }

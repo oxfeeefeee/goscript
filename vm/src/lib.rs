@@ -34,4 +34,39 @@ pub use {
     go_pmacro::{ffi_impl, Ffi, UnsafePtr},
     value::Bytecode,
     vm::run,
+    vm::PanicData,
 };
+
+pub struct CallStackDisplay<'a> {
+    panic_data: &'a PanicData,
+    bc: &'a Bytecode,
+}
+
+impl<'a> CallStackDisplay<'a> {
+    pub fn new(panic_data: &'a PanicData, bc: &'a Bytecode) -> CallStackDisplay<'a> {
+        Self { panic_data, bc }
+    }
+}
+
+impl<'a> std::fmt::Display for CallStackDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (fkey, pc) in self.panic_data.call_stack.iter() {
+            let func = &self.bc.objects.functions[*fkey];
+            if let Some(p) = func.pos[*pc as usize] {
+                if let Some(fs) = &self.bc.file_set {
+                    writeln!(
+                        f,
+                        "{}",
+                        fs.position(p as usize)
+                            .unwrap_or(go_parser::FilePos::null())
+                    )?;
+                } else {
+                    writeln!(f, "fileset not available, pos:{}", p)?;
+                }
+            } else {
+                f.write_str("<no debug info available for current frame>\n")?;
+            };
+        }
+        Ok(())
+    }
+}

@@ -1,6 +1,6 @@
 [package]
 name = "go-parser"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-3-Clause"
@@ -12,5 +12,7 @@ description = "The parser of the Goscript project."
 [features] 
 default = []
 btree_map = []
+serde_borsh = ["dep:borsh"]
 
 [dependencies]
+borsh = { version ="~0.10", optional = true } 

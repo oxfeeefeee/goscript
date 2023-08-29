@@ -1,6 +1,6 @@
 [package]
 name = "go-codegen"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-2-Clause"
@@ -16,9 +16,9 @@ async = ["go-vm/async"]
 btree_map = ["go-parser/btree_map"]
 
 [dependencies]
-go-parser = { version = "0.1.0", path = "../parser" }
-go-vm = { version = "0.1.2", path = "../vm" }
-go-types = { version = "0.1.1", path = "../types" }
+go-parser = { version = "0.1.1", path = "../parser" }
+go-vm = { version = "0.1.3", path = "../vm" }
+go-types = { version = "0.1.2", path = "../types" }
 
 [dev-dependencies]
 time-test = "0.2.2"

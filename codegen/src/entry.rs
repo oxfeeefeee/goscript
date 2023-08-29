@@ -23,8 +23,10 @@ pub fn parse_check_gen<S: SourceRead>(
     path: &Path,
     tconfig: &TraceConfig,
     reader: &S,
-    fset: &mut FileSet,
+    debug_info: bool,
 ) -> Result<Bytecode, ErrorList> {
+    let mut fset = FileSet::new();
+
     let ast_objs = &mut AstObjects::new();
     let tc_objs = &mut TCObjects::new();
     let results = &mut Map::new();
@@ -32,7 +34,7 @@ pub fn parse_check_gen<S: SourceRead>(
     let el = ErrorList::new();
 
     let importer = &mut Importer::new(
-        &tconfig, reader, fset, pkgs, results, ast_objs, tc_objs, &el, 0,
+        &tconfig, reader, &mut fset, pkgs, results, ast_objs, tc_objs, &el, 0,
     );
     let key = ImportKey::new(
         path.to_str().unwrap(),
@@ -51,6 +53,7 @@ pub fn parse_check_gen<S: SourceRead>(
             main_pkg.unwrap(),
             main_ident,
             blank_ident,
+            debug_info.then_some(fset),
         ))
     }
 }
@@ -62,6 +65,7 @@ fn gen_byte_code(
     tc_main_pkg: TCPackageKey,
     main_ident: IdentKey,
     blank_ident: IdentKey,
+    fset: Option<FileSet>,
 ) -> Bytecode {
     let vm_objs = VMObjects::new();
     let mut vmctx = CodeGenVMCtx::new(vm_objs);
@@ -123,6 +127,7 @@ fn gen_byte_code(
         struct_selector.result(),
         entry_key,
         main_pkg,
+        fset,
     )
 }
 

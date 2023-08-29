@@ -8,7 +8,6 @@ use crate::objects::ClosureObj;
 use crate::stack::{RangeStack, Stack};
 use crate::value::*;
 use go_parser::Map;
-use go_parser::{FilePos, FileSet};
 use std::cell::{Cell, RefCell};
 use std::cmp::Ordering;
 use std::rc::Rc;
@@ -124,19 +123,20 @@ macro_rules! unary_op {
 }
 
 /// Entry point
-pub fn run(code: &Bytecode, ffi: &FfiFactory, fs: Option<&FileSet>) {
+pub fn run(code: &Bytecode, ffi: &FfiFactory) -> Option<PanicData> {
     let gcc = GcContainer::new();
+    let panic_data = Rc::new(RefCell::new(None));
 
     #[cfg(not(feature = "async"))]
     {
-        let ctx = Context::new(code, &gcc, ffi, fs);
+        let ctx = Context::new(code, &gcc, ffi, panic_data.clone());
         let first_frame = ctx.new_entry_frame(code.entry);
         Fiber::new(ctx, Stack::new(), first_frame).main_loop();
     }
     #[cfg(feature = "async")]
     {
         let exec = Rc::new(LocalExecutor::new());
-        let ctx = Context::new(exec.clone(), code, &gcc, ffi, fs);
+        let ctx = Context::new(exec.clone(), code, &gcc, ffi, panic_data.clone());
         let entry = ctx.new_entry_frame(code.entry);
         ctx.spawn_fiber(Stack::new(), entry);
         future::block_on(async {
@@ -147,6 +147,7 @@ pub fn run(code: &Bytecode, ffi: &FfiFactory, fs: Option<&FileSet>) {
             }
         });
     }
+    panic_data.replace(None)
 }
 
 #[derive(Clone, Debug)]
@@ -244,9 +245,9 @@ enum Result {
 }
 
 #[derive(Debug)]
-struct PanicData {
-    msg: GosValue,
-    call_stack: Vec<(FunctionKey, OpIndex)>,
+pub struct PanicData {
+    pub msg: GosValue,
+    pub call_stack: Vec<(FunctionKey, OpIndex)>,
 }
 
 impl PanicData {
@@ -265,7 +266,7 @@ struct Context<'a> {
     code: &'a Bytecode,
     gcc: &'a GcContainer,
     ffi_factory: &'a FfiFactory,
-    fs: Option<&'a FileSet>,
+    panic_data: Rc<RefCell<Option<PanicData>>>,
     next_id: Cell<usize>,
 }
 
@@ -275,7 +276,7 @@ impl<'a> Context<'a> {
         code: &'a Bytecode,
         gcc: &'a GcContainer,
         ffi_factory: &'a FfiFactory,
-        fs: Option<&'a FileSet>,
+        panic_data: Rc<RefCell<Option<PanicData>>>,
     ) -> Context<'a> {
         Context {
             #[cfg(feature = "async")]
@@ -283,7 +284,7 @@ impl<'a> Context<'a> {
             code,
             gcc,
             ffi_factory,
-            fs,
+            panic_data,
             next_id: Cell::new(0),
         }
     }
@@ -1130,7 +1131,8 @@ impl<'a> Fiber<'a> {
                             stack.move_vec(begin, end);
                         }
 
-                        drop(frame);
+                        // We used to need this to make the compiler happy:
+                        // drop(frame);
                         self.frames.pop();
                         frame_height -= 1;
                         if self.frames.is_empty() {
@@ -1498,7 +1500,8 @@ impl<'a> Fiber<'a> {
                         match &mut val {
                             ClosureObj::Gos(gos) => {
                                 if let Some(uvs) = &mut gos.uvs {
-                                    drop(frame);
+                                    // We used to need this to make the compiler happy:
+                                    //drop(frame);
                                     for (_, uv) in uvs.iter_mut() {
                                         let r: &mut UpValueState = &mut uv.inner.borrow_mut();
                                         if let UpValueState::Open(d) = r {
@@ -1791,31 +1794,7 @@ impl<'a> Fiber<'a> {
             } //yield unit
             match result {
                 Result::End => {
-                    if let Some(p) = panic {
-                        println!("panic: {}", p.msg);
-                        if let Some(files) = self.context.fs {
-                            for (fkey, pc) in p.call_stack.iter() {
-                                let func = &objs.functions[*fkey];
-                                if let Some(p) = func.pos[*pc as usize] {
-                                    println!(
-                                        "{}",
-                                        files.position(p as usize).unwrap_or(FilePos::null())
-                                    );
-                                } else {
-                                    println!("<no debug info available>");
-                                }
-                            }
-                        }
-
-                        // a hack to make the test case fail
-                        let iface = p.msg.as_interface().unwrap();
-                        let val = iface.underlying_value().unwrap();
-                        if val.typ() == ValueType::String
-                            && val.as_string().as_str().starts_with("Opcode::ASSERT")
-                        {
-                            panic!("ASSERT");
-                        }
-                    }
+                    *ctx.panic_data.borrow_mut() = panic.take();
                     break;
                 }
                 Result::Continue => {

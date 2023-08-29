@@ -9,6 +9,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+#[cfg(feature = "serde_borsh")]
+use borsh::{
+    maybestd::io::Result as BorshResult, maybestd::io::Write as BorshWrite, BorshDeserialize,
+    BorshSerialize,
+};
 use std::borrow::Borrow;
 use std::fmt;
 use std::fmt::Write;
@@ -189,6 +194,36 @@ impl File {
     }
 }
 
+#[cfg(feature = "serde_borsh")]
+impl BorshSerialize for File {
+    #[inline]
+    fn serialize<W: BorshWrite>(&self, writer: &mut W) -> BorshResult<()> {
+        let name_str: &str = &*self.name;
+        name_str.serialize(writer)?;
+        self.base.serialize(writer)?;
+        self.size.serialize(writer)?;
+        self.lines.serialize(writer)
+    }
+}
+
+#[cfg(feature = "serde_borsh")]
+impl BorshDeserialize for File {
+    #[inline]
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> BorshResult<Self> {
+        let name = String::deserialize_reader(reader)?;
+        let base = usize::deserialize_reader(reader)?;
+        let size = usize::deserialize_reader(reader)?;
+        let lines = Vec::<usize>::deserialize_reader(reader)?;
+        Ok(File {
+            name: Rc::new(name),
+            base,
+            size,
+            lines,
+        })
+    }
+}
+
+#[cfg_attr(feature = "serde_borsh", derive(BorshDeserialize, BorshSerialize))]
 #[derive(Debug)]
 pub struct FileSet {
     base: usize,
