@@ -1,0 +1,18 @@
+package main
+
+import "fmt2"
+
+func get_input() interface{} {
+	return map[string]interface{}{
+		"left":  2,
+		"right": 3,
+	}
+}
+
+func main() {
+	m := get_input()
+    fmt2.Println(m)   
+	data, ok := m.(map[string]interface{})
+    assert(ok)
+	fmt2.Println(ok, data)
+}

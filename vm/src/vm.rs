@@ -1429,7 +1429,7 @@ impl<'a> Fiber<'a> {
                     }
                     Opcode::TYPE_ASSERT => {
                         let val = stack.read(inst.s0, sb, consts);
-                        match type_assert(val, cst(consts, inst.s1), gcc, Some(&objs.metas)) {
+                        match type_assert(val, cst(consts, inst.s1), gcc, &objs.metas) {
                             Ok((val, ok)) => {
                                 stack.set(inst.d + sb, val);
                                 if inst.t1 == ValueType::FlagB {
@@ -1835,21 +1835,17 @@ fn type_assert(
     val: &GosValue,
     want_meta: &GosValue,
     gcc: &GcContainer,
-    metas: Option<&MetadataObjs>,
+    metas: &MetadataObjs,
 ) -> RuntimeResult<(GosValue, bool)> {
     match val.as_non_nil_interface() {
         Ok(iface) => match &iface as &InterfaceObj {
             InterfaceObj::Gos(v, b) => {
                 let meta = b.as_ref().unwrap().0;
                 let want_meta = want_meta.as_metadata();
-                if *want_meta == meta {
+                if want_meta.identical(&meta, metas) {
                     Ok((v.copy_semantic(gcc), true))
                 } else {
-                    if let Some(mobjs) = metas {
-                        Ok((want_meta.zero(mobjs, gcc), false))
-                    } else {
-                        Err("interface conversion: wrong type".to_owned().into())
-                    }
+                    Ok((want_meta.zero(metas, gcc), false))
                 }
             }
             InterfaceObj::Ffi(_) => Err("FFI interface do not support type assertion"
