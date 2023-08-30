@@ -1489,8 +1489,8 @@ impl GosValue {
     }
 
     #[inline]
-    pub(crate) fn new_map(gcc: &GcContainer) -> GosValue {
-        let data = ValueData::new_map(MapObj::new(), gcc);
+    pub(crate) fn new_map(gcc: &GcContainer, obj:MapObj) -> GosValue {
+        let data = ValueData::new_map(obj, gcc);
         GosValue::new(ValueType::Map, data)
     }
 

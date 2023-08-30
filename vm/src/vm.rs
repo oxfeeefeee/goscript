@@ -1569,7 +1569,7 @@ impl<'a> Fiber<'a> {
                                 GosValue::array_with_data(val, caller.get(typ), gcc)
                             }
                             MetadataType::Map(_, _) => {
-                                let map_val = GosValue::new_map(gcc);
+                                let map_val = GosValue::new_map(gcc, MapObj::new());
                                 let map = map_val.as_map().unwrap();
                                 for i in 0..count {
                                     let k = stack.get(begin + i * 2).clone();
@@ -1630,7 +1630,7 @@ impl<'a> Fiber<'a> {
                                     gcc,
                                 )
                             }
-                            MetadataType::Map(_, _) => GosValue::new_map(gcc),
+                            MetadataType::Map(_, _) => GosValue::new_map(gcc, MapObj::new()),
                             #[cfg(not(feature = "async"))]
                             MetadataType::Channel(_, _) => {
                                 go_panic_no_async!(panic, frame, code);

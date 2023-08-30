@@ -82,6 +82,11 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
+    pub fn new_map(&self, map:MapObj) -> GosValue {
+        GosValue::new_map(self.gcc, map) 
+    }
+
+    #[inline]
     pub fn new_array(&self, member: Vec<GosValue>, t_elem: ValueType) -> GosValue {
         GosValue::array_with_data(member, self.array_slice_caller.get(t_elem), self.gcc)
     }
