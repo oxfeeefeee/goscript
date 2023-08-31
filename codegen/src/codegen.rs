@@ -1242,18 +1242,20 @@ impl<'a, 'c> CodeGen<'a, 'c> {
         }
     }
 
-    fn gen_expr_sub_composite_lit(&mut self, expr: &Expr, tc_type: TCTypeKey) {
+    fn gen_expr_sub_composite_lit(&mut self, expr: &Expr) {
         match expr {
-            Expr::CompositeLit(clit) => self.gen_expr_composite_lit(clit, tc_type),
+            Expr::CompositeLit(clit) => {
+                let tc_type = self.t.expr_tc_type(expr);
+                self.gen_expr_composite_lit(clit, tc_type)
+            }
             _ => self.gen_expr(expr),
         }
     }
 
     fn gen_expr_composite_lit(&mut self, clit: &CompositeLit, tc_type: TCTypeKey) {
         let meta = self.t.tc_type_to_meta(tc_type, &mut self.vmctx);
-        //let vt = self.t.tc_type_to_value_type(tc_type);
         let pos = Some(clit.l_brace);
-        let typ = &self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
+        let typ = self.tc_objs.types[tc_type].underlying_val(&self.tc_objs);
         let meta = meta.underlying(self.vmctx.metas());
         let mtype = self.vmctx.metas()[meta.key].clone();
 
@@ -1282,7 +1284,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     fctx.emit_assign(key_reg, index_addr, None, pos);
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     self.store_mode_call(elem_reg, Some(elem_type), |g| {
-                        g.gen_expr_sub_composite_lit(elem, elem_type)
+                        g.gen_expr_sub_composite_lit(elem)
                     });
                 }
                 clit.elts.len()
@@ -1294,11 +1296,11 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                         Expr::KeyValue(kv) => {
                             let key_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                             self.store_mode_call(key_reg, Some(map_type.key()), |g| {
-                                g.gen_expr_sub_composite_lit(&kv.key, map_type.key())
+                                g.gen_expr_sub_composite_lit(&kv.key)
                             });
                             let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                             self.store_mode_call(elem_reg, Some(map_type.elem()), |g| {
-                                g.gen_expr_sub_composite_lit(&kv.val, map_type.elem())
+                                g.gen_expr_sub_composite_lit(&kv.val)
                             });
                         }
                         _ => unreachable!(),
@@ -1324,7 +1326,7 @@ impl<'a, 'c> CodeGen<'a, 'c> {
                     let elem_reg = VirtualAddr::Direct(expr_ctx!(self).inc_cur_reg());
                     let field_type = self.tc_objs.lobjs[fields[index]].typ().unwrap();
                     self.store_mode_call(elem_reg, Some(field_type), |g| {
-                        g.gen_expr_sub_composite_lit(expr, field_type)
+                        g.gen_expr_sub_composite_lit(expr)
                     });
                 }
                 clit.elts.len()

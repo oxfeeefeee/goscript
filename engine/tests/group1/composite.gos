@@ -25,6 +25,19 @@ var acceptRanges = [16]acceptRange{
 }
 
 
+func withInterface() {
+	m := []interface{}{"a string", 1, 2.04, []int{1, 2, 3, 4}}
+	get_string := m[0]
+	fmt2.Println(get_string)
+	get_num := m[1]
+	fmt2.Println(get_num)
+	get_float := m[2]
+	fmt2.Println(get_float)
+
+	get_array := m[3]
+	fmt2.Println(get_array)
+}
+
 
 func main() {
     
@@ -58,4 +71,5 @@ func main() {
     assert(len(t3) == 11)
     
     
+    withInterface()
 }
