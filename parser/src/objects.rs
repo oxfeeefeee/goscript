@@ -8,6 +8,9 @@ use std::marker::PhantomData;
 use std::ops::Index;
 use std::ops::IndexMut;
 
+#[cfg(feature = "serde_borsh")]
+use borsh::{maybestd::io::Result, maybestd::io::Write, BorshDeserialize, BorshSerialize};
+
 pub trait PiggyVecKey {
     fn as_usize(&self) -> usize;
 }
@@ -85,6 +88,28 @@ where
             vec,
             phantom: PhantomData {},
         }
+    }
+}
+
+#[cfg(feature = "serde_borsh")]
+impl<K, V> BorshSerialize for PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+    V: BorshSerialize,
+{
+    fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
+        self.vec().serialize(writer)
+    }
+}
+
+#[cfg(feature = "serde_borsh")]
+impl<K, V> BorshDeserialize for PiggyVec<K, V>
+where
+    K: PiggyVecKey + From<usize>,
+    V: BorshDeserialize,
+{
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> Result<Self> {
+        Ok(Vec::<V>::deserialize_reader(reader)?.into())
     }
 }
 

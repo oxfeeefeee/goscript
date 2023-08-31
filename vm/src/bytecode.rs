@@ -65,31 +65,39 @@ impl VMObjects {
             arr_slice_caller: Box::new(ArrCaller::new()),
         }
     }
+
+    pub fn with_components(
+        mut metas: MetadataObjs,
+        functions: FunctionObjs,
+        packages: PackageObjs,
+    ) -> VMObjects {
+        let prim_meta = PrimitiveMeta::new(&mut metas);
+        VMObjects {
+            metas,
+            functions,
+            packages,
+            prim_meta,
+            arr_slice_caller: Box::new(ArrCaller::new()),
+        }
+    }
 }
 
 #[cfg(feature = "serde_borsh")]
 impl BorshSerialize for VMObjects {
     fn serialize<W: Write>(&self, writer: &mut W) -> Result<()> {
-        self.metas.vec().serialize(writer)?;
-        self.functions.vec().serialize(writer)?;
-        self.packages.vec().serialize(writer)
+        self.metas.serialize(writer)?;
+        self.functions.serialize(writer)?;
+        self.packages.serialize(writer)
     }
 }
 
 #[cfg(feature = "serde_borsh")]
 impl BorshDeserialize for VMObjects {
     fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> Result<Self> {
-        let mut metas = Vec::<MetadataType>::deserialize_reader(reader)?.into();
-        let functions = Vec::<FunctionObj>::deserialize_reader(reader)?.into();
-        let packages = Vec::<PackageObj>::deserialize_reader(reader)?.into();
-        let prim_meta = PrimitiveMeta::new(&mut metas);
-        Ok(VMObjects {
-            metas,
-            functions,
-            packages,
-            prim_meta,
-            arr_slice_caller: Box::new(ArrCaller::new()),
-        })
+        let metas = MetadataObjs::deserialize_reader(reader)?.into();
+        let functions = FunctionObjs::deserialize_reader(reader)?.into();
+        let packages = PackageObjs::deserialize_reader(reader)?.into();
+        Ok(Self::with_components(metas, functions, packages))
     }
 }
 
@@ -124,6 +132,29 @@ impl Bytecode {
                 (ms, binding)
             })
             .collect();
+        Bytecode {
+            objects,
+            consts,
+            ifaces,
+            indices,
+            entry,
+            main_pkg,
+            file_set,
+        }
+    }
+
+    pub fn with_components(
+        metas: MetadataObjs,
+        functions: FunctionObjs,
+        packages: PackageObjs,
+        consts: Vec<GosValue>,
+        ifaces: Vec<(Meta, Vec<Binding4Runtime>)>,
+        indices: Vec<Vec<OpIndex>>,
+        entry: FunctionKey,
+        main_pkg: PackageKey,
+        file_set: Option<go_parser::FileSet>,
+    ) -> Bytecode {
+        let objects = VMObjects::with_components(metas, functions, packages);
         Bytecode {
             objects,
             consts,

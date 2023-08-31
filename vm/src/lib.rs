@@ -29,6 +29,10 @@ pub mod types {
     pub use crate::value::*;
 }
 
+pub mod parser {
+    pub use go_parser::*;
+}
+
 pub use {
     ffi::*,
     go_pmacro::{ffi_impl, Ffi, UnsafePtr},
