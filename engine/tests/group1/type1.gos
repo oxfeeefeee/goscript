@@ -31,6 +31,10 @@ func typeAssert() {
     s, ok = j.(string)
     assert(ok)
     assert(s == "h")
+
+    var k interface{}
+    _, ok = k.(string)
+    assert(!ok)
 }
 
 type Add func(a int, b int) int

@@ -1830,29 +1830,33 @@ fn cst(consts: &Vec<GosValue>, i: OpIndex) -> &GosValue {
     &consts[(-i - 1) as usize]
 }
 
-#[inline(always)]
+#[inline]
 fn type_assert(
     val: &GosValue,
     want_meta: &GosValue,
     gcc: &GcContainer,
     metas: &MetadataObjs,
 ) -> RuntimeResult<(GosValue, bool)> {
-    match val.as_non_nil_interface() {
-        Ok(iface) => match &iface as &InterfaceObj {
-            InterfaceObj::Gos(v, b) => {
-                let meta = b.as_ref().unwrap().0;
-                let want_meta = want_meta.as_metadata();
-                if want_meta.identical(&meta, metas) {
-                    Ok((v.copy_semantic(gcc), true))
-                } else {
-                    Ok((want_meta.zero(metas, gcc), false))
+    let want_meta = want_meta.as_metadata();
+    match val.as_interface() {
+        Some(iface) => match &iface as &InterfaceObj {
+            InterfaceObj::Gos(v, mb) => match mb {
+                Some((meta, _)) => {
+                    if want_meta.identical(meta, metas) {
+                        Ok((v.copy_semantic(gcc), true))
+                    } else {
+                        Ok((want_meta.zero(metas, gcc), false))
+                    }
                 }
-            }
+                None => Err("No type info available for interface value"
+                    .to_owned()
+                    .into()),
+            },
             InterfaceObj::Ffi(_) => Err("FFI interface do not support type assertion"
                 .to_owned()
                 .into()),
         },
-        Err(e) => Err(e),
+        None => Ok((want_meta.zero(metas, gcc), false)),
     }
 }
 

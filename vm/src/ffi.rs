@@ -106,12 +106,24 @@ impl<'a> FfiCtx<'a> {
         GosValue::new_pointer(pobj)
     }
 
+    /// Create a new interface value with the underlying value,
+    /// and another interface to clone meta & binding from. Those info are typically
+    /// create by the compiler, so it's hard to construct them manually.
+    ///
+    /// -- Note --
+    /// if you pass `None` to clone_mb_from, the returned interface won't behave like
+    /// a normal interface. you cannot cast it or call it's methods.
+    ///
+    /// # Arguments
+    ///
+    /// * `underlying` - The underlying value
+    /// * `clone_mb_from` - another interface to clone meta & binding from
     #[inline]
-    pub fn new_interface(
-        underlying: GosValue,
-        meta: Option<(Meta, Vec<Binding4Runtime>)>,
-    ) -> GosValue {
-        GosValue::new_interface(InterfaceObj::with_value(underlying, meta))
+    pub fn new_interface(underlying: GosValue, clone_mb_from: Option<&InterfaceObj>) -> GosValue {
+        GosValue::new_interface(InterfaceObj::with_value(
+            underlying,
+            clone_mb_from.map(|x| x.clone_meta_binding()).flatten(),
+        ))
     }
 
     #[inline]
