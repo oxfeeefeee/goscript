@@ -107,22 +107,24 @@ impl<'a> FfiCtx<'a> {
     }
 
     /// Create a new interface value with the underlying value,
-    /// and another interface to clone meta & binding from. Those info are typically
-    /// create by the compiler, so it's hard to construct them manually.
+    /// and optionally the meta of the interface and the value.
     ///
     /// -- Note --
-    /// if you pass `None` to clone_mb_from, the returned interface won't behave like
+    /// if you pass `None` to metas, the returned interface won't behave like
     /// a normal interface. you cannot cast it or call it's methods.
     ///
     /// # Arguments
     ///
     /// * `underlying` - The underlying value
-    /// * `clone_mb_from` - another interface to clone meta & binding from
+    /// * `metas` - (Interface meta, value meta)
     #[inline]
-    pub fn new_interface(underlying: GosValue, clone_mb_from: Option<&InterfaceObj>) -> GosValue {
+    pub fn new_interface(&self, underlying: GosValue, metas: Option<(&Meta, Meta)>) -> GosValue {
         GosValue::new_interface(InterfaceObj::with_value(
             underlying,
-            clone_mb_from.map(|x| x.clone_meta_binding()).flatten(),
+            metas.map(|(iface, value_meta)| {
+                let (m, b) = iface.bind_with_iface(value_meta, &self.vm_objs.metas);
+                (m, b.into_iter().map(|x| x.into()).collect())
+            }),
         ))
     }
 

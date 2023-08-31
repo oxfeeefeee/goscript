@@ -974,10 +974,8 @@ pub enum InterfaceObj {
     /// Meta is the type info of the underlying value.
     /// Vec<Binding4Runtime>)> is used to invoke methods of the underlying value.
     ///
-    /// The Meta and Binding info are all determined at compile time.
-    /// They are not available if the Interface is created at runtime
-    /// as an empty Interface holding a GosValue, which acts like a
-    /// dynamic type.
+    /// The Meta and Binding info are all determined at compile time, unless you
+    /// create an interface via FFI.
     Gos(GosValue, Option<(Meta, Vec<Binding4Runtime>)>),
     Ffi(UnderlyingFfi),
 }
@@ -1000,14 +998,6 @@ impl InterfaceObj {
         match self.underlying_value() {
             Some(v) => v == val,
             None => false,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn clone_meta_binding(&self) -> Option<(Meta, Vec<Binding4Runtime>)> {
-        match self {
-            Self::Gos(_, mb) => mb.clone(),
-            _ => None,
         }
     }
 

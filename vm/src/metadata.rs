@@ -326,7 +326,7 @@ impl Meta {
     }
 
     /// Depth-first search for method by name
-    pub fn get_iface_binding(&self, name: &String, metas: &MetadataObjs) -> Option<IfaceBinding> {
+    fn get_iface_binding(&self, name: &String, metas: &MetadataObjs) -> Option<IfaceBinding> {
         match &metas[self.key] {
             MetadataType::Named(m, underlying) => match m.mapping.get(name) {
                 Some(&i) => Some(IfaceBinding::Struct(m.members[i as usize].clone(), None)),
@@ -369,6 +369,24 @@ impl Meta {
 
     pub fn identical(&self, other: &Self, metas: &MetadataObjs) -> bool {
         (self.key == other.key) || metas[self.key].identical(&metas[other.key], metas)
+    }
+
+    pub fn bind_with_iface(
+        &self,
+        value_meta: Self,
+        metas: &MetadataObjs,
+    ) -> (Meta, Vec<IfaceBinding>) {
+        let fields: Vec<&String> = match &metas[self.underlying(metas).key] {
+            MetadataType::Interface(m) => m.infos().iter().map(|x| &x.name).collect(),
+            _ => unreachable!(),
+        };
+        (
+            value_meta,
+            fields
+                .iter()
+                .map(|x| value_meta.get_iface_binding(x, metas).unwrap())
+                .collect(),
+        )
     }
 }
 

@@ -582,18 +582,8 @@ impl<'a> TypeLookup<'a> {
     ) -> (Meta, Vec<IfaceBinding>) {
         let iface = self.tc_type_to_meta(i_s.0, vmctx);
         let named = self.tc_type_to_meta(i_s.1, vmctx);
-        let metas = vmctx.metas_mut();
-        let fields: Vec<&String> = match &metas[iface.underlying(metas).key] {
-            MetadataType::Interface(m) => m.infos().iter().map(|x| &x.name).collect(),
-            _ => unreachable!(),
-        };
-        (
-            named,
-            fields
-                .iter()
-                .map(|x| named.get_iface_binding(x, metas).unwrap())
-                .collect(),
-        )
+        let metas = vmctx.metas();
+        iface.bind_with_iface(named, metas)
     }
 
     fn build_fields(
