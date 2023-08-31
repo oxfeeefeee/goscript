@@ -35,6 +35,7 @@ pub mod parser {
 
 pub use {
     ffi::*,
+    go_parser::{Map, MapIter},
     go_pmacro::{ffi_impl, Ffi, UnsafePtr},
     value::Bytecode,
     vm::run,

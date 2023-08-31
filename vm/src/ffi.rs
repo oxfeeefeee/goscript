@@ -96,6 +96,11 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
+    pub fn new_map(&self, m: Map<GosValue, GosValue>) -> GosValue {
+        GosValue::map_with_data(m, self.gcc)
+    }
+
+    #[inline]
     pub fn new_pointer(pointee: GosValue) -> GosValue {
         let pobj = PointerObj::UpVal(UpValue::new_closed(pointee));
         GosValue::new_pointer(pobj)

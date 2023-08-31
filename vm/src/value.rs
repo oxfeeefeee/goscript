@@ -1562,6 +1562,13 @@ impl GosValue {
     }
 
     #[inline]
+    pub(crate) fn map_with_data(data: GosMap, gcc: &GcContainer) -> GosValue {
+        let m = MapObj::with_data(data);
+        let data = ValueData::new_map(m, gcc);
+        GosValue::new(ValueType::Map, data)
+    }
+
+    #[inline]
     pub(crate) fn empty_iface_with_val(val: GosValue) -> GosValue {
         GosValue::new_interface(InterfaceObj::with_value(val, None))
     }

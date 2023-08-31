@@ -43,9 +43,15 @@ pub struct MapObj {
 }
 
 impl MapObj {
+    #[inline]
     pub fn new() -> MapObj {
+        Self::with_data(Map::new())
+    }
+
+    #[inline]
+    pub fn with_data(data: GosMap) -> MapObj {
         MapObj {
-            map: RefCell::new(Map::new()),
+            map: RefCell::new(data),
         }
     }
 
