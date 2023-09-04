@@ -129,6 +129,11 @@ impl<'a> FfiCtx<'a> {
     }
 
     #[inline]
+    pub fn new_empty_interface(&self, underlying: GosValue, meta: Meta) -> GosValue {
+        GosValue::new_interface(InterfaceObj::with_value(underlying, Some((meta, vec![]))))
+    }
+
+    #[inline]
     pub fn deref_pointer(&self, ptr: &GosValue) -> RuntimeResult<GosValue> {
         ptr.as_non_nil_pointer()?
             .deref(&self.stack, &self.vm_objs.packages)
