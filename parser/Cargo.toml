@@ -1,6 +1,6 @@
 [package]
 name = "go-parser"
-version = "0.1.1"
+version = "0.1.4"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-3-Clause"
@@ -15,4 +15,4 @@ btree_map = []
 serde_borsh = ["dep:borsh"]
 
 [dependencies]
-borsh = { version ="~0.10", optional = true } 
+borsh = { version ="0.10.3", optional = true } 
