@@ -2472,9 +2472,12 @@ mod type_serde {
         }
 
         #[inline]
-        fn deserialize_reader_array_len<R: std::io::Read>(&self, _: &mut R) -> BorshResult<usize> {
+        fn deserialize_reader_array_len<R: std::io::Read>(&self, r: &mut R) -> BorshResult<usize> {
             match &self.1[self.0.key] {
                 MetadataType::Array(_, len) => Ok(*len),
+                MetadataType::Named(_, inner) => {
+                    Self(inner, self.1).deserialize_reader_array_len(r)
+                }
                 _ => unreachable!(),
             }
         }
@@ -2484,12 +2487,11 @@ mod type_serde {
         where
             Self: Sized,
         {
-            let elem = match &self.1[self.0.key] {
-                MetadataType::Array(et, _) => et,
-                MetadataType::Slice(et) => et,
+            match &self.1[self.0.key] {
+                MetadataType::Array(et, _) | MetadataType::Slice(et) => Ok(Self(et, self.1)),
+                MetadataType::Named(_, inner) => Self(inner, self.1).t_elem_read(),
                 _ => unreachable!(),
-            };
-            Ok(Self(elem, self.1))
+            }
         }
     }
 }
