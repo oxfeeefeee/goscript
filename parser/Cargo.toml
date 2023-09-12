@@ -1,6 +1,6 @@
 [package]
 name = "go-parser"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-3-Clause"

@@ -1,6 +1,6 @@
 [package]
 name = "go-engine"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["oxfeeefeee <pb01005051@gmail.com>"]
 edition = "2021"
 license = "BSD-2-Clause"
@@ -31,11 +31,11 @@ wasm-bindgen = { version = "0.2.84", optional = true }
 instant = { version = "0.1", features = ["wasm-bindgen"], optional = true }
 getrandom = { version = "0.2", features = ["js"], optional = true }
 
-go-parser = { version = "0.1.4", path = "../parser" }
-go-vm = { version = "0.1.4", path = "../vm" }
-go-types = { version = "0.1.4", path = "../types" }
-go-codegen = { version = "0.1.4", path = "../codegen" }
-go-pmacro = { version = "0.1.4", path = "../pmacro" }
+go-parser = { version = "0.1.5", path = "../parser" }
+go-vm = { version = "0.1.5", path = "../vm" }
+go-types = { version = "0.1.5", path = "../types" }
+go-codegen = { version = "0.1.5", path = "../codegen" }
+go-pmacro = { version = "0.1.5", path = "../pmacro" }
 
 [dev-dependencies]
 time-test = "0.2.2"
