@@ -2,7 +2,7 @@
 
 An alternative implementation of Golang specs, written in Rust for embedding or wrapping.
 
-NOTE: https://volang.dev/￼ is the successor to this project. This project is no longer maintained.
+NOTE: https://volang.dev/ ([repo](https://github.com/vo-lang/volang))￼ is the successor to this project. This project is no longer maintained.
 
 ## Website
 
