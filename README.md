@@ -2,7 +2,7 @@
 
 An alternative implementation of Golang specs, written in Rust for embedding or wrapping.
 
-[中文](#Goscript_Readme_中文版)
+NOTE: https://volang.dev/￼ is the successor to this project. This project is no longer maintained.
 
 ## Website
 
